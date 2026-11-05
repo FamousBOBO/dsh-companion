@@ -319,6 +319,31 @@ export function dumpEntryIds(text) {
  * truncated such URLs at the first space, which made doctor report a path that does not exist
  * while the host loaded it fine.
  */
+/**
+ * `file://` values out of a patch file this suite generated.
+ *
+ * Preferred over `dumpFileUrls` for existence checks: the generator quotes every value
+ * (`name: 'file://…'`), which makes the boundary unambiguous whatever the path contains. The
+ * host's own YAML rendering may fold a long scalar across lines, so scraping the dump cannot be
+ * made reliable for paths containing spaces — which is exactly how doctor came to report a
+ * truncated path for an install directory with a space in its name.
+ */
+export function patchFileUrls(text) {
+  const urls = new Set();
+  for (const raw of String(text).split(/\r?\n/)) {
+    const quoted = /'(file:\/\/[^']*)'/.exec(raw) || /"(file:\/\/[^"]*)"/.exec(raw);
+    if (quoted) {
+      urls.add(quoted[1]);
+      continue;
+    }
+    const at = raw.indexOf('file://');
+    if (at === -1) continue;
+    const plain = raw.slice(at).trim().replace(/\s+#.*$/, '');
+    if (plain.length > 'file://'.length) urls.add(plain);
+  }
+  return [...urls];
+}
+
 export function dumpFileUrls(text) {
   const urls = new Set();
   for (const rawLine of String(text).split(/\r?\n/)) {
@@ -367,6 +392,7 @@ export default {
   readProfilePackage,
   profileBundles,
   dumpEntryIds,
+  patchFileUrls,
   dumpFileUrls,
   parseWebUrl,
   fileUrlToPath,

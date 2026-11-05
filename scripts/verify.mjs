@@ -17,7 +17,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { SUITE_ROOT, SUITE_PATHS } from '../tools/lib/paths.mjs';
 import { loadConfig, enabledModules } from '../tools/lib/config.mjs';
-import { dshEnv, dumpFileUrls } from '../tools/lib/dsh.mjs';
+import { dshEnv, dumpFileUrls, patchFileUrls } from '../tools/lib/dsh.mjs';
 
 const argv = process.argv.slice(2);
 const onlyArg = argv.find((a) => a.startsWith('--only='));
@@ -295,6 +295,16 @@ function runStatic() {
     const ok = env.DSH_COMPANION_MODULE_ROOT === 'M' && env.DSH_HOME === 'H';
     if (ok) record('static', label, 'ok');
     else record('static', label, 'failed', `env=${JSON.stringify({ moduleRoot: env.DSH_COMPANION_MODULE_ROOT ?? null, home: env.DSH_HOME ?? null })}`);
+  }
+  {
+    // The existence check must read our own quoted patch file: a YAML rendering of the composed
+    // tree folds long scalars, so a spaced path has no reliable boundary there.
+    const label = '补丁文件里的含空格路径被完整读出';
+    const sample = "            name: 'file://D:/v/DSH clean 验证 20261105/plugins/companion-foundation/index.mjs'";
+    const urls = patchFileUrls(sample);
+    const ok = urls.length === 1 && urls[0].endsWith('/plugins/companion-foundation/index.mjs') && urls[0].includes('DSH clean 验证 20261105');
+    if (ok) record('static', label, 'ok');
+    else record('static', label, 'failed', `解析出 ${JSON.stringify(urls)}`);
   }
 
   // 2. no build artifacts inside the tracked tree. Only real build outputs count:

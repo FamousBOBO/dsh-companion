@@ -34,6 +34,7 @@ import {
   dumpConfig,
   dumpEntryIds,
   dumpFileUrls,
+  patchFileUrls,
   fileUrlToPath,
 } from '../tools/lib/dsh.mjs';
 
@@ -405,8 +406,12 @@ export function runDoctor(argv = process.argv.slice(2)) {
       const ids = dumpEntryIds(result.text);
       add({ id: 'compose', title: 'profile 合成', status: 'ok', detail: `${ids.length} 个条目，${result.durationMs} ms` });
 
-      // 合成结果里每个 file:// 插件路径都必须真的存在，否则启动时才炸。
-      const urls = dumpFileUrls(result.text);
+      // 补丁里每个 file:// 插件路径都必须真的存在，否则启动时才炸。
+      // 优先读我们自己生成的补丁文件：宿主把合成结果打印成 YAML 时会把长标量折行，含空格的
+      // 安装目录在那种渲染里没有可靠边界（这正是「含空格路径被截断」的来源）。
+      const patchText = hasPatch && fs.existsSync(PATCH_GENERATED) ? fs.readFileSync(PATCH_GENERATED, 'utf8') : '';
+      const urls = patchText ? patchFileUrls(patchText) : dumpFileUrls(result.text);
+      const urlsFrom = patchText ? '生成的补丁文件' : '宿主合成输出';
       const broken = [];
       for (const url of urls) {
         const asPath = fileUrlToPath(url);
@@ -414,7 +419,7 @@ export function runDoctor(argv = process.argv.slice(2)) {
       }
       add({
         id: 'compose-file-urls', title: '补丁引用的插件文件', status: broken.length ? 'fail' : 'ok',
-        detail: broken.length ? `${broken.length} 个路径不存在：${broken.join(' | ')}` : `${urls.length} 个 file:// 入口全部存在`,
+        detail: broken.length ? `${broken.length} 个路径不存在：${broken.join(' | ')}` : `${urls.length} 个 file:// 入口全部存在（来源：${urlsFrom}）`,
       });
 
       // 启用的模块必须在合成结果里真的出现，否则「配置已保存」≠「已经挂上」。
