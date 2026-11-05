@@ -19,11 +19,23 @@ const isWindows = process.platform === 'win32';
 /** npm without a shell: npm_execpath lets us spawn `node <npm-cli.js> …` when run under npm. */
 const NPM_EXECPATH = process.env.npm_execpath;
 
+/**
+ * A leaked `npm_config_workspaces` (npm sets it for some script contexts, and wrappers may set it)
+ * becomes `--no-workspaces` and then collides with our explicit `--workspace`. Strip it.
+ */
+function cleanEnv() {
+  const env = { ...process.env };
+  for (const key of Object.keys(env)) {
+    if (/^npm_config_workspaces?$/i.test(key)) delete env[key];
+  }
+  return env;
+}
+
 function runNpmBuild(pkgName) {
   // From the suite root with --workspace: running npm inside a workspace directory makes
   // npm reject the combination of workspace flags it infers.
   const args = ['run', 'build', `--workspace=${pkgName}`];
-  const options = { cwd: SUITE_PATHS.root, stdio: 'inherit', env: { ...process.env } };
+  const options = { cwd: SUITE_PATHS.root, stdio: 'inherit', env: cleanEnv() };
   if (NPM_EXECPATH && /npm-cli\.js$/.test(NPM_EXECPATH)) {
     return spawnSync(process.execPath, [NPM_EXECPATH, ...args], { ...options, shell: false });
   }

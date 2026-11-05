@@ -48,15 +48,15 @@ $SidecarRoot = $PSScriptRoot
 $SuiteRoot = Split-Path -Parent (Split-Path -Parent $SidecarRoot)
 $PythonDir = Join-Path $SidecarRoot 'python'
 # 服务端实现不由本仓库提供（许可证原因）：用户自备，或用 $env:HUAWEI_SERVE_SCRIPT 指定。
-$Dashboard = if ($env:HUAWEI_SERVE_SCRIPT) { $env:HUAWEI_SERVE_SCRIPT } else { Join-Path $PythonDir 'serve.py' }
+$Dashboard = if ([string]::IsNullOrEmpty($env:HUAWEI_SERVE_SCRIPT)) { Join-Path $PythonDir 'serve.py' } else { $env:HUAWEI_SERVE_SCRIPT }
 
 # ── paths: everything runtime lives under the suite data directory ─────────────────────────────
 function Resolve-DataDir {
-    if ($env:DSH_COMPANION_DATA_DIR) { return $env:DSH_COMPANION_DATA_DIR }
+    if (-not [string]::IsNullOrEmpty($env:DSH_COMPANION_DATA_DIR)) { return $env:DSH_COMPANION_DATA_DIR }
     return (Join-Path $SuiteRoot 'data')
 }
 if (-not $LogDir) {
-    if ($env:HUAWEI_LOG_DIR) { $LogDir = $env:HUAWEI_LOG_DIR }
+    if (-not [string]::IsNullOrEmpty($env:HUAWEI_LOG_DIR)) { $LogDir = $env:HUAWEI_LOG_DIR }
     else { $LogDir = Join-Path (Resolve-DataDir) 'logs\huawei-health-cn' }
 }
 $LogDir = [IO.Path]::GetFullPath($LogDir)
@@ -88,8 +88,8 @@ if (-not (Test-Path -LiteralPath $Dashboard)) {
     Write-Host "  详见 sidecars/huawei-health-cn/PROTOCOL-FREEZE.md §1.1。"
     Write-Host "  两种用法："
     Write-Host "    1) 自备上游检出并指定入口："
-    Write-Host '         $env:HUAWEI_UPSTREAM_PKG = "<你的>\custom_components\huawei_health"'
-    Write-Host '         $env:HUAWEI_SERVE_SCRIPT = "<你的 serve 入口.py>"   # 需实现 GET /api/data?days=N'
+    Write-Host '         $env:HUAWEI_UPSTREAM_PKG = "你的路径\custom_components\huawei_health"'
+    Write-Host '         $env:HUAWEI_SERVE_SCRIPT = "你的路径\serve.py"   # 需实现 GET /api/data?days=N'
     Write-Host '    2) 或者把你的入口放到 sidecars\huawei-health-cn\python\serve.py（默认查找位置）'
     Write-Host "  注意：BLE 心率通道（sidecars/ble-heart-rate）不受影响，可独立离线验收。"
     exit 3
@@ -99,7 +99,7 @@ if (-not (Test-Path -LiteralPath $LogDir)) {
 }
 
 $python = $PythonPath
-if (-not $python -and $env:HUAWEI_PYTHON) { $python = $env:HUAWEI_PYTHON }
+if (-not $python -and -not [string]::IsNullOrEmpty($env:HUAWEI_PYTHON)) { $python = $env:HUAWEI_PYTHON }
 if (-not $python) {
     foreach ($candidate in @(
         (Join-Path $SidecarRoot '.venv\Scripts\python.exe'),
@@ -141,13 +141,13 @@ if ($existingPid -gt 0) {
 }
 
 # ── 3. launch detached ─────────────────────────────────────────────────────────────────────────
-$CredentialPath = if ($env:HUAWEI_ACCOUNT_JSON) { $env:HUAWEI_ACCOUNT_JSON }
-    else { Join-Path (Resolve-DataDir) 'credentials\huawei_account.json' }
+$CredentialPath = if ([string]::IsNullOrEmpty($env:HUAWEI_ACCOUNT_JSON)) { Join-Path (Resolve-DataDir) 'credentials\huawei_account.json' } else { $env:HUAWEI_ACCOUNT_JSON }
+
 Write-Step "bind        : ${BindHost}:$Port (loopback only)"
 Write-Step "credential  : $CredentialPath — read by the sidecar process, never by this script"
 Write-Step "serve       : $Dashboard"
 Write-Step "logs        : $LogDir"
-if (-not $env:HUAWEI_UPSTREAM_PKG) {
+if ([string]::IsNullOrEmpty($env:HUAWEI_UPSTREAM_PKG)) {
     Write-Host "  ↑ HUAWEI_UPSTREAM_PKG 未设置：如果这个入口需要上游 client/const，它会自己报错。" -ForegroundColor DarkYellow
 }
 if (-not (Test-Path -LiteralPath $CredentialPath)) {

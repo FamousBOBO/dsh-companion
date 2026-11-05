@@ -33,6 +33,14 @@ const isWindows = process.platform === 'win32';
  * the script is invoked directly outside npm.
  */
 const NPM_EXECPATH = process.env.npm_execpath;
+/** A leaked `npm_config_workspaces` collides with our explicit `--workspace`. Strip it. */
+function cleanEnv() {
+  const env = { ...process.env, CI: '1' };
+  for (const key of Object.keys(env)) {
+    if (/^npm_config_workspaces?$/i.test(key)) delete env[key];
+  }
+  return env;
+}
 function npmSpawn(args, options) {
   if (NPM_EXECPATH && /npm-cli\.js$/.test(NPM_EXECPATH)) {
     return spawnSync(process.execPath, [NPM_EXECPATH, ...args], { ...options, shell: false });
@@ -105,7 +113,7 @@ function runUnit() {
         cwd: SUITE_ROOT,
         stdio: 'pipe',
         encoding: 'utf8',
-        env: { ...process.env, CI: '1' },
+        env: cleanEnv(),
         timeout: 20 * 60 * 1000,
       });
     } else {

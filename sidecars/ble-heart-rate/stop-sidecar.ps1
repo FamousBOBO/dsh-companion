@@ -37,8 +37,8 @@ Set-StrictMode -Version Latest
 $SidecarRoot = $PSScriptRoot
 $SuiteRoot = Split-Path -Parent (Split-Path -Parent $SidecarRoot)
 if (-not $LogDir) {
-    if ($env:BLE_HEART_RATE_LOG_DIR) { $LogDir = $env:BLE_HEART_RATE_LOG_DIR }
-    elseif ($env:DSH_COMPANION_DATA_DIR) { $LogDir = Join-Path $env:DSH_COMPANION_DATA_DIR 'logs\ble-heart-rate' }
+    if (-not [string]::IsNullOrEmpty($env:BLE_HEART_RATE_LOG_DIR)) { $LogDir = $env:BLE_HEART_RATE_LOG_DIR }
+    elseif (-not [string]::IsNullOrEmpty($env:DSH_COMPANION_DATA_DIR)) { $LogDir = Join-Path $env:DSH_COMPANION_DATA_DIR 'logs\ble-heart-rate' }
     else { $LogDir = Join-Path $SuiteRoot 'data\logs\ble-heart-rate' }
 }
 $PidFile = if ($Port -eq 8151) { Join-Path $LogDir 'sidecar.pid' } else { Join-Path $LogDir "sidecar-$Port.pid" }

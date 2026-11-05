@@ -33,8 +33,8 @@ Set-StrictMode -Version Latest
 $SidecarRoot = $PSScriptRoot
 $SuiteRoot = Split-Path -Parent (Split-Path -Parent $SidecarRoot)
 if (-not $LogDir) {
-    if ($env:HUAWEI_LOG_DIR) { $LogDir = $env:HUAWEI_LOG_DIR }
-    elseif ($env:DSH_COMPANION_DATA_DIR) { $LogDir = Join-Path $env:DSH_COMPANION_DATA_DIR 'logs\huawei-health-cn' }
+    if (-not [string]::IsNullOrEmpty($env:HUAWEI_LOG_DIR)) { $LogDir = $env:HUAWEI_LOG_DIR }
+    elseif (-not [string]::IsNullOrEmpty($env:DSH_COMPANION_DATA_DIR)) { $LogDir = Join-Path $env:DSH_COMPANION_DATA_DIR 'logs\huawei-health-cn' }
     else { $LogDir = Join-Path $SuiteRoot 'data\logs\huawei-health-cn' }
 }
 $PidFile = if ($DefaultPort -eq 8765) { Join-Path $LogDir 'sidecar.pid' } else { Join-Path $LogDir "sidecar-$DefaultPort.pid" }

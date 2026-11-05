@@ -72,11 +72,11 @@ $Script = Join-Path $SidecarRoot 'heart_rate.py'
 
 # ── 运行时路径：一律落在套件数据目录，不写进仓库 ──────────────────────────────────────────
 function Resolve-DataDir {
-    if ($env:DSH_COMPANION_DATA_DIR) { return $env:DSH_COMPANION_DATA_DIR }
+    if (-not [string]::IsNullOrEmpty($env:DSH_COMPANION_DATA_DIR)) { return $env:DSH_COMPANION_DATA_DIR }
     return (Join-Path $SuiteRoot 'data')
 }
 if (-not $LogDir) {
-    if ($env:BLE_HEART_RATE_LOG_DIR) { $LogDir = $env:BLE_HEART_RATE_LOG_DIR }
+    if (-not [string]::IsNullOrEmpty($env:BLE_HEART_RATE_LOG_DIR)) { $LogDir = $env:BLE_HEART_RATE_LOG_DIR }
     else { $LogDir = Join-Path (Resolve-DataDir) 'logs\ble-heart-rate' }
 }
 $LogDir = [IO.Path]::GetFullPath($LogDir)
@@ -133,7 +133,7 @@ if (-not (Test-Path -LiteralPath $LogDir)) {
 }
 
 $python = $PythonPath
-if (-not $python -and $env:BLE_HEART_RATE_PYTHON) { $python = $env:BLE_HEART_RATE_PYTHON }
+if (-not $python -and -not [string]::IsNullOrEmpty($env:BLE_HEART_RATE_PYTHON)) { $python = $env:BLE_HEART_RATE_PYTHON }
 if (-not $python) {
     foreach ($candidate in @(
         (Join-Path $SidecarRoot '.venv\Scripts\python.exe'),
