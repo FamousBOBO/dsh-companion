@@ -1123,6 +1123,21 @@
     ]);
   }
 
+/**
+   * Standalone sidebar page. The settings form itself lives in MediaBand so the same component can
+   * be rendered from a page (this wrapper) without duplicating any rendering logic.
+   */
+  function MediaPage() {
+    return h('div', { className: 'cpxp-page' },
+      h('div', { className: 'cpxp-page-head' },
+        h('h1', { className: 'cpxp-page-title' }, '媒体能力'),
+        h('p', { className: 'cpxp-page-sub' },
+          '生图与语音合成的配置；识图只保留合同。所有配置由 companion-media 插件持有，本页只按它给的描述符渲染。')),
+      h(MediaBand, { media: null }));
+  }
+
+  P.registerPage({ id: 'media', label: '媒体能力', order: 63, component: MediaPage });
+
   P.mediaPage = {
     MediaBand,
     buildView,

@@ -532,7 +532,7 @@ if (!findBy(iconTree, (node) => node.tag === 'svg')) {
 
 
 const failures = [];
-const RAIL_LABELS = ['陪伴首页', '聊天', '生活与日程', '记忆与档案', '连接与工具', '工作区', '设置'];
+const RAIL_LABELS = ['陪伴首页', '聊天', '生活与日程', '记忆与档案', '连接与工具', '媒体能力', '工作区', '设置'];
 
 let tree = await renderUntilStable(createElement(main.component, {}));
 
@@ -649,7 +649,7 @@ for (const label of ['陪伴首页', '生活与日程', '连接与工具', '工�
     return section ? findAll(section, (node) => node.tag === 'button' && textOf(node) === '保存这一块')[0] || null : null;
   };
 
-  if (!clickRail('连接与工具')) failures.push('找不到导航：连接与工具');
+  if (!clickRail('媒体能力')) failures.push('找不到导航：媒体能力');
   else {
     await reload();
     const rendered = text(tree);

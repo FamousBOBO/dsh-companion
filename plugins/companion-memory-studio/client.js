@@ -71,7 +71,8 @@ const NAV = [
   { id: 'chat', label: '聊天', icon: 'chat', hint: '回到宿主原生对话', native: 'conversation' },
   { id: 'life', label: '生活与日程', icon: 'calendar', hint: '今天、接下来，以及她的计划' },
   { id: 'memory', label: '记忆与档案', icon: 'book', hint: '记忆库、Wiki、时间线与待核对', tabs: ['vault', 'wiki', 'timeline', 'review'] },
-  { id: 'connections', label: '连接与工具', icon: 'plug', hint: '通道与媒体能力的真实状态' },
+  { id: 'connections', label: '连接与工具', icon: 'plug', hint: '通道的真实状态；媒体能力已独立成页' },
+  { id: 'media', label: '媒体能力', icon: 'plug', hint: '生图与语音合成的配置（识图只保留合同）' },
   { id: 'workspace', label: '工作区', icon: 'folder', hint: '回到文件、会话与开发现场' },
   { id: 'settings', label: '设置', icon: 'sliders', hint: '外观、角色、模型与记忆', tabs: ['settings', 'overview', 'microscope'] },
 ];
@@ -1064,7 +1065,7 @@ const HEALTH_CAPS = [
     },
   },
   {
-    id: 'media', label: '媒体能力', page: 'connections', probe: 'companion', source: 'GET companion · media',
+    id: 'media', label: '媒体能力', page: 'media', probe: 'companion', source: 'GET companion · media',
     judge: ({ data }) => {
       const media = data && data.media;
       if (!media || typeof media !== 'object') return { state: 'unknown', note: '没有媒体状态字段' };
@@ -1915,7 +1916,7 @@ function Rail({ collapsed, onToggle, compact, onCompact, compactAvailable }) {
   const groups = [
     { label: '陪伴', ids: ['home', 'chat', 'life'] },
     { label: '记录', ids: ['memory'] },
-    { label: '工具', ids: ['connections', 'workspace'] },
+    { label: '工具', ids: ['connections', 'media', 'workspace'] },
     { label: '系统', ids: ['settings'] },
   ];
 
@@ -9078,62 +9079,16 @@ P.THEME_LABEL = THEME_LABEL;
 
       h(HealthSourceBand, { key: 'health' }),
 
-      h(ui.Band, {
-        key: 'qq',
-        title: 'QQ 私聊通道',
-        hint: '本地投递账本，不代表已读',
-        actions: [info('计数来自本地投递账本：只说明消息离开队列，不代表对方已读，也不代表送达。'
-          + '本页只读，不发送任何消息，也不会替你回消息。')],
-      }, [
-        contact
-          ? h(ui.List, { key: 'qq-list', label: 'QQ 私聊投递账本' },
-            h(ui.Row, {
-              title: '投递账本',
-              meta: '本地账本已写入',
-              status: h(ui.StateLine, { state: 'ok', text: '已写入' }),
-            }),
-            h(ui.Row, {
-              title: '统计日',
-              meta: '不是今天时计数是旧的',
-              side: contact.day ? String(contact.day) : '—',
-            }),
-            h(ui.Row, {
-              title: '今日发送',
-              meta: '本地账本记录的条数',
-              side: contact.sentToday === null || contact.sentToday === undefined ? '—' : `${fmt.number(contact.sentToday)} 条`,
-            }),
-            h(ui.Row, {
-              title: '连续未回复',
-              meta: '她连续发出、你还没回',
-              side: contact.unanswered === null || contact.unanswered === undefined ? '—' : `${fmt.number(contact.unanswered)} 条`,
-            }),
-            h(ui.Row, {
-              title: '上次发送',
-              meta: '最近一次离开队列',
-              side: contact.lastSentAt ? h(ui.Timestamp, { at: contact.lastSentAt }) : '—',
-            }))
-          : h('div', { key: 'qq-empty' },
-            h(ui.Row, {
-              title: '投递账本',
-              meta: '本地还没有账本文件',
-              status: h(ui.StateLine, { state: 'idle', text: '未写入' }),
-            }),
-            h(ui.Callout, {
-              tone: 'info',
-              title: '还没有投递账本',
-              children: '本地没有账本文件，发送情况无法判断。',
-            })),
-      ]),
+      h(ui.Row, {
+        key: 'media',
+        title: '媒体能力',
+        meta: '独立的侧栏页面：配置生图与语音合成（识图只保留合同）',
+        status: h(ui.StateLine, { state: 'info', text: '见左侧「媒体能力」' }),
+      }),
 
-      // 媒体能力：真实可编辑设置页（descriptor 渲染，保存走媒体插件自己的 API）。
-      // 只读的「运行库视角」开关仍保留在新页面的诊断区里（GET companion · media）。
-      P.mediaPage
-        ? h(P.mediaPage.MediaBand, { key: 'media', media })
-        : h(ui.Band, {
-          key: 'media',
-          title: '媒体能力',
-        }, h(ui.Callout, { tone: 'warn', title: '媒体设置页没有构建' },
-          h('span', null, '这个客户端的 pages-media.js 片段缺失，只能显示运行库读到的开关值。'))),
+      // 媒体能力已迁到侧栏独立页（pages-media.js 的 MediaPage）。这里只留指向说明，
+      // 避免同一份表单在两处渲染、两条数据流各自漂移。
+
 
       h(ui.Band, {
         key: 'bridge',
@@ -10327,6 +10282,21 @@ P.THEME_LABEL = THEME_LABEL;
         h(ui.Pre, { maxHeight: 320 }, JSON.stringify({ page: redactForDebug(descriptor), config: redactForDebug(config) }, null, 2))),
     ]);
   }
+
+/**
+   * Standalone sidebar page. The settings form itself lives in MediaBand so the same component can
+   * be rendered from a page (this wrapper) without duplicating any rendering logic.
+   */
+  function MediaPage() {
+    return h('div', { className: 'cpxp-page' },
+      h('div', { className: 'cpxp-page-head' },
+        h('h1', { className: 'cpxp-page-title' }, '媒体能力'),
+        h('p', { className: 'cpxp-page-sub' },
+          '生图与语音合成的配置；识图只保留合同。所有配置由 companion-media 插件持有，本页只按它给的描述符渲染。')),
+      h(MediaBand, { media: null }));
+  }
+
+  P.registerPage({ id: 'media', label: '媒体能力', order: 63, component: MediaPage });
 
   P.mediaPage = {
     MediaBand,

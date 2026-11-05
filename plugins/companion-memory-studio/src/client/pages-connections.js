@@ -457,62 +457,16 @@
 
       h(HealthSourceBand, { key: 'health' }),
 
-      h(ui.Band, {
-        key: 'qq',
-        title: 'QQ 私聊通道',
-        hint: '本地投递账本，不代表已读',
-        actions: [info('计数来自本地投递账本：只说明消息离开队列，不代表对方已读，也不代表送达。'
-          + '本页只读，不发送任何消息，也不会替你回消息。')],
-      }, [
-        contact
-          ? h(ui.List, { key: 'qq-list', label: 'QQ 私聊投递账本' },
-            h(ui.Row, {
-              title: '投递账本',
-              meta: '本地账本已写入',
-              status: h(ui.StateLine, { state: 'ok', text: '已写入' }),
-            }),
-            h(ui.Row, {
-              title: '统计日',
-              meta: '不是今天时计数是旧的',
-              side: contact.day ? String(contact.day) : '—',
-            }),
-            h(ui.Row, {
-              title: '今日发送',
-              meta: '本地账本记录的条数',
-              side: contact.sentToday === null || contact.sentToday === undefined ? '—' : `${fmt.number(contact.sentToday)} 条`,
-            }),
-            h(ui.Row, {
-              title: '连续未回复',
-              meta: '她连续发出、你还没回',
-              side: contact.unanswered === null || contact.unanswered === undefined ? '—' : `${fmt.number(contact.unanswered)} 条`,
-            }),
-            h(ui.Row, {
-              title: '上次发送',
-              meta: '最近一次离开队列',
-              side: contact.lastSentAt ? h(ui.Timestamp, { at: contact.lastSentAt }) : '—',
-            }))
-          : h('div', { key: 'qq-empty' },
-            h(ui.Row, {
-              title: '投递账本',
-              meta: '本地还没有账本文件',
-              status: h(ui.StateLine, { state: 'idle', text: '未写入' }),
-            }),
-            h(ui.Callout, {
-              tone: 'info',
-              title: '还没有投递账本',
-              children: '本地没有账本文件，发送情况无法判断。',
-            })),
-      ]),
+      h(ui.Row, {
+        key: 'media',
+        title: '媒体能力',
+        meta: '独立的侧栏页面：配置生图与语音合成（识图只保留合同）',
+        status: h(ui.StateLine, { state: 'info', text: '见左侧「媒体能力」' }),
+      }),
 
-      // 媒体能力：真实可编辑设置页（descriptor 渲染，保存走媒体插件自己的 API）。
-      // 只读的「运行库视角」开关仍保留在新页面的诊断区里（GET companion · media）。
-      P.mediaPage
-        ? h(P.mediaPage.MediaBand, { key: 'media', media })
-        : h(ui.Band, {
-          key: 'media',
-          title: '媒体能力',
-        }, h(ui.Callout, { tone: 'warn', title: '媒体设置页没有构建' },
-          h('span', null, '这个客户端的 pages-media.js 片段缺失，只能显示运行库读到的开关值。'))),
+      // 媒体能力已迁到侧栏独立页（pages-media.js 的 MediaPage）。这里只留指向说明，
+      // 避免同一份表单在两处渲染、两条数据流各自漂移。
+
 
       h(ui.Band, {
         key: 'bridge',

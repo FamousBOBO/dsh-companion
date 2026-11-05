@@ -61,7 +61,8 @@ const NAV = [
   { id: 'chat', label: '聊天', icon: 'chat', hint: '回到宿主原生对话', native: 'conversation' },
   { id: 'life', label: '生活与日程', icon: 'calendar', hint: '今天、接下来，以及她的计划' },
   { id: 'memory', label: '记忆与档案', icon: 'book', hint: '记忆库、Wiki、时间线与待核对', tabs: ['vault', 'wiki', 'timeline', 'review'] },
-  { id: 'connections', label: '连接与工具', icon: 'plug', hint: '通道与媒体能力的真实状态' },
+  { id: 'connections', label: '连接与工具', icon: 'plug', hint: '通道的真实状态；媒体能力已独立成页' },
+  { id: 'media', label: '媒体能力', icon: 'plug', hint: '生图与语音合成的配置（识图只保留合同）' },
   { id: 'workspace', label: '工作区', icon: 'folder', hint: '回到文件、会话与开发现场' },
   { id: 'settings', label: '设置', icon: 'sliders', hint: '外观、角色、模型与记忆', tabs: ['settings', 'overview', 'microscope'] },
 ];
@@ -1054,7 +1055,7 @@ const HEALTH_CAPS = [
     },
   },
   {
-    id: 'media', label: '媒体能力', page: 'connections', probe: 'companion', source: 'GET companion · media',
+    id: 'media', label: '媒体能力', page: 'media', probe: 'companion', source: 'GET companion · media',
     judge: ({ data }) => {
       const media = data && data.media;
       if (!media || typeof media !== 'object') return { state: 'unknown', note: '没有媒体状态字段' };
@@ -1905,7 +1906,7 @@ function Rail({ collapsed, onToggle, compact, onCompact, compactAvailable }) {
   const groups = [
     { label: '陪伴', ids: ['home', 'chat', 'life'] },
     { label: '记录', ids: ['memory'] },
-    { label: '工具', ids: ['connections', 'workspace'] },
+    { label: '工具', ids: ['connections', 'media', 'workspace'] },
     { label: '系统', ids: ['settings'] },
   ];
 
