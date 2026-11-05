@@ -1,4 +1,5 @@
 import { Code, mediaError } from '../errors.mjs';
+import { canonicalImageProvider, canonicalTtsProvider } from '../schema.mjs';
 import * as openaiImage from './openai-image.mjs';
 import * as naiImage from './nai-image.mjs';
 import * as breeze from './breeze.mjs';
@@ -11,16 +12,18 @@ import { drama3, fishAudio } from './fish.mjs';
  *
  * Lookup by id is total: an unknown id is a typed error, and a known-but-
  * unimplemented adapter is a *different* typed error (see index-tts). That
- * distinction is what keeps the UI honest.
+ * distinction is what keeps the UI honest. Legacy ids (`openai`,
+ * `breeze-tts-2`) are canonicalized first, so an old config or an old caller
+ * keeps working.
  */
 
 const IMAGE = {
-  openai: { ...openaiImage, kind: 'image' },
+  'openai-compatible': { ...openaiImage, kind: 'image' },
   nai: { ...naiImage, kind: 'image' },
 };
 
 const TTS = {
-  'breeze-tts-2': { ...breeze, kind: 'tts' },
+  'breeze-tts2': { ...breeze, kind: 'tts' },
   'gpt-sovits': { ...gptSovits, kind: 'tts' },
   drama3: { ...drama3, kind: 'tts' },
   'index-tts': { ...indexTts, kind: 'tts' },
@@ -28,13 +31,15 @@ const TTS = {
 };
 
 export function imageAdapter(id) {
-  const adapter = IMAGE[id];
+  const key = canonicalImageProvider(id);
+  const adapter = IMAGE[key];
   if (!adapter) throw mediaError(Code.PROVIDER_UNKNOWN, `未知生图 provider：${id}`);
   return adapter;
 }
 
 export function ttsAdapter(id) {
-  const adapter = TTS[id];
+  const key = canonicalTtsProvider(id);
+  const adapter = TTS[key];
   if (!adapter) throw mediaError(Code.PROVIDER_UNKNOWN, `未知 TTS provider：${id}`);
   return adapter;
 }
@@ -57,6 +62,8 @@ export function adapterCatalog() {
       evidence: adapter.record.evidence,
       requiredFields: adapter.record.requiredFields,
       fieldLabels: adapter.record.fieldLabels,
+      // 下拉项的取值集合：页面据此渲染真正的 <select>，不再退化成文本框。
+      ...(adapter.record.fieldOptions ? { fieldOptions: adapter.record.fieldOptions } : {}),
       ...(adapter.record.reason ? { reason: adapter.record.reason } : {}),
     })),
     tts: Object.values(TTS).map(adapter => ({
@@ -72,6 +79,8 @@ export function adapterCatalog() {
       evidence: adapter.record.evidence,
       requiredFields: adapter.record.requiredFields,
       fieldLabels: adapter.record.fieldLabels,
+      // 下拉项的取值集合：页面据此渲染真正的 <select>，不再退化成文本框。
+      ...(adapter.record.fieldOptions ? { fieldOptions: adapter.record.fieldOptions } : {}),
       ...(adapter.record.reason ? { reason: adapter.record.reason } : {}),
     })),
   };

@@ -1,5 +1,6 @@
 import { createHealthService, PLUGIN_ROOT, WORKSPACE_ROOT, VERSION } from './lib/service.mjs';
 import { publishHealthService } from '../companion-foundation/health-service-ref.mjs';
+import { resolveDataRoot } from '../companion-foundation/suite-paths.mjs';
 
 // Cordis plugin entry for companion-health.
 //
@@ -48,6 +49,25 @@ function readinessLine(service) {
   try { return String(service?.readiness?.()?.summary ?? ''); } catch { return ''; }
 }
 
+/**
+ * The suite **data** root (`<套件根>/data`, or `$DSH_COMPANION_DATA_DIR`).
+ *
+ * This is the key the service bridge is addressed by, and every consumer
+ * (`companion-foundation`, `companion-memory-studio`) uses the same value. Passing the *suite* root
+ * here — as this file did until 2026-11-06 — had two consequences:
+ *   1. publishers and consumers used different keys, so the bridge answered `bridge-miss`;
+ *   2. `health-service-ref.mjs` writes its diagnostics to `<root>/home/health/`, so a test run from
+ *      the repository root left `home/health/bridge-*.json` **inside the checkout**.
+ *
+ * Resolved per activation (not at module load) so that a test which points
+ * `$DSH_COMPANION_DATA_DIR` at a temp directory gets a temp diagnostics path too.
+ *
+ * @returns {string} absolute data root
+ */
+export function dataRoot() {
+  return resolveDataRoot({ moduleUrl: import.meta.url }).dataRoot;
+}
+
 export async function apply(ctx) {
   epoch += 1;
   const mine = epoch;
@@ -89,7 +109,7 @@ export async function apply(ctx) {
       + 'sibling plugins will fall back to the service bridge');
   }
   try {
-    releaseBridge = publishHealthService(WORKSPACE_ROOT, service, { ready: () => phaseOf(service) !== 'closed' });
+    releaseBridge = publishHealthService(dataRoot(), service, { ready: () => phaseOf(service) !== 'closed' });
     note('published companionHealth to the service bridge (sibling plugins can resolve it)');
   } catch (error) {
     note(`service bridge publish failed: ${error instanceof Error ? error.message : String(error)}`);

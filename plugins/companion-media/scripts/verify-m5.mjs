@@ -130,16 +130,16 @@ async function main() {
     const saved = service.saveConfig({
       image: {
         enabled: true,
-        provider: 'openai',
-        openai: { baseUrl: 'https://api.example.test/v1', apiKey: PLACEHOLDER_KEY, model: 'gpt-image-test', size: '1024x1024' },
+        provider: 'openai-compatible',
+        'openai-compatible': { baseUrl: 'https://api.example.test/v1', apiKey: PLACEHOLDER_KEY, model: 'gpt-image-test', size: '1024x1024' },
       },
     });
     record('保存 provider 配置', saved.ok === true, saved.ok ? '' : JSON.stringify(saved.errors ?? saved.error));
     const maskedText = JSON.stringify(service.readConfig());
     record('GET 视图不含密钥明文', !maskedText.includes(PLACEHOLDER_KEY));
-    record('密钥标记为已配置（掩码）', service.readConfig().config.image.openai.apiKey.configured === true);
+    record('密钥标记为已配置（掩码）', service.readConfig().config.image['openai-compatible'].apiKey.configured === true);
 
-    const tested = await service.testProvider({ kind: 'image', id: 'openai' });
+    const tested = await service.testProvider({ kind: 'image', id: 'openai-compatible' });
     record('连接测试（mock /models）', tested.ok === true, `level=${tested.level}`);
 
     const drawn = await service.generateImage({ prompt: 'a synthetic lighthouse at dusk' });
@@ -155,7 +155,7 @@ async function main() {
     const restarted = plugin.createMediaService({ dataDir, env: {}, fetchImpl: mock.fetchImpl });
     const afterRestart = restarted.readConfig();
     record('重启后配置仍在', afterRestart.config.image.enabled === true && afterRestart.exists === true);
-    record('重启后密钥仍是掩码', afterRestart.config.image.openai.apiKey.configured === true && !JSON.stringify(afterRestart).includes(PLACEHOLDER_KEY));
+    record('重启后密钥仍是掩码', afterRestart.config.image['openai-compatible'].apiKey.configured === true && !JSON.stringify(afterRestart).includes(PLACEHOLDER_KEY));
     record('重启后产物仍在账本里', restarted.jobs(10).artifacts.length >= 1);
 
     // 仓库卫生：复制出来的树里不得有真实凭据、作者机器路径、媒体产物

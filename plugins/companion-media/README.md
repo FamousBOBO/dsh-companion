@@ -36,7 +36,8 @@ npm run setup        # 初始化 <套件根>/data 与配置模板（不覆盖已
 - 模板：`config.example.json`（可提交，只有空值占位）
 - 实际配置：`<dataDir>/media/config.json`（`dataDir` 默认 `<套件根>/data`，可用 `DSH_COMPANION_DATA_DIR` 覆盖）
 - 预设模板：`presets/nai-presets.example.json`
-- 密钥两种放法：写进上面那份本机配置，或设环境变量 `DSH_MEDIA_<SCOPE>_API_KEY`（scope 例：`OPENAI` / `NAI` / `FISH_AUDIO` / `DRAMA3` / `BREEZE_TTS_2` / `GPT_SOVITS`）
+- 密钥两种放法：写进上面那份本机配置，或设环境变量 `DSH_MEDIA_<SCOPE>_API_KEY`（scope 例：`OPENAI_COMPATIBLE` / `NAI` / `FISH_AUDIO` / `DRAMA3` / `BREEZE_TTS2` / `GPT_SOVITS`；旧的 `DSH_MEDIA_OPENAI_API_KEY`、`DSH_MEDIA_BREEZE_TTS_2_API_KEY` 仍被接受）
+- 密钥是**只写**的：GET/页面只显示「已配置」或掩码；表单留空 = 保留原值；**清除必须显式**（`null` 或 `{"clear":true}`），且清除前要先把该能力关掉，否则会被校验挡住
 
 配置**不在仓库里**，也不该进仓库。保存是原子的（同目录 temp → fsync → rename），上一版留 `.bak`。
 
@@ -46,16 +47,18 @@ npm run setup        # 初始化 <套件根>/data 与配置模板（不覆盖已
 
 ## 3. Provider 支持矩阵
 
-| provider | 类型 | 状态 | 鉴权 | 返回 | 证据等级 |
+（`id` 列是配置/API/页面共用的名字，见 `CONTRACT.md` §4.2）
+
+| provider（id） | 类型 | 状态 | 鉴权 | 返回 | 证据等级 |
 |---|---|---|---|---|---|
-| OpenAI-compatible | 生图 | **已接入** | `Authorization: Bearer` | JSON `data[].b64_json` 或 `data[].url`（受控下载） | A（官方 OpenAPI 规范） |
-| NovelAI 官方直连 | 生图 | **已接入** | `Bearer` Access Token | SSE / ZIP 附件（内含 PNG） | A（官方 Swagger，模型 ID 为 C 级） |
-| NovelAI 中转站 | 生图 | **已接入**（`transport: openai-relay`） | `Bearer` | JSON `data[].b64_json` | C（社区实现交叉验证） |
-| Breeze TTS 2 | TTS | **已接入** | 无（必须只监听本机/内网） | 流式 `audio/pcm`（24 kHz s16le）→ 封装 WAV | A（官方 `breeze_infer/api.py`） |
-| GPT-SoVITS | TTS | **已接入** | 无（同上） | `audio/wav`（`media_type` 由服务端/请求决定） | A（官方 `api_v2.py`） |
-| Fish Audio | TTS | **已接入** | `Bearer` | 音频字节（`wav`/`mp3`/`opus`） | B（官方 API 文档） |
-| Drama3 | TTS | **已接入**（Fish Audio 的 `drama-3` 模型） | `Bearer` | 同上；支持多说话人 | B（同上，model enum 含 `drama-3`） |
-| Index-TTS | TTS | **尚未接入** | — | — | — 官方只有 Python API / WebUI / vLLM·Triton recipe，无 HTTP 协议可核实 |
+| OpenAI-compatible（`openai-compatible`） | 生图 | **已接入** | `Authorization: Bearer` | JSON `data[].b64_json` 或 `data[].url`（受控下载） | A（官方 OpenAPI 规范） |
+| NovelAI 官方直连（`nai`，`transport=official`） | 生图 | **已接入** | `Bearer` Access Token | SSE / ZIP 附件（内含 PNG） | A（官方 Swagger，模型 ID 为 C 级） |
+| NovelAI 中转站（`nai`，`transport=openai-relay`） | 生图 | **已接入** | `Bearer` | JSON `data[].b64_json` | C（社区实现交叉验证） |
+| Breeze TTS 2（`breeze-tts2`） | TTS | **已接入** | 无（必须只监听本机/内网） | 流式 `audio/pcm`（24 kHz s16le）→ 封装 WAV | A（官方 `breeze_infer/api.py`） |
+| GPT-SoVITS（`gpt-sovits`） | TTS | **已接入** | 无（同上） | `audio/wav`（`media_type` 由服务端/请求决定） | A（官方 `api_v2.py`） |
+| Drama3（`drama3`） | TTS | **已接入**（Fish Audio 的 `drama-3` 模型） | `Bearer` | 同上；支持多说话人 | B（同上，model enum 含 `drama-3`） |
+| Fish Audio（`fish-audio`） | TTS | **已接入** | `Bearer` | 音频字节（`wav`/`mp3`/`opus`） | B（官方 API 文档） |
+| Index-TTS（`index-tts`） | TTS | **尚未接入** | — | — | — 已核实：bilibili 模型使用协议（非开源）+ 无文档化 HTTP 契约 |
 
 每个 provider 的端点、字段、音色查询方式、限流、许可、核实日期都在 `docs/media/M0-report.md` 的字段矩阵里，逐行带来源 URL。
 

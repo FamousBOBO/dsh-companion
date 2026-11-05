@@ -26,7 +26,7 @@ test('GET /config 返回掩码，不含明文密钥', async () => {
   try {
     const config = {
       schemaVersion: 2,
-      image: { enabled: true, provider: 'openai', openai: { baseUrl: 'https://api.example.test/v1', apiKey: KEY, model: 'm' } },
+      image: { enabled: true, provider: 'openai-compatible', 'openai-compatible': { baseUrl: 'https://api.example.test/v1', apiKey: KEY, model: 'm' } },
     };
     const { handlers } = setup(dir, { config });
     const response = await handlers[`GET ${API_PREFIX}/config`](request(`${API_PREFIX}/config`));
@@ -34,7 +34,7 @@ test('GET /config 返回掩码，不含明文密钥', async () => {
     const payload = await response.json();
     assert.equal(payload.ok, true);
     assert.equal(JSON.stringify(payload).includes(KEY), false);
-    assert.equal(payload.config.image.openai.apiKey.configured, true);
+    assert.equal(payload.config.image['openai-compatible'].apiKey.configured, true);
   } finally {
     cleanup();
   }
@@ -46,7 +46,7 @@ test('POST /config 保存成功并校验；保存失败返回 400 + 字段错误
     const { handlers } = setup(dir);
     const good = await handlers[`POST ${API_PREFIX}/config`](request(`${API_PREFIX}/config`, {
       method: 'POST',
-      body: { patch: { image: { enabled: true, provider: 'openai', openai: { baseUrl: 'https://api.example.test/v1', apiKey: KEY, model: 'm' } } } },
+      body: { patch: { image: { enabled: true, provider: 'openai-compatible', 'openai-compatible': { baseUrl: 'https://api.example.test/v1', apiKey: KEY, model: 'm' } } } },
     }));
     assert.equal(good.status, 200);
     const saved = await good.json();
@@ -55,12 +55,12 @@ test('POST /config 保存成功并校验；保存失败返回 400 + 字段错误
 
     const bad = await handlers[`POST ${API_PREFIX}/config`](request(`${API_PREFIX}/config`, {
       method: 'POST',
-      body: { patch: { image: { enabled: true, provider: 'openai', openai: { model: '' } } } },
+      body: { patch: { image: { enabled: true, provider: 'openai-compatible', 'openai-compatible': { model: '' } } } },
     }));
     assert.equal(bad.status, 400);
     const payload = await bad.json();
     assert.equal(payload.ok, false);
-    assert.ok(payload.errors.some(item => item.path.startsWith('image.openai')));
+    assert.ok(payload.errors.some(item => item.path.startsWith('image.openai-compatible')));
   } finally {
     cleanup();
   }
@@ -114,7 +114,7 @@ test('POST /image + confirm + 已配置 → 返回产物与 handoff（delivered=
     const { fetchImpl } = mockFetch([{ match: () => true, response: { status: 200, json: { data: [{ b64_json: PNG.toString('base64') }] } } }]);
     const config = {
       schemaVersion: 2,
-      image: { enabled: true, provider: 'openai', openai: { baseUrl: 'https://api.example.test/v1', apiKey: KEY, model: 'm', timeoutMs: 3000 } },
+      image: { enabled: true, provider: 'openai-compatible', 'openai-compatible': { baseUrl: 'https://api.example.test/v1', apiKey: KEY, model: 'm', timeoutMs: 3000 } },
       limits: { requestBudgetMs: 3000, connectTimeoutMs: 1000, maxResponseBytes: 1 << 20, maxImageBytes: 1 << 20, maxAudioBytes: 1 << 20, maxRedirects: 2, maxImagesPerRequest: 1, maxTextChars: 500 },
     };
     const { handlers } = setup(dir, { config, fetchImpl });
@@ -172,7 +172,7 @@ test('页面预览 HTML 里没有密钥，也不把"已保存"写成"连接成�
   try {
     const config = {
       schemaVersion: 2,
-      image: { enabled: true, provider: 'openai', openai: { baseUrl: 'https://api.example.test/v1', apiKey: KEY, model: 'm' } },
+      image: { enabled: true, provider: 'openai-compatible', 'openai-compatible': { baseUrl: 'https://api.example.test/v1', apiKey: KEY, model: 'm' } },
       tts: { enabled: false, providers: { 'fish-audio': { apiKey: 'fish_secret_value_12345', baseUrl: 'https://api.fish.audio' } } },
     };
     const { service } = setup(dir, { config });

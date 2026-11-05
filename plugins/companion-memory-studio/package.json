@@ -26,6 +26,7 @@
     "client.js",
     "scripts/build-client.mjs",
     "scripts/smoke-client.mjs",
+    "scripts/run-tests.mjs",
     "cordis.patch.yml",
     "locale/",
     "icon.svg",
@@ -36,7 +37,7 @@
     "build": "node scripts/build-client.mjs",
     "build:client": "node scripts/build-client.mjs",
     "check:client": "node scripts/build-client.mjs --check",
-    "test": "node --test \"test/*.test.mjs\""
+    "test": "node scripts/run-tests.mjs"
   },
   "dsh": {
     "bundle": {

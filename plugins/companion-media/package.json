@@ -28,5 +28,10 @@
     "test:unit": "node --test \"test/*.test.mjs\"",
     "build": "node -e \"import('./index.mjs').then(()=>console.log('companion-media: source loads (no build step)'))\""
   },
-  "localVersion": "0.1.0"
+  "localVersion": "0.1.0",
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  }
 }

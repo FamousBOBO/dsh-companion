@@ -75,25 +75,35 @@ function removeTree(dir) {
 
 /** 统一收尾：关掉本次激活发布的服务 → 还原 env → 删临时 home（带重试）。 */
 async function withHome(run) {
-  const home = makeHome();
-  const previous = process.env.DSH_COMPANION_HEALTH_HOME;
+  const dataRoot = makeHome();
+  const home = path.join(dataRoot, 'home');
+  // 两个都指到临时目录：`DSH_COMPANION_HEALTH_HOME` 决定数据库/配置写哪儿，
+  // `DSH_COMPANION_DATA_DIR` 决定**服务桥的诊断文件**写哪儿。
+  // 少了后者，`health-service-ref.mjs` 会把 `home/health/bridge-*.json` 写进仓库根
+  // —— 2026-11-06 就是这么污染发布树的（cwd 当数据根）。
+  const previousHome = process.env.DSH_COMPANION_HEALTH_HOME;
+  const previousData = process.env.DSH_COMPANION_DATA_DIR;
   process.env.DSH_COMPANION_HEALTH_HOME = home;
+  process.env.DSH_COMPANION_DATA_DIR = dataRoot;
   const opened = [];
   try {
-    return await run({ home, track: service => { if (service) opened.push(service); } });
+    return await run({ home, dataRoot, track: service => { if (service) opened.push(service); } });
   } finally {
     // 没走 provide 的用例（最贫瘠 composition）从**进程级服务桥**把实例取回来关掉，
     // 否则 SQLite 句柄会让临时目录删不掉（Windows EPERM）。
+    // 键必须与发布时一致：`mod.dataRoot()`（本次激活解析出来的数据根）。
     try {
-      const viaBridge = resolveHealthService({ get: () => undefined }, mod.WORKSPACE_ROOT);
+      const viaBridge = resolveHealthService({ get: () => undefined }, mod.dataRoot());
       if (viaBridge) opened.push(viaBridge);
     } catch { /* 桥没发布也不影响清理 */ }
     for (const service of opened) {
       try { await service.close(); } catch { /* close 从不 reject；这里只防御 */ }
     }
-    if (previous === undefined) delete process.env.DSH_COMPANION_HEALTH_HOME;
-    else process.env.DSH_COMPANION_HEALTH_HOME = previous;
-    removeTree(home);
+    if (previousHome === undefined) delete process.env.DSH_COMPANION_HEALTH_HOME;
+    else process.env.DSH_COMPANION_HEALTH_HOME = previousHome;
+    if (previousData === undefined) delete process.env.DSH_COMPANION_DATA_DIR;
+    else process.env.DSH_COMPANION_DATA_DIR = previousData;
+    removeTree(dataRoot);
   }
 }
 
@@ -145,5 +155,32 @@ test('宿主没有 provide/effect 时也不抛、也返回 undefined（最贫瘠
     const { ctx, provided } = makeCtx({ withProvide: false, withEffect: false });
     assert.equal(await mod.apply(ctx), undefined);
     assert.equal(provided.size, 0);
+  });
+});
+
+// 2026-11-06 的回归：这个文件曾把**套件根**（`plugins/companion-health/../..`）当成服务桥的键发布，
+// 而所有消费者（foundation / studio）都用**数据根**。后果有两个，都是这次修的：
+//   1. 键不一致 → 同门插件解析不到（`bridge-miss`），工具与路由在真机上失效；
+//   2. `health-service-ref.mjs` 把诊断写到 `<key>/home/health/`，于是测试一跑，
+//      `home/health/bridge-*.json` 就落进仓库根（`git status` 干净化的天敌）。
+test('服务桥的键是套件 data 根，且诊断文件落在临时目录里（不写仓库）', async () => {
+  await withHome(async ({ dataRoot, track }) => {
+    const { ctx, provided } = makeCtx();
+    await mod.apply(ctx);
+    track(provided.get('companionHealth'));
+
+    assert.equal(mod.dataRoot(), dataRoot,
+      'dataRoot() 必须跟随 $DSH_COMPANION_DATA_DIR（本次激活解析，不是模块加载时）');
+
+    const viaBridge = resolveHealthService({ get: () => undefined }, dataRoot);
+    assert.ok(viaBridge, '用同一个键必须能把服务解析回来（否则真机上同门插件会 bridge-miss）');
+
+    const diag = path.join(dataRoot, 'home', 'health', 'bridge-publish.json');
+    assert.equal(fs.existsSync(diag), true, `诊断文件应写在数据根下：${diag}`);
+
+    // 发布时用的键绝不能是仓库/套件根 —— 那正是 `home/` 出现在发布树里的原因。
+    assert.notEqual(dataRoot, mod.WORKSPACE_ROOT, '数据根不应等于套件根');
+    assert.equal(fs.existsSync(path.join(mod.WORKSPACE_ROOT, 'home', 'health')), false,
+      '套件根下不该出现 home/health（诊断只许写数据根）');
   });
 });

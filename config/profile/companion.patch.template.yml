@@ -80,6 +80,7 @@
 # ── 3. 工作区上下文 ─────────────────────────────────────────────────────────
 # 把 <dataDir>/workspace 下的 AGENTS.md / PERSONA.md 注入每个会话。
 # 人格正文本身由 config/persona.md 提供（见 docs/02-configuration.md）。
+
 - insert:
     - id: companion-workspace-context
       name: 'file://${SUITE_ROOT}/plugins/companion-foundation/workspace-context.mjs'

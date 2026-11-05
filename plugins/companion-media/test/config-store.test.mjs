@@ -31,16 +31,16 @@ test('保存 → 读取：GET 视图是掩码，明文只从 secret() 取', () =
   try {
     const store = createConfigStore({ dataDir: dir, env: {} });
     const saved = store.save({
-      image: { enabled: true, provider: 'openai', openai: { baseUrl: 'https://api.example.test/v1', apiKey: OPENAI_KEY, model: 'gpt-image-test' } },
+      image: { enabled: true, provider: 'openai-compatible', 'openai-compatible': { baseUrl: 'https://api.example.test/v1', apiKey: OPENAI_KEY, model: 'gpt-image-test' } },
     });
     assert.equal(saved.ok, true, JSON.stringify(saved.errors ?? []));
     const read = store.read();
     assert.equal(read.exists, true);
     const text = JSON.stringify(read.masked);
     assert.equal(text.includes(OPENAI_KEY), false, 'GET 视图不得含明文');
-    assert.equal(read.masked.image.openai.apiKey.configured, true);
-    assert.equal(store.secret('openai').value, OPENAI_KEY);
-    assert.equal(store.secret('openai').source, 'config');
+    assert.equal(read.masked.image['openai-compatible'].apiKey.configured, true);
+    assert.equal(store.secret('openai-compatible').value, OPENAI_KEY);
+    assert.equal(store.secret('openai-compatible').source, 'config');
   } finally {
     cleanup();
   }
@@ -50,15 +50,15 @@ test('掩码回传不清空已保存的密钥', () => {
   const { dir, cleanup } = tempDataDir();
   try {
     const store = createConfigStore({ dataDir: dir, env: {} });
-    store.save({ image: { openai: { baseUrl: 'https://api.example.test/v1', apiKey: OPENAI_KEY, model: 'm', enabled: true }, enabled: true, provider: 'openai' } });
+    store.save({ image: { 'openai-compatible': { baseUrl: 'https://api.example.test/v1', apiKey: OPENAI_KEY, model: 'm', enabled: true }, enabled: true, provider: 'openai-compatible' } });
     // 前端把 GET 拿到的掩码对象原样 POST 回来
     const readBack = store.read().masked;
-    const saved = store.save({ image: { openai: { apiKey: readBack.image.openai.apiKey } } });
+    const saved = store.save({ image: { 'openai-compatible': { apiKey: readBack.image['openai-compatible'].apiKey } } });
     assert.equal(saved.ok, true);
-    assert.equal(store.secret('openai').value, OPENAI_KEY);
+    assert.equal(store.secret('openai-compatible').value, OPENAI_KEY);
     // 空字符串同样表示"不修改"
-    store.save({ image: { openai: { apiKey: '' } } });
-    assert.equal(store.secret('openai').value, OPENAI_KEY);
+    store.save({ image: { 'openai-compatible': { apiKey: '' } } });
+    assert.equal(store.secret('openai-compatible').value, OPENAI_KEY);
   } finally {
     cleanup();
   }
@@ -84,7 +84,7 @@ test('校验失败不写盘，返回逐字段错误', () => {
   try {
     const store = createConfigStore({ dataDir: dir, env: {} });
     const before = store.exists();
-    const result = store.save({ image: { enabled: true, provider: 'openai' } });
+    const result = store.save({ image: { enabled: true, provider: 'openai-compatible' } });
     assert.equal(result.ok, false);
     assert.equal(result.saved, false);
     assert.ok(result.errors.length > 0);
@@ -145,11 +145,11 @@ test('reset 可清空密钥（默认）或保留（keepSecrets）', () => {
   const { dir, cleanup } = tempDataDir();
   try {
     const store = createConfigStore({ dataDir: dir, env: {} });
-    store.save({ image: { openai: { apiKey: OPENAI_KEY, baseUrl: 'https://api.example.test/v1', model: 'm' } } });
+    store.save({ image: { 'openai-compatible': { apiKey: OPENAI_KEY, baseUrl: 'https://api.example.test/v1', model: 'm' } } });
     store.reset({ keepSecrets: true });
-    assert.equal(store.secret('openai').value, OPENAI_KEY);
+    assert.equal(store.secret('openai-compatible').value, OPENAI_KEY);
     store.reset();
-    assert.equal(store.secret('openai').value, '');
+    assert.equal(store.secret('openai-compatible').value, '');
   } finally {
     cleanup();
   }

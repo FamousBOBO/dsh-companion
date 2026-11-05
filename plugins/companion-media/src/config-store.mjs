@@ -32,10 +32,16 @@ export const BACKUP_SUFFIX = '.bak';
 
 const SECRET_FIELDS = ['apiKey'];
 
-/** Environment override for a key, e.g. `DSH_MEDIA_OPENAI_API_KEY`. */
+/** Environment override for a key, e.g. `DSH_MEDIA_OPENAI_COMPATIBLE_API_KEY`. */
 export function keyEnvName(scope) {
   return `DSH_MEDIA_${String(scope).replace(/[^A-Za-z0-9]+/g, '_').toUpperCase()}_API_KEY`;
 }
+
+/** Legacy env names still honoured for one release (scope renames). */
+export const LEGACY_ENV_ALIASES = Object.freeze({
+  'openai-compatible': ['DSH_MEDIA_OPENAI_API_KEY'],
+  'breeze-tts2': ['DSH_MEDIA_BREEZE_TTS_2_API_KEY'],
+});
 
 export function configFilePath(dataDir) {
   return path.join(dataDir, CONFIG_RELATIVE_PATH);
@@ -59,7 +65,7 @@ export function maskConfig(config, { env = process.env } = {}) {
     return section;
   };
   if (copy.vision) maskSection(copy.vision, 'vision');
-  if (copy.image?.openai) maskSection(copy.image.openai, 'openai');
+  if (copy.image?.['openai-compatible']) maskSection(copy.image['openai-compatible'], 'openai-compatible');
   if (copy.image?.nai) maskSection(copy.image.nai, 'nai');
   for (const [id, section] of Object.entries(copy.tts?.providers ?? {})) maskSection(section, id);
   // Redact credential-shaped strings that survived under an innocent field name.
@@ -77,11 +83,24 @@ function redactStrings(value, depth = 0) {
 
 const MASKED_STRINGS = [/^\s*$/, /^\*+$/, /^[•…*]+$/, /…/, /^\[redacted\]$/];
 
-function looksMasked(value) {
-  if (value === null || value === undefined) return true;
-  if (typeof value === 'object') return true; // `{configured, mask}` posted back
+/**
+ * What a secret field in a patch means.
+ *
+ *   'keep'  — 空字符串 / 掩码字符串 / `{configured,mask}` 对象：保留已存的值
+ *   'clear' — 显式的清除动作：`null` 或 `{clear:true}`
+ *   'set'   — 任何其它值：写入新密钥
+ *
+ * "Empty means keep" is the default because a form that renders `••••` and
+ * posts it back must not wipe a working key; clearing therefore has to be an
+ * explicit action.
+ */
+export function secretIntent(value) {
+  if (value === null) return 'clear';
+  if (typeof value === 'object') return value?.clear === true ? 'clear' : 'keep';
   const text = String(value);
-  return MASKED_STRINGS.some(pattern => pattern.test(text));
+  if (!text.trim()) return 'keep';
+  if (MASKED_STRINGS.some(pattern => pattern.test(text))) return 'keep';
+  return 'set';
 }
 
 /**
@@ -95,8 +114,9 @@ export function mergePreservingSecrets(stored, patch) {
       // Secrets first: a masked secret posted back is an OBJECT
       // (`{configured, mask}`), and it must never be merged as nested config.
       if (SECRET_FIELDS.includes(key)) {
-        if (looksMasked(value)) continue; // keep the stored secret
-        target[key] = String(value);
+        const intent = secretIntent(value);
+        if (intent === 'keep') continue;
+        target[key] = intent === 'clear' ? '' : String(value);
         continue;
       }
       if (typeof value === 'object' && value !== null && !Array.isArray(value)) {
@@ -191,7 +211,7 @@ export function createConfigStore({ dataDir, env = process.env, now = () => new 
       const { config } = load();
       const table = {
         vision: config.vision,
-        openai: config.image.openai,
+        'openai-compatible': config.image['openai-compatible'],
         nai: config.image.nai,
         ...Object.fromEntries(Object.entries(config.tts.providers).map(([id, section]) => [id, section])),
       };
@@ -201,6 +221,10 @@ export function createConfigStore({ dataDir, env = process.env, now = () => new 
       const envVar = keyEnvName(scope);
       const fromEnv = typeof env?.[envVar] === 'string' ? env[envVar].trim() : '';
       if (fromEnv) return { value: fromEnv, source: 'env', envVar };
+      for (const alias of LEGACY_ENV_ALIASES[scope] ?? []) {
+        const legacy = typeof env?.[alias] === 'string' ? env[alias].trim() : '';
+        if (legacy) return { value: legacy, source: 'env', envVar: alias };
+      }
       return { value: '', source: 'none' };
     },
     /**
@@ -247,7 +271,7 @@ export function createConfigStore({ dataDir, env = process.env, now = () => new 
       const loaded = load();
       const base = structuredClone(DEFAULTS);
       if (keepSecrets) {
-        base.image.openai.apiKey = loaded.config.image.openai.apiKey;
+        base.image['openai-compatible'].apiKey = loaded.config.image['openai-compatible'].apiKey;
         base.image.nai.apiKey = loaded.config.image.nai.apiKey;
         base.vision.apiKey = loaded.config.vision.apiKey;
         for (const [id, section] of Object.entries(base.tts.providers)) section.apiKey = loaded.config.tts.providers[id]?.apiKey ?? '';

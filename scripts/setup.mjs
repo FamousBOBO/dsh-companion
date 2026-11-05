@@ -83,8 +83,12 @@ export const MODULE_SPECS = {
     title: '健康数据（companion-health + 华为健康 sidecar）',
   },
   media: {
-    kind: 'file',
+    kind: 'bundle',
     directory: 'plugins/companion-media',
+    // Two blocks: `media` mounts the tools inside the preset, `media-http` mounts the settings API
+    // at the top level. The split is not cosmetic — preset plugins get an isolate realm whose
+    // `connection` service is private, so an API registered from inside the preset never reaches
+    // the web server (the routes 404 while registration reports success).
     patchBlocks: ['media'],
     title: '媒体层（生图/TTS/识图，能力默认全关）',
   },

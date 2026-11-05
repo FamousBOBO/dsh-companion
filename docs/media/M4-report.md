@@ -59,7 +59,7 @@ tests 99 / suites 0 / pass 99 / fail 0 / duration ~1.0s
         ▼
 migrateLegacyConfig()
   ├─ 保留：image.model/steps/scale/size、image.style 的默认正负串 → presets['5']
-  ├─ 保留：speech.backend → tts.providers['breeze-tts-2']（去掉旧 /breeze 路径后缀）
+  ├─ 保留：speech.backend → tts.providers['breeze-tts2']（去掉旧 /breeze 路径后缀）
   ├─ 丢弃：pythonPath / imagePipelineRoot / configPath / runtime(8139) / queue(HF) /
   │         presetsFile / emotionPresets / director / auto / screen / delivery /
   │         quotas / tagProvider / translatePrompt / generationFlow / allowRealGeneration

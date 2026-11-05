@@ -14,6 +14,8 @@
 
 「工具」分组、二级页、页面 id/title/group 已在描述符里固定：`{ id: 'companion-media', title: '媒体能力', group: '工具', order: 40 }`。
 
+描述符的可渲染契约（字段形状、`pathParts`、`canTest`/`canEnable`、`api` 端点表、`meta.testPolicy`）见 `plugins/companion-media/CONTRACT.md` §4.1；provider id 一览见同文件 §4.2（canonical：`openai-compatible` / `nai` / `breeze-tts2` / `gpt-sovits` / `drama3` / `index-tts` / `fish-audio`）。
+
 ---
 
 ## 2. 页面结构（描述符实际内容）
@@ -32,7 +34,7 @@
 
 ### 2.2 生图（`sections[1]`）
 
-- 总开关 `image.enabled`（默认 false），协议选择 `image.provider`（none/openai/nai）。
+- 总开关 `image.enabled`（默认 false），协议选择 `image.provider`（none / `openai-compatible` / `nai`）。
 - 两个 provider 块各自展开：必填项 + 端点/鉴权/返回/音色查询/限流/许可/证据等级。
 - `preview`：自动分辨率预览（`GET /preview`，与 adapter 同一个函数，可复现）。
 - `presets`：V5 与 4.5 分仓（见 §3）。
@@ -56,7 +58,7 @@
 
 | 要求 | 实现 | 断言 |
 |---|---|---|
-| OpenAI 与 NAI 配置切换保留彼此值 | 两段独立存储（`image.openai.*` / `image.nai.*`），切换只改 `image.provider` | `provider 切换…`（见 M4 覆盖表）/ schema 合并语义 |
+| OpenAI 与 NAI 配置切换保留彼此值 | 两段独立存储（`image['openai-compatible'].*` / `image.nai.*`），切换只改 `image.provider` | `provider 切换…`（见 M4 覆盖表）/ schema 合并语义 |
 | NAI V5 与 4.5 正负预设分开 | `image.nai.presets['5']` 与 `['4.5']` 物理隔离，各含 `applyDefaults/positive/negative`；族由模型 ID 决定 | `预设：V5 与 4.5 分开存储，互不覆盖`；`NAI：V5 预设不会出现在 4.5 请求里` |
 | 预设可选官方选项 / 可自定义 / 可清空 | `applyDefaults` 决定是否拼接；`positive/negative` 为空 = 清空（合法状态） | `预设：清空是受支持的状态` |
 | 步数默认 28 | `image.nai.steps = 28` | `默认值：…步数默认 28`、NAI 请求体断言 `steps === 28` |

@@ -108,6 +108,9 @@ export function mapNetworkError(error, { provider = 'provider', timeoutMs = null
     return mediaError(Code.TIMEOUT, `${provider} did not answer within ${timeoutMs ?? '?'} ms.`);
   }
   const message = String(error?.message ?? error);
+  if (/timed? ?out|aborted/i.test(message)) {
+    return mediaError(Code.TIMEOUT, `${provider} did not answer within ${timeoutMs ?? '?'} ms.`);
+  }
   if (/fetch failed|ECONNREFUSED|ECONNRESET|ENOTFOUND|EHOSTUNREACH|EAI_AGAIN|other side closed|socket hang up/i.test(message)) {
     return mediaError(
       Code.NETWORK,

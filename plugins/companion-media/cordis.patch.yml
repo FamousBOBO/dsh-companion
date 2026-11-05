@@ -1,0 +1,14 @@
+# companion-media bundle patch.
+#
+# Mounts ONLY the management API, at application level. The media plugin's tools are mounted
+# separately by the suite's preset patch, because tools must live inside the agent preset to be
+# visible to the model.
+#
+# Why the split: preset plugins get an isolate realm, and their `connection` service is a private
+# instance — routes registered from inside the preset report success and still answer 404 on the
+# web server. A bundle patch runs at the application level, which is the only context where
+# `connection.fetch.register` is accepted (the same reason the companion studio ships its API this
+# way).
+- insert:
+    - id: companion-media-http
+      name: './http.mjs'

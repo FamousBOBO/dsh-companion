@@ -156,20 +156,88 @@
 
 前缀 `/api/companion-media`，只注册在宿主**已认证的本机 Connection** 上；跨站 `Origin` 直接 403。
 
-| 方法 路径 | 作用 | 计费 |
-|---|---|---|
-| `GET /status` | 状态（同 `status()`） | 否 |
-| `GET /config` | 掩码配置 | 否 |
-| `POST /config` | `{patch}` 保存（校验失败 400 + 字段错误） | 否 |
-| `POST /test` | `{kind,id}` 连接测试 | 否（不会生成/合成） |
-| `GET /page` | 「工具 → 媒体能力」页描述符 | 否 |
-| `GET /preview` | 自动分辨率预览 | 否 |
-| `GET /jobs` | 作业/产物 | 否 |
-| `POST /image` | **必须带 `confirm:true`**，否则 400 | 是 |
-| `POST /speech` | **必须带 `confirm:true`** | 可能 |
-| `GET/POST /vision` | 恒拒绝（400）+ 合同 | 否 |
+**注册时机**：`connection` 由宿主**异步**提供，插件激活时可能还不存在。因此首次注册若返回 `no-connection`，插件会用 `ctx.inject(['connection'], …)` 等它到达后**再注册一次**（与 memory studio 相同的做法）；注册按 path 幂等，重复挂载会覆盖而不是堆积。共 9 条路由：`status` / `config` / `test` / `page` / `preview` / `jobs` / `image` / `speech` / `vision`。
 
-页面描述符（`src/ui-page.mjs`）是数据不是框架代码：章节 = 识图 / 生图 / 语音合成；每个 provider 展开才显示其选项；`states` 给出六态的中文标签，UI 不得自造。
+**注册结果是可查的**：`GET /status` 的 `http` 字段（以及 `/page` 的 `meta.http`）给出 `{ registered, skipped, how: 'direct'|'inject'|null, at, paths, failed, lastError }`。这是区分「模块未启用」与「模块已启用但管理 API 没起来」的唯一可靠信号——HTTP 404 本身说明不了是哪种。
+
+宿主日志（`<dataDir>/media/logs/media-events.jsonl`）里对应两行：
+- 未就绪：`{"event":"http-api-waiting","how":"direct","registered":0,"skipped":"no-connection","note":"等待 connection 服务（首次尝试未就绪，已用 ctx.inject 挂起重试）"}`
+- 注册成功：`{"event":"http-api-registered","how":"inject","registered":9,"paths":[…],"note":"已注册 9 条路由（inject）"}`
+
+**HTTP 状态 vs 响应体 `ok` 是两件事**（客户端要分别处理）：
+- HTTP 状态回答「这个请求本身是否可接受」：JSON 体、provider id 已知、`confirm:true`、schema 校验通过；
+- `ok` 回答「这次操作是否成功」：provider 报 401 时，测试动作本身成功（HTTP 200），但 `ok:false` + `code:MEDIA_AUTH_FAILED`。
+
+| 方法 路径 | 作用 | 计费 | 状态码语义 |
+|---|---|---|---|
+| `GET /status` | 状态（同 `status()`） | 否 | 200 |
+| `GET /config` | 掩码配置 | 否 | 200 |
+| `POST /config` | `{patch}` 保存 | 否 | 200 保存成功 / 400 校验失败（`errors[]` 逐字段） |
+| `POST /test` | `{kind,id}` 连接测试，**只能显式触发** | 否（不生成不合成） | 200 测试已执行（结果看 `ok`）/ 400 未知 provider、kind 非法 |
+| `GET /page` | 「工具 → 媒体能力」页描述符 | 否 | 200 |
+| `GET /preview` | 自动分辨率预览 | 否 | 200（越界时 `resolution.ok:false` 带 `error`） |
+| `GET /jobs` | 作业/产物 | 否 | 200 |
+| `POST /image` | **必须带 `confirm:true`**，否则 400 | 是 | 200 成功 / 400 未开、未配置、参数越界、缺 confirm |
+| `POST /speech` | **必须带 `confirm:true`** | 可能 | 同上 |
+| `GET/POST /vision` | 恒拒绝 + 合同 | 否 | GET 200（`ok:false`）/ POST 400 |
+
+**页面加载绝不触发 `/test`**：`GET /page|config|status|jobs|preview` 不发起任何外部请求（有单测断言 fetch 调用次数 = 0）。描述符里 `meta.testPolicy = 'explicit-only'` 把这个约定写进数据。
+
+### 4.1 页面描述符（Studio 直接渲染，`src/ui-page.mjs`）
+
+```ts
+{
+  id: 'companion-media', title: '媒体能力', group: '工具', order: 40,
+  states: [{ id: 'disabled'|'unconfigured'|'not-connected'|'saved-untested'|'test-ok'|'test-failed', label }],
+  api: { status, config, save, test, preview, jobs, generate, speech },   // 客户端不要自己拼路径
+  sections: [
+    {
+      id: 'vision', title: '识图', state: 'disabled', locked: true,
+      toggle: { path, pathParts, label, disabled: true, value: false, why },
+      fields: [ { path, pathParts, label, type, value, writable, hint? } ],
+    },
+    {
+      id: 'image', title: '生图',
+      toggle: { path: 'image.enabled', ... },
+      selector: { path: 'image.provider', options: [{value,label}], value },
+      providers: [{
+        id, label, status,                    // status: connected | not-connected
+        state, stateNote, stateDetail,        // 六态 + 原因
+        canTest, canEnable,                   // not-connected 的 provider 两者皆 false
+        endpoint, auth, responseFormat, voiceListing, rateLimit, license, version, evidence,
+        key: { configured, source },          // 不含明文
+        fields: [{ path, pathParts, label, type, value, writable, hint }],
+      }],
+      preview: { endpoint, label, note, values: { mode, aspect, targetPixels, model } },
+      presets: { path, families: [...], artistString: field },
+    },
+    { id: 'tts', ... providers: [五个] },
+  ],
+  meta: { configFile, paths, persona, testPolicy: 'explicit-only' },
+}
+```
+
+渲染约定：
+- `type: 'secret'` 的输入框是**只写**的：`value` 是 `{configured, mask, source}`，输入框始终为空、占位符显示「已配置/未配置」；
+- `type: 'select'` 的字段**一定带 `options: [{value,label}]`**（枚举来自 `schema.mjs`，与 adapter/校验共用同一份）；没有 options 的字段一律降级成 `text`，不会发"点了就报错"的空下拉；
+- **生图 provider 没有 `enabled` 字段**：它的启停由 `sections[image].toggle`（`image.enabled`）+ `selector`（`image.provider`）表达，不存在可写的 `image.<provider>.enabled` 键；**TTS 每个后端有自己的 `tts.providers.<id>.enabled`**，所以 TTS 的 provider 里保留该字段；
+- `toggle.disabled`、`canEnable`、`canTest` 由后端给出，客户端不必（也不该）自己推断；
+- 状态文案直接取 `states[].label`，不得自造，也不得把 `saved-untested` 写成「连接成功」。
+
+### 4.2 配置 id 一览（客户端与后端共用一套名字）
+
+| kind | id | 状态 |
+|---|---|---|
+| image | `openai-compatible` | `connected` |
+| image | `nai` | `connected`（`transport` 再分 `official` / `openai-relay`） |
+| tts | `breeze-tts2` | `connected` |
+| tts | `gpt-sovits` | `connected` |
+| tts | `drama3` | `connected` |
+| tts | `index-tts` | **`not-connected`**（bilibili 模型使用协议 + 无文档化 HTTP 契约） |
+| tts | `fish-audio` | `connected` |
+| vision | — | 恒 `reserved-disabled` |
+
+旧 id `openai`、`breeze-tts-2` 仍被接受（归一成上表），但 `/status` 与 `/page` 只输出上表的名字。
 
 ---
 
@@ -177,10 +245,25 @@
 
 - 位置：`<dataDir>/media/config.json`（`dataDir` 默认 `<套件根>/data`，可用 `DSH_COMPANION_DATA_DIR` 或 `mountMedia` 的 `dataDir` 覆盖）。**不在源码树里**。
 - 模板：`config.example.json`（可提交，无任何真实值）；预设模板：`presets/nai-presets.example.json`。
-- 保存：schema 校验 → 临时文件（同目录）→ `fsync` → `rename`；上一版留 `config.json.bak`。
+- 保存：schema 校验 → 临时文件（同目录）→ `fsync` → `rename`；上一版留 `config.json.bak`。校验失败**不写盘**。
 - 密钥：`apiKey` 只存在于本地文件或 `DSH_MEDIA_<SCOPE>_API_KEY` 环境变量；GET 返回 `{configured, mask, source, envVar?}`。
-- **掩码回传 = 不修改**：POST 里 `apiKey` 传 `""`、`"****"`、`"sk…abcd"` 或 `{configured:true}` 都表示"保留原值"。
+
+### 5.1 密钥的保存语义（客户端必须照此实现）
+
+| POST 里传什么 | 结果 |
+|---|---|
+| `"新密钥字符串"` | 写入新值 |
+| `""` / 空白 | **保留**已存值 |
+| `"******"` / `"sk…abcd"`（掩码字符串） | **保留**已存值 |
+| `{configured:true, mask:'sk…abcd'}`（把 GET 的返回原样回传） | **保留**已存值 |
+| `null` | **清除**（显式动作） |
+| `{clear:true}` | **清除**（显式动作） |
+
+注意：如果该 provider 正处于**启用**状态且密钥是必填项，清除会被 schema 校验挡住（HTTP 400，错误指向 `…apiKey`），因为一个"已启用但没有密钥"的配置只会静默失败。正确流程是**先关能力，再清除**——页面应当把两件事分开做。
+
 - `vision.enabled` 不可写：无论提交什么、无论直接改文件，读回恒为 `false`。
+- 画师串：`image.nai.artistString`（独立字段，写进正向提示词最前面），与 `image.nai.presets[族]` 分开保存。
+- 旧 id 归一：`openai` → `openai-compatible`、`breeze-tts-2` → `breeze-tts2`（见 §4.2）。
 
 ---
 

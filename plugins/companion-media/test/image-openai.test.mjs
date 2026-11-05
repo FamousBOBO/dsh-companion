@@ -13,8 +13,8 @@ function configured(dir, patch = {}) {
     schemaVersion: 2,
     image: {
       enabled: true,
-      provider: 'openai',
-      openai: { baseUrl: 'https://api.example.test/v1', apiKey: KEY, model: 'gpt-image-test', size: '1024x1024', timeoutMs: 5000 },
+      provider: 'openai-compatible',
+      'openai-compatible': { baseUrl: 'https://api.example.test/v1', apiKey: KEY, model: 'gpt-image-test', size: '1024x1024', timeoutMs: 5000 },
     },
     limits: { requestBudgetMs: 5000, connectTimeoutMs: 2000, maxResponseBytes: 1 << 20, maxImageBytes: 1 << 20, maxAudioBytes: 1 << 20, maxRedirects: 2, maxImagesPerRequest: 1, maxTextChars: 500 },
   };
@@ -30,7 +30,7 @@ test('OpenAI：b64_json 响应 → 落盘 PNG，恰好一次请求，带 Bearer'
     const service = createMediaService({ dataDir: dir, env: {}, fetchImpl });
     const result = await service.generateImage({ prompt: 'a calm lake at dusk' });
     assert.equal(result.ok, true, JSON.stringify(result.error ?? {}));
-    assert.equal(result.provider, 'openai');
+    assert.equal(result.provider, 'openai-compatible');
     assert.equal(result.artifact.mime, 'image/png');
     assert.equal(result.artifact.width, 1024);
     assert.equal(result.handoff.delivered, false, '生成不等于投递');
@@ -155,7 +155,7 @@ test('配置非法（缺 model）时不会调用远端', async () => {
   const { dir, cleanup } = tempDataDir();
   try {
     configured(dir, {
-      image: { enabled: true, provider: 'openai', openai: { baseUrl: 'https://api.example.test/v1', apiKey: KEY, model: '' } },
+      image: { enabled: true, provider: 'openai-compatible', 'openai-compatible': { baseUrl: 'https://api.example.test/v1', apiKey: KEY, model: '' } },
     });
     const { fetchImpl, calls } = mockFetch([{ match: () => true, response: { status: 200, json: {} } }]);
     const service = createMediaService({ dataDir: dir, env: {}, fetchImpl });
@@ -174,17 +174,20 @@ test('连接测试：/models 成功 = metadata 级证据；401 = 失败；不生
     configured(dir);
     const okFetch = mockFetch([{ match: 'https://api.example.test/v1/models', response: { status: 200, json: { data: [{ id: 'gpt-image-test' }] } } }]);
     const okService = createMediaService({ dataDir: dir, env: {}, fetchImpl: okFetch.fetchImpl });
+    // 旧 id 仍被接受（别名），结果统一回 canonical id
     const ok = await okService.testProvider({ kind: 'image', id: 'openai' });
     assert.equal(ok.ok, true);
     assert.equal(ok.level, 'metadata');
     assert.deepEqual(ok.models, ['gpt-image-test']);
-    assert.equal(ok.states.image.providers.find(item => item.id === 'openai').state, 'test-ok');
+    assert.equal(ok.states.image.providers.find(item => item.id === 'openai-compatible').state, 'test-ok');
+
+    assert.equal(ok.id, 'openai-compatible', '别名要归一成 canonical id');
 
     const badFetch = mockFetch([{ match: () => true, response: { status: 401, json: {} } }]);
     const badService = createMediaService({ dataDir: dir, env: {}, fetchImpl: badFetch.fetchImpl });
-    const bad = await badService.testProvider({ kind: 'image', id: 'openai' });
+    const bad = await badService.testProvider({ kind: 'image', id: 'openai-compatible' });
     assert.equal(bad.ok, false);
-    assert.equal(bad.states.image.providers.find(item => item.id === 'openai').state, 'test-failed');
+    assert.equal(bad.states.image.providers.find(item => item.id === 'openai-compatible').state, 'test-failed');
   } finally {
     cleanup();
   }

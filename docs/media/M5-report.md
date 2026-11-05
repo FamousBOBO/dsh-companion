@@ -105,7 +105,7 @@ PASS  源码树无真实密钥/无作者路径/无媒体产物
 
 ### 4.1 OpenAI-compatible 生图
 
-1. 「媒体能力 → 生图」选 `openai`，填 Base URL（例：`https://api.openai.com/v1`）、API Key、模型（例：`gpt-image-2.5-flare`），保存。
+1. 「媒体能力 → 生图」选 `openai-compatible`，填 Base URL（例：`https://api.openai.com/v1`）、API Key、模型（例：`gpt-image-2.5-flare`），保存。
 2. 点「测试连接」：期望 `level=metadata`（`GET /models` 成功）。若 Base URL 不支持 `/models`，会显示 `reachability`——这不代表密钥有效。
 3. 用工具 `companion_media_draw` 先 `dryRun:true`（不花钱），确认参数无误。
 4. 再 `dryRun:false` 生成一次；确认返回 `artifact.absolutePath` 与 `handoff.delivered=false`。

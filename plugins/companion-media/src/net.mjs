@@ -143,6 +143,12 @@ export function createNet({ fetchImpl = globalThis.fetch, now = () => Date.now()
           hops,
         };
       } catch (error) {
+        // An abort raised by our own deadline is a TIMEOUT, whatever shape the
+        // runtime hands back (`AbortError`, or a `fetch failed` wrapper around
+        // the abort reason).
+        if (controller.signal.aborted) {
+          throw mediaError(Code.TIMEOUT, `${provider} request timed out after ${timeoutMs} ms`);
+        }
         if (error instanceof Error && error.name === 'AbortError') {
           throw mediaError(Code.TIMEOUT, `${provider} request timed out after ${timeoutMs} ms`);
         }

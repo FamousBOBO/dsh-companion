@@ -27,7 +27,7 @@
   "image": {
     "enabled": false,
     "provider": "none",
-    "openai": {
+    "openai-compatible": {
       "baseUrl": "",
       "apiKey": "",
       "model": "",
@@ -55,6 +55,7 @@
       "sm": false,
       "smDyn": false,
       "negativePrompt": "",
+      "artistString": "",
       "presets": {
         "applyDefaults": false,
         "positive": "",
@@ -70,11 +71,11 @@
     "enabled": false,
     "provider": "none",
     "providers": {
-      "breeze-tts-2": {
+      "breeze-tts2": {
         "enabled": false,
         "baseUrl": "",
         "apiKey": "",
-        "model": "breeze-tts-2",
+        "model": "breeze-tts2",
         "timeoutMs": 600000,
         "instruction": "",
         "cfgScale": 1,

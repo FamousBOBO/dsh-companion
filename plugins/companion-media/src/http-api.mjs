@@ -20,6 +20,33 @@ const json = (body, status = 200) => new Response(JSON.stringify(body), {
 
 const LOCAL_ORIGIN = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
 
+/**
+ * HTTP status vs body `ok`.
+ *
+ * They answer different questions and the tests assert them separately:
+ *   - HTTP status: was the *request* acceptable? (JSON body, known provider,
+ *     `confirm:true`, schema-valid config)
+ *   - body `ok`: did the *operation* succeed? A provider that answers 401 makes
+ *     the test action succeed with `ok:false` + `code: MEDIA_AUTH_FAILED`; the
+ *     endpoint itself is fine (HTTP 200).
+ */
+const STATUS_BY_CODE = new Map([
+  [Code.BAD_INPUT, 400],
+  [Code.CONFIG_INVALID, 400],
+  [Code.PROVIDER_UNKNOWN, 400],
+  [Code.NOT_CONFIGURED, 400],
+  [Code.DISABLED, 400],
+  [Code.PROVIDER_NOT_IMPLEMENTED, 400],
+  [Code.VISION_LOCKED, 400],
+  [Code.PARAM_OUT_OF_RANGE, 400],
+  [Code.DOWNLOAD_BLOCKED, 403],
+]);
+
+function statusForFailure(error) {
+  const code = error?.code;
+  return STATUS_BY_CODE.get(code) ?? 500;
+}
+
 function originAllowed(request) {
   const origin = request.headers.get('origin');
   if (!origin) return true; // same-origin fetch from the shell sends no Origin on GET
@@ -49,7 +76,7 @@ export function createMediaHandlers(service) {
       return await handler(request);
     } catch (error) {
       const failure = toFailure(error);
-      return json({ ok: false, error: failure }, 500);
+      return json({ ok: false, error: failure }, statusForFailure(failure));
     }
   };
 
@@ -65,11 +92,20 @@ export function createMediaHandlers(service) {
     [`POST ${API_PREFIX}/test`]: wrap(async request => {
       const body = await readJson(request);
       if (body === null) return json({ ok: false, error: { code: Code.BAD_INPUT, message: '请求体不是 JSON' } }, 400);
-      const kind = body.kind === 'tts' ? 'tts' : 'image';
+      const kind = body.kind === 'tts' ? 'tts' : body.kind === 'image' ? 'image' : null;
+      if (!kind) return json({ ok: false, error: { code: Code.BAD_INPUT, message: 'kind 必须是 image 或 tts' } }, 400);
       const id = String(body.id ?? '').trim();
       if (!id) return json({ ok: false, error: { code: Code.BAD_INPUT, message: '缺少 provider id' } }, 400);
-      const result = await service.testProvider({ kind, id });
-      return json(result, result.ok ? 200 : 200);
+      // 未知 provider 是请求错误（400），provider 自己失败是 body.ok=false（200）。
+      const catalog = kind === 'image' ? service.status().catalog.image : service.status().catalog.tts;
+      const canonical = kind === 'image'
+        ? (id === 'openai' ? 'openai-compatible' : id)
+        : (id === 'breeze-tts-2' ? 'breeze-tts2' : id);
+      if (!catalog.some(item => item.id === canonical)) {
+        return json({ ok: false, error: { code: Code.PROVIDER_UNKNOWN, message: `未知 provider：${id}` } }, 400);
+      }
+      const result = await service.testProvider({ kind, id: canonical });
+      return json(result, 200);
     }),
     [`GET ${API_PREFIX}/page`]: wrap(async () => json({ ok: true, page: mediaPageDescriptor(service.status()) })),
     [`GET ${API_PREFIX}/preview`]: wrap(async request => {
@@ -128,16 +164,30 @@ export function createMediaHandlers(service) {
 }
 
 /**
- * Register on the host Connection. A composition without `connection` simply
- * skips the API: the tools still work, the page just has no backend.
+ * Register on the host Connection.
+ *
+ * A composition without `connection` skips the API for now: the tools still
+ * work, the page just has no backend yet. `connection` is provided
+ * **asynchronously** by its own row, so "missing right now" does not mean
+ * "missing forever" — the caller (`index.mjs`) retries through `ctx.inject`
+ * when this returns `skipped: 'no-connection'`. Returning a typed result instead
+ * of throwing keeps a missing service from aborting activation.
+ *
+ * Registration is idempotent per path: the host keys registrations by path, so
+ * a second attempt overwrites instead of duplicating. One failing path must not
+ * abort the rest, hence the per-path try/catch and the `failed` list.
  */
-export async function registerMediaApi(ctx, service) {
+export async function registerMediaApi(ctx, service, { effect: wantEffect = true } = {}) {
   const connection = typeof ctx?.get === 'function' ? ctx.get('connection') : undefined;
   if (!connection || !connection.fetch || typeof connection.fetch.register !== 'function') {
-    return { registered: 0, skipped: 'no-connection' };
+    return { registered: 0, skipped: 'no-connection', paths: [], failed: [] };
   }
   const handlers = createMediaHandlers(service);
-  const effect = typeof ctx.effect === 'function' ? ctx.effect : runner => runner();
+  // `ctx.effect` ties the registration's lifetime to the plugin's fiber, which is the right
+  // default — but it throws ("cannot create effect on inactive context") once apply has returned.
+  // The late-registration poll runs exactly in that window, so it asks for a plain registration
+  // instead of losing every route; the host still owns the registrations for the process lifetime.
+  const effect = wantEffect && typeof ctx.effect === 'function' ? ctx.effect : runner => runner();
   const byPath = new Map();
   for (const key of Object.keys(handlers)) {
     const [method, path] = key.split(' ');
@@ -147,23 +197,30 @@ export async function registerMediaApi(ctx, service) {
     byPath.set(path, entry);
   }
   let registered = 0;
+  const failed = [];
   for (const entry of byPath.values()) {
-    effect(
-      () => connection.fetch.register({
-        path: entry.path,
-        methods: entry.methods,
-        requestBody: 'buffered',
-        fetch: request => {
-          const handler = entry.handlers.get(request.method);
-          if (!handler) {
-            return json({ ok: false, error: { code: Code.BAD_INPUT, message: `该路径只支持 ${entry.methods.join(' / ')}` } }, 405);
-          }
-          return handler(request);
-        },
-      }),
-      `companion-media: ${entry.path}`,
-    );
-    registered += 1;
+    try {
+      effect(
+        () => connection.fetch.register({
+          path: entry.path,
+          methods: entry.methods,
+          requestBody: 'buffered',
+          fetch: request => {
+            const handler = entry.handlers.get(request.method);
+            if (!handler) {
+              return json({ ok: false, error: { code: Code.BAD_INPUT, message: `该路径只支持 ${entry.methods.join(' / ')}` } }, 405);
+            }
+            return handler(request);
+          },
+        }),
+        // No label argument: this Cordis build rejects `effect(cb, 'string')` with "Invalid effect".
+      );
+      registered += 1;
+    } catch (error) {
+      // 宿主按 path 去重：重复登记同一 path 会覆盖。这里的 catch 只是保证
+      // "一条路由出问题"不会连带其它路由一起消失。
+      failed.push({ path: entry.path, message: String(error?.message ?? error).slice(0, 200) });
+    }
   }
-  return { registered, paths: [...byPath.keys()] };
+  return { registered, paths: [...byPath.keys()], failed };
 }

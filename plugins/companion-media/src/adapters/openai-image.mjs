@@ -20,7 +20,7 @@ import { authHeaders, ensureOk, joinUrl, parseJsonBody, probeReachability, remot
  *  - There is no retry here at all. A failure is returned to the caller.
  */
 
-export const record = IMAGE_PROVIDERS.openai;
+export const record = IMAGE_PROVIDERS['openai-compatible'];
 
 const OUTPUT_FORMATS = new Set(['png', 'jpeg', 'webp']);
 

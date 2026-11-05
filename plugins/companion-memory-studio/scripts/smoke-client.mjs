@@ -6,6 +6,7 @@
 // 用法：node scripts/smoke-client.mjs [--verbose]
 
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -319,12 +320,102 @@ function stubResponse(data) {
   return { ok: true, status: 200, json: async () => ({ ok: true, data, meta: { source: 'companion-memory', schemaVersion: 1, observedAt: '2026-10-28T01:00:00.000Z' } }) };
 }
 
+// ---------------------------------------------------------------------------
+// 媒体能力：**真实形状**的 descriptor/config —— 由 companion-media 自己的实现生成
+// （mediaPageDescriptor + createMediaService + readConfig），不是手抄一份。
+// 假后端也用它：稀疏深合并、掩码、clear、校验错误路径全是真的，页面读到什么就是什么。
+// ---------------------------------------------------------------------------
+const mediaFixture = await buildMediaFixture();
+const mediaRequests = [];
+
+async function buildMediaFixture() {
+  try {
+    const { createMediaService } = await import('../../companion-media/src/service.mjs');
+    const { mediaPageDescriptor } = await import('../../companion-media/src/ui-page.mjs');
+    const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'smoke-media-'));
+    const service = createMediaService({
+      dataDir: dir,
+      env: {},
+      fetchImpl: async () => ({ status: 200, json: async () => ({}) }),
+    });
+    service.saveConfig({
+      image: {
+        enabled: true,
+        provider: 'openai-compatible',
+        'openai-compatible': {
+          baseUrl: 'https://api.example.test/v1',
+          apiKey: 'sk-smoke-A1',
+          model: 'gpt-image-2',
+        },
+      },
+      tts: {
+        enabled: true,
+        provider: 'breeze-tts2',
+        providers: { 'breeze-tts2': { enabled: true, baseUrl: 'http://127.0.0.1:7860' } },
+      },
+    });
+    return {
+      ok: true,
+      dir,
+      service,
+      mediaPageDescriptor,
+      cleanup: () => { try { fs.rmSync(dir, { recursive: true, force: true }); } catch { /* 忽略 */ } },
+    };
+  } catch (error) {
+    return { ok: false, reason: String(error && error.message ? error.message : error) };
+  }
+}
+
+function mediaJson(payload, status = 200) {
+  return { ok: true, status, json: async () => payload };
+}
+
+/** 媒体 API 的假后端：只做协议转发，业务语义全交给 companion-media 自己实现。 */
+function fakeMediaFetch(sub, method, body) {
+  const fixture = mediaFixture;
+  if (!fixture || !fixture.ok) {
+    return { ok: false, status: 404, json: async () => ({ ok: false, error: { code: 'not-found', message: 'smoke: 媒体模块不可用' } }) };
+  }
+  const service = fixture.service;
+  if (sub === 'page') {
+    return mediaJson({ ok: true, page: fixture.mediaPageDescriptor(service.status()) });
+  }
+  if (sub === 'config' && method === 'GET') {
+    return mediaJson(service.readConfig());
+  }
+  if (sub === 'config' && method === 'POST') {
+    const result = service.saveConfig((body && body.patch) || body || {});
+    return mediaJson(result, result.ok ? 200 : 400);
+  }
+  if (sub === 'test' && method === 'POST') {
+    // 不起网络：只回媒体插件在 provider 侧失败/成功时的**同一套信封**（HTTP 200 + ok）。
+    return mediaJson({
+      ok: true,
+      kind: (body && body.kind) || 'image',
+      id: (body && body.id) || '',
+      status: 'test-ok',
+      level: 'A',
+      detail: 'FIXTURE-TEST：只到证据等级 A，不代表端到端生成可用',
+      note: 'smoke 里不发起真实探测',
+    });
+  }
+  if (sub === 'preview') {
+    return mediaJson({ ok: true, ...service.preview({ mode: 'auto', aspect: 'portrait', targetPixels: 1011712 }) });
+  }
+  return mediaJson({ ok: false, error: { code: 'not-found', message: `smoke: 未实现的媒体端点 ${sub}` } }, 404);
+}
+
 async function fakeFetch(input, init) {
   const url = typeof input === 'string' ? input : String(input && input.url ? input.url : input);
   const parsed = new URL(url, 'http://127.0.0.1:52623/');
-  const endpoint = parsed.pathname.replace(/^\/api\/companion-memory\/?/, '') || 'summary';
   const method = (init && init.method) || 'GET';
   const body = init && init.body ? JSON.parse(init.body) : null;
+  if (parsed.pathname.startsWith('/api/companion-media/')) {
+    const sub = parsed.pathname.replace(/^\/api\/companion-media\/?/, '');
+    mediaRequests.push({ method, sub, query: Object.fromEntries(parsed.searchParams), body });
+    return fakeMediaFetch(sub, method, body);
+  }
+  const endpoint = parsed.pathname.replace(/^\/api\/companion-memory\/?/, '') || 'summary';
   requests.push({ method, endpoint, query: Object.fromEntries(parsed.searchParams), body });
   calls.push(endpoint);
   const key = endpoint === 'maintenance' ? 'summary' : endpoint === 'review' ? 'reviews' : endpoint;
@@ -512,6 +603,269 @@ for (const label of ['陪伴首页', '生活与日程', '连接与工具', '工�
   else if (!rendered.includes(label === '设置' ? '设置' : label)) failures.push(`${label}：页名没有出现在内容里`);
   const titles = findAll(tree, (node) => classOf(node).includes('cpx-title'));
   if (!titles.length) failures.push(`${label}：没有 h1 页名`);
+}
+
+// 4d. 媒体能力：真实可编辑设置页（按 descriptor 渲染 + 真保存/回读）。
+//     这一段是"页面到底能不能操作"的证据：填表 → 点保存 → 断言发出的请求体 → 断言 DOM。
+{
+  const cardNodes = () => findAll(tree, (node) => classOf(node).includes('cpxp-media-card'));
+  const cardByText = (needle) => cardNodes().find((card) => textOf(card).includes(needle)) || null;
+  const buttonIn = (node, label) => findAll(node, (item) => item.tag === 'button' && textOf(item) === label)[0] || null;
+  const inputIn = (node, needle) => findAll(node, (item) => item.tag === 'input'
+    && String((item.props && item.props['aria-label']) || '').includes(needle))[0] || null;
+  const selectIn = (node, needle) => findAll(node, (item) => item.tag === 'select'
+    && String((item.props && item.props['aria-label']) || '').includes(needle))[0] || null;
+  const toggleIn = (node, needle) => {
+    const wrap = findAll(node, (item) => item.tag === 'label' && classOf(item).includes('cmx-toggle') && textOf(item).includes(needle))[0];
+    return wrap ? findAll(wrap, (item) => item.tag === 'input')[0] || null : null;
+  };
+  const lastPatch = () => {
+    const posts = mediaRequests.filter((item) => item.method === 'POST' && item.sub === 'config');
+    return posts.length ? (posts[posts.length - 1].body && posts[posts.length - 1].body.patch) : null;
+  };
+  // 保存后会先发请求、再 setState、再 setState 触发重读：给 promise 链两个宏任务，
+  // 否则断言会读到"保存前"的那棵树（请求体已记录，但 DOM 还没更新）。
+  const reload = async () => {
+    for (let pass = 0; pass < 3; pass += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      tree = await renderUntilStable(createElement(main.component, {}));
+    }
+  };
+  // 保存后会出现结果提示卡，兄弟节点位移会让卡片收起状态按新的位置重建；这里显式展开。
+  const expandCard = async (needle) => {
+    let card = cardByText(needle);
+    if (!card) return null;
+    const open = buttonIn(card, '展开');
+    if (open) {
+      open.props.onClick();
+      await reload();
+      card = cardByText(needle);
+    }
+    return card;
+  };
+  const sectionByName = (needle) => findAll(tree, (node) => classOf(node).includes('cpxp-media-sec') && textOf(node).includes(needle))[0] || null;
+  const sectionSaveButton = (needle) => {
+    const section = sectionByName(needle);
+    return section ? findAll(section, (node) => node.tag === 'button' && textOf(node) === '保存这一块')[0] || null : null;
+  };
+
+  if (!clickRail('连接与工具')) failures.push('找不到导航：连接与工具');
+  else {
+    await reload();
+    const rendered = text(tree);
+    for (const label of ['媒体能力', '识图', '生图', '语音合成']) {
+      if (!rendered.includes(label)) failures.push(`媒体页：缺少分区「${label}」`);
+    }
+    for (const label of ['Breeze TTS 2', 'GPT-SoVITS', 'Drama3', 'Index-TTS', 'Fish Audio', 'OpenAI-compatible 生图', 'NovelAI']) {
+      if (!rendered.includes(label)) failures.push(`媒体页：缺少 provider「${label}」`);
+    }
+    if (!rendered.includes('已保存、未测试')) failures.push('媒体页：没有渲染 descriptor 的状态文案「已保存、未测试」');
+
+    // 加载时只允许 page + config 两个 GET；测试/预览/生成一律不许自动发起。
+    const firstTwo = mediaRequests.slice(0, 2).map((item) => `${item.method} ${item.sub}`);
+    if (firstTwo.join(',') !== 'GET page,GET config') failures.push(`媒体页：首次加载不是 page+config（实际 ${firstTwo.join(',') || '无'}）`);
+    const firstWrite = mediaRequests.findIndex((item) => item.method === 'POST');
+    const autoCalls = mediaRequests
+      .slice(0, firstWrite === -1 ? mediaRequests.length : firstWrite)
+      .filter((item) => ['test', 'preview', 'image', 'speech'].includes(item.sub));
+    if (autoCalls.length) failures.push(`媒体页：第一次保存之前就自动发起了 ${autoCalls.map((item) => item.sub).join(',')}`);
+    if (!mediaFixture.ok) failures.push(`媒体页：媒体假后端不可用（${mediaFixture.reason}）`);
+
+    // (1) 识图：明确「预留，当前关闭」且开关不可操作
+    const visionToggle = toggleIn(tree, '启用识图');
+    if (!visionToggle) failures.push('媒体页：找不到识图开关');
+    else if (visionToggle.props.disabled !== true) failures.push('媒体页：识图开关没有被禁用');
+    const visionSection = findAll(tree, (node) => classOf(node).includes('cpxp-media-sec') && textOf(node).includes('识图'))[0];
+    if (!visionSection || !textOf(visionSection).includes('预留')) failures.push('媒体页：识图分区没有说明「预留，当前关闭」');
+    const visionUrl = inputIn(visionSection || tree, 'Base URL');
+    if (visionUrl && visionUrl.props.disabled !== true) failures.push('媒体页：识图的字段仍可编辑');
+
+    // (2) Index-TTS：尚未接入 + 开关禁用 + 不能测试
+    if (!cardByText('Index-TTS')) failures.push('媒体页：找不到 Index-TTS 卡');
+    else {
+      if (!textOf(cardByText('Index-TTS')).includes('尚未接入')) failures.push('媒体页：Index-TTS 没有标「尚未接入」');
+      const card = await expandCard('Index-TTS');
+      const enable = toggleIn(card || tree, 'Index-TTS：启用');
+      if (!enable) failures.push('媒体页：Index-TTS 缺少启用开关（descriptor 给了该字段）');
+      else if (enable.props.disabled !== true) failures.push('媒体页：Index-TTS 的启用开关没有被禁用（canEnable=false 没被遵守）');
+      const testButton = buttonIn(card || tree, '测试连接');
+      if (!testButton) failures.push('媒体页：Index-TTS 缺少测试按钮');
+      else if (testButton.props.disabled !== true) failures.push('媒体页：Index-TTS 的测试按钮没有被禁用（canTest=false 没被遵守）');
+      const close = buttonIn(cardByText('Index-TTS') || tree, '收起');
+      if (close) { close.props.onClick(); await reload(); }
+    }
+
+    // (3) NAI：展开 → 改步数 → 保存这个 provider → 断言请求体只含这一项
+    {
+      const card = await expandCard('NovelAI');
+      if (!card) failures.push('媒体页：找不到 NAI 卡');
+      else {
+        const stepsInput = inputIn(card, '步数');
+        if (!stepsInput) failures.push('媒体页：NAI 卡里没有「步数」输入框');
+        else {
+          if (String(stepsInput.props.value) !== '28') failures.push(`媒体页：NAI 步数默认值不是 28（实际 ${stepsInput.props.value}）`);
+          stepsInput.props.onChange({ target: { value: '30' } });
+          await reload();
+          const save = buttonIn(cardByText('NovelAI'), '保存这个 provider');
+          if (!save || save.props.disabled) failures.push('媒体页：NAI 的「保存这个 provider」不可用（改了字段应该可保存）');
+          else {
+            save.props.onClick();
+            await reload();
+            const patch = lastPatch();
+            const nai = patch && patch.image && patch.image.nai;
+            if (!nai || nai.steps !== 30) failures.push(`媒体页：只改步数时请求体不对：${JSON.stringify(patch)}`);
+            if (nai && Object.keys(nai).length !== 1) failures.push(`媒体页：只改步数却提交了别的字段：${JSON.stringify(nai)}`);
+            if (patch && patch.image && patch.image['openai-compatible']) failures.push('媒体页：只改 NAI 却把另一个 provider 一起提交了');
+            if (patch && patch.tts) failures.push(`媒体页：只改 NAI 却提交了 tts 段：${JSON.stringify(patch.tts)}`);
+            const reopened = await expandCard('NovelAI');
+            const after = reopened ? inputIn(reopened, '步数') : null;
+            if (!after || String(after.props.value) !== '30') failures.push(`媒体页：保存后回读不一致（步数=${after ? after.props.value : '缺失'}）`);
+          }
+        }
+      }
+    }
+
+    // (4) 密钥：只写；保存后清空；DOM 不含明文
+    {
+      let card = await expandCard('OpenAI-compatible');
+      if (!card) failures.push('媒体页：找不到 OpenAI-compatible 卡');
+      else {
+        if (!textOf(card).includes('已配置')) failures.push('媒体页：已配置的密钥没有显示「已配置」');
+        const secretInput = inputIn(card, 'API Key');
+        if (!secretInput) failures.push('媒体页：OpenAI 卡里没有 API Key 输入');
+        else {
+          if (String(secretInput.props.value) !== '') failures.push('媒体页：密钥输入框不是空的（可能回显了明文）');
+          if (String(secretInput.props.type) !== 'password') failures.push('媒体页：密钥输入框不是 password 类型');
+          secretInput.props.onChange({ target: { value: 'sk-new-B2' } });
+          await reload();
+          const save = buttonIn(cardByText('OpenAI-compatible'), '保存这个 provider');
+          if (!save) failures.push('媒体页：填了密钥后找不到保存按钮');
+          else {
+            save.props.onClick();
+            await reload();
+            const patch = lastPatch();
+            const written = patch && patch.image && patch.image['openai-compatible'] && patch.image['openai-compatible'].apiKey;
+            if (written !== 'sk-new-B2') failures.push(`媒体页：输入的密钥没有进请求体（实际 ${JSON.stringify(written)}）`);
+            if (text(tree).includes('sk-new-B2')) failures.push('媒体页：保存后 DOM 里仍有密钥明文');
+            card = await expandCard('OpenAI-compatible');
+            const afterInput = card ? inputIn(card, 'API Key') : null;
+            if (!afterInput) failures.push('媒体页：保存后找不到密钥输入框');
+            else if (String(afterInput.props.value) !== '') failures.push('媒体页：保存后密钥输入框没有清空');
+          }
+        }
+      }
+    }
+
+    // (5) 切换生图协议：只发 provider，不丢另一个 provider 的配置
+    const protocol = selectIn(tree, '协议');
+    if (!protocol) failures.push('媒体页：找不到「协议」选择器');
+    else {
+      protocol.props.onChange({ target: { value: 'nai' } });
+      await reload();
+      const saveSection = sectionSaveButton('生图');
+      if (!saveSection) failures.push('媒体页：生图分区里找不到「保存这一块」');
+      else if (saveSection.props.disabled) failures.push('媒体页：切了协议后「保存这一块」仍然禁用');
+      else {
+        saveSection.props.onClick();
+        await reload();
+        const patch = lastPatch();
+        if (!patch || !patch.image || patch.image.provider !== 'nai') failures.push(`媒体页：切换协议时请求体不对：${JSON.stringify(patch)}`);
+        if (patch && patch.image && patch.image['openai-compatible']) failures.push('媒体页：切换协议时把另一个 provider 的配置一起提交了');
+        // 新协议还没配好：页面应先把「启用生图」关掉，否则后端会以 400 拒绝整次保存。
+        if (patch && patch.image && patch.image.enabled !== false) failures.push(`媒体页：切到未配置的协议时没有先关「启用生图」：${JSON.stringify(patch && patch.image)}`);
+        if (text(tree).includes('保存失败')) failures.push('媒体页：切换协议保存被后端拒绝了（页面没有先关开关）');
+        const back = selectIn(tree, '协议');
+        if (!back || String(back.props.value) !== 'nai') failures.push(`媒体页：切换协议后回读不一致（${back ? back.props.value : '缺失'}）`);
+        const otherCard = await expandCard('OpenAI-compatible');
+        const baseUrl = otherCard ? inputIn(otherCard, 'Base URL') : null;
+        if (!baseUrl || String(baseUrl.props.value) !== 'https://api.example.test/v1') {
+          failures.push(`媒体页：切换协议后另一个 provider 的配置丢了（Base URL=${baseUrl ? baseUrl.props.value : '缺失'}）`);
+        }
+      }
+    }
+
+    // (6) 连接测试：只有点按钮才发 /test，且请求体是 descriptor 的 kind+id
+    {
+      const beforeTests = mediaRequests.filter((item) => item.sub === 'test').length;
+      const card = cardByText('OpenAI-compatible');
+      const testButton = card ? buttonIn(card, '测试连接') : null;
+      if (!testButton) failures.push('媒体页：找不到「测试连接」按钮');
+      else if (testButton.props.disabled) failures.push('媒体页：能力关闭时「测试连接」不该禁用（canTest 只看协议）');
+      else {
+        testButton.props.onClick();
+        await reload();
+        const tests = mediaRequests.filter((item) => item.sub === 'test');
+        if (tests.length !== beforeTests + 1) failures.push(`媒体页：点一次测试应只发一次 /test（实际 ${tests.length - beforeTests} 次）`);
+        const body = tests[tests.length - 1] && tests[tests.length - 1].body;
+        if (!body || body.kind !== 'image' || body.id !== 'openai-compatible') {
+          failures.push(`媒体页：/test 请求体不对：${JSON.stringify(body)}`);
+        }
+        if (!text(tree).includes('测试通过')) failures.push('媒体页：/test 通过后没有显示「测试通过」');
+      }
+    }
+
+    // (7) 分辨率预览：点了才发 /preview
+    {
+      const beforePreview = mediaRequests.filter((item) => item.sub === 'preview').length;
+      const runButton = findAll(tree, (node) => node.tag === 'button' && textOf(node) === '预览')[0];
+      if (!runButton) failures.push('媒体页：找不到「预览」按钮');
+      else {
+        runButton.props.onClick();
+        await reload();
+        const previews = mediaRequests.filter((item) => item.sub === 'preview');
+        if (previews.length !== beforePreview + 1) failures.push(`媒体页：点一次预览应只发一次 /preview（实际 ${previews.length - beforePreview} 次）`);
+        const query = previews[previews.length - 1] && previews[previews.length - 1].query;
+        if (!query || query.mode !== 'auto') failures.push(`媒体页：/preview 参数不对：${JSON.stringify(query)}`);
+        if (!/结果：\d+x\d+/.test(text(tree))) failures.push('媒体页：预览结果没有渲染出尺寸');
+      }
+    }
+
+    // (8) 清除密钥：显式动作 + 请求体是 {clear:true}，且启用态下必须"先关能力再清"
+    {
+      // 回切到 OpenAI-compatible 并重新启用生图：只有"启用态"才需要两步引导。
+      const protocolNow = selectIn(tree, '协议');
+      if (protocolNow && String(protocolNow.props.value) !== 'openai-compatible') {
+        protocolNow.props.onChange({ target: { value: 'openai-compatible' } });
+        await reload();
+        const saveBack = sectionSaveButton('生图');
+        if (saveBack && !saveBack.props.disabled) { saveBack.props.onClick(); await reload(); }
+      }
+      const imageToggle = toggleIn(tree, '启用生图');
+      if (imageToggle && imageToggle.props.checked !== true) {
+        imageToggle.props.onChange({ target: { checked: true } });
+        await reload();
+        const saveToggle = sectionSaveButton('生图');
+        if (saveToggle && !saveToggle.props.disabled) { saveToggle.props.onClick(); await reload(); }
+      }
+      const enabledNow = toggleIn(tree, '启用生图');
+      if (!enabledNow || enabledNow.props.checked !== true) failures.push('媒体页：无法把「启用生图」重新打开（页面流程被卡住）');
+
+      const card = await expandCard('OpenAI-compatible');
+      const clearButton = card ? buttonIn(card, '清除已保存的密钥') : null;
+      if (!clearButton) failures.push('媒体页：找不到「清除已保存的密钥」按钮（已配置的密钥应可清除）');
+      else {
+        clearButton.props.onClick();
+        await reload();
+        const save = buttonIn(cardByText('OpenAI-compatible') || tree, '保存这个 provider');
+        if (!save) failures.push('媒体页：清除后找不到保存按钮');
+        else {
+          save.props.onClick();
+          await reload();
+          const patch = lastPatch();
+          const secret = patch && patch.image && patch.image['openai-compatible'] && patch.image['openai-compatible'].apiKey;
+          if (!secret || secret.clear !== true) failures.push(`媒体页：清除动作没有发 {clear:true}（实际 ${JSON.stringify(secret)}）`);
+          // 清除必须先把能力关掉，否则后端 400。
+          if (!patch || !patch.image || patch.image.enabled !== false) failures.push('媒体页：清除密钥时没有先关「启用生图」');
+          if (text(tree).includes('保存失败')) failures.push('媒体页：清除密钥被后端拒绝（页面没有先关开关）');
+          if (text(tree).includes('清除没有生效')) failures.push('媒体页：后端已支持 clear，页面却报告「清除没有生效」');
+          const cardNow = await expandCard('OpenAI-compatible');
+          if (!cardNow || (!textOf(cardNow).includes('未配置') && !textOf(cardNow).includes('尚未配置'))) {
+            failures.push('媒体页：清除并保存后没有回到「未配置」');
+          }
+        }
+      }
+    }
+  }
 }
 
 // 4b. 生活页的「最近经历（只读投影）」：空的时候说「暂无经历」而不是留白；有活动时四种结果
@@ -817,12 +1171,16 @@ for (const groupLabel of ['记忆与档案', '设置']) {
 }
 
 const usedEndpoints = [...new Set(calls)].sort();
+const mediaEndpoints = [...new Set(mediaRequests.map((item) => `${item.method} ${item.sub}`))].sort();
 console.log('客户端冒烟');
 console.log(`  产物   ${artifact}`);
 console.log(`  注册   sidebar.panellist + main + 导航项 ${railLabels.length} 个：${railLabels.join(' / ')}`);
 console.log(`  请求   ${requests.length} 次：${usedEndpoints.join(', ')}`);
+console.log(`  媒体   ${mediaRequests.length} 次：${mediaEndpoints.join(', ')}`);
 console.log(`  结果   ${failures.length === 0 ? '通过' : `失败 ${failures.length} 项`}`);
 for (const failure of failures) console.error(`  ✘ ${failure}`);
+
+if (mediaFixture && typeof mediaFixture.cleanup === 'function') mediaFixture.cleanup();
 
 // 页面里可能有 setInterval（实时状态栏）：跑完把挂载的 effect 都清掉，
 // 否则事件循环被占着，冒烟会一直挂着不退出。

@@ -17,15 +17,6 @@
     .cpxp-cx-actions .cpxp-cx-note { flex:1 1 220px; min-width:0; }
   `);
 
-  // 媒体开关只有 enabled/vision/speech/image/screen 五个布尔值，没有健康探测结果。
-  const MEDIA_ROWS = [
-    { key: 'enabled', title: '媒体总开关', meta: '关掉以后下面几项都不生效' },
-    { key: 'vision', title: '图片理解', meta: '能不能读懂图片里的内容' },
-    { key: 'speech', title: '语音表达', meta: '把文字念成语音' },
-    { key: 'image', title: '图片创作', meta: '按描述生成图片' },
-    { key: 'screen', title: '屏幕感知', meta: '读你共享的屏幕画面' },
-  ];
-
   const OUTBOX_LABELS = {
     pending: '等待投递',
     queued: '排队中',
@@ -60,12 +51,6 @@
       meta: '工作区页只有只读浏览；写操作请回到宿主自己的界面。',
     },
   ];
-
-  function switchMark(value) {
-    if (value === true) return h(ui.StateLine, { state: 'ok', text: '已启用' });
-    if (value === false) return h(ui.StateLine, { state: 'idle', text: '已关闭' });
-    return h(ui.StateLine, { state: 'idle', text: '未配置' });
-  }
 
   // 运行库的 agenda / heartbeat / bridge 都是配置开关：只写「已配置」，不写「可用」。
   function configMark(value) {
@@ -519,32 +504,15 @@
             })),
       ]),
 
-      h(ui.Band, {
-        key: 'media',
-        title: '媒体能力',
-        actions: [info('这里只有配置开关：没有探测模型、麦克风或屏幕权限，所以不写「可用」。'
-          + '配置缺失（没有配置文件）也不代表能力本身不行。')],
-      }, [
-        media
-          ? h(ui.List, { key: 'media-list', label: '媒体能力配置开关' }, MEDIA_ROWS.map((row) => h(ui.Row, {
-            key: `media-${row.key}`,
-            title: row.title,
-            meta: row.meta,
-            status: switchMark(media[row.key]),
-          })))
-          : h('div', { key: 'media-empty' },
-            h(ui.List, { label: '媒体能力配置开关' }, MEDIA_ROWS.map((row) => h(ui.Row, {
-              key: `media-${row.key}`,
-              title: row.title,
-              meta: row.meta,
-              status: switchMark(null),
-            }))),
-            h(ui.Callout, {
-              tone: 'info',
-              title: '没有读到媒体配置',
-              children: '本地没有媒体配置文件，五项按「未配置」显示。',
-            })),
-      ]),
+      // 媒体能力：真实可编辑设置页（descriptor 渲染，保存走媒体插件自己的 API）。
+      // 只读的「运行库视角」开关仍保留在新页面的诊断区里（GET companion · media）。
+      P.mediaPage
+        ? h(P.mediaPage.MediaBand, { key: 'media', media })
+        : h(ui.Band, {
+          key: 'media',
+          title: '媒体能力',
+        }, h(ui.Callout, { tone: 'warn', title: '媒体设置页没有构建' },
+          h('span', null, '这个客户端的 pages-media.js 片段缺失，只能显示运行库读到的开关值。'))),
 
       h(ui.Band, {
         key: 'bridge',

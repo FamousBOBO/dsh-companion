@@ -21,12 +21,44 @@ DSH Companion 套件的**记忆管理工作台**：一个可安装的 bundle，�
 | 聊天 | 回到宿主原生对话（不在本插件内重建消息流） | `ctx.layout.selectPanel('conversation')` |
 | 生活与日程 | 现在 / 接下来 / 已结束 / 未完成 / 已跳过，目标与承诺，锁定·解锁·跳过 | `GET companion` `POST plan-slot` |
 | 记忆与档案 | 记忆库（搜索/筛选/详情抽屉/掩码）· Wiki · 时间线 · 审核 | `GET memories|memory|wiki|wiki-page|timeline|reviews`、`POST memory|wiki-page|review` |
-| 连接与工具 | QQ 投递账本、媒体能力、记忆桥接、未接入项（只读，不发消息） | `GET companion` |
+| 连接与工具 | QQ 投递账本、**媒体能力（可编辑设置页）**、记忆桥接、未接入项（除媒体设置外只读，不发消息） | `GET companion`、`GET|POST /api/companion-media/{page,config,test,preview}` |
 | 工作区 | 目录浏览、会话入口、宿主能力降级说明 | `ctx.uiWorkspace.*`、`P.nav.*` |
 | 设置 | 外观三档、角色、模型连接、记忆参数、连接摘要；高级诊断折叠 | `GET settings` `POST settings|settings/test` |
 
 设置分组里的两个诊断页：**运行状态**（`GET summary` + 重建索引）与 **召回显微镜**
 （`GET preview`，检索诊断，不写库）。它们不再占用一级导航。
+
+### 0.1 「连接与工具 → 媒体能力」是一个真正能操作、能回读的设置页
+
+页面**按 companion-media 的 descriptor 渲染**（`GET /api/companion-media/page`：分区 →
+provider → 字段，每个字段带 `path`/`pathParts`/`label`/`type`/`value`/`writable`，六种状态
+文案、`canTest`/`canEnable`、端点清单 `api` 一并给出）。Studio 这一侧只做展示与取值：
+
+- **不写媒体 JSON、不复制第二份服务商逻辑**：没有硬编码的 provider id、端点路径、必填项或
+  校验规则；保存一律 `POST /api/companion-media/config`，错误按响应里的 `errors[].path`
+  直接落回对应输入框。
+- **只发改动**：patch 是稀疏深合并（没发的 provider 段原样保留），所以「切换 OpenAI / NAI」
+  不会把另一个协议的配置冲掉。单 provider 保存、单分区保存、NAI 两族预设（V5 / 4.5 分开
+  存储）与画师串都各自独立。
+- **密钥只写**：字段值恒为 `{configured, mask}`，输入框恒空，占位显示「已配置 / 未配置」；
+  留空保存 = 保留原密钥；清除是一次显式动作（发 `{clear:true}`）。**清除前会先关能力**
+  （同一个 patch 里带上「启用生图」或该后端的开关），因为后端不允许在启用态清空必填密钥。
+  密钥来自环境变量时（`states.*.providers[].key.source === 'env'`）输入框锁定并标「来自环境
+  变量」——改页面不会生效。
+- **测试与预览只由按钮触发**：打开页面只读 `page` + `config` 两个 GET，`/test`、`/preview`、
+  `/image`、`/speech` 绝不自动发起（descriptor 的 `meta.testPolicy = explicit-only`）。
+  测试失败是 `HTTP 200 + body.ok:false + code`，页面照实写「测试失败」，不会说成成功。
+- **不可用的能力如实呈现**：识图整块锁定（「预留，当前关闭」，开关与字段都不可编辑）；
+  Index-TTS 按 `canTest:false` / `canEnable:false` 禁用开关与测试；`saved-untested` 只显示
+  「已保存、未测试」，不写成连接成功。
+- **媒体模块没启用时入口仍然在**：页面说明「套件里没有启用媒体模块」，给出
+  `config/suite.json` 的 `modules.media: true` 与重启/`npm run doctor` 的路径，并把运行库
+  读到的五个开关（`GET companion · media`）照旧列出来。
+
+> 页面的纯逻辑（状态映射、descriptor+config 合并、patch 构造、密钥只写、预设分族、
+> 错误路径映射）在 `test/media-page.test.mjs`；真实 DOM 交互（填表 → 保存 → 断言请求体 →
+> 断言 DOM）在 `scripts/smoke-client.mjs`，两者都不依赖浏览器。
+
 
 **外观**：暖白/墨色正文 + 低饱和樱粉品牌色；深色为墨蓝灰。同一组语义 token 走
 `ctx.theme.overrideTokens` 覆盖宿主的 14 个 alias token（层可撤销，不改 base theme，
@@ -152,7 +184,10 @@ plugins/companion-memory-studio/
   lib/write.mjs              # 写入 handlers                          （host-api）
   test/api.test.mjs          # API 测试（临时库）                       （host-api）
   src/client/core.js         # 外壳、P 原语、CSS、侧栏注册              （Lead）
-  src/client/pages-*.js      # 7 个页面片段                             （ui-a / ui-b）
+  src/client/pages-*.js      # 页面片段（含 pages-media.js：媒体能力设置页）
+  test/media-page.test.mjs   # 媒体设置页的纯逻辑测试（视图模型 / patch / 密钥）
+  scripts/run-tests.mjs      # 测试运行器：临时数据根 + node --test
+  scripts/smoke-client.mjs   # 无浏览器冒烟：真实形状的 descriptor/config + 点击流程
   scripts/build-client.mjs   # 拼装器（本包维护）
   client.js                  # 生成物，勿手改（由 build-client.mjs 生成）
   locale/zh.json / en.json   # 显示名与描述（插件管理器读取，不激活也能显示）
@@ -172,7 +207,15 @@ node plugins/companion-memory-studio/scripts/build-client.mjs
 
 # 仓库根：清单/导出/本地化/图标/client.js 语法体检，失败退出码 1
 node scripts/verify-studio.mjs
+
+# 单元测试（把数据根指到临时目录，跑完删除；不写仓库、不碰用户数据）
+npm test
 ```
+
+`npm test` 走 `scripts/run-tests.mjs`：先 `mkdtemp` 出一个临时数据根并设 `DSH_COMPANION_DATA_DIR`，
+再执行 `node --test "test/*.test.mjs"`。原因很具体：`server.mjs` 在**模块加载时**就把数据根算成
+`STUDIO_ROOT`，而健康桥接解析失败时会写 `<dataRoot>/home/health/bridge-miss.json`——如果不改根，
+测试会把诊断写进仓库的 `data/`。做法与 foundation、health 两个包一致。
 
 拼装顺序固定：`core.js` → `pages-overview.js` → `pages-vault.js` → `pages-microscope.js`
 → `pages-wiki.js` → `pages-timeline.js` → `pages-review.js` → `pages-settings.js`；

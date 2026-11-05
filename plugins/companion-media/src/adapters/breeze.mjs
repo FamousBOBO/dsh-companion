@@ -20,7 +20,7 @@ import { authHeaders, probeReachability, remoteFailure } from './shared.mjs';
  *    is useless to a messenger).
  */
 
-export const record = TTS_PROVIDERS['breeze-tts-2'];
+export const record = TTS_PROVIDERS['breeze-tts2'];
 
 const AUDIO_MIME = new Map([
   ['wav', 'audio/wav'],

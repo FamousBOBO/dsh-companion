@@ -137,7 +137,160 @@ function registerTools(ctx, service) {
     }));
 }
 
-export function apply(ctx, options = {}) {
+/**
+ * Register the management API, and retry once the `connection` service arrives.
+ *
+ * `connection` is provided asynchronously by its own row, so it can legitimately
+ * be missing while this plugin activates. A single attempt therefore is not
+ * enough: if the first try reports `skipped: 'no-connection'`, wait for the
+ * service with `ctx.inject(['connection'], …)` and register then. Without this
+ * retry the routes never exist and the settings page 404s even though the module
+ * is enabled — the page then looks like "媒体模块没有启用".
+ *
+ * Registration is idempotent per path (the host keys by path), so a second
+ * attempt overwrites instead of duplicating.
+ */
+/**
+ * Wait for the host's `connection` service, inside apply.
+ *
+ * Why inside apply: `connection.fetch.register` creates a Cordis effect internally, so it only
+ * works while this plugin's context is active. Measured on a real host:
+ *
+ *   - direct attempt inside apply, service not ready yet  → `no-connection`, 0 routes
+ *   - `ctx.inject(['connection'], cb)`                    → callback never delivered, 0 routes
+ *   - later poll of `ctx.get('connection')`               → service found, every route rejected
+ *                                                            with "cannot create effect on
+ *                                                            inactive context"
+ *   - nested `ctx.plugin({ inject: ['connection'] })`     → scheduled, apply never ran
+ *
+ * Holding apply open until the service appears is the one shape that keeps the context active
+ * *and* does not depend on fiber scheduling we cannot observe. It is bounded, so a composition
+ * without a connection service is delayed once and then gives up honestly.
+ */
+async function waitForConnection(ctx, timeoutMs = Number(process.env.DSH_MEDIA_CONNECTION_WAIT_MS || 5000), intervalMs = 100) {
+  const started = Date.now();
+  for (;;) {
+    const connection = typeof ctx?.get === 'function' ? ctx.get('connection') : undefined;
+    if (connection) return connection;
+    if (Date.now() - started >= timeoutMs) return undefined;
+    await new Promise(resolve => setTimeout(resolve, intervalMs));
+  }
+}
+
+/**
+ * Register the management API on the host's `connection` service.
+ *
+ * `connection` is provided asynchronously, and registering on it needs an **active** plugin
+ * context: `connection.fetch.register` creates a Cordis effect internally, so calling it after
+ * apply has returned fails with "cannot create effect on inactive context". Measured on a real
+ * host, in this order:
+ *
+ *   - one direct attempt inside apply        → `no-connection` (service not ready yet), 0 routes
+ *   - `ctx.inject(['connection'], cb)`       → callback never delivered for this plugin, 0 routes
+ *   - a later poll of `ctx.get('connection')`→ service found, but every route failed with the
+ *                                              inactive-context error above
+ *
+ * So the registrant must itself be a plugin that declares `inject: ['connection']`. Cordis then
+ * runs its apply on a live fiber once the service exists, which is the only window where the
+ * registration is accepted. Older hosts without `ctx.plugin` keep the best-effort inject path and
+ * say so in the log rather than pretending the API exists.
+ */
+function mountApiOnConnection(ctx, service, log) {
+  if (typeof ctx?.plugin === 'function') {
+    try {
+      ctx.plugin({
+        name: 'companion-media/http-api',
+        inject: ['connection'],
+        apply: async nestedCtx => {
+          await registerApiWhenReady(nestedCtx, service, log);
+        },
+      });
+      log({ event: 'http-api-scheduled', how: 'nested-plugin', note: '已挂载 inject:[connection] 的子插件，服务就绪时注册' });
+      return 'nested-plugin';
+    } catch (error) {
+      const message = String(error?.message ?? error).slice(0, 300);
+      log({ event: 'http-api-failed', how: 'nested-plugin', message });
+    }
+  }
+  if (typeof ctx?.inject === 'function') {
+    try {
+      ctx.inject(['connection'], injectedCtx => {
+        Promise.resolve(registerApiWhenReady(injectedCtx, service, log)).catch(error => {
+          const message = String(error?.message ?? error).slice(0, 300);
+          log({ event: 'http-api-failed', how: 'inject', message });
+        });
+      });
+      log({ event: 'http-api-scheduled', how: 'inject', note: '宿主无 ctx.plugin，退回 ctx.inject' });
+      return 'inject';
+    } catch (error) {
+      const message = String(error?.message ?? error).slice(0, 300);
+      log({ event: 'http-api-failed', how: 'inject-setup', message });
+    }
+  }
+  log({ event: 'http-api-unavailable', how: 'none', message: '宿主既无 ctx.plugin 也无 ctx.inject，管理 API 不会存在', registered: 0 });
+  return 'none';
+}
+
+
+async function registerApiWhenReady(ctx, service, log) {
+  const record = (result, how) => {
+    const registered = result?.registered ?? 0;
+    const state = service.noteHttpState({
+      registered,
+      skipped: result?.skipped ?? null,
+      how,
+      paths: result?.paths ?? [],
+      failed: result?.failed ?? [],
+      lastError: result?.error ?? null,
+    });
+    log({
+      event: registered > 0 ? 'http-api-registered' : 'http-api-waiting',
+      how,
+      registered,
+      expected: state.paths.length || null,
+      skipped: state.skipped,
+      paths: registered > 0 ? state.paths : undefined,
+      failed: state.failed.length ? state.failed : undefined,
+      note: registered > 0 ? `已注册 ${registered} 条路由（${how}）` : '等待 connection 服务就绪',
+    });
+    return state;
+  };
+
+  try {
+    let state = record(await registerMediaApi(ctx, service), 'direct');
+    if (state.registered > 0) return state;
+
+    if (state.skipped !== 'no-connection') {
+      const message = 'connection 服务未就绪，且宿主没有可用的挂载机制';
+      service.noteHttpState({ skipped: 'unavailable', lastError: message });
+      log({ event: 'http-api-unavailable', message, registered: 0 });
+      return state;
+    }
+
+    // Hold apply open until the service shows up, then register on the still-active context.
+    const appeared = await waitForConnection(ctx);
+    if (!appeared) {
+      const how = mountApiOnConnection(ctx, service, log);
+      const message = `等了 5 s 仍没有 connection 服务；已改用 ${how} 兜底`;
+      service.noteHttpState({ skipped: 'connection-timeout', lastError: message });
+      log({ event: 'http-api-unavailable', how, message, registered: 0 });
+      return state;
+    }
+
+    state = record(await registerMediaApi(ctx, service), 'awaited');
+    if (state.registered === 0) {
+      log({ event: 'http-api-failed', how: 'awaited', message: 'connection 就绪但注册 0 条', registered: 0 });
+    }
+    return state;
+  } catch (error) {
+    const message = String(error?.message ?? error).slice(0, 300);
+    service.noteHttpState({ skipped: 'failed', lastError: message });
+    log({ event: 'http-api-failed', how: 'direct', message });
+    return service.httpState();
+  }
+}
+
+export async function apply(ctx, options = {}) {
   const dataRoot = options?.dataDir
     ? { dir: path.resolve(String(options.dataDir)), source: 'option' }
     : resolveDataDir({ dataDir: '', env: process.env, suiteRoot: SUITE_ROOT });
@@ -158,11 +311,13 @@ export function apply(ctx, options = {}) {
       try { ctx.provide('companionMedia', service); } catch { /* already provided by a sibling mount */ }
     }
     registerTools(ctx, service);
-    Promise.resolve(registerMediaApi(ctx, service)).then(result => {
-      log({ event: 'http-api', registered: result?.registered ?? 0, skipped: result?.skipped ?? null });
-    }).catch(error => {
-      log({ event: 'http-api-failed', message: String(error?.message ?? error).slice(0, 300) });
-    });
+    // AWAIT it. `ctx.inject(['connection'], …)` only works while apply is still executing: it
+    // subscribes the plugin's own fiber. Firing and forgetting here made the retry land in a
+    // microtask after apply returned, where the host never delivers it — so the first attempt
+    // saw `no-connection`, no retry ever arrived, and every /api/companion-media route stayed
+    // 404 on a real host even though the module was enabled. The studio awaits its equivalent
+    // (`const api = await mountApi(...)`), which is why only this plugin lost its routes.
+    await registerApiWhenReady(ctx, service, log);
     const config = service.store.load().config;
     log({
       event: 'mounted',

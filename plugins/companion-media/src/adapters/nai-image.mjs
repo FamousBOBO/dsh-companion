@@ -48,6 +48,7 @@ export async function generate({ section, limits, key, net, prompt, negative = '
     model,
     presets: section.presets,
     negativePrompt: section.negativePrompt,
+    artistString: section.artistString ?? '',
     request: { prompt: text, negative },
   });
   if (!preset.positive) throw mediaError(Code.BAD_INPUT, '提示词为空');

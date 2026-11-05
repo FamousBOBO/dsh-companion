@@ -16,6 +16,35 @@ import { NAI_SIZE_RULES } from './resolution.mjs';
 
 export const SCHEMA_VERSION = 2;
 
+/**
+ * Enumerations that the page renders as `<select>`.
+ *
+ * Declared before `DEFAULTS`/the capability registry because provider records
+ * reference them; they are the same lists the adapters and validation use, so a
+ * dropdown can never offer a value the backend rejects for a *format* reason.
+ * Options are a convenience, not a gate: a value typed into the config file still
+ * reaches the adapter, which is where the real check happens (e.g. GPT-SoVITS
+ * refuses `raw` because it has no sample rate).
+ */
+export const NAI_SAMPLERS = Object.freeze([
+  'k_euler',
+  'k_euler_ancestral',
+  'k_dpmpp_2m',
+  'k_dpmpp_2s_ancestral',
+  'k_dpmpp_2m_sde',
+  'k_dpmpp_sde',
+  'ddim',
+]);
+export const NAI_NOISE_SCHEDULES = Object.freeze(['native', 'karras', 'exponential', 'polyexponential']);
+export const TTS_FORMATS = Object.freeze(['wav', 'pcm', 'mp3', 'opus']);
+export const IMAGE_OUTPUT_FORMATS = Object.freeze(['png', 'jpeg', 'webp']);
+export const IMAGE_QUALITIES = Object.freeze(['auto', 'low', 'medium', 'high', 'xhigh', 'max']);
+export const IMAGE_BACKGROUNDS = Object.freeze(['auto', 'opaque', 'transparent']);
+export const NAI_TRANSPORTS = Object.freeze(['official', 'openai-relay']);
+export const GPT_SOVITS_MEDIA_TYPES = Object.freeze(['wav', 'ogg', 'aac']);
+export const GPT_SOVITS_LANGS = Object.freeze(['auto', 'zh', 'en', 'ja', 'ko', 'yue']);
+export const FISH_LATENCIES = Object.freeze(['normal', 'balanced']);
+
 export const DEFAULTS = Object.freeze({
   schemaVersion: SCHEMA_VERSION,
   enabled: true,
@@ -45,7 +74,7 @@ export const DEFAULTS = Object.freeze({
   image: {
     enabled: false,
     provider: 'none',
-    openai: {
+    'openai-compatible': {
       baseUrl: '',
       apiKey: '',
       model: '',
@@ -73,6 +102,8 @@ export const DEFAULTS = Object.freeze({
       sm: false,
       smDyn: false,
       negativePrompt: '',
+      // 画师串：与预设分开存，方便单独编辑；写进正向提示词最前面。
+      artistString: '',
       presets: normalizePresets(null),
     },
   },
@@ -80,11 +111,11 @@ export const DEFAULTS = Object.freeze({
     enabled: false,
     provider: 'none',
     providers: {
-      'breeze-tts-2': {
+      'breeze-tts2': {
         enabled: false,
         baseUrl: '',
         apiKey: '',
-        model: 'breeze-tts-2',
+        model: 'breeze-tts2',
         timeoutMs: 600_000,
         instruction: '',
         cfgScale: 1,
@@ -155,8 +186,8 @@ export const VERIFIED_AT = '2026-11-05';
  * `evidence` records HOW the protocol was verified (see docs/media/M0-report.md).
  */
 export const IMAGE_PROVIDERS = Object.freeze({
-  openai: {
-    id: 'openai',
+  'openai-compatible': {
+    id: 'openai-compatible',
     label: 'OpenAI-compatible 生图',
     status: 'connected',
     endpoint: 'POST {baseUrl}/images/generations',
@@ -179,6 +210,11 @@ export const IMAGE_PROVIDERS = Object.freeze({
       quality: 'quality（low/medium/high/xhigh/max/auto）',
       outputFormat: '输出格式（png/jpeg/webp）',
       background: '背景（auto/opaque/transparent）',
+    },
+    fieldOptions: {
+      outputFormat: IMAGE_OUTPUT_FORMATS,
+      quality: IMAGE_QUALITIES,
+      background: IMAGE_BACKGROUNDS,
     },
     defaults: { timeoutMs: 180_000, size: '1024x1024', quality: 'auto', outputFormat: 'png', background: 'auto' },
   },
@@ -215,13 +251,18 @@ export const IMAGE_PROVIDERS = Object.freeze({
       noiseSchedule: '噪声调度',
       negativePrompt: '反向提示词（基础）',
     },
+    fieldOptions: {
+      transport: NAI_TRANSPORTS,
+      sampler: NAI_SAMPLERS,
+      noiseSchedule: NAI_NOISE_SCHEDULES,
+    },
     defaults: { steps: 28, scale: 5, sampler: 'k_euler_ancestral', noiseSchedule: 'karras', width: 832, height: 1216 },
   },
 });
 
 export const TTS_PROVIDERS = Object.freeze({
-  'breeze-tts-2': {
-    id: 'breeze-tts-2',
+  'breeze-tts2': {
+    id: 'breeze-tts2',
     label: 'Breeze TTS 2',
     status: 'connected',
     endpoint: 'POST {baseUrl}/v1/audio/speech（multipart/form-data），GET {baseUrl}/health',
@@ -271,6 +312,11 @@ export const TTS_PROVIDERS = Object.freeze({
       mediaType: '返回格式（wav/raw/ogg/aac）',
       speedFactor: '语速（speed_factor）',
     },
+    fieldOptions: {
+      mediaType: GPT_SOVITS_MEDIA_TYPES,
+      promptLang: GPT_SOVITS_LANGS,
+      textLang: GPT_SOVITS_LANGS,
+    },
     defaults: { timeoutMs: 300_000, mediaType: 'wav', textLang: 'zh', promptLang: 'zh' },
   },
   drama3: {
@@ -294,6 +340,10 @@ export const TTS_PROVIDERS = Object.freeze({
       referenceId: 'reference_id（语音模型 ID；多说话人用逗号分隔多个）',
       model: '模型（固定 drama-3）',
       format: '返回格式（wav/pcm/mp3/opus）',
+    },
+    fieldOptions: {
+      format: TTS_FORMATS,
+      latency: FISH_LATENCIES,
     },
     defaults: { timeoutMs: 300_000, format: 'wav', latency: 'normal', temperature: 0.7, topP: 0.7 },
   },
@@ -345,23 +395,13 @@ export const TTS_PROVIDERS = Object.freeze({
       model: '模型（s1/s2-pro/s2.1-pro/s2.1-pro-free）',
       format: '返回格式（wav/pcm/mp3/opus）',
     },
+    fieldOptions: {
+      format: TTS_FORMATS,
+      latency: FISH_LATENCIES,
+    },
     defaults: { timeoutMs: 300_000, format: 'wav', latency: 'normal', temperature: 0.7, topP: 0.7 },
   },
 });
-
-export const NAI_SAMPLERS = Object.freeze([
-  'k_euler',
-  'k_euler_ancestral',
-  'k_dpmpp_2m',
-  'k_dpmpp_2s_ancestral',
-  'k_dpmpp_2m_sde',
-  'k_dpmpp_sde',
-  'ddim',
-]);
-
-export const NAI_NOISE_SCHEDULES = Object.freeze(['native', 'karras', 'exponential', 'polyexponential']);
-
-export const TTS_FORMATS = Object.freeze(['wav', 'pcm', 'mp3', 'opus']);
 
 const isPlainObject = value => value !== null && typeof value === 'object' && !Array.isArray(value);
 
@@ -378,17 +418,71 @@ export function mergeConfig(base, patch) {
 }
 
 /**
+ * Provider id aliases.
+ *
+ * The outward ids (what `/status`, `/page` and `/test` speak) are the contract
+ * ids from the migration plan: `openai-compatible`, `nai`, `breeze-tts2`,
+ * `gpt-sovits`, `drama3`, `index-tts`, `fish-audio`. Earlier versions of this
+ * plugin used `openai` and `breeze-tts-2`; those are still accepted on input so
+ * an existing local config keeps working, but they are normalized away on load.
+ */
+export const IMAGE_PROVIDER_ALIASES = Object.freeze({ openai: 'openai-compatible' });
+export const TTS_PROVIDER_ALIASES = Object.freeze({ 'breeze-tts-2': 'breeze-tts2' });
+
+export function canonicalImageProvider(id) {
+  const key = String(id ?? '').trim();
+  return IMAGE_PROVIDER_ALIASES[key] ?? key;
+}
+
+export function canonicalTtsProvider(id) {
+  const key = String(id ?? '').trim();
+  return TTS_PROVIDER_ALIASES[key] ?? key;
+}
+
+/** `image['openai-compatible']` / `tts.providers.breeze-tts2` — never dot-access a hyphenated key. */
+export function imageSection(config, id) {
+  const key = canonicalImageProvider(id);
+  if (key === 'none') return {};
+  return config?.image?.[key] ?? {};
+}
+
+export function ttsSection(config, id) {
+  const key = canonicalTtsProvider(id);
+  if (key === 'none') return {};
+  return config?.tts?.providers?.[key] ?? {};
+}
+
+/**
  * Normalize stored config onto the defaults.
  *
  * `vision.enabled` is forced back to false and the NAI presets are re-shaped per
  * family, so an old or hand-edited file cannot re-enable vision or share one
- * preset bag between V5 and 4.5.
+ * preset bag between V5 and 4.5. Legacy provider ids are folded into the
+ * canonical ones.
  */
 export function normalizeConfig(raw = {}) {
   const merged = mergeConfig(structuredClone(DEFAULTS), isPlainObject(raw) ? raw : {});
   merged.schemaVersion = SCHEMA_VERSION;
   merged.vision = { ...merged.vision, enabled: false };
-  merged.image = { ...merged.image, nai: { ...merged.image.nai, presets: normalizePresets(merged.image?.nai?.presets) } };
+
+  // Fold legacy image section keys (`openai`) into the canonical one.
+  merged.image = { ...merged.image };
+  for (const [alias, canonical] of Object.entries(IMAGE_PROVIDER_ALIASES)) {
+    if (!isPlainObject(merged.image[alias])) continue;
+    merged.image[canonical] = mergeConfig({ ...(merged.image[canonical] ?? {}) }, merged.image[alias]);
+    delete merged.image[alias];
+  }
+  merged.image.provider = canonicalImageProvider(merged.image.provider);
+  merged.image.nai = { ...merged.image.nai, presets: normalizePresets(merged.image?.nai?.presets) };
+
+  // Same folding for TTS provider sections.
+  merged.tts = { ...merged.tts, providers: { ...merged.tts.providers } };
+  for (const [alias, canonical] of Object.entries(TTS_PROVIDER_ALIASES)) {
+    if (!isPlainObject(merged.tts.providers[alias])) continue;
+    merged.tts.providers[canonical] = mergeConfig({ ...(merged.tts.providers[canonical] ?? {}) }, merged.tts.providers[alias]);
+    delete merged.tts.providers[alias];
+  }
+  merged.tts.provider = canonicalTtsProvider(merged.tts.provider);
   return merged;
 }
 
@@ -445,7 +539,7 @@ export function validateConfig(config) {
   }
 
   const image = config.image ?? {};
-  if (!['none', 'openai', 'nai'].includes(image.provider)) {
+  if (!['none', 'openai-compatible', 'nai'].includes(image.provider)) {
     add('image.provider', Code.PROVIDER_UNKNOWN, `未知生图 provider：${image.provider}`);
   }
   if (image.enabled === true) {
@@ -498,14 +592,37 @@ export function validateConfig(config) {
     if (Number.isInteger(nai.width) && Number.isInteger(nai.height) && nai.width * nai.height > NAI_SIZE_RULES.maxPixels) {
       add('image.nai.width', Code.PARAM_OUT_OF_RANGE, `分辨率面积上限 ${NAI_SIZE_RULES.maxPixels}px，当前 ${nai.width * nai.height}px`);
     }
+    if (typeof nai.artistString !== 'string') {
+      add('image.nai.artistString', Code.CONFIG_INVALID, '画师串必须是字符串（留空 = 不加画师串）');
+    } else if (nai.artistString.length > 500) {
+      add('image.nai.artistString', Code.PARAM_OUT_OF_RANGE, '画师串超过 500 字符');
+    }
+    // 两种 transport 的字段面不同，分开校验：一种服务商的专属选项不能误发给另一种。
+    const transport = String(nai.transport ?? 'official');
+    if (transport === 'official') {
+      if (nai.model && !/^nai-diffusion-/i.test(String(nai.model))) {
+        add('image.nai.model', Code.CONFIG_INVALID, 'official 直连要求 NovelAI 模型 ID（nai-diffusion-*）；中转站请把 transport 切到 openai-relay');
+      }
+      if (nai.baseUrl && /\/v1\/?$/i.test(String(nai.baseUrl).trim())) {
+        add('image.nai.baseUrl', Code.CONFIG_INVALID, 'official 直连的 Base URL 不要带 /v1（那是中转站的形态）；例如 https://image.novelai.net');
+      }
+    }
+    if (transport === 'openai-relay') {
+      if (nai.baseUrl && /^https?:\/\/image\.novelai\.net\/?$/i.test(String(nai.baseUrl).trim())) {
+        add('image.nai.baseUrl', Code.CONFIG_INVALID, 'openai-relay 用于中转站，Base URL 不能是官方直连地址；官方直连请把 transport 切到 official');
+      }
+      if (!String(nai.baseUrl ?? '').trim()) {
+        add('image.nai.baseUrl', Code.NOT_CONFIGURED, 'openai-relay 必须填写中转站的 Base URL');
+      }
+    }
   }
-  if (image.provider === 'openai') {
-    const openai = image.openai ?? {};
+  if (image.provider === 'openai-compatible') {
+    const openai = image['openai-compatible'] ?? {};
     if (!['png', 'jpeg', 'webp'].includes(openai.outputFormat)) {
-      add('image.openai.outputFormat', Code.PARAM_OUT_OF_RANGE, 'outputFormat 必须是 png / jpeg / webp');
+      add('image.openai-compatible.outputFormat', Code.PARAM_OUT_OF_RANGE, 'outputFormat 必须是 png / jpeg / webp');
     }
     if (!['auto', 'low', 'medium', 'high', 'xhigh', 'max'].includes(openai.quality)) {
-      add('image.openai.quality', Code.PARAM_OUT_OF_RANGE, 'quality 必须是 auto/low/medium/high/xhigh/max');
+      add('image.openai-compatible.quality', Code.PARAM_OUT_OF_RANGE, 'quality 必须是 auto/low/medium/high/xhigh/max');
     }
   }
 
@@ -544,11 +661,11 @@ export function validateConfig(config) {
     if (section.enabled === true && section.baseUrl && !isHttpUrl(section.baseUrl)) {
       add(`tts.providers.${id}.baseUrl`, Code.CONFIG_INVALID, 'Base URL 必须是 http(s) 绝对地址');
     }
-    if (id === 'breeze-tts-2' && section.enabled === true) {
+    if (id === 'breeze-tts2' && section.enabled === true) {
       const hasRef = Boolean(String(section.refAudioPath ?? '').trim());
       const hasText = Boolean(String(section.refText ?? '').trim());
       if (hasRef !== hasText) {
-        add('tts.providers.breeze-tts-2.refText', Code.CONFIG_INVALID, '参考音频与逐字稿必须同时填写或同时留空（官方服务端同样校验）');
+        add('tts.providers.breeze-tts2.refText', Code.CONFIG_INVALID, '参考音频与逐字稿必须同时填写或同时留空（官方服务端同样校验）');
       }
     }
     if ((id === 'fish-audio' || id === 'drama3') && section.format && !TTS_FORMATS.includes(section.format)) {
@@ -604,7 +721,7 @@ export function migrateLegacyConfig(raw = {}) {
 
   const legacyImage = isPlainObject(raw.image) ? raw.image : null;
   if (legacyImage) {
-    if (legacyImage.backend && legacyImage.backend !== 'openai' && legacyImage.backend !== 'nai') {
+    if (legacyImage.backend && legacyImage.backend !== 'openai' && legacyImage.backend !== 'openai-compatible' && legacyImage.backend !== 'nai') {
       dropped.push(`image.backend=${legacyImage.backend}（python 桥/本地管线不再随插件发布，标记 unsupported）`);
     }
     for (const key of ['pythonPath', 'imagePipelineRoot', 'configPath', 'runtime', 'queue', 'tagProvider', 'translatePrompt', 'promptFile', 'generationFlow', 'quotas', 'allowRealGeneration']) {
@@ -642,16 +759,16 @@ export function migrateLegacyConfig(raw = {}) {
     const backend = legacySpeech.backend ?? {};
     if (backend.baseUrl || backend.voice) {
       next.tts.enabled = legacySpeech.enabled === true;
-      next.tts.provider = 'breeze-tts-2';
-      next.tts.providers['breeze-tts-2'] = {
-        ...next.tts.providers['breeze-tts-2'],
+      next.tts.provider = 'breeze-tts2';
+      next.tts.providers['breeze-tts2'] = {
+        ...next.tts.providers['breeze-tts2'],
         enabled: legacySpeech.enabled === true,
         // The old value pointed at a local coordinator (`/breeze`); keep only the origin.
         baseUrl: String(backend.baseUrl ?? '').replace(/\/breeze\/?$/, ''),
-        model: typeof backend.model === 'string' ? backend.model : 'breeze-tts-2',
+        model: typeof backend.model === 'string' ? backend.model : 'breeze-tts2',
         cfgScale: typeof backend.cfgScale === 'number' ? backend.cfgScale : 1,
         seed: Number.isInteger(backend.seed) ? backend.seed : 42,
-        timeoutMs: Number(backend.timeoutMs) || next.tts.providers['breeze-tts-2'].timeoutMs,
+        timeoutMs: Number(backend.timeoutMs) || next.tts.providers['breeze-tts2'].timeoutMs,
       };
     }
     for (const key of ['presetsFile', 'emotionPresets', 'defaultInstructions', 'ffmpegPath', 'atempoTimeoutMs', 'director', 'auto']) {

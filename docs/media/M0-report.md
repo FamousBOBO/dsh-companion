@@ -203,8 +203,8 @@ companion-media
 ```json
 {
   "ok": true,
-  "provider": "breeze-tts-2",
-  "model": "breeze-tts-2",
+  "provider": "breeze-tts2",
+  "model": "breeze-tts2",
   "voice": "ref:/path/to/ref.wav",
   "artifact": {
     "artifactId": "…", "kind": "speech", "path": "data/media/artifacts/speech/…wav",
@@ -223,11 +223,11 @@ companion-media
 
 | 旧字段（生产 `home/media/config.json`） | 处置 |
 |---|---|
-| `image.backend='novelai-pipeline-bridge'` | 标记 **unsupported**，迁移时丢弃；新配置要求显式选 `openai` / `nai` |
+| `image.backend='novelai-pipeline-bridge'` | 标记 **unsupported**，迁移时丢弃；新配置要求显式选 `openai-compatible` / `nai` |
 | `image.pythonPath` / `imagePipelineRoot` / `configPath` / `runtime.*` / `queue.*` | 丢弃（本机路径、显存协调器、HF Space 队列；`queue.userId` / `queue.greeting` 里的旧用户号与旧人格名一并丢） |
 | `image.model='nai-diffusion-5-full'`, `steps=28`, `scale=5`, `size='832x1216'`, `generationFlow='tag'` | 迁移到 `image.nai.{model,steps,scale,size}`（`steps` 默认已是 28） |
 | `image.style.{artist,defaultPrompt,defaultNegative}` | 迁到 `image.nai.presets.custom.*`；`presets/nai-style.json` 不再作为默认值来源（其中的默认串是作者个人画师串，属个人偏好，不进发布树） |
-| `speech.backend.{baseUrl='…/breeze',voice='<旧人格id>_B',cfgScale,seed,speed,maxNewTokens}` | 迁到 `tts.providers['breeze-tts-2']`；`voice` 里的旧人格前缀被清空，用户填自己的参考音频；`speed` → `breeze.speed`（本层不做变速，改用后端 `instruction`） |
+| `speech.backend.{baseUrl='…/breeze',voice='<旧人格id>_B',cfgScale,seed,speed,maxNewTokens}` | 迁到 `tts.providers['breeze-tts2']`；`voice` 里的旧人格前缀被清空，用户填自己的参考音频；`speed` → `breeze.speed`（本层不做变速，改用后端 `instruction`） |
 | `speech.presetsFile`（指向作者机器上的情绪预设文件） | 丢弃（作者本机文件）；`emotionPresets` 清空 |
 | `speech.director.*`（宿主 LLM 语音导演） | 丢弃：本期没有 `host-llm` 依赖，`instruction` 由调用方直接给 |
 | `speech.auto.*`（自动语音） | 丢弃：主动外发不在媒体模块范围 |

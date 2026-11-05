@@ -50,13 +50,13 @@ test('校验：vision.enabled=true 被拒（不可绕过）', () => {
 });
 
 test('校验：开启生图但缺必填项 → 逐字段报错', () => {
-  const config = normalizeConfig({ image: { enabled: true, provider: 'openai' } });
+  const config = normalizeConfig({ image: { enabled: true, provider: 'openai-compatible' } });
   const verdict = validateConfig(config);
   assert.equal(verdict.ok, false);
   const paths = verdict.errors.map(item => item.path);
-  assert.ok(paths.includes('image.openai.baseUrl'));
-  assert.ok(paths.includes('image.openai.apiKey'));
-  assert.ok(paths.includes('image.openai.model'));
+  assert.ok(paths.includes('image.openai-compatible.baseUrl'));
+  assert.ok(paths.includes('image.openai-compatible.apiKey'));
+  assert.ok(paths.includes('image.openai-compatible.model'));
 });
 
 test('校验：参数边界（步骤/scale/分辨率/sampler）', () => {
@@ -94,8 +94,8 @@ test('校验：Breeze 参考音频与逐字稿必须成对', () => {
   const config = normalizeConfig({
     tts: {
       enabled: true,
-      provider: 'breeze-tts-2',
-      providers: { 'breeze-tts-2': { enabled: true, baseUrl: 'http://127.0.0.1:7860', refAudioPath: '/tmp/a.wav' } },
+      provider: 'breeze-tts2',
+      providers: { 'breeze-tts2': { enabled: true, baseUrl: 'http://127.0.0.1:7860', refAudioPath: '/tmp/a.wav' } },
     },
   });
   const verdict = validateConfig(config);
@@ -116,7 +116,7 @@ test('能力表：只有协议已核实的 provider 是 connected', () => {
     assert.ok(record.evidence?.level, `${id} 必须有证据等级`);
     assert.ok(Array.isArray(record.evidence?.sources) && record.evidence.sources.length > 0, `${id} 必须有来源 URL`);
   }
-  assert.equal(IMAGE_PROVIDERS.openai.status, 'connected');
+  assert.equal(IMAGE_PROVIDERS['openai-compatible'].status, 'connected');
   assert.equal(IMAGE_PROVIDERS.nai.status, 'connected');
 });
 
@@ -159,9 +159,9 @@ test('迁移：旧生产配置只保留可确认的 API 选项，其余进 dropp
   assert.equal(config.image.nai.steps, 30);
   assert.equal(config.image.nai.width, 832);
   assert.equal(config.image.nai.presets['5'].positive, 'p');
-  assert.equal(config.tts.provider, 'breeze-tts-2');
-  assert.equal(config.tts.providers['breeze-tts-2'].baseUrl, 'http://127.0.0.1:8139', '旧 /breeze 路径被去掉');
-  assert.equal(config.tts.providers['breeze-tts-2'].apiKey, '', '旧密钥不读取');
+  assert.equal(config.tts.provider, 'breeze-tts2');
+  assert.equal(config.tts.providers['breeze-tts2'].baseUrl, 'http://127.0.0.1:8139', '旧 /breeze 路径被去掉');
+  assert.equal(config.tts.providers['breeze-tts2'].apiKey, '', '旧密钥不读取');
   // 与个人身份、作者机器相关的字段不迁移
   const text = JSON.stringify({ config, dropped });
   for (const mine of ['legacy-owner-id', 'old-persona', 'C:/Users', 'some artist']) {

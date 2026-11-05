@@ -4,7 +4,7 @@ import { Code, MediaError, toFailure } from './errors.mjs';
 import { createNet } from './net.mjs';
 import { createConfigStore, writeFileAtomic } from './config-store.mjs';
 import { createLedger, digestOf, resolveArtifactRoot, writeArtifact } from './ledger.mjs';
-import { IMAGE_PROVIDERS, TTS_PROVIDERS, normalizeConfig, validateConfig } from './schema.mjs';
+import { IMAGE_PROVIDERS, TTS_PROVIDERS, canonicalImageProvider, canonicalTtsProvider, imageSection, normalizeConfig, ttsSection, validateConfig } from './schema.mjs';
 import { presetFamilyFor, resolvePreset } from './presets.mjs';
 import { previewResolution } from './resolution.mjs';
 import { imageAdapter, ttsAdapter, adapterCatalog } from './adapters/registry.mjs';
@@ -84,6 +84,29 @@ export function createMediaService({
   const keyFor = scope => store.secret(scope);
 
   /**
+   * How the management API registration went.
+   *
+   * `connection` is provided asynchronously by the host, so the plugin may
+   * activate before it exists. When that happens the routes are registered later
+   * through `ctx.inject`; this state records both attempts so `status()` (and
+   * `/page`) can tell a caller *why* an endpoint is unreachable.
+   */
+  let httpState = {
+    registered: 0,
+    skipped: 'not-attempted',
+    how: null,
+    at: null,
+    paths: [],
+    failed: [],
+    lastError: null,
+  };
+  const httpStateSnapshot = () => ({ ...httpState, paths: [...httpState.paths] });
+  const noteHttpState = patch => {
+    httpState = { ...httpState, ...patch, at: now().toISOString() };
+    return httpStateSnapshot();
+  };
+
+  /**
    * Where deliverables land, and the boundary the channel enforces.
    *
    * Media writes only inside its own artifact root (default
@@ -104,12 +127,15 @@ export function createMediaService({
   }
 
   function sectionOf(config, kind, id) {
-    return kind === 'image' ? config.image?.[id] ?? {} : config.tts?.providers?.[id] ?? {};
+    return kind === 'image' ? imageSection(config, id) : ttsSection(config, id);
   }
 
   function recordOf(kind, id) {
-    return kind === 'image' ? IMAGE_PROVIDERS[id] : TTS_PROVIDERS[id];
+    const key = kind === 'image' ? canonicalImageProvider(id) : canonicalTtsProvider(id);
+    return kind === 'image' ? IMAGE_PROVIDERS[key] : TTS_PROVIDERS[key];
   }
+
+  const canonicalId = (kind, id) => (kind === 'image' ? canonicalImageProvider(id) : canonicalTtsProvider(id));
 
   /** One provider's state, computed — never stored as "connected". */
   function providerStatus(kind, id, config) {
@@ -197,6 +223,9 @@ export function createMediaService({
         `TTS：${config.tts.enabled ? `开（${config.tts.provider}）` : '关'}；只产出文件，不发送`,
       ],
       config: loaded.masked,
+      // 管理 API 的注册结果：宿主里的「模块已启用但 API 没起来」与「模块未启用」
+      // 只能靠这个区分（HTTP 404 本身说明不了是哪种）。
+      http: httpStateSnapshot(),
     };
   }
 
@@ -226,19 +255,20 @@ export function createMediaService({
 
   async function testProvider({ kind, id }) {
     if (kind !== 'image' && kind !== 'tts') throw new MediaError(Code.BAD_INPUT, 'kind 必须是 image 或 tts');
-    const record = recordOf(kind, id);
+    const providerId = canonicalId(kind, id);
+    const record = recordOf(kind, providerId);
     if (!record) throw new MediaError(Code.PROVIDER_UNKNOWN, `未知 provider：${id}`);
     const { config } = store.load();
-    const section = sectionOf(config, kind, id);
-    const adapter = kind === 'image' ? imageAdapter(id) : ttsAdapter(id);
-    const key = keyFor(id).value;
+    const section = sectionOf(config, kind, providerId);
+    const adapter = kind === 'image' ? imageAdapter(providerId) : ttsAdapter(providerId);
+    const key = keyFor(providerId).value;
     let result;
     try {
       result = await adapter.test({ section, config, key, net, limits: config.limits });
     } catch (error) {
       result = { ok: false, code: error?.code ?? Code.UNKNOWN, detail: String(error?.message ?? error).slice(0, 300) };
     }
-    testResults[`${kind}:${id}`] = {
+    testResults[`${kind}:${providerId}`] = {
       ok: result.ok === true,
       level: result.level ?? 'none',
       detail: redactText(result.detail ?? ''),
@@ -246,11 +276,11 @@ export function createMediaService({
       at: now().toISOString(),
     };
     persistTests();
-    note({ event: 'provider-test', kind, id, ok: result.ok === true, code: result.code ?? null });
+    note({ event: 'provider-test', kind, id: providerId, ok: result.ok === true, code: result.code ?? null });
     return {
       ok: result.ok === true,
       kind,
-      id,
+      id: providerId,
       status: result.ok === true ? STATE.TEST_OK : STATE.TEST_FAILED,
       level: result.level ?? 'none',
       detail: result.detail ?? '',
@@ -278,7 +308,7 @@ export function createMediaService({
     if (!validation.ok) {
       return { ok: false, error: { code: validation.errors[0].code, message: validation.errors[0].message }, errors: validation.errors };
     }
-    const section = { ...config.image[id] };
+    const section = { ...imageSection(config, id) };
     const record = recordOf('image', id);
 
     if (dryRun) {
@@ -288,6 +318,7 @@ export function createMediaService({
           model: section.model,
           presets: section.presets,
           negativePrompt: section.negativePrompt,
+          artistString: section.artistString ?? '',
           request: { prompt, negative },
         });
         dry.preset = { family: preset.family, applied: preset.applyDefaults, positive: preset.positive, negative: preset.negative, warnings: preset.warnings };
@@ -367,14 +398,14 @@ export function createMediaService({
     const config = loaded.config;
     if (!config.enabled) return { ok: false, error: { code: Code.DISABLED, message: '媒体插件已停用' } };
     if (!config.tts.enabled) return { ok: false, error: { code: Code.DISABLED, message: 'TTS 已关闭（默认关闭）' } };
-    const id = provider || config.tts.provider;
+    const id = canonicalTtsProvider(provider || config.tts.provider);
     if (id === 'none') return { ok: false, error: { code: Code.NOT_CONFIGURED, message: '未选择 TTS provider' } };
     const record = recordOf('tts', id);
     if (!record) return { ok: false, error: { code: Code.PROVIDER_UNKNOWN, message: `未知 TTS provider：${id}` } };
     if (record.status !== 'connected') {
       return { ok: false, error: { code: Code.PROVIDER_NOT_IMPLEMENTED, message: `${record.label} 尚未接入：${record.reason}` } };
     }
-    const section = { ...(config.tts.providers[id] ?? {}) };
+    const section = { ...ttsSection(config, id) };
     if (section.enabled !== true) return { ok: false, error: { code: Code.DISABLED, message: `${record.label} 未启用` } };
     const validation = validateConfig({ ...config, tts: { ...config.tts, provider: id } });
     if (!validation.ok) {
@@ -459,6 +490,8 @@ export function createMediaService({
     generateImage,
     synthesize,
     preview,
+    httpState: httpStateSnapshot,
+    noteHttpState,
     vision: visionContract,
     inspectImage: visionRefusal,
     jobs: (limit = 10) => ({ jobs: ledger.listJobs(limit), artifacts: ledger.listArtifacts(limit) }),
