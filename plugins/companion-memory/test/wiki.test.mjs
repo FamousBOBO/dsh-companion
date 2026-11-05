@@ -21,7 +21,7 @@ import {
 // t.after, so a failed assertion never leaves wiki pages behind.
 const FIXED_NOW = '2026-03-07T00:00:00.000Z';
 const LATER_NOW = '2026-04-01T09:30:00.000Z';
-const VIEWER = Object.freeze({ userId: 'user_1', personaId: 'march7', worldId: '' });
+const VIEWER = Object.freeze({ userId: 'user_1', personaId: 'bot', worldId: '' });
 
 function tempDir(t, prefix = 'dsh-wiki-') {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), prefix));
@@ -45,7 +45,7 @@ function record(overrides = {}) {
     status: 'confirmed',
     realityLevel: 'explicit_user_statement',
     userId: 'user_1',
-    personaId: 'march7',
+    personaId: 'bot',
     worldId: '',
     sourceKind: 'desktop_fact',
     sourceId: '',
@@ -182,7 +182,7 @@ test('compiles the four topic pages plus an index with traceable entries', async
   assert.ok(preferences.includes('用户喜欢温热的乌龙茶'));
   assert.ok(!preferences.includes('用户是独立开发者'));
 
-  const relationship = fs.readFileSync(pageFile(dir, 'relationships/march7-user.md'), 'utf8');
+  const relationship = fs.readFileSync(pageFile(dir, 'relationships/bot-user.md'), 'utf8');
   assert.ok(relationship.includes('用户习惯用吐槽表达关心'));
 
   const events = fs.readFileSync(pageFile(dir, 'events/important-events.md'), 'utf8');
@@ -431,7 +431,7 @@ test('never mixes another world or the fiction layer into the reality sections',
   const viewerA = { ...VIEWER, worldId: 'world_a' };
   await compileWiki({ dir: worldA, db: makeDb(records).db, viewer: viewerA, now: FIXED_NOW });
 
-  const relationshipA = fs.readFileSync(pageFile(worldA, 'relationships/march7-user.md'), 'utf8');
+  const relationshipA = fs.readFileSync(pageFile(worldA, 'relationships/bot-user.md'), 'utf8');
   assert.ok(relationshipA.includes('mem_reality_rel'));
   assert.ok(relationshipA.includes('mem_world_a'));
   assert.ok(relationshipA.includes('仅在该剧情内有效'));

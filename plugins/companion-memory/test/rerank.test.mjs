@@ -10,7 +10,7 @@ import {
 } from '../lib/rerank.mjs';
 import { recall } from '../lib/retrieve.mjs';
 
-const VIEWER = { userId: 'u1', personaId: 'march7', worldId: '' };
+const VIEWER = { userId: 'u1', personaId: 'bot', worldId: '' };
 const NOW = Date.parse('2026-03-01T00:00:00.000Z');
 
 /** 最小 MemoryRecord，覆盖 recall 需要的字段。 */

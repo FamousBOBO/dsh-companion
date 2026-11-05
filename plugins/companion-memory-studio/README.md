@@ -1,12 +1,12 @@
-# 三月七记忆档案 · companion-memory-studio
+# 陪伴空间 / 记忆档案 · companion-memory-studio
 
-DSH 三月七陪伴基座的**记忆管理工作台**：一个可安装的 bundle，安装后 Web 侧栏出现「记忆档案」图标，
+DSH Companion 套件的**记忆管理工作台**：一个可安装的 bundle，安装后 Web 侧栏出现「记忆档案」图标，
 点开是 7 页工作台——检索记忆、核对证据、纠正事实、诊断召回、维护 Wiki 与设置。
 
-- 包名：`@local/dsh-companion-memory-studio`
+- 包名：`@dsh-companion/memory-studio`（套件内安装名）
 - Host 半：`index.js` 提供共享记忆引擎服务（`companionMemory`）+ 一组**需要浏览器认证**的 HTTP API。
 - Client 半：`client.js` 在侧栏注册入口，在主区注册 7 页工作台。
-- 契约：`design/studio/ARCHITECTURE.md`（v1）。
+- 契约：`companion-memory/CONTRACT.md`（套件内唯一契约文档）。
 
 ---
 
@@ -40,7 +40,7 @@ DSH 三月七陪伴基座的**记忆管理工作台**：一个可安装的 bundl
 状态点 + 文字双表达、抽屉焦点归还、`prefers-reduced-motion` 下无动画。
 
 **聊天周边**：不动原生聊天与消息持久化；仅在输入框上方（`conversation.input.dock`）
-加一条可忽略的状态摘要条（"三月七 · 今天的安排都过去了 · 打开陪伴空间"），API 不可用时自动不渲染。
+加一条可忽略的状态摘要条（"陪伴空间 · 今天的安排都过去了 · 打开"），API 不可用时自动不渲染。
 
 > 旧的 7 页工作台（总览 / 记忆库 / 显微镜 / Wiki 档案 / 时间线 / 审核中心 / 系统设置）在 v1.1
 > 里被重排进上面的七个入口：能力没有减少，只是层级变了。第 3 节保留为历史说明。
@@ -51,7 +51,7 @@ DSH 三月七陪伴基座的**记忆管理工作台**：一个可安装的 bundl
 
 - 侧栏出现「记忆档案」图标（星轨 + 档案盒，`icon.svg`）；
 - 点开后在主区打开工作台，标题「记忆档案」，右上角有刷新按钮；
-- 浏览器端资源地址：`/plugins/@local/dsh-companion-memory-studio/client.js`（安装后可用来确认 200）；
+- 浏览器端资源地址：`/plugins/@dsh-companion/memory-studio/client.js`（安装后可用来确认 200）；
 - 界面文案跟随宿主语言（`locale/zh.json`、`locale/en.json`）。
 
 ## 2. 安装
@@ -59,7 +59,7 @@ DSH 三月七陪伴基座的**记忆管理工作台**：一个可安装的 bundl
 本包是**本地目录 bundle**，不发布到 npm；安装由插件管理器完成，不要手写 profile 的
 `package.json` / `cordis.patch.yml`。
 
-1. 目录：`C:\Users\bobo\Documents\Bot\dsh-companion\plugins\companion-memory-studio`
+1. 目录：`<套件根>/plugins/companion-memory-studio`
 2. 用 `plugin_manager` 安装：
    - `action: "list_bundles"` 看现状；
    - `action: "install_bundle"`，`target` 为该绝对目录；
@@ -151,7 +151,7 @@ plugins/companion-memory-studio/
   locale/zh.json / en.json   # 显示名与描述（插件管理器读取，不激活也能显示）
   icon.svg                   # 原创图标（星轨 + 档案盒，≤256 KiB）
   README.md                  # 本文件
-scripts/verify-studio.mjs    # 仓库根的只读体检脚本（不启动 Host）
+
 ```
 
 ## 8. 构建与体检

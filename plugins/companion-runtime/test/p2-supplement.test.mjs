@@ -18,7 +18,7 @@ const TZ = 'Asia/Shanghai';
 const MIN = 60000;
 const HOUR = 3600000;
 const DAY = 86400000;
-const SCOPE = Object.freeze({ userId: '1429709395', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: '10001', personaId: 'bot', worldId: 'world:default' });
 const KEY = keyOfScope(SCOPE);
 // 2026-11-03 01:09 Asia/Shanghai — the night minute the bad plan was committed at.
 const NIGHT = Date.UTC(2026, 10, 2, 17, 9, 0);
@@ -59,7 +59,7 @@ function scriptedModel(script) {
 function makeMaterials() {
   return () => ({
     timeZone: TZ,
-    persona: { version: 2, excerpt: '三月七' },
+    persona: { version: 2, excerpt: 'bot' },
     preferences: [], goals: [], commitments: [], fixedAgenda: [], runningActivities: [], lastReceipts: [],
     interests: [], opportunities: [], capabilities: [], budget: null,
   });

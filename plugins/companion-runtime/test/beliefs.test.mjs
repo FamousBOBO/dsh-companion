@@ -19,9 +19,9 @@ import {
   correctBelief, expireBeliefs, addDependent, currentBeliefs, beliefHistory,
 } from '../lib/beliefs.mjs';
 
-const USER = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: '' });
-const WORLD_A = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:study' });
-const WORLD_B = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:work' });
+const USER = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: '' });
+const WORLD_A = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:study' });
+const WORLD_B = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:work' });
 const T0 = Date.UTC(2026, 9, 29, 2, 0, 0);
 const MINUTE = 60_000;
 const HOUR = 3_600_000;

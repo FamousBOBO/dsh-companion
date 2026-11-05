@@ -73,7 +73,7 @@ async function waitForCalls(h: { calls: Array<{ action: string }> }, n: number, 
   throw new Error(`等了 ms 只发了  条（期望 ）`)
 }
 
-const OK = { get_group_list: [{ group_id: GROUP }], get_group_info: { group_name: '主群' }, get_login_info: { user_id: SELF, nickname: '诺诺' } }
+const OK = { get_group_list: [{ group_id: GROUP }], get_group_info: { group_name: '主群' }, get_login_info: { user_id: SELF, nickname: 'bot' } }
 const DIRECT = 'send_group_msg'
 
 test('合并转发：开关关着 → 逐条发送，没有转发动作', async () => {
@@ -95,7 +95,7 @@ test('合并转发：达到阈值 → 一条卡片，节点带机器人昵称与
   assert.ok(forward)
   const nodes = forward!.params.messages as Array<{ type: string; data: { nickname: string; content: Array<{ data: { text: string } }> } }>
   assert.equal(nodes.length, 3)
-  assert.equal(nodes[0]!.data.nickname, '诺诺')
+  assert.equal(nodes[0]!.data.nickname, 'bot')
   assert.equal(nodes[2]!.data.content[0]!.data.text, '第三句')
   assert.equal((result as { forwarded?: boolean }).forwarded, true)
 })

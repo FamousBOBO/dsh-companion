@@ -17,7 +17,7 @@ import { scopeKey } from '../lib/scope.mjs';
 // no advanced prefix without its interval.
 
 const T0 = Date.UTC(2026, 9, 30, 4, 0, 0);
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKey(SCOPE);
 const SOURCE = Array.from({ length: 10 }, (_, index) => `第${index}段：` + '灯塔每十二秒闪一次。'.repeat(6)).join('\n\n');
 

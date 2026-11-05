@@ -28,7 +28,7 @@ import { addLocalDays, isoWeekdayOfDate, resolveLocalInstant } from '../lib/agen
 // projection path is exercised, never a private write path.
 
 const T0 = Date.UTC(2026, 9, 30, 0, 0, 0); // 2026-10-30T00:00Z = 08:00 Asia/Shanghai
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: '' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: '' });
 const KEY = scopeKey(SCOPE);
 const HANDLERS = Object.freeze({ agenda: applyAgendaEvent });
 

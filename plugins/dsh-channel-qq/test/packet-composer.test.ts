@@ -36,8 +36,8 @@ function composer(opts: { memoryEvidence?: (input: unknown) => Promise<string>; 
     }),
     log: (line: string) => logs.push(line),
     knowledge: () => ({
-      entries: [{ content: '旧召回：学弟喜欢冰美式' }],
-      search: () => [{ content: '旧召回：学弟喜欢冰美式' }],
+      entries: [{ content: '旧召回：主人喜欢冰美式' }],
+      search: () => [{ content: '旧召回：主人喜欢冰美式' }],
     }),
     ...(opts.memoryEvidence === undefined ? {} : { memoryEvidence: opts.memoryEvidence }),
     sentBlockFor: async () => '',
@@ -65,7 +65,7 @@ test('组包：没装记忆服务 → 用旧的知识库关键词召回（默认
   const { composer: c } = composer()
   const hint = await hintOf(c)
   assert.match(hint, /知识库自动检索/)
-  assert.match(hint, /学弟喜欢冰美式/)
+  assert.match(hint, /主人喜欢冰美式/)
 })
 
 test('组包：装了记忆服务且有证据 → 证据块取代旧召回（不叠加）', async () => {

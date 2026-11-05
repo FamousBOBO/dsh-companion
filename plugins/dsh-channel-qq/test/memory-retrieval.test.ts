@@ -38,11 +38,11 @@ function record(content: string) {
 // ── 查询词过滤 ──────────────────────────────────────────────────────────────
 
 test('queryTerms：问句里的虚词二元组不参与匹配', () => {
-  const terms = queryTerms('学弟为什么不愿意把面板关掉？')
+  const terms = queryTerms('主人为什么不愿意把面板关掉？')
   for (const stop of ['为什么', '么不', '不愿', '愿意']) {
     assert.ok(!terms.includes(stop), `${stop} 是虚词，不该进查询`)
   }
-  assert.ok(terms.includes('学弟'))
+  assert.ok(terms.includes('主人'))
   assert.ok(terms.includes('面板'))
   assert.ok(terms.includes('关掉'))
 })
@@ -65,9 +65,9 @@ test('idfOf：罕见词比常见词值钱，且不设上限（否则一起撞顶
   try {
     const store = new MemoryStore({ workspacePath: dir, dshHome: dir, log: () => {} })
     await store.load()
-    for (let i = 0; i < 20; i += 1) await store.remember({ kind: 'fact', subject: { type: 'self' }, content: '学弟今天在忙', source: { kind: 'diary' } }, NOW, () => 0.1 + i / 100)
+    for (let i = 0; i < 20; i += 1) await store.remember({ kind: 'fact', subject: { type: 'self' }, content: '主人今天在忙', source: { kind: 'diary' } }, NOW, () => 0.1 + i / 100)
     await store.remember({ kind: 'fact', subject: { type: 'self' }, content: '设备池只耗不补', source: { kind: 'diary' } }, NOW, () => 0.9)
-    const common = store.idfOf('学弟')
+    const common = store.idfOf('主人')
     const rare = store.idfOf('设备')
     assert.ok(rare > common, `罕见词(${rare.toFixed(2)}) 应当高于常见词(${common.toFixed(2)})`)
     assert.ok(store.idfOf('谁都没提过') >= 0.5, '有下限')
@@ -82,8 +82,8 @@ test('keepKnown：库里没有的词不进查询；全没有时退回原样', as
   try {
     const store = new MemoryStore({ workspacePath: dir, dshHome: dir, log: () => {} })
     await store.load()
-    await store.remember({ kind: 'fact', subject: { type: 'self' }, content: '学弟在准备考试', source: { kind: 'diary' } }, NOW, () => 0.5)
-    assert.deepEqual(store.keepKnown(['学弟', '考试', '弟为']), ['学弟', '考试'], '库里没有的「弟为」被去掉')
+    await store.remember({ kind: 'fact', subject: { type: 'self' }, content: '主人在准备考试', source: { kind: 'diary' } }, NOW, () => 0.5)
+    assert.deepEqual(store.keepKnown(['主人', '考试', '弟为']), ['主人', '考试'], '库里没有的「弟为」被去掉')
     assert.deepEqual(store.keepKnown(['弟为', '压根没有']), ['弟为', '压根没有'], '全都没有时退回原样')
   } finally {
     rmSync(dir, { recursive: true, force: true })
@@ -91,8 +91,8 @@ test('keepKnown：库里没有的词不进查询；全没有时退回原样', as
 })
 
 test('keywordRelevance：不传 IDF 时与从前同一口径（回归保护）', () => {
-  const one = record('学弟不吃香菜')
-  const terms = queryTerms('学弟吃什么')
+  const one = record('主人不吃香菜')
+  const terms = queryTerms('主人吃什么')
   // 不传 idf：命中词数 / 总词数
   const value = keywordRelevance(terms, one)
   assert.ok(value > 0 && value <= 1)
@@ -101,8 +101,8 @@ test('keywordRelevance：不传 IDF 时与从前同一口径（回归保护）',
 
 test('keywordRelevance：IDF 让"命中罕见词"胜过"命中高频词"', () => {
   const rare = record('设备池只耗不补')
-  const common = record('学弟今天在忙')
-  const terms = ['设备', '学弟']
+  const common = record('主人今天在忙')
+  const terms = ['设备', '主人']
   const idf = (t: string): number => (t === '设备' ? 4 : 1)
   assert.ok(
     keywordRelevance(terms, rare, idf) > keywordRelevance(terms, common, idf),
@@ -116,7 +116,7 @@ test('splitDiary：句子级切分、保留标题行、跳过代码围栏与表�
   const text = [
     '# 日记',                                     // 1
     '',
-    '## 10:10 学弟答复了：面板的事',
+    '## 10:10 主人答复了：面板的事',
     '他说「没事，开着吧」，我据此把建议从「关掉外网访问」改成「保留外网、换成新密码」，并把这条结论写进了 PROGRESS.md 里。',   // 4
     '```',
     '这是代码块里的内容，不该变成记忆记录。',
@@ -134,7 +134,7 @@ test('splitDiary：句子级切分、保留标题行、跳过代码围栏与表�
     assert.ok(!seg.content.includes('表格'))
     assert.ok(!seg.content.startsWith('# 日记'), '一级标题不是记忆')
   }
-  assert.ok(segs.some((s: { content: string }) => s.content.includes('学弟答复了')), '标题行并入段落（锚点靠它）')
+  assert.ok(segs.some((s: { content: string }) => s.content.includes('主人答复了')), '标题行并入段落（锚点靠它）')
   assert.ok(segs.some((s: { content: string }) => s.content.includes('开着吧')))
 })
 

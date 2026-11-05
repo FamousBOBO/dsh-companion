@@ -13,7 +13,7 @@ import { createMemoryEngine } from '../index.mjs';
 // 因为 A4 审计的教训是"一层接住了、另一层没接住"。
 
 const T0 = Date.UTC(2026, 10, 5, 3, 0, 0);
-const PERSONA = 'march7';
+const PERSONA = 'bot';
 const USER = 'correction_user';
 const NAMESPACE = 'companion.correction';
 

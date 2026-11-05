@@ -21,7 +21,7 @@ import { applyPlanEvent, createPlanner } from '../lib/planner.mjs';
 const TZ = 'Asia/Shanghai';
 const MIN = 60000;
 const DAY = 86400000;
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = keyOfScope(SCOPE);
 const T0 = Date.UTC(2026, 10, 2, 5, 41, 0);
 
@@ -76,7 +76,7 @@ function scriptedModel(script) {
   return fn;
 }
 
-function makePlanner(world, { model, budget, materials = () => ({ timeZone: TZ, persona: { version: 1, excerpt: '三月七' }, preferences: [], goals: [], commitments: [], fixedAgenda: [], runningActivities: [], lastReceipts: [], interests: [], opportunities: [], capabilities: [], budget: null }) } = {}) {
+function makePlanner(world, { model, budget, materials = () => ({ timeZone: TZ, persona: { version: 1, excerpt: 'bot' }, preferences: [], goals: [], commitments: [], fixedAgenda: [], runningActivities: [], lastReceipts: [], interests: [], opportunities: [], capabilities: [], budget: null }) } = {}) {
   return createPlanner({
     db: world.db,
     config: { enabled: true, mode: 'active', timeZone: TZ, p2: { planning: { enabled: true, retryBackoffMs: 0 } } },

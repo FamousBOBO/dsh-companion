@@ -21,8 +21,8 @@ import {
 // address. Two users/personas/worlds in one database must not see each other.
 
 const T0 = Date.UTC(2026, 9, 30, 0, 0, 0); // 2026-10-30T00:00Z = 08:00 Asia/Shanghai
-const OWNER_A = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: '' });
-const OWNER_B = Object.freeze({ userId: 'owner-2', personaId: 'march7', worldId: 'world:game' });
+const OWNER_A = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: '' });
+const OWNER_B = Object.freeze({ userId: 'owner-2', personaId: 'bot', worldId: 'world:game' });
 const OWNER_C = Object.freeze({ userId: 'owner-1', personaId: 'other-persona', worldId: 'world:game' });
 const KEY_A = scopeKey(OWNER_A);
 const KEY_B = scopeKey(OWNER_B);
@@ -109,11 +109,11 @@ test('HH04: two users, personas and worlds never see each other', t => {
 
 test('HH04: an empty world normalises to world:default, and only there', t => {
   assert.equal(normalizeScope({ userId: 'owner-1' }).worldId, 'world:default');
-  assert.equal(KEY_A, 'u:owner-1|p:march7|w:world:default');
+  assert.equal(KEY_A, 'u:owner-1|p:bot|w:world:default');
   const db = newDb(t);
   assert.equal(createItem(db, DAILY, { itemId: 'item-a', scope: { userId: 'owner-1' } }).inserted, true);
   // The explicit spelling of the default world addresses the very same row.
-  const explicit = getAgendaItem(db, 'u:owner-1|p:march7|w:world:default', 'item-a');
+  const explicit = getAgendaItem(db, 'u:owner-1|p:bot|w:world:default', 'item-a');
   assert.ok(explicit);
   assert.equal(explicit.scopeKey, KEY_A);
   assert.equal(getAgendaItem(db, scopeKey({ userId: 'owner-1', worldId: 'world:game' }), 'item-a'), null);

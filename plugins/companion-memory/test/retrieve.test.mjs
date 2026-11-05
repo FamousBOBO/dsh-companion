@@ -28,7 +28,7 @@ import {
 } from '../lib/render.mjs';
 
 const USER_ID = 'user_local';
-const PERSONA_ID = 'march7';
+const PERSONA_ID = 'bot';
 const NOW = Date.parse('2026-03-07T12:00:00.000Z');
 const VIEWER = Object.freeze({ userId: USER_ID, personaId: PERSONA_ID, worldId: '' });
 const CONFIG = Object.freeze({ candidates: 32, topK: 8, rrfK: 60, mmrLambda: 0.72 });
@@ -371,11 +371,11 @@ test('注入文本严格不超过预算，且逐行 JSON 保持既有格式', as
   assert.equal(renderContext({ entries: result.entries, budget: 0 }), '');
 
   // Optional identity line shares the same budget and JSON shape.
-  const withIdentity = renderContext({ entries: [], identityText: '你是三月七，陪用户聊天。' });
+  const withIdentity = renderContext({ entries: [], identityText: '你是bot，陪用户聊天。' });
   assert.ok(withIdentity.startsWith(CONTEXT_HEADER));
   const identityLine = JSON.parse(withIdentity.slice(CONTEXT_HEADER.length + 1));
   assert.equal(identityLine.type, 'identity');
-  assert.equal(identityLine.value, '你是三月七，陪用户聊天。');
+  assert.equal(identityLine.value, '你是bot，陪用户聊天。');
   assert.ok(withIdentity.length <= DEFAULT_BUDGET);
 });
 
@@ -596,7 +596,7 @@ test('无关问题不注入无关旧记忆（匹配覆盖闸门，合成库 20 �
   // ("喜欢") and therefore look like a rank-1 hit to bm25 + RRF.
   for (let index = 0; index < 20; index += 1) {
     seed(ctx, {
-      value: `三月七喜欢第${index}种天气，还喜欢记录当天的心情`,
+      value: `bot喜欢第${index}种天气，还喜欢记录当天的心情`,
       kind: 'note',
       importance: 0.9 - index * 0.01,
     });
@@ -653,7 +653,7 @@ test('完全无关的问题返回空结果，不退回 recent 池', async t => {
 // suite stays runnable on a clean machine and never writes user data.
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const REAL_DB = path.resolve(HERE, '../../../home/memory/companion-memory.db');
-const REAL_VIEWER = Object.freeze({ userId: '1429709395', personaId: 'march7', worldId: '' });
+const REAL_VIEWER = Object.freeze({ userId: '10001', personaId: 'bot', worldId: '' });
 
 test('真实库验收：无关问题不注入，10 条真实查询的精度与召回', async t => {
   if (!fs.existsSync(REAL_DB)) {
@@ -731,7 +731,7 @@ test('真实库验收：无关问题不注入，10 条真实查询的精度与�
   assert.ok(first(love).includes('恋爱') || first(love).includes('女朋友'));
 
   // 10. Persona + behaviour topic.
-  const persona = await run('三月七 主动消息');
+  const persona = await run('bot 主动消息');
   assert.ok(persona.entries.length >= 1);
 });
 

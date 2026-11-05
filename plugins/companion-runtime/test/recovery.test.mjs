@@ -8,8 +8,8 @@ import { normalizeEvent, dispatchEvent } from '../lib/events.mjs';
 import { scopeKey } from '../lib/scope.mjs';
 import { verifyRecovery } from '../lib/snapshot.mjs';
 
-const SCOPE_A = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: '' });
-const SCOPE_B = Object.freeze({ userId: 'owner-2', personaId: 'march7', worldId: 'world:game' });
+const SCOPE_A = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: '' });
+const SCOPE_B = Object.freeze({ userId: 'owner-2', personaId: 'bot', worldId: 'world:game' });
 const KEY_A = scopeKey(SCOPE_A);
 const KEY_B = scopeKey(SCOPE_B);
 const T0 = Date.UTC(2026, 9, 29, 2, 0, 0);
@@ -159,7 +159,7 @@ test('recovery never re-applies across scopes and keeps unknown scopes empty', (
   db.acquireLease({ owner: 'test', generation: 'gen-1', ttlMs: 600000 });
   const h = handlers();
   seed(db, h);
-  const unknown = verifyRecovery(db, { scopeKey: scopeKey({ userId: 'nobody', personaId: 'march7', worldId: '' }), handlers: h, now: () => T0 });
+  const unknown = verifyRecovery(db, { scopeKey: scopeKey({ userId: 'nobody', personaId: 'bot', worldId: '' }), handlers: h, now: () => T0 });
   assert.equal(unknown.ok, true);
   assert.equal(unknown.replayed, 0);
   assert.equal(db.projection(KEY_A).version, 6, 'no cross-scope writes');

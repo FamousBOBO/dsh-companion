@@ -273,7 +273,7 @@ export class ChannelQQ extends Service {
         // 人格包缺这一段：用下面的通用说明兜底（reason key 照常带出，便于排查）。
       }
     }
-    return `【策略】这个动作在当前回合被拦下了（${reasonKey}）。换个合规的做法，或先把情况告诉学弟。`
+    return `【策略】这个动作在当前回合被拦下了（${reasonKey}）。换个合规的做法，或先把情况告诉主人。`
   }
 
   /** 子插件能看到的全部世界（契约见 `features/plugin-kit.ts`）。 */

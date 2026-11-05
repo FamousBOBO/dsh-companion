@@ -2252,7 +2252,7 @@ export async function openMemoryDatabase(options = {}) {
     const applicationId = readApplicationId(handle);
     if (applicationId !== APPLICATION_ID) {
       if (applicationId !== 0) {
-        throw new Error(`该文件不是三月七记忆数据库（application_id=${applicationId}），已拒绝打开。`);
+        throw new Error(`该文件不是陪伴记忆数据库（application_id=${applicationId}），已拒绝打开。`);
       }
       const tables = userTables(handle);
       if (tables.length) {

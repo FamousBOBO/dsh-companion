@@ -17,7 +17,7 @@ import { createMemoryEngine } from '../../companion-memory/index.mjs';
 
 const T0 = Date.UTC(2026, 9, 29, 2, 0, 0);
 const USER = 'bridge_user';
-const PERSONA = 'march7';
+const PERSONA = 'bot';
 const SCOPE = Object.freeze({ userId: USER, personaId: PERSONA, worldId: '' });
 // The runtime normalises an empty worldId to `world:default`; the outbox stores
 // that normalised key, so the test oracle must use it too.

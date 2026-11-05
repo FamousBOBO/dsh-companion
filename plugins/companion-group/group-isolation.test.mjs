@@ -23,7 +23,7 @@ test('owner identity refuses group, foreign DM and malformed QQ ids, including o
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   const dir = path.join(root, 'home/companion'); fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, 'identity.json');
-  fs.writeFileSync(file, JSON.stringify({ schemaVersion: 1, persona: 'march7', owner: { id: '456', displayName: 'Synthetic', platform: 'qq' }, desktop: { mode: 'local-owner', userId: '456' }, sessions: { 'qq-group-123': { userId: '456', persona: 'march7' } } }));
+  fs.writeFileSync(file, JSON.stringify({ schemaVersion: 1, persona: 'bot', owner: { id: '456', displayName: 'Synthetic', platform: 'qq' }, desktop: { mode: 'local-owner', userId: '456' }, sessions: { 'qq-group-123': { userId: '456', persona: 'bot' } } }));
   const identity = createIdentity(root); const before = fs.readFileSync(file, 'utf8');
   for (const id of ['qq-group-123', 'qq-group-999', 'qq-dm-789', 'qq-unknown', 'qq-dm-0456']) {
     assert.throws(() => identity.resolve(id), /Owner memory is unavailable/);
@@ -85,7 +85,7 @@ test('voice sending: only qq_voice action=send_file of a media-layer file inside
     { file: path.join(MEDIA_ROOT, '..', 'home', 'channel-qq', 'x.mp3') },
     { file: 'C:/Users/bobo/secret.mp3' },
     { file: 'speech/abc.mp3' },
-    { voice: 'march7_B' },
+    { voice: 'bot_B' },
   ]) {
     assert.equal(typeof groupToolDenial(voice(a, over), OPTS), 'string', JSON.stringify(over));
   }

@@ -243,7 +243,7 @@ export function fakeClient(responses: Record<string, unknown> = {}): {
       calls.push({ action: 'get_msg', params: { message_id: messageId } })
       return {
         message_id: messageId,
-        sender: { user_id: 10001, nickname: '学弟' },
+        sender: { user_id: 10001, nickname: '主人' },
         raw_message: '原来那条报错在这里',
         message: [{ type: 'text', data: { text: '原来那条报错在这里' } }],
       }

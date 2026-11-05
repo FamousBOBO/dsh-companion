@@ -14,7 +14,7 @@ import { mountRuntime } from '../index.mjs';
 // explicitly resumes or re-plans it.
 
 const T0 = Date.UTC(2026, 10, 4, 1, 0, 0);
-const BOUND = { userId: 'owner-1', persona: 'march7' };
+const BOUND = { userId: 'owner-1', persona: 'bot' };
 
 function makeRoot(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p2-gate-'));

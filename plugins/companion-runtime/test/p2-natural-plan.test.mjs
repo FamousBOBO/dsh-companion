@@ -22,7 +22,7 @@ const hasPersona = fs.existsSync(personaPath);
 const personaText = hasPersona ? fs.readFileSync(personaPath, 'utf8') : '';
 
 const T0 = Date.UTC(2026, 10, 6, 6, 0, 0); // 14:00 Asia/Shanghai
-const BOUND = { userId: 'natural-owner', persona: 'march7' };
+const BOUND = { userId: 'natural-owner', persona: 'bot' };
 
 test('prompt: targetRef is required for activity slots and the three kinds are distinguished', () => {
   const built = buildPlanningPrompt({

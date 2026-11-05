@@ -143,8 +143,8 @@ function draftInput(over: Partial<{ now: number; recentCalls: number[] }> = {}) 
   return {
     candidate: contactCandidate({
       id: 'c-seam',
-      scope: { userId: 1429709395, personaId: 'companion', worldId: '' },
-      target: { channel: 'qq', room: 'dm-1429709395', isGroup: false, chatId: 1429709395 },
+      scope: { userId: 10001, personaId: 'companion', worldId: '' },
+      target: { channel: 'qq', room: 'dm-10001', isGroup: false, chatId: 10001 },
       earliestAt: START - 60_000,
       expiresAt: START + 6 * 3_600_000,
     }),
@@ -549,7 +549,7 @@ test('(f) 没有通道时不起草；通道回来后只起草一次、只发一�
       clock,
       timeoutMs: () => 20_000,
     })
-    const room = 'dm-1429709395'
+    const room = 'dm-10001'
     let connected = false
     const runtime = (): ContactRuntimeFacts => contactRuntime({
       connected,
@@ -579,8 +579,8 @@ test('(f) 没有通道时不起草；通道回来后只起草一次、只发一�
       const now = clock.now()
       const candidate = contactCandidate({
         id: 'c-channel', dedupeKey: 'k-channel', state: 'pending',
-        scope: { userId: 1429709395, personaId: 'companion', worldId: '' },
-        target: { channel: 'qq', room, isGroup: false, chatId: 1429709395 },
+        scope: { userId: 10001, personaId: 'companion', worldId: '' },
+        target: { channel: 'qq', room, isGroup: false, chatId: 10001 },
         earliestAt: now - 60_000, expiresAt: now + 6 * 3_600_000, createdAt: now - 60_000,
       })
       await store.write((ledger) => { ledger.candidates[candidate.id] = candidate; return true })
@@ -599,7 +599,7 @@ test('(f) 没有通道时不起草；通道回来后只起草一次、只发一�
       await worker.tick(clock.now())
       assert.equal(drafts, 1, `通道恢复后只该起草一次，实际 ${String(drafts)} 次：${logs.join(' | ')}`)
       assert.equal(platform.count(), 1, `只该发一条，实际 ${String(platform.count())} 条`)
-      assert.deepEqual(platform.textsTo(1429709395), ['早上好呀'])
+      assert.deepEqual(platform.textsTo(10001), ['早上好呀'])
       assert.equal(store.listDeliveries().length, 1, '投递记录只有一条（没有重复领取）')
       assert.equal(typeof seen.sessionId, 'string', '真实草稿请求必须带会话 id')
     } finally {
@@ -614,19 +614,19 @@ test('(f) 没有通道时不起草；通道回来后只起草一次、只发一�
 
 test('(g) 候选的 persona/world 映射到真实身份：`companion`/`""` 与配置同源，不会被判越权', () => {
   // 生产现场的那条候选（`contact.json`）与生产身份：
-  //   candidate.scope = { userId: 1429709395, personaId: 'companion', worldId: '' }
+  //   candidate.scope = { userId: 10001, personaId: 'companion', worldId: '' }
   //   身份 = { personaId: host.config.agentPreset, worldId: '' }，配置里 agentPreset=companion
-  // 人格的**显示名**是「三月七」（march7），但身份用的是**预设 id**（companion）——
+  // 人格的**显示名**是「bot」（bot），但身份用的是**预设 id**（companion）——
   // 两者不是同一个字段，混淆它们才会以为"映射错了"。
   const candidate: ContactCandidate = contactCandidate({
-    scope: { userId: 1429709395, personaId: 'companion', worldId: '' },
-    target: { channel: 'qq', room: 'dm-1429709395', isGroup: false, chatId: 1429709395 },
+    scope: { userId: 10001, personaId: 'companion', worldId: '' },
+    target: { channel: 'qq', room: 'dm-10001', isGroup: false, chatId: 10001 },
   })
   const target = candidate.target
   assert.equal(scopeIssue(candidate, target, { personaId: 'companion', worldId: '' }), null,
     '生产配置下候选作用域与身份一致：不越权，可以发')
   // 反向：真正的错配（把身份换成另一个预设 id）必须被拦下——这条证明判据是活的。
-  assert.equal(scopeIssue(candidate, target, { personaId: 'march7', worldId: '' }), 'scope:persona',
+  assert.equal(scopeIssue(candidate, target, { personaId: 'bot', worldId: '' }), 'scope:persona',
     '若身份真的换了预设，作用域复核要拦下（不是静默放行）')
   assert.equal(scopeIssue(candidate, target, { personaId: 'companion', worldId: 'w2' }), 'scope:world')
 })

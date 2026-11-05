@@ -54,11 +54,11 @@ function only(responses: Record<string, unknown> = {}, overrides: Record<string,
 
 // ── 发送闸门 ────────────────────────────────────────────────────────────────
 
-test('qq_send_text：目标群不是咱加入的群 → 拦下（且没有真的发送）', async () => {
+test('qq_send_text：目标群不是我加入的群 → 拦下（且没有真的发送）', async () => {
   const t = only({ get_group_list: [], get_group_info: { group_name: '某群' } })
   await assert.rejects(
     () => t.run({ __tool: 'qq_send_text', isGroup: true, target: 555, text: '在吗' }),
-    /不是咱加入的群/,
+    /不是我加入的群/,
   )
   assert.equal(t.calls.some((c) => c.action === 'send_group_msg'), false, '拦下之后不许再发')
 })
@@ -96,8 +96,8 @@ test('qq_send_text：私聊陌生人 → 拦下', async () => {
   )
 })
 
-test('qq_send_text：给学弟私聊发代码是允许的（禁令只针对群）', async () => {
-  const t = only({ get_friend_list: [{ user_id: MASTER, nickname: '学弟' }] })
+test('qq_send_text：给主人私聊发代码是允许的（禁令只针对群）', async () => {
+  const t = only({ get_friend_list: [{ user_id: MASTER, nickname: '主人' }] })
   const result = await t.run({ __tool: 'qq_send_text', isGroup: false, target: MASTER, text: '```js\nconst a = 1\n```' })
   assert.ok(result !== undefined)
   assert.equal(t.calls.some((c) => c.action === 'send_private_msg'), true, '私聊照发')

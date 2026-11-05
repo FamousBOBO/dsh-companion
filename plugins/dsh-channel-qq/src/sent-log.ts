@@ -55,12 +55,12 @@ export class SentLog {
       const id = e.messageId !== null ? `#${e.messageId}` : '#?'
       const time = new Date(e.time)
       const hhmm = `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`
-      return `${hhmm} 咱发的 ${id}${quoted}：${e.text.slice(0, 80)}`
+      return `${hhmm} 我发的 ${id}${quoted}：${e.text.slice(0, 80)}`
     })
     // 标题按房间取词：私聊的账曾经写进主群文件、标题还写死"在群里"，于是私聊内容
     // 被当成"群里说过的话"喂回模型。群聊的标题保持原样（golden 逐字节）。
     const where = this.key.startsWith('dm-') ? '私聊里' : '群里'
-    return `【咱最近在${where}发过的消息（这就是引用链的源头，别再说不是咱发的）】\n${lines.join('\n')}`
+    return `【我最近在${where}发过的消息（这就是引用链的源头，别再说不是我发的）】\n${lines.join('\n')}`
   }
 }
 

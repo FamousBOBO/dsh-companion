@@ -36,7 +36,7 @@ function makeRoot(t, label) {
   fs.mkdirSync(path.join(root, 'logs'), { recursive: true });
   fs.writeFileSync(path.join(root, 'home/companion/works/shelf/note.md'), READ_TEXT, 'utf8');
   fs.writeFileSync(path.join(root, 'home/companion/identity.json'), JSON.stringify({
-    schemaVersion: 1, persona: 'march7',
+    schemaVersion: 1, persona: 'bot',
     owner: { id: 'owner-synthetic', displayName: 'o', platform: 'qq' },
     desktop: { mode: 'local-owner', userId: 'owner-synthetic' },
     sessions: {},
@@ -64,7 +64,7 @@ function makeRoot(t, label) {
 function memoryEngineFor(t, root) {
   const engine = createMemoryEngine({
     root,
-    identity: { owner: () => ({ id: 'owner-synthetic', personaId: 'march7' }) },
+    identity: { owner: () => ({ id: 'owner-synthetic', personaId: 'bot' }) },
     env: {},
     llm: null,
     now: () => T0,
@@ -75,7 +75,7 @@ function memoryEngineFor(t, root) {
 
 function mount(t, root, clock) {
   const ctx = { tools: { register() {} }, systemPrompt: { section() {} }, on() {}, get() { return undefined; } };
-  const identity = { resolve: s => ({ userId: 'owner-synthetic', personaId: 'march7', sessionId: s }) };
+  const identity = { resolve: s => ({ userId: 'owner-synthetic', personaId: 'bot', sessionId: s }) };
   const runtime = mountRuntime(ctx, root, {
     now: () => clock.value,
     identity,

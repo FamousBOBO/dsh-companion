@@ -14,7 +14,7 @@ import { mountRuntime } from '../index.mjs';
 // 直接种入"待结算的裁决 + 已投递的 outbox 行"，并读回持久化的裁决状态 —— 断言的是库里的东西。
 
 const T0 = Date.UTC(2026, 10, 17, 3, 0, 0);
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKeyOf(SCOPE);
 const RESOLVED = 'p2_correction_resolved:';
 
@@ -28,7 +28,7 @@ function world(t) {
   const dbFile = path.join(root, 'home', 'companion', 'runtime.db');
   const identity = {
     owner: () => ({ id: 'owner-1', displayName: 'owner-1', platform: 'local' }),
-    resolve: sessionId => ({ userId: 'owner-1', personaId: 'march7', displayName: 'owner-1', sessionId }),
+    resolve: sessionId => ({ userId: 'owner-1', personaId: 'bot', displayName: 'owner-1', sessionId }),
   };
   const runtime = mountRuntime(null, root, { memory: null, identity, dbFile, now: () => T0 });
   t.after(() => { try { runtime.dispose?.(); } catch { /* disposed */ } });

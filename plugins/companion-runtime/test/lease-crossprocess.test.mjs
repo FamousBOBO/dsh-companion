@@ -93,7 +93,7 @@ test('A10: another OS process cannot steal a live lease and its commit is refuse
   assert.equal(second.commit, 'ok', 'the new generation can commit after taking over');
 
   // Our handle is now stale: it must not commit behind the child's back.
-  const eventScope = 'u:owner-1|p:march7|w:world:default';
+  const eventScope = 'u:owner-1|p:bot|w:world:default';
   assert.throws(
     () => parent.commitProjection({ scope: eventScope, generation: 'gen-parent', payload: {} }),
     /no longer the writer/,

@@ -12,7 +12,7 @@ function buildRoot(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'runtime-fence-'));
   for (const dir of ['home/companion', 'home/memory', 'logs']) fs.mkdirSync(path.join(root, dir), { recursive: true });
   fs.writeFileSync(path.join(root, 'home/companion/identity.json'), JSON.stringify({
-    schemaVersion: 1, persona: 'march7', owner: { id: 'owner-1', displayName: 'o', platform: 'qq' },
+    schemaVersion: 1, persona: 'bot', owner: { id: 'owner-1', displayName: 'o', platform: 'qq' },
     desktop: { mode: 'local-owner', userId: 'owner-1' }, sessions: {},
   }));
   fs.writeFileSync(path.join(root, 'home/companion/memory.config.json'), JSON.stringify({
@@ -23,7 +23,7 @@ function buildRoot(t) {
   t.after(() => { try { fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }); } catch { /* best effort */ } });
   return root;
 }
-const identity = () => ({ resolve: sessionId => ({ userId: sessionId === 'other' ? 'other-user' : 'owner-1', personaId: 'march7', worldId: '', sessionId }) });
+const identity = () => ({ resolve: sessionId => ({ userId: sessionId === 'other' ? 'other-user' : 'owner-1', personaId: 'bot', worldId: '', sessionId }) });
 const ctx = () => ({ tools: { register() {} }, systemPrompt: { section() {} }, on() {}, get() { return undefined; } });
 const memory = { async ingestDomainEvent() { return { status: 'accepted' }; } };
 
@@ -111,7 +111,7 @@ test('a lease owned by a dead process is reclaimed instead of silently running o
 
 test('envelope accessors are rejected before any getter runs', (t) => {
   const root = buildRoot(t);
-  const scope = { userId: 'owner-1', personaId: 'march7', worldId: '' };
+  const scope = { userId: 'owner-1', personaId: 'bot', worldId: '' };
   let reads = 0;
   const event = { kind: 'state/impulse', scope, occurredAt: T0 };
   Object.defineProperty(event, 'payload', { get() { reads += 1; return {}; }, enumerable: true });
@@ -137,7 +137,7 @@ test('envelope accessors are rejected before any getter runs', (t) => {
 });
 
 test('payload snapshot rejects toJSON and non-plain values', () => {
-  const scope = { userId: 'owner-1', personaId: 'march7', worldId: '' };
+  const scope = { userId: 'owner-1', personaId: 'bot', worldId: '' };
   let toJsonReads = 0;
   const getterPayload = { get toJSON() { toJsonReads += 1; return () => ({ evil: true }); } };
   assert.throws(() => normalizeEvent({ kind: 'state/impulse', scope, occurredAt: T0, payload: getterPayload }), /toJSON|non-JSON|plain object/);

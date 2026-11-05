@@ -24,7 +24,7 @@ import {
 // nothing in this module may queue a memory write, contact a channel or claim a send.
 
 const T0 = Date.UTC(2026, 9, 30, 0, 0, 0); // 2026-10-30T00:00Z = 08:00 Asia/Shanghai
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: '' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: '' });
 const KEY = scopeKey(SCOPE);
 const HANDLERS = Object.freeze({ agenda: applyAgendaEvent });
 const SOURCE = fs.readFileSync(new URL('../lib/agenda.mjs', import.meta.url), 'utf8');

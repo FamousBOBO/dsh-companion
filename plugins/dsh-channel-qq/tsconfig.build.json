@@ -1,5 +1,0 @@
-{
-  "//": "Companion-repo addition (not upstream). 发布构建 = `tsconfig.json` 同一份 emit 设置；",
-  "//paths": "宿主包 → vendor/types/* 的类型映射不在这里重复：它在 tsconfig.json 里（标准配置），本文件继承即可。曾经这份文件自带一份同样的 paths，与 tsconfig.json 形成两处来源，改一处漏一处就会让某一条构建命令突然红掉。",
-  "extends": "./tsconfig.json"
-}

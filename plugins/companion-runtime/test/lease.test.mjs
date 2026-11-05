@@ -8,7 +8,7 @@ import { normalizeEvent, dispatchEvent } from '../lib/events.mjs';
 import { scopeKey } from '../lib/scope.mjs';
 import { StaleGenerationError } from '../lib/errors.mjs';
 
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: '' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: '' });
 const KEY = scopeKey(SCOPE);
 const T0 = Date.UTC(2026, 9, 29, 2, 0, 0);
 
@@ -119,7 +119,7 @@ test('R3: a v1 database receives the drain-claim columns by additive migration',
       attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT NOT NULL DEFAULT '',
       created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
     INSERT INTO memory_outbox (outbox_id, scope, event_id, namespace, created_at, updated_at)
-      VALUES ('ob-1', 'u:owner-1|p:march7|w:world:default', 'ev-1', 'companion.event', ${T0}, ${T0});`);
+      VALUES ('ob-1', 'u:owner-1|p:bot|w:world:default', 'ev-1', 'companion.event', ${T0}, ${T0});`);
   old.close();
 
   const db = openRuntimeDb({ file, now: () => T0 });

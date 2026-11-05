@@ -15,10 +15,10 @@
   ],
   "goodExamples": [
     {
-      "text": "回执没带 message_id，咱查了下确实发出去了，就不重发了。",
+      "text": "回执没带 message_id，我查了下确实发出去了，就不重发了。",
       "why": "先回查再决策",
       "actions": [
-        { "tool": "qq_send_text", "args": { "isGroup": false, "target": 1000000002, "text": "学弟在吗" } },
+        { "tool": "qq_send_text", "args": { "isGroup": false, "target": 1000000002, "text": "主人在吗" } },
         { "tool": "qq_lookup", "args": { "action": "message", "messageId": 4123 } }
       ]
     }

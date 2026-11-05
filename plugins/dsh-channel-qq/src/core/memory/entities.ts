@@ -3,7 +3,7 @@
  * 调研来源：dsh-engram 的实体词典（别名归一、多对多挂到记忆）+ 它检索时的
  * "one-hop relation-edge expansion"。我们的简化版刻意**确定性**（R8、零模型）：
  *   - 实体的来源只有三处：`subject.id`（QQ 号/群号）、`keywords`（建档时给的词）、
- *     `person` 记录正文开头的称呼（"学弟住在…"的"学弟"）；
+ *     `person` 记录正文开头的称呼（"主人住在…"的"主人"）；
  *   - 查询侧：查询文本里**包含**实体键（`includes`，中文不用分词）就命中该实体，
  *     该实体名下的记录按"命中记录分数 × 衰减"进候选。
  *
@@ -21,7 +21,7 @@ export const MAX_RECORDS_PER_ENTITY = 12
 /** 实体键的最短长度（单字中文做实体 = 万物皆实体，噪声灾难）。 */
 export const MIN_ENTITY_LEN = 2
 
-/** 别名的前缀截断长度（person 正文取前 8 字当称呼——"学弟""王阿姨"量级）。 */
+/** 别名的前缀截断长度（person 正文取前 8 字当称呼——"主人""王阿姨"量级）。 */
 const PERSON_NAME_CHARS = 8
 
 /** 单条记录贡献的实体键。 */
@@ -65,7 +65,7 @@ export function entityIndex(records: readonly MemoryRecord[]): Map<string, Set<s
  * 查询文本里出现的实体 → 记录 id（带"这个实体被提了几次"的计数，供相关性加权）。
  *
  * 命中判据是 `text.includes(key)`：中文无分词，这是保守但零依赖的近似——
- * "学弟为什么…"会命中实体"学弟"，"学"不会（长度门槛挡了单字）。
+ * "主人为什么…"会命中实体"主人"，"学"不会（长度门槛挡了单字）。
  */
 export function entitiesInText(
   index: Map<string, Set<string>>,

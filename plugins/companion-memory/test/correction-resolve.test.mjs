@@ -13,7 +13,7 @@ import { createMemoryEngine } from '../index.mjs';
 // 否则"裁决"就成了"全清"。
 
 const T0 = Date.UTC(2026, 10, 7, 3, 0, 0);
-const PERSONA = 'march7';
+const PERSONA = 'bot';
 const USER = 'resolve_user';
 
 function makeRoot(t) {

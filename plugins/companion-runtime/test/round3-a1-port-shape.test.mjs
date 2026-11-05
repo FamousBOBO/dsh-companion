@@ -18,7 +18,7 @@ import { scopeKey as scopeKeyOf } from '../lib/scope.mjs';
 
 const T0 = Date.UTC(2026, 10, 14, 3, 0, 0);
 const HOUR = 3_600_000;
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKeyOf(SCOPE);
 
 function world(t) {

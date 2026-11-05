@@ -13,8 +13,8 @@ import { createP2 } from '../lib/p2.mjs';
 
 const T0 = Date.UTC(2026, 10, 19, 3, 0, 0);
 const HOUR = 3_600_000;
-const A = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:a' });
-const B = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:b' });
+const A = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:a' });
+const B = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:b' });
 const KEY_A = scopeKeyOf(A);
 const KEY_B = scopeKeyOf(B);
 
@@ -37,7 +37,7 @@ function seedDone(db, { scopeKey, activityId, at }) {
 
 function seedFact(db, { scopeKey, activityId, at, seq }) {
   db.run(`INSERT INTO domain_events (seq, event_id, schema_version, kind, scope, user_id, persona_id, world_id, occurred_at, recorded_at, payload)
-          VALUES (?, ?, 1, 'memory/ingest-request', ?, 'owner-1', 'march7', 'x', ?, ?, ?)`,
+          VALUES (?, ?, 1, 'memory/ingest-request', ?, 'owner-1', 'bot', 'x', ?, ?, ?)`,
   seq, `evt_${activityId}_${seq}`, scopeKey, at, at, JSON.stringify({ namespace: 'p2/activity', facts: { activityId } }));
 }
 

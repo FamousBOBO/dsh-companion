@@ -14,7 +14,7 @@ import { mountRuntime } from '../index.mjs';
 // broken `textHash` or a premature `finish`.
 
 const T0 = Date.UTC(2026, 10, 2, 1, 0, 0); // 2026-11-02 09:00 Asia/Shanghai
-const BOUND = { userId: 'owner-1', persona: 'march7' };
+const BOUND = { userId: 'owner-1', persona: 'bot' };
 const sha256 = value => crypto.createHash('sha256').update(String(value), 'utf8').digest('hex');
 
 function makeRoot(t, p2 = {}) {

@@ -35,7 +35,7 @@ const TZ = 'Asia/Shanghai';
 const MIN = 60000;
 const HOUR = 3600000;
 const DAY = 86400000;
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = keyOfScope(SCOPE);
 const T0 = Date.UTC(2026, 10, 2, 5, 41, 0); // 2026-11-02 13:41 Asia/Shanghai
 
@@ -148,7 +148,7 @@ function mount(t, { now, files = {}, pages = {}, allowedSources = [], ports: por
       recentPlans: rows(`SELECT day, version, status, summary FROM p2_plans WHERE scope = ? ORDER BY created_at DESC LIMIT 3`, scopeKey),
       // Character-side context (index.mjs injects these through options.p2Persona/p2Preferences).
       preferences: ['喜欢在下午读点东西', '好奇潮汐和月亮的关系', '不想被安排得满满当当'],
-      persona: { version: 3, excerpt: '三月七：喜欢亮晶晶的东西，爱拍照，也爱胡思乱想。' },
+      persona: { version: 3, excerpt: 'bot：喜欢亮晶晶的东西，爱拍照，也爱胡思乱想。' },
       // Contract §5 material shape: an array of `{name, available, reason}` (detectCapabilities
       // returns a keyed object; the caller flattens it — reported as a one-line wiring note).
       capabilities: capabilityList,

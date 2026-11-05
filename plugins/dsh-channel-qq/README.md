@@ -1,8 +1,12 @@
-# dsh-channel-qq
+# @dsh-companion/channel-qq
 
-[![CI](https://github.com/Aegink/dsh-channel-qq/actions/workflows/ci.yml/badge.svg)](https://github.com/Aegink/dsh-channel-qq/actions/workflows/ci.yml)
 [![License: MIT](https://img.shields.io/badge/license-MIT-blue.svg)](LICENSE)
-[![Node](https://img.shields.io/badge/node-%E2%89%A522-brightgreen.svg)](package.json)
+[![Node](https://img.shields.io/badge/node-%E2%89%A524-brightgreen.svg)](package.json)
+
+> 本目录是 **DSH Companion** 套件里的 QQ 通道模块，实体来自独立的 MIT 项目
+> `github.com/Aegink/dsh-channel-qq`（见 `BUILD.md` 的 provenance 与
+> `docs/01-deployment.md`）。套件侧只做构建统一、安全默认值与去个人化，不改变
+> 协议的对外行为。
 
 把 QQ 接入 [DeepSeek Harness](https://github.com/deepseek-ai/deepseek-harness) 的渠道插件。
 通过 **OneBot v11**（协议端默认用 [SnowLuma](https://github.com/SnowLuma/SnowLuma)，
@@ -20,7 +24,8 @@ NapCat 仍可作回滚方案）收发消息，
 - **长期记忆**：日记 → 结构化记录 → 检索；夜间九个任务（分块 / 抽取 / 反思 / 遗忘 / 摘要 / 向量重建）
   - 每回合自动注入 3–8 条证据（≤600 字）；`qq_memory_search` 深召回原文块（带文件行号）
   - 可选向量检索：本机 embed 服务（`deploy/embed-server/`），不开就退回关键词
-- **主动行为**：事件书驱动巡逻、早报、主动私聊——时间表是数据，不是代码
+- **主动行为（可选，默认关）**：事件书驱动巡逻、早报、主动私聊——时间表是数据，不是代码。
+  出厂的默认是**一个定时器都不注册**：装上插件不会自己开始找人说话，要在配置里逐项打开
 - **技能**：磁盘上的 Agent Skills 目录包（`SKILL.md`），按房间定可见范围
   （全部 / 仅私聊 / 指定群 / 指定房间 / 仅管理员），模型自动发现 + `/名字` 直接触发；
   后台可增删改、从 URL 或粘贴导入（先落待审区）

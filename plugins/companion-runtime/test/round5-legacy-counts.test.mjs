@@ -9,16 +9,16 @@ import { consumerCounts, goalCounts, beliefCounts, outboxCounts } from '../lib/d
 const boom = { get() { throw new Error('database is locked'); } };
 
 test('查询失败 → null（不是健康的 0）', () => {
-  const consumers = consumerCounts(boom, 'u:owner-1|p:march7|w:world:a');
+  const consumers = consumerCounts(boom, 'u:owner-1|p:bot|w:world:a');
   for (const [name, value] of Object.entries(consumers)) {
     assert.equal(value, null, `consumer count ${name} must be null when the query failed`);
   }
-  const goals = goalCounts(boom, 'u:owner-1|p:march7|w:world:a');
+  const goals = goalCounts(boom, 'u:owner-1|p:bot|w:world:a');
   assert.equal(goals.active, null);
   assert.equal(goals.overdue, null);
-  const beliefs = beliefCounts(boom, 'u:owner-1|p:march7|w:world:a');
+  const beliefs = beliefCounts(boom, 'u:owner-1|p:bot|w:world:a');
   assert.equal(beliefs.current, null);
-  const outbox = outboxCounts(boom, 'u:owner-1|p:march7|w:world:a');
+  const outbox = outboxCounts(boom, 'u:owner-1|p:bot|w:world:a');
   for (const value of Object.values(outbox)) {
     assert.equal(value, null, 'outbox counts are null when the query failed');
   }
@@ -26,12 +26,12 @@ test('查询失败 → null（不是健康的 0）', () => {
 
 test('"表不存在"仍是合法的 0（新库）', () => {
   const fresh = { get() { const error = new Error('no such table: goals'); error.code = 'ERR_SQLITE_ERROR'; throw error; } };
-  assert.equal(goalCounts(fresh, 'u:owner-1|p:march7|w:world:a').active, 0);
-  assert.equal(beliefCounts(fresh, 'u:owner-1|p:march7|w:world:a').current, 0);
+  assert.equal(goalCounts(fresh, 'u:owner-1|p:bot|w:world:a').active, 0);
+  assert.equal(beliefCounts(fresh, 'u:owner-1|p:bot|w:world:a').current, 0);
 });
 
 test('有行时就是真实计数', () => {
   const db = { get: sql => ({ n: /beliefs/.test(sql) ? 3 : 7 }) };
-  assert.equal(goalCounts(db, 'u:owner-1|p:march7|w:world:a').active, 7);
-  assert.equal(beliefCounts(db, 'u:owner-1|p:march7|w:world:a').current, 3);
+  assert.equal(goalCounts(db, 'u:owner-1|p:bot|w:world:a').active, 7);
+  assert.equal(beliefCounts(db, 'u:owner-1|p:bot|w:world:a').current, 3);
 });

@@ -26,7 +26,7 @@ function buildRoot(t) {
   return root;
 }
 
-const identity = () => ({ resolve: sessionId => ({ userId: 'owner-1', persona: 'march7', sessionId }) });
+const identity = () => ({ resolve: sessionId => ({ userId: 'owner-1', persona: 'bot', sessionId }) });
 
 test('HH06: today is computed in the schedule zone, not by the host UTC date', t => {
   // 2026-10-30T16:10Z is 2026-10-31 00:10 Asia/Shanghai: the host UTC date is still the 30th.

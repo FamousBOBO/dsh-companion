@@ -1,7 +1,7 @@
 """Constants for the Huawei Health integration."""
 
 # --- sidecar-freeze provenance (added by sidecars/huawei-health-cn; not upstream) ---
-# frozen-from:     tmp/huawei_health/custom_components/huawei_health/const.py
+# frozen-from:     upstream integration "custom_components/huawei_health/const.py"
 # frozen-at:       2026-11-03
 # upstream-sha256: 0ee70e3cb95a793b7735a180a8675bc39d9275ecfb88935d9acce13c80ae7f47
 # code-unchanged:  this block is the only difference; delete these five lines to get the original

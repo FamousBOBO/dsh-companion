@@ -16,7 +16,7 @@ const TZ = 'Asia/Shanghai';
 const MIN = 60000;
 const HOUR = 3600000;
 const DAY = 86400000;
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = keyOfScope(SCOPE);
 const T0 = Date.UTC(2026, 10, 2, 5, 41, 0); // 2026-11-02 13:41 Asia/Shanghai
 
@@ -62,7 +62,7 @@ function makeMaterials(changer = () => ({})) {
     call += 1;
     return {
       timeZone: TZ,
-      persona: { version: 2, excerpt: '三月七' },
+      persona: { version: 2, excerpt: 'bot' },
       preferences: [], goals: [], commitments: [], fixedAgenda: [], runningActivities: [], lastReceipts: [],
       interests: [], opportunities: [], capabilities: [], budget: null,
       ...changer(call),
@@ -208,7 +208,7 @@ test('P2-06: a later tick re-plans with fresh material after materials-changed',
   const materials = () => {
     call += 1;
     return {
-      timeZone: TZ, persona: { version: 2, excerpt: '三月七' }, preferences: [],
+      timeZone: TZ, persona: { version: 2, excerpt: 'bot' }, preferences: [],
       goals: call === 1 ? [] : [{ title: '用户临时加的目标' }],
       commitments: [], fixedAgenda: [], runningActivities: [], lastReceipts: [],
       interests: [], opportunities: [], capabilities: [], budget: null,

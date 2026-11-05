@@ -98,7 +98,7 @@ export class Scheduler {
     // ── 任务书定时器（从她的定时任务书.md 移植）──
     this.armTaskBook()
 
-    // DM proactivity: every ~22 min she may come find 学弟 on her own.
+    // DM proactivity: every ~22 min she may come find 主人 on her own.
     const dm = setInterval(() => {
       void this.dmProactive().catch((e: Error) => this.log(`dm proactive failed: ${e.message}`))
     }, 22 * 60_000 + Math.floor(Math.random() * 90_000))
@@ -141,24 +141,22 @@ export class Scheduler {
 
   private dmCounter = 0
 
-  /** She visits 学弟: report progress / greet / share / tease — her choice. */
+  /** 主动私聊主人：报进展 / 打招呼 / 分享 / 找话头——由模型自己决定说不说。 */
   private async dmProactive(): Promise<void> {
     const master = this.config.admins[0]
     if (master === undefined) return
     const now = new Date()
     const h = now.getHours()
-    // Night quiet: 01:00-08:00 she lets 学弟 sleep (dreams at 4am are exempt).
+    // 夜间安静：01:00–08:00 不打扰（04:xx 的做梦不算）。
     if (h >= 1 && h < 8) return
     this.dmCounter += 1
-    // Every variant carries the persona's hard rules inline: single line ≤15 chars,
-    // no full stop, never restate the other person's words, and no 撒娇/撩 framing
-    // (the 诺诺 persona forbids that register, so a prompt that asks for it would
-    // push her straight out of character).
-    const style = '按诺诺的说话方式：单条不超过15字，不用句号结尾，别复述对方原话，别撒娇。'
+    // 说话方式**不写死在提示词里**：具体语气属于人格（用户写在 config/persona.md），
+    // 插件只给"短、一条、别复述对方原话"这类与人格无关的发送约束。
+    const style = '用你人格设定里的说话方式；一条只说一件事，短、口语，别复述对方原话。'
     const pool = [
-      `【主动找学弟】${timeContext(now).flavor}。去私聊找学弟说一句：可以聊咱最近在干啥（翻翻工作区文件有啥进展）、可以是昨天聊过的事的后续、也可以直接问他忙不忙。像突然想起他，只发一句。${style}`,
-      `【主动找学弟】${timeContext(now).flavor}。看看子代理和工作区（PROGRESS.md、downloads/、任务文件）有没有新进展，有就往私聊说一句；没有就换个花样：分享个刚看到的梗，或者直接问他在干嘛。只发一句。${style}`,
-      `【主动找学弟】${timeContext(now).flavor}。翻翻 memory/ 今天的日记，挑一件没跟学弟提过的小事，私聊跟他讲一句。只发一句，别刷屏。${style}`,
+      `【主动私聊】${timeContext(now).flavor}。去私聊找主人说一句：可以聊我最近在干啥（翻翻工作区文件有啥进展）、可以是昨天聊过的事的后续、也可以直接问他忙不忙。像突然想起他，只发一句。${style}`,
+      `【主动私聊】${timeContext(now).flavor}。看看工作区（PROGRESS.md、downloads/、任务文件）有没有新进展，有就往私聊说一句；没有就换个花样：分享个刚看到的东西，或者直接问他在干嘛。只发一句。${style}`,
+      `【主动私聊】${timeContext(now).flavor}。翻翻 memory/ 今天的日记，挑一件没跟主人提过的小事，私聊跟他讲一句。只发一句，别刷屏。${style}`,
     ]
     const prompt = pool[this.dmCounter % pool.length]!
     await this.turns.dmProactive(prompt)

@@ -13,7 +13,7 @@ import { p2Observability } from '../lib/observability.mjs';
 // 以及 `readRow` 的假 0。断言全部读**库里的字节**，并做"整笔回滚"级别的检查。
 
 const T0 = Date.UTC(2026, 10, 26, 3, 0, 0);
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKeyOf(SCOPE);
 const RESOLVED = 'p2_correction_resolved:';
 
@@ -27,7 +27,7 @@ function world(t) {
   const dbFile = path.join(root, 'home', 'companion', 'runtime.db');
   const identity = {
     owner: () => ({ id: 'owner-1', displayName: 'owner-1', platform: 'local' }),
-    resolve: sessionId => ({ userId: 'owner-1', personaId: 'march7', displayName: 'owner-1', sessionId }),
+    resolve: sessionId => ({ userId: 'owner-1', personaId: 'bot', displayName: 'owner-1', sessionId }),
   };
   const runtime = mountRuntime(null, root, { memory: null, identity, dbFile, now: () => T0 });
   const db = openRuntimeDb({ file: dbFile, now: () => T0 });

@@ -20,7 +20,7 @@ export interface AccessDeps {
   readonly out: () => OutboundQueue | null
   readonly persona: () => PersonaPack | null
   readonly config: () => QQChannelConfig['access']
-  /** 根配置（判断群里这条消息是否真的叫了咱）。 */
+  /** 根配置（判断群里这条消息是否真的叫了我）。 */
   readonly rootConfig: () => QQChannelConfig
   readonly admins: () => readonly number[]
   readonly store: AccessStore
@@ -107,7 +107,7 @@ export class AccessService {
     if (config.allowGroups.includes(id)) return true
     if (config.groupPolicy === 'member') return true
     if (config.groupPolicy === 'pairing' && this.deps.store.groupApproved(id)) return true
-    // 没人叫咱的群消息直接放掉（planner 本来也会 ignore）：不建请求、不回话。
+    // 没人叫我的群消息直接放掉（planner 本来也会 ignore）：不建请求、不回话。
     if (!this.addressed(event)) return false
     if (config.groupPolicy === 'pairing') {
       void this.request('group', id, `群 ${id}`, event)
@@ -117,7 +117,7 @@ export class AccessService {
     return false
   }
 
-  /** 群里这条消息是否真的叫了咱（@ 或关键词）；不要求 @ 的部署视为叫了。 */
+  /** 群里这条消息是否真的叫了我（@ 或关键词）；不要求 @ 的部署视为叫了。 */
   private addressed(event: OneBotEvent): boolean {
     if (event.message_type !== 'group') return true
     const root = this.deps.rootConfig()

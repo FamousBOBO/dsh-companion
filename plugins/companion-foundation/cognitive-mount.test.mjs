@@ -21,12 +21,12 @@ function buildRoot(t, { runtime = null } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'companion-cognitive-'));
   for (const dir of ['workspace', 'logs', 'home/memory', 'home/companion', 'home/channel-qq']) fs.mkdirSync(path.join(root, dir), { recursive: true });
   fs.writeFileSync(path.join(root, 'home/companion/identity.json'), JSON.stringify({
-    schemaVersion: 1, persona: 'march7',
-    owner: { id: '1429709395', displayName: '测试', platform: 'qq' },
-    desktop: { mode: 'local-owner', userId: '1429709395' },
+    schemaVersion: 1, persona: 'bot',
+    owner: { id: '10001', displayName: '测试', platform: 'qq' },
+    desktop: { mode: 'local-owner', userId: '10001' },
     sessions: {},
   }));
-  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), '# 三月七\n\n测试用角色正文。\n');
+  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), '# bot\n\n测试用角色正文。\n');
   fs.writeFileSync(path.join(root, 'home/companion/memory.config.json'), JSON.stringify({
     schemaVersion: 1, backend: 'sqlite',
     injection: { budgetChars: 2400 },

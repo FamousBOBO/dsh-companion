@@ -17,7 +17,7 @@ import { renderContext, renderRecallResult } from '../lib/render.mjs';
 import { formatMoment, parseLocalMoment } from '../lib/text.mjs';
 
 const USER_ID = 'user_local';
-const PERSONA_ID = 'march7';
+const PERSONA_ID = 'bot';
 
 function harness(t) {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'companion-memory-time-'));
@@ -147,7 +147,7 @@ test('抽取提示词给每条消息标注发生时间，且不把时间塞进 v
   // 直接检查 buildExtractionPrompt 的拼装规则（不调用模型）。
   return import('../lib/extract.mjs').then(({ buildExtractionPrompt }) => {
     const prompt = buildExtractionPrompt({
-      persona: { name: '三月七' },
+      persona: { name: 'bot' },
       viewer: { userId: USER_ID, personaId: PERSONA_ID, worldId: '' },
       messages: [
         { sourceId: 'm1', role: 'user', content: '今天去爬山了', occurredAt: '2026-10-28T02:30:00.000Z' },

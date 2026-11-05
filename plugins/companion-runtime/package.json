@@ -1,11 +1,56 @@
 {
-  "name": "dsh-companion-runtime",
+  "name": "@dsh-companion/runtime",
   "version": "0.1.0",
+  "localVersion": "0.1.0",
   "private": true,
   "type": "module",
-  "main": "index.mjs",
-  "engines": { "node": ">=22.5" },
+  "description": "Cognitive runtime for the DSH companion suite: agenda, heartbeat, goals, beliefs, working memory, planning and activity continuity.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./check-obs.mjs": "./check-obs.mjs",
+    "./lib/activities.mjs": "./lib/activities.mjs",
+    "./lib/activity-adapters.mjs": "./lib/activity-adapters.mjs",
+    "./lib/agenda.mjs": "./lib/agenda.mjs",
+    "./lib/agenda-cas.mjs": "./lib/agenda-cas.mjs",
+    "./lib/agenda-time.mjs": "./lib/agenda-time.mjs",
+    "./lib/beliefs.mjs": "./lib/beliefs.mjs",
+    "./lib/bilibili-provider.mjs": "./lib/bilibili-provider.mjs",
+    "./lib/bilibili-rounds.mjs": "./lib/bilibili-rounds.mjs",
+    "./lib/bridge.mjs": "./lib/bridge.mjs",
+    "./lib/budget.mjs": "./lib/budget.mjs",
+    "./lib/capabilities.mjs": "./lib/capabilities.mjs",
+    "./lib/config.mjs": "./lib/config.mjs",
+    "./lib/db.mjs": "./lib/db.mjs",
+    "./lib/diagnostics.mjs": "./lib/diagnostics.mjs",
+    "./lib/dispatch-observability.mjs": "./lib/dispatch-observability.mjs",
+    "./lib/errors.mjs": "./lib/errors.mjs",
+    "./lib/events.mjs": "./lib/events.mjs",
+    "./lib/goals.mjs": "./lib/goals.mjs",
+    "./lib/heartbeat.mjs": "./lib/heartbeat.mjs",
+    "./lib/observability.mjs": "./lib/observability.mjs",
+    "./lib/p2.mjs": "./lib/p2.mjs",
+    "./lib/planner.mjs": "./lib/planner.mjs",
+    "./lib/scope.mjs": "./lib/scope.mjs",
+    "./lib/shadow.mjs": "./lib/shadow.mjs",
+    "./lib/snapshot.mjs": "./lib/snapshot.mjs",
+    "./lib/state.mjs": "./lib/state.mjs",
+    "./lib/working-memory.mjs": "./lib/working-memory.mjs",
+    "./lib/schema.sql": "./lib/schema.sql",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.mjs",
+    "check-obs.mjs",
+    "lib/",
+    "test/",
+    "CONTRACT.md"
+  ],
   "scripts": {
-    "test": "node --test test/*.test.mjs"
+    "test": "node --test \"test/*.test.mjs\""
   }
 }

@@ -184,7 +184,7 @@ export function isRetrievable(record: MemoryRecord, now: number): boolean {
 /**
  * "钉住"：永不归档的记录（09 §6.3）。
  *
- * 判据刻意保守——归档是"她忘了一件事"，而她不该忘记学弟的偏好、被明确要求记住的
+ * 判据刻意保守——归档是"她忘了一件事"，而她不该忘记主人的偏好、被明确要求记住的
  * 事、人物关系，以及自己反复确认过的性格。宁可多留。
  */
 export function isPinned(record: MemoryRecord): boolean {

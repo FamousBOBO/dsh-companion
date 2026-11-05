@@ -16,7 +16,7 @@ import { scopeKey as scopeKeyOf } from '../lib/scope.mjs';
 
 const T0 = Date.UTC(2026, 10, 12, 3, 0, 0);
 const HOUR = 3_600_000;
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKeyOf(SCOPE);
 
 function world(t) {
@@ -150,13 +150,13 @@ test('A2：ordinal 封顶是拒绝而不是静默复用', async t => {
 test('A5：公开 API 传 allowLegacy 默认被拒；只有诊断配置能开', async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'round3-legacy-'));
   for (const dir of ['home/companion', 'logs', 'workspace']) fs.mkdirSync(path.join(root, dir), { recursive: true });
-  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), '三月七\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), 'bot\n', 'utf8');
   fs.writeFileSync(path.join(root, 'home/companion/runtime.config.json'), JSON.stringify({
     enabled: true, mode: 'active', timeZone: 'Asia/Shanghai',
   }), 'utf8');
   t.after(() => { try { fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* best effort */ } });
 
-  const identity = { resolve: sessionId => ({ userId: 'owner-1', persona: 'march7', sessionId }) };
+  const identity = { resolve: sessionId => ({ userId: 'owner-1', persona: 'bot', sessionId }) };
   const runtime = mountRuntime(null, root, { now: () => T0, identity });
   t.after(() => { try { runtime.dispose?.(); } catch { /* disposed */ } });
 
@@ -168,7 +168,7 @@ test('A5：公开 API 传 allowLegacy 默认被拒；只有诊断配置能开', 
   // Only an operator-side config switches it on, and the use is recorded as an error/diagnostic.
   const allowedRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'round3-legacy-on-'));
   for (const dir of ['home/companion', 'logs', 'workspace']) fs.mkdirSync(path.join(allowedRoot, dir), { recursive: true });
-  fs.writeFileSync(path.join(allowedRoot, 'workspace/PERSONA.md'), '三月七\n', 'utf8');
+  fs.writeFileSync(path.join(allowedRoot, 'workspace/PERSONA.md'), 'bot\n', 'utf8');
   fs.writeFileSync(path.join(allowedRoot, 'home/companion/runtime.config.json'), JSON.stringify({
     enabled: true, mode: 'active', timeZone: 'Asia/Shanghai', diagnostics: { allowLegacy: true },
   }), 'utf8');

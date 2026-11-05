@@ -24,7 +24,7 @@ import { scopeKey } from '../lib/scope.mjs';
 
 const T0 = Date.UTC(2026, 10, 4, 3, 0, 0);
 const HOUR = 3600000;
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKey(SCOPE);
 const HERE = path.dirname(fileURLToPath(import.meta.url));
 const dispatchAll = db => event => dispatchEvent(db, event, {

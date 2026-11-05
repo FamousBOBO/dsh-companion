@@ -14,7 +14,14 @@ const homes = new Map();
 const names = new Set(['companionAgenda', 'companionContactShare', 'companionHealth']);
 function keyOf(root) {
   const home = path.resolve(root, 'home');
-  const canonical = fs.realpathSync.native(home);
+  let canonical = home;
+  try {
+    canonical = fs.realpathSync.native(home);
+  } catch {
+    // The data directory may not exist yet (first mount, or a read-only probe from
+    // a test): falling back to the literal path keeps one canonical spelling per
+    // home instead of throwing and taking the whole plugin down.
+  }
   return process.platform === 'win32' ? canonical.toLowerCase() : canonical;
 }
 export function createServiceBridge(root) {

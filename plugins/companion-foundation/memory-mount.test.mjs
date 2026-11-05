@@ -19,16 +19,16 @@ const { mountCompanion } = await import('./index.mjs');
 const { releaseSharedEngine, shareEngine, sharedEngineFor } = await import('../companion-memory/index.mjs?v=0.4.0');
 
 const IMPORT_ARCHIVE = {
-  manifest: { schemaVersion: 1, persona: '三月七', owner: '1429709395', bot: 'bot', exportedAt: '2026-10-25T00:00:00Z' },
+  manifest: { schemaVersion: 1, persona: 'bot', owner: '10001', bot: 'bot', exportedAt: '2026-10-25T00:00:00Z' },
   memories: [
     { id: 'astrbot:fact1', sourceId: 'fact1', key: 'core_memory', memoryType: 'core_memory', realityLevel: 'explicit_user_statement',
-      value: '他作息偏晚，爱深夜来找我', evidence: '核心记忆块', persona: 'march7', owner: '1429709395', bot: 'bot',
+      value: '他作息偏晚，爱深夜来找我', evidence: '核心记忆块', persona: 'bot', owner: '10001', bot: 'bot',
       importance: 0.9, confidence: 1, occurredAt: '2026-10-24T13:44:02+00:00', updatedAt: '2026-10-24T13:44:02+00:00', tags: ['core_memory'] },
     { id: 'astrbot:pref1', sourceId: 'pref1', key: 'user_preference', memoryType: 'user_preference', realityLevel: 'real_user_fact',
-      value: '凡博喜欢撒娇，希望Bot多给他发消息', evidence: '让我平时多给他发消息', persona: 'march7', owner: '1429709395', bot: 'bot',
+      value: '凡博喜欢撒娇，希望Bot多给他发消息', evidence: '让我平时多给他发消息', persona: 'bot', owner: '10001', bot: 'bot',
       importance: 0.9, confidence: 0.9, occurredAt: '2026-08-21T05:23:48+00:00', updatedAt: '2026-08-21T05:23:48+00:00', tags: ['user_preference'] },
     { id: 'astrbot:pro1', sourceId: 'pro1', key: 'proactive_message', memoryType: 'proactive_message', realityLevel: 'bot_action',
-      value: 'Bot 主动向 凡博 发送：夜深了，还有点闷。', evidence: 'Bot 主动发送', persona: 'march7', owner: '1429709395', bot: 'bot',
+      value: 'Bot 主动向 凡博 发送：夜深了，还有点闷。', evidence: 'Bot 主动发送', persona: 'bot', owner: '10001', bot: 'bot',
       importance: 0.566, confidence: 0.92, occurredAt: '2026-07-13T22:22:31+08:00', updatedAt: '2026-08-19T04:18:11+00:00', tags: ['proactive'] },
   ],
 };
@@ -37,12 +37,12 @@ function buildRoot(t, { backend = 'sqlite', extraction = false } = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'companion-mount-'));
   for (const dir of ['workspace', 'logs', 'home/memory', 'home/companion']) fs.mkdirSync(path.join(root, dir), { recursive: true });
   fs.writeFileSync(path.join(root, 'home/companion/identity.json'), JSON.stringify({
-    schemaVersion: 1, persona: 'march7',
-    owner: { id: '1429709395', displayName: '槑', platform: 'qq' },
-    desktop: { mode: 'local-owner', userId: '1429709395' },
+    schemaVersion: 1, persona: 'bot',
+    owner: { id: '10001', displayName: '槑', platform: 'qq' },
+    desktop: { mode: 'local-owner', userId: '10001' },
     sessions: {},
   }));
-  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), '# 三月七\n\n测试用角色正文。\n');
+  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), '# bot\n\n测试用角色正文。\n');
   fs.writeFileSync(path.join(root, 'home/memory/astrbot-import.json'), JSON.stringify(IMPORT_ARCHIVE));
   fs.writeFileSync(path.join(root, 'home/companion/memory.config.json'), JSON.stringify({
     schemaVersion: 1,

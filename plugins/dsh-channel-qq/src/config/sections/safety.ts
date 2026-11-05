@@ -35,7 +35,13 @@ export const SAFETY_GROUPS: FieldGroup[] = [
     help: '哪些群事件会变成 agent 的话题素材。',
     fields: {
       // 读法：通知处理每事件经 config() 现取（live）。
-      enabled: b('启用', true, { hot: 'live' }),
+      // **默认关**：群事件（被踢/被禁言/改名/撤回…）会**自动组一个回合交给模型**，
+      // 那是一次后台模型调用 + 一次可能的外发。装好插件就自己开口不是默认行为。
+      enabled: b('启用', false, {
+        hot: 'live',
+        help: '默认关。打开后群事件会按下面的合并窗口攒成一行上下文交给模型裁决'
+          + '（要不要借题说一句由模型决定）。这是一次后台模型调用，所以默认不开。',
+      }),
       kinds: list('事件类型', ['poke', 'group_increase', 'group_decrease', 'group_admin', 'group_ban', 'group_recall', 'friend_add'], { hot: 'live', itemsKind: 'string' }),
       windowSec: n('合并窗口（秒）', 120, { min: 0, max: 3600, hot: 'live' }),
     },

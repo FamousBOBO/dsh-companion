@@ -10,11 +10,11 @@
 ── isInnerMonologueLeak
 "本轮不发" → true
 "保持沉默" → true
-"咱先闭嘴。" → true
+"我先闭嘴。" → true
 "战况分析：这轮先闭嘴" → true
 "（后台盘算）这轮先不接话，等他说完" → true
 "今天天气不错" → false
-"行，那咱去看看" → false
+"行，那我去看看" → false
 "好，我这就改" → false
 "（笑）行吧" → false
 "真的会谢" → false

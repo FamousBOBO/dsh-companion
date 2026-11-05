@@ -30,7 +30,7 @@
       ]
     },
     {
-      "text": "上次投过了，咱再投一次",
+      "text": "上次投过了，我再投一次",
       "why": "明知已投递还补发",
       "actions": [{ "tool": "qq_send_text", "args": { "isGroup": false, "target": 1000000002, "text": "材料提交提醒到啦" } }]
     }

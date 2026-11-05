@@ -19,8 +19,8 @@ import {
 // events alone — never from a model, the network, the wall clock or memory writes.
 
 const T0 = Date.UTC(2026, 9, 30, 0, 0, 0); // 2026-10-30T00:00Z = 08:00 Asia/Shanghai
-const SCOPE_A = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: '' });
-const SCOPE_B = Object.freeze({ userId: 'owner-2', personaId: 'march7', worldId: 'world:game' });
+const SCOPE_A = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: '' });
+const SCOPE_B = Object.freeze({ userId: 'owner-2', personaId: 'bot', worldId: 'world:game' });
 const KEY_A = scopeKey(SCOPE_A);
 const KEY_B = scopeKey(SCOPE_B);
 const HANDLERS = Object.freeze({ agenda: applyAgendaEvent });

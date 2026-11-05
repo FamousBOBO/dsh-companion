@@ -17,7 +17,7 @@ import { applyPlanEvent, createPlanner, dedupeKeyFor, PLAN_LIMITS } from '../lib
 const TZ = 'Asia/Shanghai';
 const MIN = 60000;
 const DAY = 86400000;
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = keyOfScope(SCOPE);
 const T0 = Date.UTC(2026, 10, 2, 5, 41, 0); // 2026-11-02 13:41 Asia/Shanghai
 
@@ -97,7 +97,7 @@ function makeBudget({ maxRequests = 8 } = {}) {
 function makeMaterials(overrides = {}) {
   return () => ({
     timeZone: TZ,
-    persona: { version: 1, excerpt: '三月七' },
+    persona: { version: 1, excerpt: 'bot' },
     preferences: [], goals: [], commitments: [], fixedAgenda: [], runningActivities: [], lastReceipts: [],
     interests: [], opportunities: [], capabilities: [], budget: null, ...overrides,
   });
@@ -228,7 +228,7 @@ test('P2-02: an expired cause can queue again as a new open row', async (t) => {
 test('P2-02: dedupe keys are stable and scope-bound', async () => {
   const a = dedupeKeyFor(KEY, 'curiosity', 'article-1');
   const b = dedupeKeyFor(KEY, 'curiosity', 'article-1');
-  const otherScope = dedupeKeyFor('u:other|p:march7|w:world:default', 'curiosity', 'article-1');
+  const otherScope = dedupeKeyFor('u:other|p:bot|w:world:default', 'curiosity', 'article-1');
   const otherKind = dedupeKeyFor(KEY, 'novelty', 'article-1');
   assert.equal(a, b, 'the same (scope, kind, sourceKey) always yields the same key');
   assert.notEqual(a, otherScope, 'another scope never shares a cause');

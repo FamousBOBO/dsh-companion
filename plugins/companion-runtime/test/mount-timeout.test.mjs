@@ -26,7 +26,7 @@ async function timeoutRun(t, configured) {
   let release;
   const hung = { async ingestDomainEvent() { return new Promise((resolve) => { release = resolve; }); } };
   const healthy = { async ingestDomainEvent() { return { status: 'accepted', receiptId: 'rcpt_mount_timeout' }; } };
-  const identity = { resolve() { return { userId: 'mount-timeout', personaId: 'march7', worldId: '' }; } };
+  const identity = { resolve() { return { userId: 'mount-timeout', personaId: 'bot', worldId: '' }; } };
   const ctx = { tools: { register() {} }, systemPrompt: { section() {} }, on() {}, get() { return undefined; } };
   const runtime = mountRuntime(ctx, dir, { memory: hung, identity, now: () => T0 });
   assert.equal(runtime.mode, 'active');

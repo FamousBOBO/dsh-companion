@@ -1,7 +1,7 @@
 ── qq-dm-1000000002 [followup] images=0
 （当前时段：下午）
 【这是私聊】对方 QQ 1000000002。要发言必须用 qq_send_text / qq_reply_quote，且 isGroup=false、target=1000000002；不要发到任何群里。
-【主动找学弟】测试用提示词。
+【主动找主人】测试用提示词。
 
 ── qq-group-1000000003 [followup] images=0
 （当前时段：下午）

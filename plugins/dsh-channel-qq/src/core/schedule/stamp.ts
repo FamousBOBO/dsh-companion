@@ -56,7 +56,7 @@ export interface TimeContext {
 /** 按本地小时给出当前时段。 */
 export function timeContext(now: Date): TimeContext {
   const h = now.getHours()
-  if (h >= 0 && h < 5) return { period: '深夜', flavor: '夜深了，群里没人说话很正常，说话声也要轻，别吵醒学弟' }
+  if (h >= 0 && h < 5) return { period: '深夜', flavor: '夜深了，群里没人说话很正常，说话声也要轻，别吵醒主人' }
   if (h < 8) return { period: '清晨', flavor: '刚醒，可以赖床语气，也可以炫耀自己起得早（其实没起）' }
   if (h < 11) return { period: '上午', flavor: '上午精神好，技术活儿这时候最活跃' }
   if (h < 13) return { period: '中午', flavor: '饭点，聊聊吃了什么，别聊太重的话题' }

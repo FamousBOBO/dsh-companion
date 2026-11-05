@@ -1,5 +1,8 @@
 # ---- 运行时数据（永不入库）----
+# data/ 是套件的运行期数据根；home/ 与 workspace/ 出现在仓库根时只可能是
+# 某个插件以仓库根为 cwd 跑出来的残留，同样不入库。
 data/
+home/
 workspace/
 group-workspace/
 desktop-data/

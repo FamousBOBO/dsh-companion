@@ -1,7 +1,7 @@
 /** 群内刷屏风控 (P1-5)：治理"群友刷屏"，而不是机器人自己的限流。
  *
  * 为什么要有这一层：
- * - `config.rateLimitMs` 只保证咱自己发得不快，管不了别人在群里连刷；
+ * - `config.rateLimitMs` 只保证我自己发得不快，管不了别人在群里连刷；
  * - 刷屏最典型的形态是"复读"（同一句被反复粘贴）。如果每条都按 1 计数，
  *   一个人复制粘贴 6 遍就能把 12 条的阈值糊弄过去，所以重复文本按 2 条加权；
  * - 判定与执行分离：本模块只做判定（滑动窗口 + 冷却），动作交给主控/工具。
@@ -97,7 +97,7 @@ export class FloodGuard {
     if (this.config.primaryGroup !== null && input.groupId !== this.config.primaryGroup) return null
 
     const { groupId, userId } = input
-    // 豁免三连：咱自己、学弟团、显式豁免名单。机器人不能把自己禁言了。
+    // 豁免三连：我自己、主人团、显式豁免名单。机器人不能把自己禁言了。
     if (input.selfId !== null && userId === input.selfId) return null
     if (this.config.admins.includes(userId)) return null
     if (flood.exempt.includes(userId)) return null
@@ -189,7 +189,7 @@ interface FloodEnforceDeps {
 }
 
 /**
- * 执行一次刷屏决策：群里提醒 + 可选禁言 + 私聊学弟简报。
+ * 执行一次刷屏决策：群里提醒 + 可选禁言 + 私聊主人简报。
  *
  * 提醒走 `out.push`（限流队列）而不是直接 call，免得和正常回复抢带宽；
  * 禁言失败只记日志不抛（机器人常常不是管理员，抛异常会把调用方整条流程带崩）。
@@ -244,14 +244,14 @@ async function muteInGroup(decision: FloodDecision, deps: FloodEnforceDeps): Pro
   }
 }
 
-/** 第三段：私聊学弟简报（学弟没配就跳过）。 */
+/** 第三段：私聊主人简报（主人没配就跳过）。 */
 async function briefMaster(
   decision: FloodDecision,
   deps: FloodEnforceDeps,
   outcome: { warned: boolean; muted: boolean },
 ): Promise<void> {
   const { api, out, config, log, groupId } = deps
-  // 私聊学弟简报：谁被处理、为什么、做了什么。学弟没配就跳过。
+  // 私聊主人简报：谁被处理、为什么、做了什么。主人没配就跳过。
   // typeof 收窄而不是 `!== undefined`：admins[0] 在类型上是 number，直接比
   // undefined/null 会被 strict 模式判成"无重叠比较"，而且脏配置里真可能是 null。
   const master: unknown = config.admins[0]
@@ -270,6 +270,6 @@ async function briefMaster(
       master, [{ type: 'text', data: { text: brief } }] as OneBotMessageSegment[],
     ))
   } catch (error) {
-    log(`flood: 学弟简报发送失败：${error instanceof Error ? error.message : String(error)}`)
+    log(`flood: 主人简报发送失败：${error instanceof Error ? error.message : String(error)}`)
   }
 }

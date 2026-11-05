@@ -12,7 +12,7 @@ import { createMemoryEngine } from '../../companion-memory/index.mjs';
 // 这里直接对记忆侧断言（真引擎、真 SQLite），因为要证明的是"重复投递的答案里带着 supersede 结果"。
 
 const T0 = Date.UTC(2026, 10, 22, 3, 0, 0);
-const PERSONA = 'march7';
+const PERSONA = 'bot';
 const USER = 'replay_user';
 const SCOPE = { userId: USER, personaId: PERSONA, worldId: '' };
 

@@ -101,7 +101,7 @@ export interface RetrieverDeps {
   readonly log: (line: string) => void
   /** 时间渲染（注入，便于测试固定格式）。 */
   readonly renderTime: (at: number) => string
-  /** 主体标签（学弟/群名），没有就用 QQ 号。 */
+  /** 主体标签（主人/群名），没有就用 QQ 号。 */
   readonly labelOfSubject?: (record: MemoryRecord) => string
   /** 现在几点（注入）。 */
   readonly clock: { now(): number }

@@ -1,11 +1,11 @@
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { groupIdOf, groupIsReady, groupToolDenial } from './core.mjs?v=group-media-20261102-restrict3';
+import { resolveDataRoot } from '../companion-foundation/suite-paths.mjs';
 
 export const name = 'companion-group-boundary';
 export const inject = ['tools'];
 
-const COMPANION_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+const COMPANION_ROOT = resolveDataRoot({ moduleUrl: import.meta.url }).dataRoot;
 const MEDIA_ROOT = path.join(COMPANION_ROOT, 'home', 'media');
 
 export function apply(ctx) {

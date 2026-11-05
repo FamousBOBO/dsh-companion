@@ -1,29 +1,42 @@
 {
-  "name": "@local/dsh-companion-memory-studio",
-  "version": "1.1.0",
+  "name": "@dsh-companion/memory-studio",
+  "version": "0.1.0",
+  "localVersion": "1.1.0",
   "private": true,
   "type": "module",
-  "description": "三月七的陪伴空间：宿主侧栏面板（陪伴首页、生活与日程、记忆与档案、连接与工具、工作区、设置与诊断），Host 半挂载带鉴权的记忆 API。",
+  "description": "陪伴空间（Companion Studio）：宿主侧栏面板（陪伴首页、生活与日程、记忆与档案、连接与工具、工作区、设置与诊断），Host 半挂载带鉴权的记忆 API。",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "main": "./index.js",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
+    "./server.mjs": "./server.mjs",
     "./locale/*.json": "./locale/*.json",
-    "./icon": "./icon.svg"
+    "./icon": "./icon.svg",
+    "./package.json": "./package.json"
   },
   "files": [
     "index.js",
     "server.mjs",
-    "lib",
+    "lib/",
+    "src/",
     "client.js",
     "scripts/build-client.mjs",
+    "scripts/smoke-client.mjs",
     "cordis.patch.yml",
-    "locale",
+    "locale/",
     "icon.svg",
+    "CHANGELOG.md",
     "README.md"
   ],
   "scripts": {
+    "build": "node scripts/build-client.mjs",
     "build:client": "node scripts/build-client.mjs",
-    "check:client": "node scripts/build-client.mjs --check"
+    "check:client": "node scripts/build-client.mjs --check",
+    "test": "node --test \"test/*.test.mjs\""
   },
   "dsh": {
     "bundle": {

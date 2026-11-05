@@ -103,7 +103,7 @@ function pushImage(
   parts.push('[图片]')
 }
 
-/** @：分三种——@全体、@咱、@了别人（记下 QQ 号，好让模型指名回应）。 */
+/** @：分三种——@全体、@我、@了别人（记下 QQ 号，好让模型指名回应）。 */
 function applyAt(data: { readonly qq: string }, event: OneBotEvent, parsed: ParsedInbound): void {
   if (data.qq === 'all') { parsed.hasAtAll = true; return }
   if (data.qq === String(event.self_id)) { parsed.isAtBot = true; return }

@@ -35,8 +35,8 @@ import {
   workingMemoryState,
 } from '../lib/working-memory.mjs';
 
-const SCOPE = { userId: 'u-wm', personaId: 'march7', worldId: 'w-wm' };
-const OTHER = { userId: 'u-wm-other', personaId: 'march7', worldId: 'w-wm-other' };
+const SCOPE = { userId: 'u-wm', personaId: 'bot', worldId: 'w-wm' };
+const OTHER = { userId: 'u-wm-other', personaId: 'bot', worldId: 'w-wm-other' };
 const DAY = 86400000;
 const HANDLERS = { goals: applyGoalEvent, 'working-memory': applyWorkingMemoryEvent };
 
@@ -383,7 +383,7 @@ test('A03: ten fixed interruption/switch/return cases recover the right state', 
       spec,
       db,
       clock,
-      scope: { userId: `u-${spec.id}`, personaId: 'march7', worldId: `w-${spec.id}` },
+      scope: { userId: `u-${spec.id}`, personaId: 'bot', worldId: `w-${spec.id}` },
       key: '',
       ids: {},
       results: {},

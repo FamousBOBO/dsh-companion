@@ -10,6 +10,9 @@
     # offline: re-derive the redacted document from a payload you already saved
     python capture_snapshot.py --url file:///path/to/raw-payload.json --out /tmp/x.json
 
+Output defaults to `<data>/snapshots/huawei-health-cn/cn-snapshot-<stamp>.json`
+(`$HUAWEI_SNAPSHOT_DIR` overrides); snapshots are personal data and are never committed.
+
 Rules this script follows (frozen, see ``PROTOCOL-FREEZE.md``):
 
 * **low frequency** — exactly one HTTP request per invocation, no retries, no polling loops.
@@ -41,9 +44,12 @@ from pathlib import Path
 from typing import Any
 
 import redact
+import sidecar_paths
 
 HERE = Path(__file__).resolve().parent
-SNAPSHOT_DIR = HERE / "snapshots"
+# Snapshots are personal data: they never ship, and they live under the suite's data directory
+# (`$HUAWEI_SNAPSHOT_DIR` overrides; default `<data>/snapshots/huawei-health-cn`).
+SNAPSHOT_DIR = sidecar_paths.snapshots_dir()
 DEFAULT_URL = "http://127.0.0.1:8765/api/data?days=7"
 LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
 TIMEOUT_S = 25

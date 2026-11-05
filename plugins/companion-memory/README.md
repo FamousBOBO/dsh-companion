@@ -1,6 +1,6 @@
 # dsh-companion-memory（记忆引擎）
 
-三月七陪伴基座的**长期记忆引擎**：本地 SQLite（`home/memory/companion-memory.db`）+ FTS5 中文检索 + 向量/重排通道 + 自动提炼 + Wiki 编译。它是一个**库模块**，不单独注册成 Cordis 插件行；由 `companion-foundation`（对话侧：注入、`companion_*` 工具）和 `companion-memory-studio`（侧栏「记忆档案」的管理 API）共同 `import`，进程内共享同一个引擎实例。
+bot陪伴基座的**长期记忆引擎**：本地 SQLite（`home/memory/companion-memory.db`）+ FTS5 中文检索 + 向量/重排通道 + 自动提炼 + Wiki 编译。它是一个**库模块**，不单独注册成 Cordis 插件行；由 `companion-foundation`（对话侧：注入、`companion_*` 工具）和 `companion-memory-studio`（侧栏「记忆档案」的管理 API）共同 `import`，进程内共享同一个引擎实例。
 
 - 版本：`0.4.0`；数据库 schema：**v2**；Node ≥ 22.5（用内置 `node:sqlite`，无第三方依赖）
 - 完整手册：[docs/MEMORY.md](docs/MEMORY.md)　设计契约：[CONTRACT.md](CONTRACT.md)

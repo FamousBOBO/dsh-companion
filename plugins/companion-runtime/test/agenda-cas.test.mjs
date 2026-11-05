@@ -17,7 +17,7 @@ import { scopeKey } from '../lib/scope.mjs';
 // 这一组测试只碰数据库与事件日志：不发 QQ、不调模型、不写 home/。
 
 const T0 = Date.UTC(2026, 10, 4, 3, 0, 0);
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKey(SCOPE);
 
 function world(t) {

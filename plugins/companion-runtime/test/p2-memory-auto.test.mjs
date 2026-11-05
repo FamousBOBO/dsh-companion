@@ -19,7 +19,7 @@ import { openRuntimeDb } from '../lib/db.mjs';
 // write did not", and the guarantee that a repeat never doubles a row, an event or a delivery.
 
 const T0 = Date.UTC(2026, 10, 3, 1, 0, 0);
-const BOUND = { userId: 'owner-1', persona: 'march7' };
+const BOUND = { userId: 'owner-1', persona: 'bot' };
 
 function makeRoot(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p2-memory-'));

@@ -49,7 +49,7 @@ function rssAddSpec(config: QQChannelConfig, log: (line: string) => void): ToolS
   )
   return {
     name: 'qq_rss_add',
-    description: '订阅一个 RSS/Atom 源，之后有新内容会自动推到这个群。什么时候用：学弟说"订阅这个博客/看这个站更新/跟踪这个 feed"时。会先真的拉一次验证地址可用，拉不通就不写进配置，所以不用担心写坏配置。',
+    description: '订阅一个 RSS/Atom 源，之后有新内容会自动推到这个群。什么时候用：主人说"订阅这个博客/看这个站更新/跟踪这个 feed"时。会先真的拉一次验证地址可用，拉不通就不写进配置，所以不用担心写坏配置。',
     parameters: params({
       url: { type: 'string', description: 'RSS/Atom 地址（http/https，通常以 /feed、/rss.xml、/atom.xml 结尾）' },
       isGroup: { type: 'boolean', description: '推送到群聊还是私聊，默认群聊' },
@@ -121,7 +121,7 @@ function rssRemoveSpec(config: QQChannelConfig, log: (line: string) => void): To
 function rssPreviewSpec(log: (line: string) => void): ToolSpec {
   return {
     name: 'qq_rss_preview',
-    description: '只预览一个 RSS/Atom 地址的最新 5 条，不写进订阅。什么时候用：学弟丢来一个地址问"这个能订吗/有什么内容"时，先预览确认内容合适再 qq_rss_add。',
+    description: '只预览一个 RSS/Atom 地址的最新 5 条，不写进订阅。什么时候用：主人丢来一个地址问"这个能订吗/有什么内容"时，先预览确认内容合适再 qq_rss_add。',
     parameters: params({ url: { type: 'string', description: 'RSS/Atom 地址' } }, ['url']),
     run: async (args) => {
       const url = String(args.url ?? '').trim()

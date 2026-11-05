@@ -33,15 +33,29 @@ import { createServiceBridge } from './service-bridge.mjs';
 //   （`sent` 永远是 null、缺库/缺表报 code 而不是 0）。
 
 const here = path.dirname(fileURLToPath(import.meta.url));
-const CONTACT_BUILD = path.resolve(here, '../dsh-channel-qq/build/lib-adaptive-followup-20261103/features/contact');
-const builtUrl = name => pathToFileURL(path.join(CONTACT_BUILD, name)).href;
-const { evaluateGate } = await import(builtUrl('gate.js'));
-const { createSharePort, readShareEnabled, shareTargetOf } = await import(builtUrl('share-port.js'));
+// The QQ channel is a **sibling package with its own build step**. The release
+// repository stores sources only (D6), so this test resolves the built contact
+// module from a stable location and skips — never passes — when it is absent.
+// `DSH_QQ_CONTACT_BUILD` points at a different output directory when needed.
+const CONTACT_BUILD_CANDIDATES = [
+  process.env.DSH_QQ_CONTACT_BUILD,
+  path.resolve(here, '../dsh-channel-qq/build/lib/features/contact'),
+  path.resolve(here, '../dsh-channel-qq/build/lib-adaptive-followup-20261103/features/contact'),
+].filter(Boolean);
+const CONTACT_BUILD = CONTACT_BUILD_CANDIDATES.find(dir => fs.existsSync(path.join(dir, 'gate.js')) && fs.existsSync(path.join(dir, 'share-port.js'))) ?? '';
+const SKIP = CONTACT_BUILD
+  ? false
+  : 'the QQ channel build output (features/contact/gate.js) is missing; run `npm run build` in the suite root before `npm run verify`';
+const builtUrl = name => pathToFileURL(path.join(CONTACT_BUILD || here, name)).href;
+const { evaluateGate } = CONTACT_BUILD ? await import(builtUrl('gate.js')) : { evaluateGate: null };
+const { createSharePort, readShareEnabled, shareTargetOf } = CONTACT_BUILD
+  ? await import(builtUrl('share-port.js'))
+  : { createSharePort: null, readShareEnabled: null, shareTargetOf: null };
 
 // 固定的 UTC 时刻 = 2026-11-09 11:00 Asia/Shanghai（不在默认免打扰窗口里）。
 const T0 = Date.UTC(2026, 10, 9, 3, 0, 0);
 const OWNER = 10000001; // 假主人号：本文件里没有任何真实 QQ 号
-const SCOPE = Object.freeze({ userId: 'owner-test', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-test', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKeyOf(SCOPE);
 const SIX_HOURS = 6 * 3_600_000;
 
@@ -159,7 +173,7 @@ function contactPortOf(worldRef, { log = [], gateVerdicts = [], proposed = [], g
   const room = `dm-${OWNER}`;
   const port = createSharePort({
     enabled: () => readShareEnabled(worldRef.configPath),
-    target: () => shareTargetOf({ owner: OWNER, personaId: 'march7' }),
+    target: () => shareTargetOf({ owner: OWNER, personaId: 'bot' }),
     propose: async input => { proposed.push(input); return { outcome: proposeOutcome, note: proposeOutcome === 'rejected' ? '闸门不放行' : '', candidateId: 'c-test' }; },
     attempt: async () => {
       const input = proposed[proposed.length - 1];
@@ -225,7 +239,7 @@ function wireThroughFoundation(t, worldRef, contactOptions = {}) {
 
 // ── ① 回归：`share.enabled=false` ⇒ 零候选、零外发 ────────────────────────────────
 
-test('share.enabled=false → 零候选（runtime / contact 端口 / 生产者三处都关死）', async t => {
+test('share.enabled=false → 零候选（runtime / contact 端口 / 生产者三处都关死）', { skip: SKIP }, async t => {
   const w = world(t, { shareEnabled: false });
   const log = [];
   const gateVerdicts = [];
@@ -247,7 +261,7 @@ test('share.enabled=false → 零候选（runtime / contact 端口 / 生产者�
   assert.equal(log.length, 0, '连日志都没有：说明它真的在开关那一行就回头了');
 });
 
-test('share.enabled=false → 生产者（活动→候选）直接拒绝，不碰 runtime', async t => {
+test('share.enabled=false → 生产者（活动→候选）直接拒绝，不碰 runtime', { skip: SKIP }, async t => {
   let created = 0;
   const cognitive = {
     listActivities: () => ({ ok: true, activities: [{ activityId: 'a1', status: 'done', reality: 'actual_tool_activity', consumed: 100 }] }),
@@ -261,7 +275,7 @@ test('share.enabled=false → 生产者（活动→候选）直接拒绝，不�
 
 // ── ② 一条已确认活动 → 候选 → 真闸门评估 → 账本状态正确（不真发）─────────────────
 
-test('已完成的真活动 → 候选 → 真 contact 闸门判 send → 账本 queued（不是 sent，也没有任何发送）', async t => {
+test('已完成的真活动 → 候选 → 真 contact 闸门判 send → 账本 queued（不是 sent，也没有任何发送）', { skip: SKIP }, async t => {
   const w = world(t, { shareEnabled: true });
   const log = [];
   const gateVerdicts = [];
@@ -320,7 +334,7 @@ test('已完成的真活动 → 候选 → 真 contact 闸门判 send → 账本
   assert.equal(gateVerdicts.length, 1);
 });
 
-test('闸门判 defer（免打扰）时 runtime 仍然记 queued —— "进了账本"不等于"闸门放行"', async t => {
+test('闸门判 defer（免打扰）时 runtime 仍然记 queued —— "进了账本"不等于"闸门放行"', { skip: SKIP }, async t => {
   const w = world(t, { shareEnabled: true });
   const gateVerdicts = [];
   const proposed = [];
@@ -348,7 +362,7 @@ test('闸门判 defer（免打扰）时 runtime 仍然记 queued —— "进了�
 
 // ── ③ 候选过期 → 诊断可见（过期条数 / 最后过期时间 / 原因分布）────────────────────
 
-test('重试耗尽 → 候选 expired → 诊断里能查到条数、最后过期时间与原因分布', async t => {
+test('重试耗尽 → 候选 expired → 诊断里能查到条数、最后过期时间与原因分布', { skip: SKIP }, async t => {
   const w = world(t, { shareEnabled: true });
   const gateVerdicts = [];
   const proposed = [];
@@ -395,7 +409,7 @@ test('重试耗尽 → 候选 expired → 诊断里能查到条数、最后过�
   assert.equal(chain.sent.value, null);
 });
 
-test('已修复：闸门的 `cooldown:room` / `quota:global` 现在被判为可重试，不再当终态丢掉', async t => {
+test('已修复：闸门的 `cooldown:room` / `quota:global` 现在被判为可重试，不再当终态丢掉', { skip: SKIP }, async t => {
   // 2026-11-03 Lead 应用了 runtime P4（`SHARE_GATE_RETRYABLE` 补上 contact 真实透传的原因串）。
   // 本用例原先断言的是**修前缺陷**（`terminalGated: 1` + 无重试簿 ⇒ 永远不发）；修复后必须反转：
   // 冷却/额度是 `defer`，候选留在账本里等，重试簿有记录，下一拍仍会被选中。
@@ -434,7 +448,7 @@ test('已修复：闸门的 `cooldown:room` / `quota:global` 现在被判为可�
 
 // ── ④ 诊断自己不说谎：缺库/缺表报 code，`queued` 的语义写清楚 ────────────────────
 
-test('诊断：库不存在 / 表不存在都不冒充"零候选"', async t => {
+test('诊断：库不存在 / 表不存在都不冒充"零候选"', { skip: SKIP }, async t => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'share-diag-'));
   t.after(() => { try { fs.rmSync(root, { recursive: true, force: true, maxRetries: 5 }); } catch { /* best effort */ } });
 
@@ -457,7 +471,7 @@ test('诊断：库不存在 / 表不存在都不冒充"零候选"', async t => {
   assert.equal(noTable.sent.honest, 'not-wired');
 });
 
-test('诊断：pending 卡住要说出来（"在等"与"卡住"不是一个事实）', async t => {
+test('诊断：pending 卡住要说出来（"在等"与"卡住"不是一个事实）', { skip: SKIP }, async t => {
   const w = world(t, { shareEnabled: true });
   const p2 = controller(w, { sharePort: null }); // 没有 contact 端口：谁都拿不走候选
   const made = p2.createShareCandidate({ scopeKey: KEY, activityId: 'a-stuck', title: '没人取的候选', body: '正文' });
@@ -472,7 +486,7 @@ test('诊断：pending 卡住要说出来（"在等"与"卡住"不是一个事�
   assert.ok(later.pending.oldestAgeMs > SIX_HOURS);
 });
 
-test('生产者：模拟世界的活动、没证据的活动、没完成的活动都不产候选', () => {
+test('生产者：模拟世界的活动、没证据的活动、没完成的活动都不产候选', { skip: SKIP }, () => {
   assert.deepEqual(assessShareableActivity({ activityId: 's', reality: 'simulated_world', status: 'done', consumed: 10 }).code, 'simulated-not-shared');
   assert.equal(assessShareableActivity({ activityId: 'n', reality: 'actual_tool_activity', status: 'running', consumed: 10 }).code, 'activity-not-done');
   assert.equal(assessShareableActivity({ activityId: 'e', reality: 'actual_tool_activity', status: 'done', consumed: 0 }).code, 'no-evidence');

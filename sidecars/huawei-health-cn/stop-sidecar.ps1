@@ -4,14 +4,16 @@
     Stop the sidecar that start-sidecar.ps1 started — and nothing else.
 
 .DESCRIPTION
-    The PID file (``logs/sidecar.pid``) is the only source of truth.  Because ``tmp/hwvenv``'s
-    ``python.exe`` re-execs itself, one sidecar is two processes (a launcher plus the real
-    interpreter that listens); the recorded ``listenerPid`` is verified against the process that
-    currently owns the recorded port, and its command line must still name
-    ``huawei_dashboard.py``.  Only then is the tree killed.
+    The PID file (``<data>/logs/huawei-health-cn/sidecar.pid``, ``-LogDir`` / ``$env:HUAWEI_LOG_DIR``
+    override) is the only source of truth.  Some Python builds re-exec themselves, so one sidecar can
+    be two processes (a launcher plus the real interpreter that listens); the recorded ``listenerPid``
+    is verified against the process that currently owns the recorded port, and its command line must
+    still name ``huawei_dashboard.py``.  Only then is the tree killed.
 
-    Refusals are deliberate: a recycled PID, a foreign listener on the port, or a command line
-    that does not match all mean "leave it alone and tell the operator".
+    Refusals are deliberate: a recycled PID, a foreign listener on the port, or a command line that
+    does not match all mean "leave it alone and tell the operator".
+
+    On Linux / macOS use ``stop-sidecar.sh``; this file is the Windows path.
 
 .EXAMPLE
     pwsh -File sidecars\huawei-health-cn\stop-sidecar.ps1
@@ -21,6 +23,7 @@
 param(
     [switch]$DryRun,
     [int]$DefaultPort = 8765,
+    [string]$LogDir = "",
     [int]$WaitSeconds = 15
 )
 
@@ -28,8 +31,13 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $SidecarRoot = $PSScriptRoot
-$LogDir = Join-Path $SidecarRoot 'logs'
-$PidFile = Join-Path $LogDir 'sidecar.pid'
+$SuiteRoot = Split-Path -Parent (Split-Path -Parent $SidecarRoot)
+if (-not $LogDir) {
+    if ($env:HUAWEI_LOG_DIR) { $LogDir = $env:HUAWEI_LOG_DIR }
+    elseif ($env:DSH_COMPANION_DATA_DIR) { $LogDir = Join-Path $env:DSH_COMPANION_DATA_DIR 'logs\huawei-health-cn' }
+    else { $LogDir = Join-Path $SuiteRoot 'data\logs\huawei-health-cn' }
+}
+$PidFile = if ($DefaultPort -eq 8765) { Join-Path $LogDir 'sidecar.pid' } else { Join-Path $LogDir "sidecar-$DefaultPort.pid" }
 
 function Write-Step([string]$Message) { Write-Host "  $Message" }
 function Get-ListenerPid([int]$LocalPort) {
@@ -60,26 +68,30 @@ if (-not (Test-Path -LiteralPath $PidFile)) {
 }
 
 $record = Get-Content -LiteralPath $PidFile -Raw | ConvertFrom-Json
-$port = [int]$record.port
+$recordedPort = [int]$record.port
 $recordedListener = [int]$record.listenerPid
 $recordedWrapper = [int]$record.wrapperPid
-Write-Step "pid file    : $PidFile (port $port, wrapper $recordedWrapper → listener $recordedListener, started $($record.startedAt))"
+if ($recordedPort -ne $DefaultPort) {
+    throw ("PID file $PidFile records port $recordedPort but you asked to stop $DefaultPort — refusing. " +
+           "Port and PID file must correspond (8765 -> sidecar.pid, others -> sidecar-<port>.pid).")
+}
+Write-Step "pid file    : $PidFile (port $recordedPort, wrapper $recordedWrapper → listener $recordedListener, started $($record.startedAt))"
 
-$currentListener = Get-ListenerPid $port
+$currentListener = Get-ListenerPid $recordedPort
 $targets = @()
 
 if ($currentListener -gt 0) {
     $line = Get-CommandLine $currentListener
     if ($line -and $line -match 'huawei_dashboard\.py' -and
         $line -match [regex]::Escape($(Split-Path -Parent $record.script))) {
-        Write-Step "verified    : listener pid $currentListener on port $port is our dashboard"
+        Write-Step "verified    : listener pid $currentListener on port $recordedPort is our dashboard"
         $targets += $currentListener
     } else {
-        throw ("port $port is now held by PID $currentListener whose command line is not ours:`n  $line`n" +
+        throw ("port $recordedPort is now held by PID $currentListener whose command line is not ours:`n  $line`n" +
                "Refusing to kill it. Delete $PidFile by hand once you know what it is.")
     }
 } else {
-    Write-Step "nothing listens on port $port any more"
+    Write-Step "nothing listens on port $recordedPort any more"
 }
 
 if (Get-Process -Id $recordedWrapper -ErrorAction SilentlyContinue) {
@@ -110,15 +122,15 @@ foreach ($target in $targets) {
 
 $deadline = (Get-Date).AddSeconds($WaitSeconds)
 while ((Get-Date) -lt $deadline) {
-    if ((Get-ListenerPid $port) -eq 0) { break }
+    if ((Get-ListenerPid $recordedPort) -eq 0) { break }
     Start-Sleep -Milliseconds 250
 }
 
-$stillUp = Get-ListenerPid $port
+$stillUp = Get-ListenerPid $recordedPort
 if ($stillUp -gt 0) {
-    throw "port $port is still held by PID $stillUp after the kill — inspect it before retrying"
+    throw "port $recordedPort is still held by PID $stillUp after the kill — inspect it before retrying"
 }
 
 Remove-Item -LiteralPath $PidFile -Force
-Write-Step "stopped     : pid(s) $($targets -join ', '), port $port is free, PID file removed"
+Write-Step "stopped     : pid(s) $($targets -join ', '), port $recordedPort is free, PID file removed"
 Write-Host "sidecar is down." -ForegroundColor Green

@@ -93,7 +93,7 @@ export class DmBuffer {
       this.started.delete(conversation.key)
       this.composing.add(conversation.key)
       try {
-        // 私聊每条都算叫到咱；图片在回合进行中不重投（历史里每张都会在每个请求重放）。
+        // 私聊每条都算叫到我；图片在回合进行中不重投（历史里每张都会在每个请求重放）。
         const packet = await this.deps.packets.composeInject(conversation, { called: true, body: lines.join('\n') })
         if (!this.deps.turns.injectGuidance(conversation, packet)) {
           conversation.queue.unshift(...lines)

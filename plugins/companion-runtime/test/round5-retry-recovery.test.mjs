@@ -18,13 +18,13 @@ import { scopeKey as scopeKeyOf } from '../lib/scope.mjs';
 const T0 = Date.UTC(2026, 10, 24, 3, 0, 0);
 const SESSION = 'e2e-owner';
 const RESOLVED = 'p2_correction_resolved:';
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKeyOf(SCOPE);
 
 function tempRoot(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'retry-e2e-'));
   for (const dir of ['home/companion', 'home/memory', 'logs', 'workspace']) fs.mkdirSync(path.join(root, dir), { recursive: true });
-  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), '三月七', 'utf8');
+  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), 'bot', 'utf8');
   fs.writeFileSync(path.join(root, 'home/companion/runtime.config.json'), JSON.stringify({
     enabled: true, mode: 'active', timeZone: 'Asia/Shanghai',
     p2: { activities: { enabled: true }, planning: { enabled: false }, share: { enabled: false } },
@@ -46,7 +46,7 @@ async function mounted(t) {
     root,
     identity: {
       owner: () => ({ id: 'owner-1', displayName: '主人', platform: 'local' }),
-      resolve: sessionId => ({ userId: 'owner-1', personaId: 'march7', displayName: '主人', sessionId }),
+      resolve: sessionId => ({ userId: 'owner-1', personaId: 'bot', displayName: '主人', sessionId }),
     },
     env: {},
     now: () => T0,
@@ -59,7 +59,7 @@ async function mounted(t) {
     now: () => T0,
     identity: {
       owner: () => ({ id: 'owner-1', displayName: 'owner-1', platform: 'local' }),
-      resolve: sessionId => ({ userId: 'owner-1', personaId: 'march7', displayName: 'owner-1', sessionId }),
+      resolve: sessionId => ({ userId: 'owner-1', personaId: 'bot', displayName: 'owner-1', sessionId }),
     },
     memory: engine,
     dbFile,
@@ -73,7 +73,7 @@ async function mounted(t) {
 }
 
 const fact = overrides => ({
-  subject: { userId: 'owner-1', personaId: 'march7', worldId: '' },
+  subject: { userId: 'owner-1', personaId: 'bot', worldId: '' },
   transformVersion: 't1',
   rootEvidenceIds: [],
   realityStatus: 'actual_tool_activity',
@@ -96,7 +96,7 @@ function plantPending(db, { id, requestId, supersedeIds, payload, receipt }) {
   db.run(`INSERT INTO domain_events (seq, event_id, schema_version, kind, scope, user_id, persona_id, world_id,
                 session_id, occurred_at, recorded_at, correlation_id, causation_id, root_evidence,
                 reality_status, evidence_status, config_version, model_version, payload)
-          VALUES (?, ?, 1, 'memory/ingest-request', ?, 'owner-1', 'march7', 'world:default',
+          VALUES (?, ?, 1, 'memory/ingest-request', ?, 'owner-1', 'bot', 'world:default',
                   '', ?, ?, '', '', '[]', 'actual_tool_activity', 'confirmed', '', '', ?)`,
   900000 + requestId.length, requestId, KEY, T0, T0, JSON.stringify(payload));
   db.run(`INSERT INTO runtime_meta (meta_key, meta_value, updated_at) VALUES (?, ?, ?)

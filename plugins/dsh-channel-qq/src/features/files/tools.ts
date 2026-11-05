@@ -14,12 +14,12 @@ import { MAX_DOWNLOAD_BYTES } from '../download-limit.js'
 import type { ToolSpec } from '../../adapters/dsh-host/tools.js'
 import type { QQToolDeps } from '../tool-deps.js'
 
-/** `qq_send_private_file` — 私聊给好友发本地文件（从咱的工作区里挑）。file 是本地绝对路径；不填 name 就用原文件名。… */
+/** `qq_send_private_file` — 私聊给好友发本地文件（从我的工作区里挑）。file 是本地绝对路径；不填 name 就用原文件名。… */
 function qqSendPrivateFile(deps: QQToolDeps): ToolSpec {
   const { api } = deps
   return {
         name: 'qq_send_private_file',
-        description: '私聊给好友发本地文件（从咱的工作区里挑）。file 是本地绝对路径；不填 name 就用原文件名。',
+        description: '私聊给好友发本地文件（从我的工作区里挑）。file 是本地绝对路径；不填 name 就用原文件名。',
         parameters: {
           type: 'object',
           properties: {
@@ -40,12 +40,12 @@ function qqSendPrivateFile(deps: QQToolDeps): ToolSpec {
       }
 }
 
-/** `qq_save_private_file` — 把私聊收到的文件存到咱的工作区 downloads/ 下（fileId 来自文件消息），返回本地路径。… */
+/** `qq_save_private_file` — 把私聊收到的文件存到我的工作区 downloads/ 下（fileId 来自文件消息），返回本地路径。… */
 function qqSavePrivateFile(deps: QQToolDeps): ToolSpec {
   const { api, config } = deps
   return {
         name: 'qq_save_private_file',
-        description: '把私聊收到的文件存到咱的工作区 downloads/ 下（fileId 来自文件消息），返回本地路径。',
+        description: '把私聊收到的文件存到我的工作区 downloads/ 下（fileId 来自文件消息），返回本地路径。',
         parameters: {
           type: 'object',
           properties: {

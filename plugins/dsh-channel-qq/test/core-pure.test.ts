@@ -64,7 +64,7 @@ test('core/room：从事件推房间，非群非私聊返回 null', () => {
 // ── trigger ─────────────────────────────────────────────────────────────────
 
 const TRIGGER = {
-  keywordTriggers: ['诺诺', '机器人'],
+  keywordTriggers: ['bot', '机器人'],
   keywordReactions: [{ keywords: ['早'], reaction: '打招呼要短' }],
   primaryGroup: GROUP,
   talkValue: 0.6,
@@ -81,7 +81,7 @@ test('core/trigger：私聊永远算叫我；群里要 @ 或关键词', () => {
   const at = groupEvent({ message: [{ type: 'at', data: { qq: String(SELF) } }, { type: 'text', data: { text: '在吗' } }] })
   assert.equal(isCalled(at, parseInbound(at), TRIGGER), true)
 
-  const kw = groupEvent({ message: [{ type: 'text', data: { text: '诺诺在吗' } }] })
+  const kw = groupEvent({ message: [{ type: 'text', data: { text: 'bot在吗' } }] })
   assert.equal(isCalled(kw, parseInbound(kw), TRIGGER), true)
 })
 
@@ -218,7 +218,7 @@ test('core/message/render：完整的一行（身份、编号、引用、@ 列�
   assert.equal(
     line,
     // 10-30 起：跨天/隔很久再聊时把 HH:MM 扩成**完整日期**（src/core/message/render.ts:15）
-      '[引用 小红(777）：刚才那个] 2026-10-16 14:31 明哥(999)[群主][头衔:话痨] #4242 [@咱]：在吗[@了 #12345（含咱）]',
+      '[引用 小红(777）：刚才那个] 2026-10-16 14:31 明哥(999)[群主][头衔:话痨] #4242 [@我]：在吗[@了 #12345（含我）]',
   )
 })
 

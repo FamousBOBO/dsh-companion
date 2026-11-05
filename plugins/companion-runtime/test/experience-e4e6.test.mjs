@@ -21,7 +21,7 @@ const SESSION = 'session-e4e6';
 function buildRoot(t, extra = {}) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'e4e6-'));
   for (const dir of ['home/companion', 'logs', 'workspace']) fs.mkdirSync(path.join(root, dir), { recursive: true });
-  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), '三月七\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), 'bot\n', 'utf8');
   fs.writeFileSync(path.join(root, 'home/companion/runtime.config.json'), JSON.stringify({
     enabled: true, mode: 'active', timeZone: 'Asia/Shanghai',
     agenda: { enabled: true }, p2: { planning: { enabled: true }, activities: { enabled: true } },
@@ -31,7 +31,7 @@ function buildRoot(t, extra = {}) {
   return root;
 }
 
-const identity = () => ({ resolve: sessionId => ({ userId: 'owner-1', persona: 'march7', sessionId }) });
+const identity = () => ({ resolve: sessionId => ({ userId: 'owner-1', persona: 'bot', sessionId }) });
 
 function mount(t, extra = {}) {
   const root = buildRoot(t, extra);

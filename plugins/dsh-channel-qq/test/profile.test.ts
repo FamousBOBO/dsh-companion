@@ -38,11 +38,11 @@ test('侧写：只留这个人、active、未被取代；重要度优先', () =>
 test('侧写：limit 生效，渲染带称呼且不超过 240 字', () => {
   const records = Array.from({ length: 8 }, (_, i) => rec({ content: `第${i}条关于他的事`, importance: 10 - i }))
   assert.equal(buildProfile(records, 7, 3).length, 3)
-  const text = renderProfile('学弟', buildProfile(records, 7, 8))
-  assert.match(text, /^【关于学弟】/)
+  const text = renderProfile('主人', buildProfile(records, 7, 8))
+  assert.match(text, /^【关于主人】/)
   assert.ok(text.length <= 240)
 })
 
 test('侧写：没有记录 → 空串', () => {
-  assert.equal(renderProfile('学弟', buildProfile([], 7)), '')
+  assert.equal(renderProfile('主人', buildProfile([], 7)), '')
 })

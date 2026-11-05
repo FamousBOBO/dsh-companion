@@ -58,7 +58,7 @@ test('quotes：{version,quotes} 形状原样落盘，缺文件时补空库', asy
     const file = path.join(dir, 'quotes.json')
     assert.equal(readFileSync(file, 'utf-8'), legacy({ version: 1, quotes: [] }), '缺文件时补出来的空库字节要一致')
 
-    await store.add({ text: '这是一句足够长的群金句', speaker: '学弟', speakerId: 1, groupId: 2, tags: [], note: '' })
+    await store.add({ text: '这是一句足够长的群金句', speaker: '主人', speakerId: 1, groupId: 2, tags: [], note: '' })
     const raw = JSON.parse(readFileSync(file, 'utf-8')) as { version: number; quotes: unknown[] }
     assert.equal(raw.version, 1)
     assert.equal(raw.quotes.length, 1)

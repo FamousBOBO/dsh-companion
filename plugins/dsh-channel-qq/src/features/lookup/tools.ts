@@ -41,12 +41,12 @@ function qqGetGroupInfo(deps: QQToolDeps): ToolSpec {
       }
 }
 
-/** `qq_get_group_list` — 获取咱加入的所有群列表（群号、群名、成员数）。… */
+/** `qq_get_group_list` — 获取我加入的所有群列表（群号、群名、成员数）。… */
 function qqGetGroupList(deps: QQToolDeps): ToolSpec {
   const { api } = deps
   return {
         name: 'qq_get_group_list',
-        description: '获取咱加入的所有群列表（群号、群名、成员数）。',
+        description: '获取我加入的所有群列表（群号、群名、成员数）。',
         parameters: { type: 'object', properties: {} },
         // The harness requires a tool result to be an object; a bare OneBot list
         // is rejected with `invalid output: "value" must be an object`.
@@ -230,7 +230,7 @@ function parseHistoryLine(
       .map((b: { text?: string }) => b.text ?? '')
       .join('\n')
     if (text === '') return null
-    // 聊天行长这样：`HH:MM 昵称(QQ号) #消息号 [@咱]：正文`（见 core/message/render.ts）。
+    // 聊天行长这样：`HH:MM 昵称(QQ号) #消息号 [@我]：正文`（见 core/message/render.ts）。
     // **必须逐行找**：包的第一行是 `【私聊消息】` 之类的抬头，用 `^` 锚在整段开头
     // 会一条都匹配不上（2026-10-19 实测：qq_search_history 永远返回空）。
     const chatLine = text

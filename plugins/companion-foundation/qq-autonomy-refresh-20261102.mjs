@@ -11,7 +11,7 @@ export function apply(ctx) {
     const mounted = new WeakSet();
     const refresh = agent => {
       const changed = upgradeLiveQqSender(root, agent);
-      if (String(agent?.session?.id ?? agent?.id) === 'qq-dm-1429709395' && !mounted.has(agent)) {
+      if (String(agent?.session?.id ?? agent?.id) === 'qq-dm-10001' && !mounted.has(agent)) {
         const prompt = agent.ctx?.systemPrompt ?? agent.ctx?.get?.('systemPrompt');
         if (!prompt?.section) throw Error('QQ autonomy: scoped system prompt unavailable');
         prompt.section({ name: 'companion:qq-autonomy-20261102', order: 145, interpolate: false,

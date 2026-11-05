@@ -1,7 +1,7 @@
 {
   "connection": {
     "mode": "forward",
-    "url": "ws://127.0.0.1:3001"
+    "url": ""
   },
   "selfId": 1000000001,
   "admins": [],
@@ -39,6 +39,7 @@
   },
   "injectMode": {
     "enabled": false,
+    "duringTurn": false,
     "wakeIdle": true
   },
   "imageRecognition": {
@@ -99,7 +100,7 @@
   },
   "keywordTriggers": [],
   "morningReport": {
-    "enabled": true,
+    "enabled": false,
     "weatherLocation": null,
     "scheduleFile": null
   },
@@ -237,7 +238,7 @@
     "scopes": ""
   },
   "eventMonitor": {
-    "enabled": true,
+    "enabled": false,
     "kinds": [
       "poke",
       "group_increase",
@@ -287,6 +288,7 @@
     "v2": false
   },
   "proactive": {
+    "scheduler": false,
     "v2": false,
     "book": {
       "version": 1,
@@ -645,7 +647,8 @@
     "followUpIntervalMs": 86400000,
     "maxCatchupHours": 24,
     "maxPerTick": 1,
-    "adaptiveFollowUp": true,
+    "adaptiveFollowUp": false,
+    "sleepSummaryRecipient": "",
     "draftModel": false,
     "draftDailyBudget": 20,
     "draftHourlyBudget": 5,

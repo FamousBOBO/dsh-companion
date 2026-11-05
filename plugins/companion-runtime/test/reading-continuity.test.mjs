@@ -5,7 +5,7 @@ import os from 'node:os';
 import path from 'node:path';
 import { mountRuntime } from '../index.mjs';
 
-const bound={userId:'owner',persona:'march7'};
+const bound={userId:'owner',persona:'bot'};
 const target='https://example.com/article';
 const start=Date.UTC(2026,10,1,1);
 function fixture(t) {

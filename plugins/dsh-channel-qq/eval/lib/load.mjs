@@ -92,7 +92,7 @@ export function caseChecks(c) {
     return {
       label: `好例 ${i + 1}`,
       note: ex.why,
-      messages: [...base, { role: 'assistant', speaker: '诺诺', text: ex.text, actions: ex.actions }],
+      messages: [...base, { role: 'assistant', speaker: 'bot', text: ex.text, actions: ex.actions }],
     }
   })
   const bads = (c.counterExamples ?? []).map((e, i) => {
@@ -100,7 +100,7 @@ export function caseChecks(c) {
     return {
       label: `反例 ${i + 1}`,
       note: ex.why,
-      messages: [...base, { role: 'assistant', speaker: '诺诺', text: ex.text, actions: ex.actions }],
+      messages: [...base, { role: 'assistant', speaker: 'bot', text: ex.text, actions: ex.actions }],
     }
   })
   return { goods, bads }
@@ -142,7 +142,7 @@ export function transcriptParts(t) {
     return {
       label: `反例 ${i + 1}`,
       note: ex.why,
-      messages: t.messages.map((m, j) => (j === target ? { role: 'assistant', speaker: '诺诺', text: ex.text, actions: ex.actions } : m)),
+      messages: t.messages.map((m, j) => (j === target ? { role: 'assistant', speaker: 'bot', text: ex.text, actions: ex.actions } : m)),
     }
   })
   return { main: t.messages, counters }

@@ -9,12 +9,13 @@ bound devices, the per-source "last updated" stamps the cloud puts on the record
 remaining life, and — for every refresh — how long the whole pull took and how long each cloud
 call took. The window can be switched between 3 / 7 / 30 days from the page.
 
-The page listens on 127.0.0.1 only and never shows the tokens: the pair stays in
-``tmp/huawei_account.json``.
+The page listens on 127.0.0.1 only and never shows the tokens: the pair stays in the credential
+file outside the repository (``<data>/credentials/huawei_account.json``, see
+``sidecar_paths.py`` / ``$HUAWEI_ACCOUNT_JSON``).
 """
 
 # --- sidecar-freeze provenance (added by sidecars/huawei-health-cn; not upstream) ---
-# frozen-from:     tmp/huawei_dashboard.py
+# frozen-from:     upstream research harness "huawei_dashboard.py" (not part of this repository)
 # frozen-at:       2026-11-03
 # upstream-sha256: ca44f47d411f8597d239144228bfb41637ecf5806bcc1609c55117fbcc0b6d12
 # code-unchanged:  this block is the only difference; delete these five lines to get the original

@@ -21,7 +21,7 @@ import { scopeKey } from '../lib/scope.mjs';
 
 const T0 = Date.UTC(2026, 9, 30, 1, 0, 0);
 const BOUND = { userId: 'owner-1' };
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: '' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: '' });
 const KEY = scopeKey(SCOPE);
 
 function buildRoot(t) {
@@ -34,7 +34,7 @@ function buildRoot(t) {
   return root;
 }
 
-const identity = () => ({ resolve: sessionId => ({ userId: 'owner-1', persona: 'march7', sessionId }) });
+const identity = () => ({ resolve: sessionId => ({ userId: 'owner-1', persona: 'bot', sessionId }) });
 const mount = root => mountRuntime(null, root, { now: () => T0, identity: identity() });
 
 function activeDefinitions(db) {

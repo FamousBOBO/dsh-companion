@@ -29,7 +29,7 @@ import { scopeKey } from '../lib/scope.mjs';
 // refusal; and the whole API is thenable-transparent (sync ports keep it synchronous).
 
 const T0 = Date.UTC(2026, 9, 30, 4, 0, 0);
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKey(SCOPE);
 const SOURCE = Array.from({ length: 6 }, (_, index) => `第${index}段：` + '窗外的雨一直没停。'.repeat(6)).join('\n\n');
 

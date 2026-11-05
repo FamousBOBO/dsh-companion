@@ -1,7 +1,7 @@
 /** 入站消息 → **给模型看的那一行**。
  *
  * 这一行是模型理解群聊的全部输入：谁在说话（昵称 / 群名片 / 群主 / 管理员 /
- * 头衔）、几点说的、消息编号、是不是在叫咱、引用了谁、语音说了什么、收了什么文件、
+ * 头衔）、几点说的、消息编号、是不是在叫我、引用了谁、语音说了什么、收了什么文件、
  * 图片是什么含义。它原来是 `ConversationBridge` 的一个私有方法——一个把配置、网络
  * 结果、时间全揉进去的位置，改一个字都可能影响模型行为却没有测试盯着。
  *
@@ -10,7 +10,7 @@
  * 三个刻意的取法，别改回去：
  *   - 正文取 `plainText` 而不是 `text`。显示渲染里有 `[图片]` / `[表情:5]`，
  *     放进正文槽位模型会以为那是用户打的字。`[图片]` 只留作**无文字配图的兜底**；
- *   - `[@咱]` 只在被叫到时出现，语气提示同理——它们会改变模型的说话方式；
+ *   - `[@我]` 只在被叫到时出现，语气提示同理——它们会改变模型的说话方式；
  *   - 时间带**年月日**（本地）：`2026-10-30 02:44`。本地补丁 COMPANION-QQ-PATCH-4
  *     把上游的 `HH:MM` 扩成完整日期——跨天/隔很久再聊时，只有时分会让模型把
  *     「昨天说的」和「刚才说的」混在一起；年月日是一眼可判的锚点。
@@ -57,14 +57,14 @@ export function renderMessageLine(input: RenderInput): string | null {
   // COMPANION-QQ-PATCH-4：消息行的时间戳带年月日（本地时区）。
   const stamp = `${time.getFullYear()}-${String(time.getMonth() + 1).padStart(2, '0')}-${String(time.getDate()).padStart(2, '0')} ${hhmm}`
   const msgId = typeof event.message_id === 'number' ? ` #${event.message_id}` : ''
-  // 群身份：群主/管理员/头衔让她知道谁在说话（学弟=群主一眼可辨）
+  // 群身份：群主/管理员/头衔让她知道谁在说话（主人=群主一眼可辨）
   const role = event.sender?.role
   const roleTag = role === 'owner' ? '[群主]' : role === 'admin' ? '[管理员]' : ''
   const title = event.sender?.title ? `[头衔:${event.sender.title}]` : ''
-  const parts = [`${input.quoted ?? ''}${stamp} ${senderName}(${event.user_id})${roleTag}${title}${msgId}${called ? ' [@咱]' : ''}：${content ?? '(无文字)'}`]
+  const parts = [`${input.quoted ?? ''}${stamp} ${senderName}(${event.user_id})${roleTag}${title}${msgId}${called ? ' [@我]' : ''}：${content ?? '(无文字)'}`]
   if (parsed.atIds.length > 0) {
     const names = parsed.atIds.map((id) => `#${id}`).join('、')
-    parts.push(`[@了 ${names}${parsed.isAtBot ? '（含咱）' : '（不是咱）'}]`)
+    parts.push(`[@了 ${names}${parsed.isAtBot ? '（含我）' : '（不是我）'}]`)
   }
   if (input.voiceText !== undefined && input.voiceText !== null) parts.push(`[语音条说：${input.voiceText}]`)
   if (input.forwardText !== undefined && input.forwardText !== null) parts.push(`[合并转发的内容：${input.forwardText}]`)

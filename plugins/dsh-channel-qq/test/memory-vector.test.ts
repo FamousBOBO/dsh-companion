@@ -446,7 +446,7 @@ test('缺向量的记录：相关性退回关键词重叠度（索引里的陈�
   const s = scratch()
   try {
     const dim = 4
-    const store = await storeWith(s.dir, [record('m_kw', '学弟喜欢冰美式', { keywords: ['冰美式'] })])
+    const store = await storeWith(s.dir, [record('m_kw', '主人喜欢冰美式', { keywords: ['冰美式'] })])
     const { port } = fakeEmbedder(dim, () => [1, 0, 0, 0])
     // 索引里还有一条 store 里已不存在的记录（被删/被遗忘的旧向量）——应当被安静跳过。
     const { index } = await loadIndexWith(s.dir, dim, [['m_gone', [1, 0, 0, 0]]])
@@ -462,7 +462,7 @@ test('服务不可用 → 自动退回关键词，输出与"关着向量"逐字�
   const b = scratch()
   try {
     const records = [
-      record('m_a', '学弟喜欢冰美式', { keywords: ['冰美式'], subject: { type: 'user', id: 1 } }),
+      record('m_a', '主人喜欢冰美式', { keywords: ['冰美式'], subject: { type: 'user', id: 1 } }),
       record('m_b', '部署走 rsync 增量', { keywords: ['部署'] }),
     ]
     const storeA = await storeWith(a.dir, records)

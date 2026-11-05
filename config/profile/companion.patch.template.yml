@@ -1,0 +1,260 @@
+# =============================================================================
+# DSH Companion — 陪伴 profile 的叠加补丁（模板，随仓库发布）
+# =============================================================================
+#
+# 这个文件是**模板**。`npm run setup` 把它渲染成 `config/profile/companion.patch.yml`，
+# 然后 `npm run start` 用 `--patch` 把它叠在 profile 自己的层之上：
+#
+#   dsh --profile companion --patch <套件根>/config/profile/companion.patch.yml
+#
+# 渲染规则（只有两条）：
+#   1. 形如 `$` + `{NAME}` 的占位符换成实际值（套件根、数据目录、外部服务地址等），见文件末尾清单。
+#   2. `#@@begin:<模块>` 与 `#@@end:<模块>` 之间的内容是**可选块**：`config/suite.json`
+#      里那个模块为 true 时保留（并删掉两行标记），否则整块替换成一行说明注释。
+#
+# 想改自己的陪伴环境，改**生成物** `config/profile/companion.patch.yml`（已 gitignore），
+# 但要知道：`npm run setup` 会重新渲染它（内容有变化时先备份成 .yml.bak-<时间戳>）。
+#
+# 这里没有任何原作者的机器路径、QQ 号、密钥或带日期的构建产物引用：插件位置一律由
+# `${SUITE_ROOT}` 推导，profile 由 setup 在本机创建。
+# =============================================================================
+
+
+# ── 1. 默认智能体预设切到 companion ─────────────────────────────────────────
+# 宿主默认（standard 预设）是一个通用编码智能体；陪伴套件要的是带人格、记忆与
+# 认知运行时的那一个。
+- id: agent-preset-registry
+  config:
+    default: companion
+
+
+# ── 2. companion 预设本体 ───────────────────────────────────────────────────
+# 预设内部的插件会拿到 isolate realm：服务提供者与消费者一起隔离，避免
+# 「Preset services require isolate realms」这类跨会话恢复失败。
+#
+# companion-memory / companion-runtime / companion-group 不在这里单独挂：
+# companion-foundation 按兄弟相对路径 import 它们（核心模块成套安装，不要拆开取用）。
+# 只挂 foundation 一行，是为了让「人格 → 记忆 → 运行时」的工具面对模型可见一次。
+- insert:
+    - id: preset-companion
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: companion
+        name: 陪伴
+        description: 陪伴基座：人格与身份、长期记忆、认知运行时与日程
+        order: 0
+        plugins:
+          - id: companion-foundation
+            isolate:
+              companionAgenda: true
+            name: 'file://${SUITE_ROOT}/plugins/companion-foundation/index.mjs'
+#@@begin:media
+          # 媒体层（识图 / TTS / 生图）：能力默认全关，开关在 <dataDir>/home/media/config.json，
+          # 保存即生效。没有配置任何服务商时它照样挂载，只是所有能力报「未配置」。
+          - id: companion-media
+            name: 'file://${SUITE_ROOT}/plugins/companion-media/index.mjs'
+#@@end:media
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 16384
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+          - id: tool-fs-search
+            name: '@deepseek-ai/dsh-tool-fs-search'
+            config:
+              sampleOverCapGlobResults: false
+          - id: tool-jobs
+            name: '@deepseek-ai/dsh-tool-jobs'
+          - id: tool-schedule
+            name: '@deepseek-ai/dsh-tool-schedule'
+
+# 想让陪伴会话也能改代码/看技能，再自行往上面的 plugins 里加 tool-bash（非 Windows）、
+# skill-filesystem、tool-skill 等条目；默认不给，减少工具面对提示词的占用。
+
+
+# ── 3. 工作区上下文 ─────────────────────────────────────────────────────────
+# 把 <dataDir>/workspace 下的 AGENTS.md / PERSONA.md 注入每个会话。
+# 人格正文本身由 config/persona.md 提供（见 docs/02-configuration.md）。
+- insert:
+    - id: companion-workspace-context
+      name: 'file://${SUITE_ROOT}/plugins/companion-foundation/workspace-context.mjs'
+
+
+# ── 4. 外部智能体预设：群聊（随 QQ 通道启用）────────────────────────────────
+#@@begin:qq
+# 群聊会话走独立预设与独立工作区：不带主人私聊的记忆、不给写权限，
+# 群内额外工具由 companion-group 的边界插件拒绝。
+- insert:
+    - id: companion-group-boundary
+      name: 'file://${SUITE_ROOT}/plugins/companion-group/boundary.mjs'
+    - id: preset-companion-group
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: companion-group
+        name: 群聊
+        description: 群内独立会话：只回被 @ 的消息，无主人私聊记忆，无写入工具
+        order: 10
+        plugins:
+          - id: companion-group-persona
+            name: 'file://${SUITE_ROOT}/plugins/companion-group/index.mjs'
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+#@@end:qq
+
+
+# ── 5. QQ 通道（OneBot v11 / NapCat）───────────────────────────────────────
+#@@begin:qq
+# 目标 id `channel-qq` 由插件自带的 bundle 补丁提供；这里只覆盖部署相关的字段，
+# 并且**整份 config 会被替换**，所以结构字段要写全。
+#
+# 地址来自 config/suite.json 的 services.onebot。url 为空 = 未配置：
+# 插件照常挂载，但不拨号、不重连、不监听端口。
+#
+# 安全默认值（不要为了「先跑起来」改它们）：
+#   * 通道是无人值守的，权限预设用 workspace-write + approval: ask 时一次审批就能
+#     把回合挂住，所以群里只能给只读预设；私聊给 workspace-write。
+#   * 主动外发、自动评论、后台模型任务由 config/suite.json 的 safety 段控制，
+#     默认全关；这里不覆盖，保持关闭。
+- id: channel-qq
+  config:
+    connection:
+      mode: forward
+      url: '${ONEBOT_URL}'
+    accessToken: '${ONEBOT_ACCESS_TOKEN}'
+    selfId: ${ONEBOT_SELF_ID}
+    admins: []
+    primaryGroup: null
+    requireMention: true
+    workspacePath: '${WORKSPACE_DIR}'
+    agentPreset: companion
+    groupEnabled: true
+    groupAgentPreset: companion-group
+    groupPermissionPreset: companion-group-readonly
+    groupWorkspacePath: '${GROUP_WORKSPACE_DIR}'
+    permissionPreset: workspace-write
+    # 插件自带的记忆/知识库/主动行为全部交给 companion-foundation 与
+    # companion-runtime 承担，通道只负责收发。
+    memory:
+      v2: false
+      vectorEnabled: false
+      captureEnabled: false
+      profiles: false
+    kb:
+      enabled: false
+    people:
+      enabled: false
+    proactive:
+      v2: true
+      book:
+        version: 1
+        events: []
+    morningReport:
+      enabled: false
+    dailyReport:
+      enabled: false
+    eventMonitor:
+      enabled: false
+    planner:
+      enabled: false
+    presence:
+      enabled: false
+      groups: []
+    learn:
+      enabled: false
+    flood:
+      enabled: false
+    rss:
+      enabled: false
+    tts:
+      enabled: false
+    meme:
+      enabled: false
+    quotes:
+      enabled: false
+    linkResolve:
+      enabled: false
+    imageGen:
+      enabled: false
+    skills:
+      enabled: false
+    chatlog:
+      enabled: false
+    stt:
+      enabled: false
+    poke:
+      enabled: false
+    metrics:
+      enabled: false
+    # 提醒：通道侧的提醒功能先关；本套件的提醒由 companion-runtime 承担。
+    reminders:
+      enabled: false
+      dryRun: true
+    # 主人 QQ 号 / 群号属于部署数据，模板里不预置：配好通道后自行在这一行补
+    #   admins: [ <你的QQ号> ]
+    # 以及 access（详见 docs/02-configuration.md）
+#@@end:qq
+
+
+# ── 6. 权限预设（群聊需要额外的只读档）────────────────────────────────────
+#@@begin:qq
+# `config` 是整块替换，所以四档要写全（宿主默认只定义前三档）。
+- id: permission
+  config:
+    presets:
+      read-only:
+        sandbox: read-only
+        approval: ask
+      workspace-write:
+        sandbox: workspace-write
+        approval: ask
+      danger-full-access:
+        sandbox: danger-full-access
+        approval: never
+      companion-group-readonly:
+        sandbox: read-only
+        approval: never
+        name: 群聊只读
+        description: 群内纯文本对话；写入与命令类工具由群边界拒绝
+#@@end:qq
+
+
+# ── 7. QQ 会话空闲压缩（可选，默认关）───────────────────────────────────────
+#@@begin:qq
+# 它每 60 秒醒一次，命中条件时调用宿主的压缩服务（走模型 = 计费），属于
+# 「后台模型任务」，所以默认关。打开方式：环境变量 QQ_IDLE_COMPACTION=1。
+- insert:
+    - id: qq-idle-compaction
+      name: 'file://${SUITE_ROOT}/plugins/qq-idle-compaction.mjs'
+#@@end:qq
+
+
+# ── 8. 健康模块（华为运动健康 sidecar）──────────────────────────────────────
+#@@begin:health
+# 模块只做「采集 + 本地存储 + 只读查询」，不发消息、不改日程、不注入上下文。
+# 采集本身默认关；可调项在 <dataDir>/home/health/config.json（首次挂载自动生成），
+# 放这里会变成两份真相。sidecar 地址来自 config/suite.json 的 services.health。
+- insert:
+    - id: companion-health
+      name: 'file://${SUITE_ROOT}/plugins/companion-health/index.mjs'
+#@@end:health
+
+
+# =============================================================================
+# 占位符清单（由 setup 渲染；缺值一律渲染成空字符串或 0，不会留下占位符）
+# 写法是美元符号加大括号，例如 SUITE_ROOT 的占位符就是 $ 后接 {SUITE_ROOT}。
+#   SUITE_ROOT            套件根目录，正斜杠形式，无尾斜杠
+#   DSH_HOME              <dataDir>/home（这个目录会变成 DSH_HOME）
+#   WORKSPACE_DIR         <dataDir>/workspace
+#   GROUP_WORKSPACE_DIR   <dataDir>/group-workspace
+#   DESKTOP_DATA_DIR      <dataDir>/desktop-data
+#   PROFILE               profile 名（默认 companion）
+#   ONEBOT_URL            config/suite.json → services.onebot.url
+#   ONEBOT_ACCESS_TOKEN   config/suite.json → services.onebot.accessToken
+#   ONEBOT_SELF_ID        config/suite.json → services.onebot.selfId（数字，缺省 0）
+#   HEALTH_SIDECAR_URL    config/suite.json → services.health.sidecarUrl
+# =============================================================================

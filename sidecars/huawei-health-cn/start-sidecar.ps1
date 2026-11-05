@@ -4,32 +4,39 @@
     Start the frozen CN Huawei Health sidecar on http://127.0.0.1:8765 (loopback only).
 
 .DESCRIPTION
-    Runs ``sidecars/huawei-health-cn/python/huawei_dashboard.py serve`` with the venv that has
-    already been proven against the real account (``tmp/hwvenv``).
+    Runs ``sidecars/huawei-health-cn/python/huawei_dashboard.py serve`` with a Python 3.11+
+    interpreter of your choice (standard library only — there is nothing to pip install).
+
+    On Linux / macOS use ``start-sidecar.sh`` instead; this file is the Windows path and is the
+    only place that talks to WMI.
 
     What this script promises (frozen, see README §3):
 
       * the listener is **127.0.0.1** and nothing else — there is no parameter that can widen it;
       * the port is checked *before* launching; a foreign listener is refused, never replaced;
-      * the process is launched **detached** through WMI, because ``tmp/hwvenv``'s ``python.exe``
-        re-execs itself (one launcher process + one real interpreter).  Starting it with plain
-        ``Start-Process`` lets those children inherit the caller's stdout pipe, which hangs any
-        piped/automated invocation for ever.  Detaching avoids that and gives a clean log file;
-      * a PID file (``logs/sidecar.pid``) records the wrapper PID, the port and the PID that
-        actually listens — it is the only handle ``stop-sidecar.ps1`` will ever kill;
-      * stdout/stderr go to ``logs/`` and are scanned for token material right after the start;
-        a hit stops the process instead of leaving a credential in a log;
-      * the credential file (``tmp/huawei_account.json``) is only ever opened by the sidecar
-        process itself; this script does not read, echo, copy or back it up.
+      * the process is launched **detached** through WMI, so a piped/automated invocation cannot
+        be held open by the child's inherited stdout, and stdout/stderr go to a log file;
+      * a PID file records the wrapper PID, the port and the PID that actually listens — it is the
+        only handle ``stop-sidecar.ps1`` will ever kill. Both live in the suite data directory
+        (``<data>/logs/huawei-health-cn``, override with ``-LogDir`` or ``$env:HUAWEI_LOG_DIR``),
+        never inside the repository;
+      * stdout/stderr are scanned for token material right after the start; a hit stops the
+        process instead of leaving a credential in a log;
+      * the credential file (``<data>/credentials/huawei_account.json``, ``$env:HUAWEI_ACCOUNT_JSON``)
+        is only ever opened by the sidecar process itself; this script prints its **path** and does
+        not read, echo, copy or back it up.
 
 .EXAMPLE
     pwsh -File sidecars\huawei-health-cn\start-sidecar.ps1
-    pwsh -File sidecars\huawei-health-cn\start-sidecar.ps1 -Port 8765 -OpenDashboard
+    pwsh -File sidecars\huawei-health-cn\start-sidecar.ps1 -Port 8765 -PythonPath C:\Python312\python.exe
 #>
 [CmdletBinding()]
 param(
     [int]$Port = 8765,
+    # Interpreter to use. Default: $env:HUAWEI_PYTHON → <sidecar>\.venv\Scripts\python.exe → python on PATH.
     [string]$PythonPath = "",
+    # Where the PID file and the two log files go. Default: $env:HUAWEI_LOG_DIR → <data>\logs\huawei-health-cn
+    [string]$LogDir = "",
     [switch]$OpenDashboard,
     [int]$WaitSeconds = 30
 )
@@ -38,16 +45,26 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $SidecarRoot = $PSScriptRoot
-$Workspace = Split-Path -Parent (Split-Path -Parent $SidecarRoot)
+$SuiteRoot = Split-Path -Parent (Split-Path -Parent $SidecarRoot)
 $PythonDir = Join-Path $SidecarRoot 'python'
 $Dashboard = Join-Path $PythonDir 'huawei_dashboard.py'
-$LogDir = Join-Path $SidecarRoot 'logs'
-$PidFile = Join-Path $LogDir 'sidecar.pid'
-$OutLog = Join-Path $LogDir 'sidecar.out.log'
-$ErrLog = Join-Path $LogDir 'sidecar.err.log'
+
+# ── paths: everything runtime lives under the suite data directory ─────────────────────────────
+function Resolve-DataDir {
+    if ($env:DSH_COMPANION_DATA_DIR) { return $env:DSH_COMPANION_DATA_DIR }
+    return (Join-Path $SuiteRoot 'data')
+}
+if (-not $LogDir) {
+    if ($env:HUAWEI_LOG_DIR) { $LogDir = $env:HUAWEI_LOG_DIR }
+    else { $LogDir = Join-Path (Resolve-DataDir) 'logs\huawei-health-cn' }
+}
+$LogDir = [IO.Path]::GetFullPath($LogDir)
+$PidFile = if ($Port -eq 8765) { Join-Path $LogDir 'sidecar.pid' } else { Join-Path $LogDir "sidecar-$Port.pid" }
+$OutLog = if ($Port -eq 8765) { Join-Path $LogDir 'sidecar.out.log' } else { Join-Path $LogDir "sidecar-$Port.out.log" }
+$ErrLog = if ($Port -eq 8765) { Join-Path $LogDir 'sidecar.err.log' } else { Join-Path $LogDir "sidecar-$Port.err.log" }
 
 # The one and only bind address.  Hard-coded on purpose: a sidecar answering on 0.0.0.0 would
-# expose health data to the LAN, and loopback-only is what design/health/INTERFACES.md §2 says.
+# expose health data to the LAN.
 $BindHost = '127.0.0.1'
 
 function Write-Step([string]$Message) { Write-Host "  $Message" }
@@ -63,7 +80,7 @@ function Stop-Tree([int]$ProcessId) {
 
 Write-Host "huawei-health-cn sidecar" -ForegroundColor Cyan
 
-# ── 1. preconditions ───────────────────────────────────────────────────────
+# ── 1. preconditions ───────────────────────────────────────────────────────────────────────────
 if (-not (Test-Path -LiteralPath $Dashboard)) {
     throw "frozen dashboard copy missing: $Dashboard"
 }
@@ -72,17 +89,27 @@ if (-not (Test-Path -LiteralPath $LogDir)) {
 }
 
 $python = $PythonPath
+if (-not $python -and $env:HUAWEI_PYTHON) { $python = $env:HUAWEI_PYTHON }
 if (-not $python) {
-    $candidate = Join-Path $Workspace 'tmp\hwvenv\Scripts\python.exe'
-    if (Test-Path -LiteralPath $candidate) { $python = $candidate }
+    foreach ($candidate in @(
+        (Join-Path $SidecarRoot '.venv\Scripts\python.exe'),
+        (Join-Path (Resolve-DataDir) 'venv\Scripts\python.exe')
+    )) {
+        if (Test-Path -LiteralPath $candidate) { $python = $candidate; break }
+    }
+}
+if (-not $python) {
+    $onPath = Get-Command python -ErrorAction SilentlyContinue
+    if ($onPath) { $python = $onPath.Source }
 }
 if (-not $python -or -not (Test-Path -LiteralPath $python)) {
-    throw "python not found: tried tmp\hwvenv\Scripts\python.exe — pass -PythonPath explicitly"
+    throw ("python not found. Pass -PythonPath, or set `$env:HUAWEI_PYTHON, or create .venv next to this " +
+           "script. This sidecar needs Python 3.11+ and **no** third-party packages (standard library only).")
 }
 $pythonVersion = (& $python --version 2>&1 | Out-String).Trim()
 Write-Step "python      : $python ($pythonVersion)"
 
-# ── 2. is something already listening? ─────────────────────────────────────
+# ── 2. is something already listening? ─────────────────────────────────────────────────────────
 $existingPid = Get-ListenerPid $Port
 if ($existingPid -gt 0) {
     $ownerPid = $existingPid
@@ -103,9 +130,9 @@ if ($existingPid -gt 0) {
            "$PidFile. Refusing to touch it — stop it yourself or choose another -Port.")
 }
 
-# ── 3. launch detached ────────────────────────────────────────────────────
+# ── 3. launch detached ─────────────────────────────────────────────────────────────────────────
 Write-Step "bind        : ${BindHost}:$Port (loopback only)"
-Write-Step "credential  : tmp\huawei_account.json — read by the sidecar process, never by this script"
+Write-Step "credential  : $(if ($env:HUAWEI_ACCOUNT_JSON) { $env:HUAWEI_ACCOUNT_JSON } else { Join-Path (Resolve-DataDir) 'credentials\huawei_account.json' }) — read by the sidecar process, never by this script"
 Write-Step "logs        : $LogDir"
 
 $inner = '"{0}" "{1}" serve --port {2} --host {3} > "{4}" 2> "{5}"' -f `
@@ -121,7 +148,7 @@ if ([int]$created.ReturnValue -ne 0) {
 $wrapperPid = [int]$created.ProcessId
 Write-Step "launched    : wrapper pid $wrapperPid (detached)"
 
-# ── 4. wait for the listener (TCP only — no HTTP, so no cloud call is spent) ──
+# ── 4. wait for the listener (TCP only — no HTTP, so no cloud call is spent) ───────────────────
 $deadline = (Get-Date).AddSeconds($WaitSeconds)
 $listenerPid = 0
 while ((Get-Date) -lt $deadline) {
@@ -150,12 +177,12 @@ $record = [ordered]@{
     script      = $Dashboard
     outLog      = $OutLog
     errLog      = $ErrLog
-    note        = 'tmp/hwvenv/Scripts/python.exe re-execs itself: wrapperPid -> listenerPid'
+    note        = 'some Python builds (embedded / uv-managed) re-exec themselves: wrapperPid -> listenerPid'
 }
 $record | ConvertTo-Json | Set-Content -LiteralPath $PidFile -Encoding utf8
 Write-Step "pid file    : $PidFile (wrapper $wrapperPid → listener $listenerPid)"
 
-# ── 5. log hygiene gate: a log must never contain token material ───────────
+# ── 5. log hygiene gate: a log must never contain token material ───────────────────────────────
 $tokenPattern = 'DgE[A-Za-z0-9+/=_-]{8,}|accessToken|refreshToken|x-huid|"uid"\s*:\s*"\d{6,}'
 $leaks = @()
 foreach ($log in @($OutLog, $ErrLog)) {
@@ -176,8 +203,9 @@ Write-Step "log hygiene : clean (no token material in stdout/stderr)"
 Write-Host ""
 Write-Host "sidecar is up: http://${BindHost}:$Port/  (listener pid $listenerPid)" -ForegroundColor Green
 Write-Host "  probe (costs one cloud pull): curl.exe -s `"http://${BindHost}:$Port/api/data?days=7`""
-Write-Host "  snapshot (redacted)         : tmp\hwvenv\Scripts\python.exe sidecars\huawei-health-cn\capture_snapshot.py"
-Write-Host "  contract test (offline)     : tmp\hwvenv\Scripts\python.exe sidecars\huawei-health-cn\test_protocol_contract.py"
+Write-Host "  snapshot (redacted)         : $python $(Join-Path $SidecarRoot 'capture_snapshot.py')"
+Write-Host "  contract test (offline)     : $python $(Join-Path $SidecarRoot 'test_protocol_contract.py')"
+Write-Host "  redaction tests (offline)   : $python $(Join-Path $SidecarRoot 'test_redact.py')"
 Write-Host "  stop                        : pwsh -File $(Join-Path $SidecarRoot 'stop-sidecar.ps1')"
 
 if ($OpenDashboard) { Start-Process "http://${BindHost}:$Port/" | Out-Null }

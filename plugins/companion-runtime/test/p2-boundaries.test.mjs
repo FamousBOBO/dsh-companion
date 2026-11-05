@@ -10,7 +10,7 @@ import { mountRuntime } from '../index.mjs';
 // the frozen budget day. P2-17/27/28/29 plus the "0 outbound when off" half of P2-18.
 
 const T0 = Date.UTC(2026, 10, 2, 1, 0, 0); // 2026-11-02 09:00 Asia/Shanghai
-const BOUND = { userId: 'owner-1', persona: 'march7' };
+const BOUND = { userId: 'owner-1', persona: 'bot' };
 
 const cleanups = [];
 test.afterEach?.(() => {});
@@ -114,7 +114,7 @@ test('P2-18: share on keeps candidates pending, owner-bound, and refused by a st
   assert.equal(submitted.ok, true);
   assert.equal(submitted.accepted, true);
   assert.equal(calls.length, 1);
-  assert.equal(calls[0].scope, 'u:owner-1|p:march7|w:world:default', 'the candidate is bound to its own scope');
+  assert.equal(calls[0].scope, 'u:owner-1|p:bot|w:world:default', 'the candidate is bound to its own scope');
   assert.equal(runtime.shareCandidates({ bound: BOUND }).candidates.length, 0, 'a submitted candidate is no longer pending');
 });
 

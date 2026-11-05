@@ -15,7 +15,7 @@ import { scopeKey as scopeKeyOf } from '../lib/scope.mjs';
 
 const T0 = Date.UTC(2026, 10, 15, 3, 0, 0);
 const HOUR = 3_600_000;
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKeyOf(SCOPE);
 
 function world(t) {
@@ -40,7 +40,7 @@ function seedDone(db, { activityId, at }) {
 function seedFact(db, activityId, at) {
   db.run(`INSERT INTO domain_events (seq, event_id, schema_version, kind, scope, user_id, persona_id, world_id,
             occurred_at, recorded_at, payload)
-          VALUES (?, ?, 1, 'memory/ingest-request', ?, 'owner-1', 'march7', 'world:default', ?, ?, ?)`,
+          VALUES (?, ?, 1, 'memory/ingest-request', ?, 'owner-1', 'bot', 'world:default', ?, ?, ?)`,
   Math.floor(Math.random() * 1e6) + 1000, `evt_${activityId}`, KEY, at, at,
   JSON.stringify({ namespace: 'p2/activity', facts: { activityId } }));
 }

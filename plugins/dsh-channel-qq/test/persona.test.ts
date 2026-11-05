@@ -131,15 +131,15 @@ test('组包器：群包的两段可选素材只在有内容时才占一行', ()
   assert.equal(bare.includes('\n\n'), false, '没有素材时不留空行')
   const full = composer.groupPacket({ ...base, called: true, emotionHint: 'E', knowledgeHint: 'K', sentBlock: 'S' })
   assert.equal(full.includes('\nE\nK\nS\n'), true, '有素材时按原顺序各占一行')
-  assert.ok(full.includes('最后一条[@咱]是叫咱'), '被叫到时用另一段抬头')
+  assert.ok(full.includes('最后一条[@我]是叫我'), '被叫到时用另一段抬头')
   assert.ok(bare.includes('最近时段群里的消息'))
 })
 
-test('组包器：注入包按"叫咱 / 没叫咱"分成两种抬头与收尾', () => {
+test('组包器：注入包按"叫我 / 没叫我"分成两种抬头与收尾', () => {
   const room = composer.roomDirective(true, 107)
   const called = composer.injectPacket({ called: true, room, body: 'X' })
   const ambient = composer.injectPacket({ called: false, room, body: 'X' })
-  assert.ok(called.startsWith('【有人叫咱，这条要回应】\n'))
+  assert.ok(called.startsWith('【有人叫我，这条要回应】\n'))
   assert.ok(ambient.startsWith('【群里的新消息】\n'))
   assert.ok(called.endsWith('也可以只更新记忆，不发言。）'))
   assert.ok(ambient.endsWith('不需要发言就不调用发送工具。）'))

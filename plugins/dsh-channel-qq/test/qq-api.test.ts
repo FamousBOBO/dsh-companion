@@ -195,7 +195,7 @@ test('交互提示：输入状态与表情回应的 wire 形状', async () => {
 })
 
 test('合并转发与登录信息：wire 形状', async () => {
-  const nodes = [{ type: 'node' as const, data: { user_id: 1, nickname: '诺诺', content: [{ type: 'text' as const, data: { text: 'hi' } }] } }]
+  const nodes = [{ type: 'node' as const, data: { user_id: 1, nickname: 'bot', content: [{ type: 'text' as const, data: { text: 'hi' } }] } }]
   assert.deepEqual(await wireOf((a) => a.getLoginInfo()), { action: 'get_login_info', params: {} })
   assert.deepEqual(await wireOf((a) => a.sendGroupForward(123, nodes)), {
     action: 'send_group_forward_msg', params: { group_id: 123, messages: nodes },

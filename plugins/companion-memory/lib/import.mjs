@@ -882,7 +882,7 @@ function refreshPatch(draft, existing) {
  * @param {object} options.db MemoryDatabase (CONTRACT §6); writes only when not dryRun
  * @param {string} options.root repository root holding `home/` and `logs/`
  * @param {string} options.userId owner id (e.g. the bound desktop user)
- * @param {string} options.personaId persona id (e.g. 'march7')
+ * @param {string} options.personaId persona id (e.g. 'bot')
  * @param {boolean} [options.dryRun] read-only rehearsal: no backup, no db write
  * @param {number} [options.clock] epoch ms used for the stamp and expiry decisions
  * @param {boolean} [options.refresh] also repair existing rows whose mapped

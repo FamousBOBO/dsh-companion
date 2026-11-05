@@ -221,7 +221,7 @@ function findAll(tree, predicate) {
 
 const FIXTURES = {
   companion: {
-    persona: 'march7', observedAt: '2026-10-28T01:00:00.000Z',
+    persona: 'bot', observedAt: '2026-10-28T01:00:00.000Z',
     runtime: { available: true, mode: 'active', enabled: true, agenda: true, heartbeat: true, bridge: true },
     sections: { state: [], events: [] }, unavailable: [],
     life: {
@@ -287,8 +287,8 @@ const FIXTURES = {
     editable: { backend: 'sqlite', extractionEnabled: true, minMessages: 6, semanticEnabled: true, budgetChars: 2400, topK: 8, rrfK: 60, mmrLambda: 0.72, coverageFloor: 0.15, embeddingProvider: 'local', wikiAutoCompile: true, wikiMaxEntriesPerTopic: 40 },
   },
   corrections: {
-    available: true, operator: 'u:1429709395',
-    evidenceHint: '后台人工裁决 at 2026-10-28T01:00:00.000Z by u:1429709395',
+    available: true, operator: 'u:10001',
+    evidenceHint: '后台人工裁决 at 2026-10-28T01:00:00.000Z by u:10001',
     count: 2, resolved: 1, pendingRetries: 0, resolvedListAvailable: true,
     recent: [
       {
@@ -306,7 +306,7 @@ const FIXTURES = {
       },
     ],
     resolvedRecent: [
-      { recordId: 'rec_done_1', supersededIds: ['mem_fixture_old_9'], supersededCount: 1, operator: 'u:1429709395', at: 1761590000000, outcome: 'resolved-superseded' },
+      { recordId: 'rec_done_1', supersededIds: ['mem_fixture_old_9'], supersededCount: 1, operator: 'u:10001', at: 1761590000000, outcome: 'resolved-superseded' },
     ],
   },
   timeline: { items: [{ at: '2026-10-28T00:20:00.000Z', type: 'user/message', sessionId: 'sess_fixture', seq: 4, role: 'user', preview: 'FIXTURE-EVENT 用户聊到雨天', hidden: false }] },
@@ -387,7 +387,7 @@ if (!captured.entry) {
   console.error('客户端产物没有调用 window.__ModuleLoader__.load(...)');
   process.exit(1);
 }
-if (captured.entry.id !== '@local/dsh-companion-memory-studio') {
+if (captured.entry.id !== '@dsh-companion/memory-studio') {
   console.error(`产物 id 不匹配：${captured.entry.id}`);
   process.exit(1);
 }

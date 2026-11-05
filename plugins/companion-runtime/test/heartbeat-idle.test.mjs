@@ -18,7 +18,7 @@ const MINUTE = 60000;
 const HOUR = 3600000;
 const DAY = 24 * HOUR;
 const TTL = 30 * DAY;
-const SCOPE_A = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: '' });
+const SCOPE_A = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: '' });
 const KEY_A = keyOfScope(SCOPE_A);
 
 function tempFile(t, label) {

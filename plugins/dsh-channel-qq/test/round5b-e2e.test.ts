@@ -61,7 +61,7 @@ test('E2E QQ→FD→RT：runtime 真的解出 scope 并接受 CAS/dispatched（�
   try {
     // ① 真 runtime 的根目录（它自己读 `home/companion/runtime.config.json`）。
     for (const rel of ['home/companion', 'logs', 'workspace']) fs.mkdirSync(path.join(root, rel), { recursive: true })
-    fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), '三月七\n', 'utf8')
+    fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), 'bot\n', 'utf8')
     fs.writeFileSync(path.join(root, 'home/companion/runtime.config.json'), JSON.stringify({
       enabled: true,
       mode: 'active',
@@ -72,7 +72,7 @@ test('E2E QQ→FD→RT：runtime 真的解出 scope 并接受 CAS/dispatched（�
     const now = Date.now()
     // ② 身份：`sessionId` → scope 绑定（生产由宿主提供，形状同 runtime 的 `identity.resolve`）。
     const identity = {
-      resolve: (sessionId: string) => ({ userId: 'owner-1', persona: 'march7', sessionId }),
+      resolve: (sessionId: string) => ({ userId: 'owner-1', persona: 'bot', sessionId }),
     }
     // **round6 修正**：runtime 默认会打开根目录下的数据库文件；这里显式指定 `:memory:`，
     // 才真的配得上"内存 SQLite"这个说法（之前是临时根里的**文件库**，说反了）。

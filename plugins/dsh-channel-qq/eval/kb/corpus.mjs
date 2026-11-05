@@ -55,7 +55,7 @@ WebUI 监听 5099，noVNC 监听 6081，两个都只绑本机。`,
     text: `# 咖啡
 
 ## 偏好
-学弟喜欢冰美式，不加糖；主人喝拿铁，要热的。
+主人喜欢冰美式，不加糖；主人喝拿铁，要热的。
 
 ## 器具
 手冲壶在厨房第二个柜子，滤纸在抽屉最里面。`,
@@ -121,7 +121,7 @@ export const QUESTIONS = [
   { q: '备份要包含哪些目录', path: 'inbox/backup.md' },
   { q: '配置覆盖层文件在哪', path: 'inbox/backup.md' },
   { q: '为什么模型只收到图片占位', path: 'inbox/model.md' },
-  { q: '学弟喜欢喝什么咖啡', path: 'inbox/coffee.md' },
+  { q: '主人喜欢喝什么咖啡', path: 'inbox/coffee.md' },
   { q: '手冲壶放在哪里', path: 'inbox/coffee.md' },
   { q: '提交说明应该怎么写', path: 'inbox/git.md' },
   { q: '会话体积到多少要换血', path: 'inbox/session.md' },

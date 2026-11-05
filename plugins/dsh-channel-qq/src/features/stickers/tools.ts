@@ -73,12 +73,12 @@ function qqSendSticker(deps: QQToolDeps): ToolSpec {
       }
 }
 
-/** `qq_list_emojis` — 列出咱收藏的表情包（本地文件路径）。发表情前先列出来挑一张合适的。… */
+/** `qq_list_emojis` — 列出我收藏的表情包（本地文件路径）。发表情前先列出来挑一张合适的。… */
 function qqListEmojis(deps: QQToolDeps): ToolSpec {
   const { out, config, library } = deps
   return {
         name: 'qq_list_emojis',
-        description: '列出咱收藏的表情包（本地文件路径）。发表情前先列出来挑一张合适的。',
+        description: '列出我收藏的表情包（本地文件路径）。发表情前先列出来挑一张合适的。',
         parameters: { type: 'object', properties: {} },
         run: async () => {
           if (library !== undefined) {
@@ -107,12 +107,12 @@ function qqListEmojis(deps: QQToolDeps): ToolSpec {
       }
 }
 
-/** `qq_search_emojis` — 按情绪/语义搜索咱收藏的表情包（比如：嘲讽、开心、摸鱼、吃瓜）。返回最匹配的几张的文件路径和描述，用 qq_send_e… */
+/** `qq_search_emojis` — 按情绪/语义搜索我收藏的表情包（比如：嘲讽、开心、摸鱼、吃瓜）。返回最匹配的几张的文件路径和描述，用 qq_send_e… */
 function qqSearchEmojis(deps: QQToolDeps): ToolSpec {
   const { library } = deps
   return {
         name: 'qq_search_emojis',
-        description: '按情绪/语义搜索咱收藏的表情包（比如：嘲讽、开心、摸鱼、吃瓜）。返回最匹配的几张的文件路径和描述，用 qq_send_emoji 发送其中 file。',
+        description: '按情绪/语义搜索我收藏的表情包（比如：嘲讽、开心、摸鱼、吃瓜）。返回最匹配的几张的文件路径和描述，用 qq_send_emoji 发送其中 file。',
         parameters: {
           type: 'object',
           properties: {

@@ -10,12 +10,12 @@
 import type { ToolSpec } from '../../adapters/dsh-host/tools.js'
 import type { QQToolDeps } from '../tool-deps.js'
 
-/** `retrieve_knowledge` — 检索咱的长期知识库（从日记和群聊沉淀的技能/事实/偏好/事件/人物）。回答不确定的问题前先搜这里。… */
+/** `retrieve_knowledge` — 检索我的长期知识库（从日记和群聊沉淀的技能/事实/偏好/事件/人物）。回答不确定的问题前先搜这里。… */
 function retrieveKnowledge(deps: QQToolDeps): ToolSpec {
   const { knowledge } = deps
   return {
         name: 'retrieve_knowledge',
-        description: '检索咱的长期知识库（从日记和群聊沉淀的技能/事实/偏好/事件/人物）。回答不确定的问题前先搜这里。',
+        description: '检索我的长期知识库（从日记和群聊沉淀的技能/事实/偏好/事件/人物）。回答不确定的问题前先搜这里。',
         parameters: {
           type: 'object',
           properties: { query: { type: 'string', description: '自然语言查询' } },

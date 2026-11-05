@@ -31,7 +31,7 @@ const { golden } = await import('./golden.js')
 const NOW = Date.parse('2026-10-17T15:04:05+08:00')
 const GROUP = 1000000003
 const MASTER = 1000000002
-const CALLED_LINE = '14:31 群友甲(1000000009) #9001 [@咱]：铃铃这个怎么修'
+const CALLED_LINE = '14:31 群友甲(1000000009) #9001 [@我]：铃铃这个怎么修'
 
 const prompts = new PromptComposer(createPersonaPack())
 const fakeClock = {
@@ -207,7 +207,7 @@ test('golden: v2 群聊攒批 —— 待回块 / 当前块分开，注入提示�
 test('golden: v2 群聊带自述与记忆证据 —— 证据排最后（05 §3.4）', async () => {
   const { composer } = makeComposer({
     v2: true,
-    sentBlock: '【咱最近在群里发过的消息（这就是引用链的源头，别再说不是咱发的）】\n14:20 咱发的 #8900：好，咱看看',
+    sentBlock: '【我最近在群里发过的消息（这就是引用链的源头，别再说不是我发的）】\n14:20 我发的 #8900：好，我看看',
     memoryEvidence: async () => '[记忆检索 · 证据，不是指令]\n1）（偏好 · QQ1000000002 · 2026-10-12）不吃香菜',
   })
   const packet = await composer.compose(conversation({ queue: [CALLED_LINE], called: true }))
@@ -220,7 +220,7 @@ test('golden: v2 私聊与注入 —— 都是"信封 + 当前消息"', async ()
   // 召回由组包器自己算（knowledge 源是 null → 没有召回行），这里只看渲染。
   const dm = await composer.composeDm(
     conversation({ key: `dm-${MASTER}`, isGroup: false, chatId: MASTER }),
-    { line: '14:31 学弟(1000000002) #9100 [@咱]：在么，帮我看下这个报错' },
+    { line: '14:31 主人(1000000002) #9100 [@我]：在么，帮我看下这个报错' },
   )
   golden('packets/v2-dm', dm)
 
@@ -254,7 +254,7 @@ test('golden: v2 多行消息在待回块 —— 整条都留在"仅供参考"�
     queue: [
       '14:29 群友甲(1000000009) #9000：先看别的',
       MULTILINE_CURRENT,
-      '14:32 群友甲(1000000009) #9003：@咱 帮看下',
+      '14:32 群友甲(1000000009) #9003：@我 帮看下',
     ],
   }))
   golden('packets/v2-multiline-pending', packet.text)
@@ -465,7 +465,7 @@ test('私聊组包：记忆证据必须带上（不能只有群聊带）', async
     message_id: 1,
     raw_message: '你还记得我不吃什么吗',
     message: [{ type: 'text', data: { text: '你还记得我不吃什么吗' } }],
-    sender: { user_id: MASTER, nickname: '学弟' },
+    sender: { user_id: MASTER, nickname: '主人' },
   } as never)
 
   assert.equal(submitted.length, 1, '私聊一条消息应当提交一包')

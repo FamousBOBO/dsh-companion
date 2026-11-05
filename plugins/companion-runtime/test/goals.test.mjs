@@ -26,8 +26,8 @@ import {
   updateGoal,
 } from '../lib/goals.mjs';
 
-const SCOPE = { userId: 'u-goals', personaId: 'march7', worldId: 'w-goals' };
-const OTHER = { userId: 'u-other', personaId: 'march7', worldId: 'w-other' };
+const SCOPE = { userId: 'u-goals', personaId: 'bot', worldId: 'w-goals' };
+const OTHER = { userId: 'u-other', personaId: 'bot', worldId: 'w-other' };
 const DAY = 86400000;
 
 function makeClock(start = 1_760_000_000_000) {

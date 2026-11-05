@@ -58,7 +58,7 @@ function seedWorkspace(workspace) {
     '- 不确定的事不要编。',
     '',
   ].join('\n'), 'utf8')
-  writeFileSync(path.join(workspace, 'MEMORY.md'), '# 长期记忆\n\n- 学弟喜欢在深夜写代码。\n- 主群是 1000000003。\n', 'utf8')
+  writeFileSync(path.join(workspace, 'MEMORY.md'), '# 长期记忆\n\n- 主人喜欢在深夜写代码。\n- 主群是 1000000003。\n', 'utf8')
   writeFileSync(path.join(workspace, 'memory', '2026-10-17.md'), '# 2026-10-17\n\n今天在调管理后台。\n', 'utf8')
   writeFileSync(path.join(workspace, 'notes', 'todo.md'), '# TODO\n\n- [ ] 验证配置保存的 diff 展示\n', 'utf8')
   writeFileSync(path.join(workspace, 'scripts', 'heartbeat.mjs'), "console.log('alive')\n", 'utf8')
@@ -119,7 +119,7 @@ export async function startLocalAdmin(opts = {}) {
 
   const fileStore = new WorkspaceFiles(() => config.workspacePath, path.join(home, 'channel-qq', 'backups'), log)
 
-  const memQuotes = [{ id: 'q_seed', text: '这个梗我记下了', speaker: '学弟', groupId: 1000000003, tags: ['测试'], at: Date.now() - 60000 }]
+  const memQuotes = [{ id: 'q_seed', text: '这个梗我记下了', speaker: '主人', groupId: 1000000003, tags: ['测试'], at: Date.now() - 60000 }]
   const memPhrases = [{ id: 'p1', text: '绷不住了', count: 12, groupId: 1000000003 }]
   const resources = {
     emoji: {
@@ -149,7 +149,7 @@ export async function startLocalAdmin(opts = {}) {
     memories: {
       label: '长期记忆',
       list: () => ({ count: 2, entries: [
-        { id: 'm1', type: 'fact', content: '学弟在做 dsh-channel-qq', tags: ['项目'], source: '群聊' },
+        { id: 'm1', type: 'fact', content: '主人在做 dsh-channel-qq', tags: ['项目'], source: '群聊' },
         { id: 'm2', type: 'preference', content: '喜欢简洁的回复', tags: ['偏好'], source: '群聊' },
       ] }),
       create: async (body) => ({ added: String(body.content ?? '') !== '' }),
@@ -158,7 +158,7 @@ export async function startLocalAdmin(opts = {}) {
     reminders: {
       label: '提醒',
       list: () => ({ count: 3, reminders: [
-        { id: 'r1', text: '提醒学弟喝水', at: Date.now() + 3600000, room: 'group-1000000003' },
+        { id: 'r1', text: '提醒主人喝水', at: Date.now() + 3600000, room: 'group-1000000003' },
         { id: 'r2', text: '明天 9 点早报', at: Date.now() + 7200000, room: 'group-1000000003' },
         { id: 'r3', text: '周报', at: Date.now() + 86400000, room: 'dm-1000000002' },
       ] }),

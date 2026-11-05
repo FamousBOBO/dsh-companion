@@ -1,7 +1,7 @@
 /** 工具与策略页 = 通用模块页 + 「给机器人下一条指令」卡片。
  *
- * 指令注入等价于学弟在私聊里发一句话：机器人用自己的全部工具去做，做完把结果
- * 私聊发给学弟——端到端验证最方便。这是**会真的发 QQ 消息**的操作，所以提交前
+ * 指令注入等价于主人在私聊里发一句话：机器人用自己的全部工具去做，做完把结果
+ * 私聊发给主人——端到端验证最方便。这是**会真的发 QQ 消息**的操作，所以提交前
  * 有明确提示，且走审计。
  */
 
@@ -17,17 +17,17 @@ function promptCard() {
   const card = section({
     title: '给机器人下一条指令',
     icon: 'terminal',
-    blurb: '等价于学弟在私聊里发一句话：机器人会用自己的全部工具去做，做完把结果私聊发给学弟。用来做端到端验证最方便。',
+    blurb: '等价于主人在私聊里发一句话：机器人会用自己的全部工具去做，做完把结果私聊发给主人。用来做端到端验证最方便。',
   })
   const taId = 'prompt-text'
-  const ta = el('textarea', { rows: 4, id: taId, placeholder: '例：调用群列表工具，把群数量和最多的群号发给学弟' })
+  const ta = el('textarea', { rows: 4, id: taId, placeholder: '例：调用群列表工具，把群数量和最多的群号发给主人' })
   card.body.appendChild(el('label', { class: 'vh', for: taId, text: '指令内容' }))
   card.body.appendChild(ta)
   const quick = el('div', { class: 'rowflex', style: 'margin-top:8px' })
   for (const sample of [
     '调用群列表工具，报告群数量',
     '看一下表情库索引了多少张，然后重建一次',
-    '把今天的日记文件读出来，总结成三句话发给学弟',
+    '把今天的日记文件读出来，总结成三句话发给主人',
   ]) {
     const chip = button(sample.length > 14 ? `${sample.slice(0, 14)}…` : sample, 'small ghost')
     chip.title = sample
@@ -46,7 +46,7 @@ function promptCard() {
     send.disabled = false
     if (authLost(res)) return
     if (res.status !== 200) { setNote(note, 'bad', `提交失败：${errText(res)}`); toast(`提交失败：${errText(res)}`, 'bad'); return }
-    setNote(note, 'ok', '已提交，等机器人跑完（一般 30~60 秒）。结果会私聊发给学弟。')
+    setNote(note, 'ok', '已提交，等机器人跑完（一般 30~60 秒）。结果会私聊发给主人。')
     toast('已提交，等机器人跑完', 'ok')
     ta.value = ''
   })

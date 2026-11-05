@@ -73,7 +73,7 @@ test('describeNotice：几种典型事件的中文行', () => {
 
   assert.equal(line({ notice_type: 'group_increase', user_id: 7 }), 'QQ7 进群了')
   assert.equal(line({ notice_type: 'group_increase', user_id: 7, operator_id: 8 }), 'QQ7 被 QQ8 拉进群了')
-  assert.equal(line({ notice_type: 'group_decrease', user_id: 7, sub_type: 'kick_me' }), '咱自己被踢出群了')
+  assert.equal(line({ notice_type: 'group_decrease', user_id: 7, sub_type: 'kick_me' }), '我自己被踢出群了')
   assert.equal(line({ notice_type: 'group_decrease', user_id: 7, sub_type: 'leave' }), 'QQ7 退群了')
   assert.equal(line({ notice_type: 'group_ban', user_id: 0, duration: 300 }), '全员禁言开启了（300 秒）')
   assert.equal(line({ notice_type: 'group_ban', user_id: 7, duration: 60 }), 'QQ7 被禁言 60 秒')

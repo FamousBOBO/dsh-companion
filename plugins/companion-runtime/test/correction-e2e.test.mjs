@@ -21,7 +21,7 @@ const SESSION = 'e2e-owner';
 function tempRoot(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'correction-e2e-'));
   for (const dir of ['home/companion', 'home/memory', 'logs', 'workspace']) fs.mkdirSync(path.join(root, dir), { recursive: true });
-  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), '三月七\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), 'bot\n', 'utf8');
   fs.writeFileSync(path.join(root, 'home/companion/runtime.config.json'), JSON.stringify({
     enabled: true, mode: 'active', timeZone: 'Asia/Shanghai',
   }), 'utf8');
@@ -43,7 +43,7 @@ async function mounted(t) {
     root,
     identity: {
       owner: () => ({ id: 'owner-1', displayName: '主人', platform: 'local' }),
-      resolve: sessionId => ({ userId: 'owner-1', personaId: 'march7', displayName: '主人', sessionId }),
+      resolve: sessionId => ({ userId: 'owner-1', personaId: 'bot', displayName: '主人', sessionId }),
     },
     env: {},
     now: () => T0,
@@ -53,7 +53,7 @@ async function mounted(t) {
 
   const runtime = mountRuntime(null, root, {
     now: () => T0,
-    identity: { resolve: sessionId => ({ userId: 'owner-1', persona: 'march7', sessionId }) },
+    identity: { resolve: sessionId => ({ userId: 'owner-1', persona: 'bot', sessionId }) },
     memory: engine,
   });
   t.after(() => { try { runtime.dispose?.(); } catch { /* disposed */ } });
@@ -64,7 +64,7 @@ async function mounted(t) {
 }
 
 const fact = overrides => ({
-  subject: { userId: 'owner-1', personaId: 'march7', worldId: '' },
+  subject: { userId: 'owner-1', personaId: 'bot', worldId: '' },
   transformVersion: 't1',
   rootEvidenceIds: [],
   realityStatus: 'actual_tool_activity',

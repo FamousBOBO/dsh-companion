@@ -24,7 +24,7 @@ function build(t) {
   }, null, 2), 'utf8');
   const identity = {
     owner: () => ({ id: 'owner-1', displayName: 'owner-1', platform: 'local' }),
-    resolve: sessionId => ({ userId: 'owner-1', personaId: 'march7', displayName: 'owner-1', sessionId }),
+    resolve: sessionId => ({ userId: 'owner-1', personaId: 'bot', displayName: 'owner-1', sessionId }),
   };
   const runtime = mountRuntime(null, root, { memory: null, identity, dbFile: path.join(root, 'home', 'companion', 'runtime.db'), now: () => T0 });
   t.after(() => {

@@ -17,7 +17,7 @@ const TZ = 'Asia/Shanghai';
 const MIN = 60000;
 const HOUR = 3600000;
 const DAY = 86400000;
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = keyOfScope(SCOPE);
 const T0 = Date.UTC(2026, 10, 2, 5, 41, 0); // 2026-11-02 13:41 Asia/Shanghai
 
@@ -59,7 +59,7 @@ function scriptedModel(script) {
 
 function makeMaterials(changer = () => ({})) {
   return () => ({
-    timeZone: TZ, persona: { version: 1, excerpt: '三月七' }, preferences: [],
+    timeZone: TZ, persona: { version: 1, excerpt: 'bot' }, preferences: [],
     goals: [], commitments: [], fixedAgenda: [], runningActivities: [], lastReceipts: [],
     interests: [], opportunities: [], capabilities: [], budget: null, ...changer(),
   });

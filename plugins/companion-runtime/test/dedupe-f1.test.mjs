@@ -23,7 +23,7 @@ const SESSION = 'dedupe-session';
 function tempRoot(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dedupe-f1-'));
   for (const dir of ['home/companion', 'logs', 'workspace']) fs.mkdirSync(path.join(root, dir), { recursive: true });
-  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), '三月七\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), 'bot\n', 'utf8');
   fs.writeFileSync(path.join(root, 'home/companion/runtime.config.json'), JSON.stringify({
     enabled: true, mode: 'active', timeZone: 'Asia/Shanghai',
   }), 'utf8');
@@ -40,7 +40,7 @@ async function mounted(t) {
   const root = tempRoot(t);
   const runtime = mountRuntime(null, root, {
     now: () => T0,
-    identity: { resolve: sessionId => ({ userId: 'owner-1', persona: 'march7', sessionId }) },
+    identity: { resolve: sessionId => ({ userId: 'owner-1', persona: 'bot', sessionId }) },
     memory: acceptingMemory(),
   });
   t.after(() => { try { runtime.dispose?.(); } catch { /* disposed */ } });

@@ -1,5 +1,5 @@
 {
-  "source": "logs/p2-dayview-fix/live-dashboard.json (production scope u:1429709395|p:march7|w:world:default, 2026-10-31)",
+  "source": "logs/p2-dayview-fix/live-dashboard.json (production scope u:10001|p:bot|w:world:default, 2026-10-31)",
   "observedAt": "2026-10-31T06:14:17.522Z",
   "sections": {
     "p2_plan": [

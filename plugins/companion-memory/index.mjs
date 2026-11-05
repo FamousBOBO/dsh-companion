@@ -10,7 +10,22 @@ import { contentHash, parseLocalMoment, parseTime, redactSecrets, stableId } fro
 // empty value and records why in `logs/memory-engine.jsonl`.
 
 export const VERSION = '0.4.0';
-export const PERSONA_ID = 'march7';
+/**
+ * Default persona id. Nothing about it is character specific: a release install
+ * uses `bot` until the operator picks another id (D1: `DSH_COMPANION_PERSONA_ID`
+ * → `config/suite.json` `persona.id` → this default). The plugin boundary
+ * (`companion-foundation`) resolves the suite config and passes the result in;
+ * the engine only needs the documented fallback.
+ */
+export const DEFAULT_PERSONA_ID = 'bot';
+/** @deprecated kept so existing imports keep working; prefer `DEFAULT_PERSONA_ID`. */
+export const PERSONA_ID = DEFAULT_PERSONA_ID;
+
+/** Persona id for this process: environment override, else the documented default. */
+export function resolvePersonaId(env = process.env) {
+  const value = String(env?.DSH_COMPANION_PERSONA_ID ?? '').trim();
+  return value || DEFAULT_PERSONA_ID;
+}
 
 // C3 cross-database ingest (CONTRACT.md §16). The enums mirror the frozen
 // companion-runtime event envelope; they stay local so the memory plugin never
@@ -106,11 +121,17 @@ export function sharedEngineCount() {
  * @param identity - the companion identity service (`resolve(sessionId)`).
  * @param options.env - environment overrides.
  * @param options.llm - optional `{ complete({system, input, maxTokens, signal}) }`.
+ * @param options.personaId - resolved persona id (default: env override or `bot`).
+ * @param options.personaName - display name recorded on the persona row (default: the id).
  */
-export function createMemoryEngine({ root, identity, env = process.env, llm = null, now = () => Date.now() }) {
+export function createMemoryEngine({ root, identity, env = process.env, llm = null, now = () => Date.now(), personaId = null, personaName = '' }) {
   const configPath = path.join(root, 'home/companion/memory.config.json');
   const logPath = path.join(root, 'logs/memory-engine.jsonl');
   const recallLogPath = path.join(root, 'logs/memory-recall.jsonl');
+  // One reason for the persona id per engine instance: every scope key, ingest
+  // check and bootstrap row below must agree on it.
+  const persona = String(personaId ?? resolvePersonaId(env)).trim() || DEFAULT_PERSONA_ID;
+  const personaDisplayName = String(personaName ?? '').trim() || persona;
   const loaded = loadConfig(root, env);
   const config = loaded.config;
   const state = {
@@ -141,7 +162,7 @@ export function createMemoryEngine({ root, identity, env = process.env, llm = nu
       log('identity-failed', { sessionId, error: safeMessage(error) });
       return null;
     }
-    return { userId: bound.userId, personaId: PERSONA_ID, worldId: '', sessionId, displayName: bound.displayName };
+    return { userId: bound.userId, personaId: persona, worldId: '', sessionId, displayName: bound.displayName };
   };
 
   const databaseFile = () => resolveDatabasePath(root, config);
@@ -196,7 +217,7 @@ export function createMemoryEngine({ root, identity, env = process.env, llm = nu
           if (typeof upsertFoundationState === 'function') {
             // Identity and persona rows keep the store self-describing.
             db.upsertIdentity({ userId: identity.owner().id, displayName: identity.owner().displayName, platform: identity.owner().platform ?? '' });
-            db.upsertPersona({ personaId: PERSONA_ID, displayName: '三月七', revision: VERSION, personaRef: 'workspace/PERSONA.md' });
+            db.upsertPersona({ personaId: persona, displayName: personaDisplayName, revision: VERSION, personaRef: 'config/persona.md' });
           }
         } catch (error) {
           log('bootstrap-identity-failed', { error: safeMessage(error) });
@@ -346,7 +367,7 @@ export function createMemoryEngine({ root, identity, env = process.env, llm = nu
 
   /** A subject is bound when it is the engine owner or a locally registered identity. */
   function subjectBound(db, subject) {
-    if (subject.personaId !== PERSONA_ID) return false;
+    if (subject.personaId !== persona) return false;
     try {
       const owner = typeof identity?.owner === 'function' ? identity.owner() : null;
       if (owner && owner.id === subject.userId) return true;
@@ -872,7 +893,7 @@ export function createMemoryEngine({ root, identity, env = process.env, llm = nu
       const owner = typeof identity?.owner === 'function'
         ? identity.owner()
         : { id: 'owner', displayName: 'owner' };
-      const viewer = { userId: owner.id, personaId: PERSONA_ID, worldId: '', sessionId: '', displayName: owner.displayName };
+      const viewer = { userId: owner.id, personaId: persona, worldId: '', sessionId: '', displayName: owner.displayName };
       return {
         get db() { return state.db; },
         get backend() { return state.backend; },
@@ -1130,7 +1151,7 @@ export function createMemoryEngine({ root, identity, env = process.env, llm = nu
           : llm;
         const result = await jobs.runJobs({
           db, llm: jobLlm, config: jobConfig, viewer,
-          persona: { id: PERSONA_ID, name: '三月七' },
+          persona: { id: persona, name: personaDisplayName },
           now: now(),
           limit: 2,
         });

@@ -1,21 +1,21 @@
 #!/usr/bin/env python3
 """Offline protocol contract test for the frozen CN Huawei Health sidecar.
 
-    tmp\\hwvenv\\Scripts\\python.exe sidecars\\huawei-health-cn\\test_protocol_contract.py -v
+    python sidecars/huawei-health-cn/test_protocol_contract.py -v
     # a specific snapshot instead of the newest one:
-    set HUAWEI_SNAPSHOT=sidecars\\huawei-health-cn\\snapshots\\cn-snapshot-20261103-2100.json
+    HUAWEI_SNAPSHOT=<path>/cn-snapshot-YYYYMMDD-HHMM.json python sidecars/huawei-health-cn/test_protocol_contract.py -v
 
 **No network, no credential file, no sidecar process.**  Everything is asserted against
 
-1. the committed redacted snapshots in ``snapshots/`` (the real payload the sidecar answered), and
+1. redacted snapshots (default `<data>/snapshots/huawei-health-cn/`, override with
+   ``HUAWEI_SNAPSHOT`` / ``HUAWEI_SNAPSHOT_DIR``) — the real payload the sidecar answered, and
 2. the frozen copies in ``python/`` — importing them proves the copies still load, and
    ``health_series()`` is a pure function, so the "0 / -1 means not measured" rule can be
    exercised on a synthetic cloud answer without a single request.
 
-Standard library ``unittest`` only, on purpose: ``tmp/hwvenv`` does contain pytest 9.0.0, but it
-also pulls in ``pytest-homeassistant-custom-component``, which imports ``fcntl`` at load time and
-therefore cannot even start on Windows without the upstream ``-p tests.posix_shims`` helper.  This
-file must stay runnable under a bare interpreter, so it needs nothing but ``unittest``.
+Snapshots are personal data, so they are **not** in the repository; without one, the
+snapshot-dependent cases `skip` (they do not fail) and the rule-level cases still run.
+Standard library ``unittest`` only, on purpose — it must stay runnable under a bare interpreter.
 """
 
 from __future__ import annotations
@@ -28,11 +28,12 @@ import unittest
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-SNAPSHOT_DIR = HERE / "snapshots"
-PYTHON_DIR = HERE / "python"
-
 sys.path.insert(0, str(HERE))
 import redact  # noqa: E402  - same directory as this file
+import sidecar_paths  # noqa: E402  - same directory as this file
+
+SNAPSHOT_DIR = sidecar_paths.snapshots_dir()
+PYTHON_DIR = HERE / "python"
 
 #: Top-level keys the frozen protocol promises (design/health/INTERFACES.md §5, README §8).
 REQUIRED_TOP_LEVEL = {

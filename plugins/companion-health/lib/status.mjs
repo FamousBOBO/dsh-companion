@@ -342,8 +342,8 @@ export function buildStatus(input = {}) {
  * A **protocol-level** summary of `GET /api/data?days=N` for the acceptance script's `--probe`.
  *
  * This is not normalisation (health-core owns that, contract §6): it only reads the fields the
- * sidecar documents (`tmp/HUAWEI_HEALTH_README.md` §8) so an operator can compare the live link
- * against what was stored. It never returns device codes, `uniqueId`, `devId`, MACs or tokens.
+ * sidecar documents (`sidecars/huawei-health-cn/README.md` §8) so an operator can compare the live
+ * link against what was stored. It never returns device codes, `uniqueId`, `devId`, MACs or tokens.
  */
 export function summarizeProbePayload(payload) {
   const data = payload && typeof payload === 'object' ? payload : {};

@@ -13,8 +13,10 @@ import { loadConfig } from '../lib/config.mjs';
 import { SUITE_PATHS, dataPaths as makeDataPaths } from '../lib/paths.mjs';
 import { fingerprint, readJson } from './bundle.mjs';
 
-/** Legacy persona id present in data exported before the 0.1.0 rename (D1). */
-export const LEGACY_PERSONA_IDS = ['march7'];
+/** Legacy persona ids are **not** hard-coded: the bundle records `source.personaId`,
+ *  and the migrator rewrites whatever it finds to the id this machine resolves.
+ *  Hard-coding a historical name here would also fail `npm run verify --only=static`
+ *  (it scans for legacy persona ids), so the id lives only in the data, never in code. */
 
 export function resolveSuiteVersion() {
   const pkg = readJson(path.join(SUITE_PATHS.root, 'package.json')) ?? {};
@@ -136,7 +138,6 @@ export function detectLiveHost(ctx, { walWindowMs = 15_000 } = {}) {
 }
 
 export default {
-  LEGACY_PERSONA_IDS,
   resolveSuiteVersion,
   resolvePersonaId,
   hostVersionFromModuleRoot,

@@ -195,12 +195,12 @@ function qqMusicLyrics(deps: QQToolDeps): ToolSpec {
       }
 }
 
-/** `qq_music_playlist` — 咱的个人歌单（跨重启持久）。action: add/remove/list/clear。add 需要 songId 和 … */
+/** `qq_music_playlist` — 我的个人歌单（跨重启持久）。action: add/remove/list/clear。add 需要 songId 和 … */
 function qqMusicPlaylist(deps: QQToolDeps): ToolSpec {
   const { config } = deps
   return {
         name: 'qq_music_playlist',
-        description: '咱的个人歌单（跨重启持久）。action: add/remove/list/clear。add 需要 songId 和 name。',
+        description: '我的个人歌单（跨重启持久）。action: add/remove/list/clear。add 需要 songId 和 name。',
         parameters: {
           type: 'object',
           properties: {
@@ -250,12 +250,12 @@ function qqMusicPlaylist(deps: QQToolDeps): ToolSpec {
       }
 }
 
-/** `qq_netease_login` — 网易云会员登录。action=start 返回二维码链接（发给学弟用网易云App扫码）；action=poll 用返回的… */
+/** `qq_netease_login` — 网易云会员登录。action=start 返回二维码链接（发给主人用网易云App扫码）；action=poll 用返回的… */
 function qqNeteaseLogin(deps: QQToolDeps): ToolSpec {
   const {  } = deps
   return {
         name: 'qq_netease_login',
-        description: '网易云会员登录。action=start 返回二维码链接（发给学弟用网易云App扫码）；action=poll 用返回的 key 轮询，成功后自动保存会员 Cookie（VIP歌就能发了）。Cookie 持久保存，不用每次登。',
+        description: '网易云会员登录。action=start 返回二维码链接（发给主人用网易云App扫码）；action=poll 用返回的 key 轮询，成功后自动保存会员 Cookie（VIP歌就能发了）。Cookie 持久保存，不用每次登。',
         parameters: {
           type: 'object',
           properties: {
@@ -268,7 +268,7 @@ function qqNeteaseLogin(deps: QQToolDeps): ToolSpec {
           const action = String(args.action)
           if (action === 'start') {
             const { unikey, qrUrl } = await qrLoginStart()
-            return { key: unikey, qrUrl, hint: '把 qrUrl 发给学弟，用网易云音乐App扫码；然后每2秒调一次 action=poll' }
+            return { key: unikey, qrUrl, hint: '把 qrUrl 发给主人，用网易云音乐App扫码；然后每2秒调一次 action=poll' }
           }
           if (action === 'poll') {
             const result = await qrLoginPoll(String(args.key ?? ''))
@@ -348,12 +348,12 @@ function qqKugouSend(deps: QQToolDeps): ToolSpec {
       }
 }
 
-/** `qq_kugou_login` — 酷狗音乐登录。action=start 拿二维码链接（发给学弟用酷狗App扫码）；action=poll 轮询，成功自动… */
+/** `qq_kugou_login` — 酷狗音乐登录。action=start 拿二维码链接（发给主人用酷狗App扫码）；action=poll 轮询，成功自动… */
 function qqKugouLogin(deps: QQToolDeps): ToolSpec {
   const {  } = deps
   return {
         name: 'qq_kugou_login',
-        description: '酷狗音乐登录。action=start 拿二维码链接（发给学弟用酷狗App扫码）；action=poll 轮询，成功自动保存 Cookie（VIP歌+搜索就通了）。',
+        description: '酷狗音乐登录。action=start 拿二维码链接（发给主人用酷狗App扫码）；action=poll 轮询，成功自动保存 Cookie（VIP歌+搜索就通了）。',
         parameters: {
           type: 'object',
           properties: {
@@ -366,7 +366,7 @@ function qqKugouLogin(deps: QQToolDeps): ToolSpec {
           const action = String(args.action)
           if (action === 'start') {
             const { key, qrUrl } = await kugouQrStart(deps.config.music.kugouApiBase)
-            return { key, qrUrl, hint: '把 qrUrl 发给学弟，用酷狗App扫码；然后每2秒调一次 action=poll' }
+            return { key, qrUrl, hint: '把 qrUrl 发给主人，用酷狗App扫码；然后每2秒调一次 action=poll' }
           }
           if (action === 'poll') {
             const result = await kugouQrPoll(String(args.key ?? ''), deps.config.music.kugouApiBase)

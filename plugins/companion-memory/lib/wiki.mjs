@@ -59,10 +59,10 @@ export const WIKI_TOPICS = [
     includeWorld: false,
   },
   {
-    id: 'relationship-march7',
+    id: 'relationship-bot',
     scope: 'user_persona',
-    topic: '三月七与用户的关系',
-    path: 'relationships/march7-user.md',
+    topic: 'bot 与用户的关系',
+    path: 'relationships/bot-user.md',
     description: '相处方式与边界',
     includeWorld: true,
   },
@@ -133,7 +133,7 @@ const EMPTY_PAGE_BODY = '_（暂无已确认的记录）_';
 const KIND_TOPIC = Object.freeze({
   profile: 'user-profile',
   preference: 'user-preferences',
-  relationship: 'relationship-march7',
+  relationship: 'relationship-bot',
   event: 'important-events',
   commitment: 'important-events',
   summary: 'important-events',
@@ -205,7 +205,7 @@ function topicForRecord(record) {
   const target = KIND_TOPIC[kind];
   if (!target) return null;
   if (kind === 'fact' || kind === 'note') {
-    return record.scope === 'user_persona' ? 'relationship-march7' : target;
+    return record.scope === 'user_persona' ? 'relationship-bot' : target;
   }
   return target;
 }

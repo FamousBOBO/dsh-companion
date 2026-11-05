@@ -18,7 +18,7 @@ import { applyPlanEvent, createPlanner, PLAN_LIMITS } from '../lib/planner.mjs';
 const TZ = 'Asia/Shanghai';
 const MIN = 60000;
 const DAY = 86400000;
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = keyOfScope(SCOPE);
 // 2026-11-02 13:41 Asia/Shanghai — a mid-afternoon start, so "today" still has room.
 const T0 = Date.UTC(2026, 10, 2, 5, 41, 0);
@@ -104,7 +104,7 @@ function makeMaterials(overrides = {}) {
       timeZone: TZ,
       now,
       day,
-      persona: { version: 3, excerpt: '三月七：喜欢亮晶晶的东西，爱拍照，也爱胡思乱想。' },
+      persona: { version: 3, excerpt: 'bot：喜欢亮晶晶的东西，爱拍照，也爱胡思乱想。' },
       preferences: ['喜欢在下午读点东西', '不想被安排得满满当当'],
       goals: [], commitments: [], fixedAgenda: [], runningActivities: [], lastReceipts: [],
       interests: [], opportunities: [],
@@ -183,7 +183,7 @@ test('P2-01: the first tick of the day commits exactly one plan for the remainin
   assert.match(request.input, /Asia\/Shanghai/);
   assert.match(request.input, /已约好的事情/);
   assert.match(request.input, /输出契约/);
-  assert.match(request.input, /三月七/);
+  assert.match(request.input, /bot/);
 
   const plans = planRows(world);
   assert.equal(plans.length, 1);

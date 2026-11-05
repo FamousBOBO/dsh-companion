@@ -347,7 +347,7 @@ function sharePortWith(over: {
     },
     attempt: async () => { calls.push('attempt') },
     target: () => ({
-      scope: { userId: 10001, personaId: 'march7', worldId: '' },
+      scope: { userId: 10001, personaId: 'bot', worldId: '' },
       target: { channel: 'qq', room: 'dm-10001', isGroup: false, chatId: 10001 },
       authorization: { kind: 'standing', by: 10001, at: NOW, quote: null },
     }),

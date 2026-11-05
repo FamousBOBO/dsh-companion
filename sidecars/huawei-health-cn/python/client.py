@@ -13,7 +13,7 @@ that cost the most time to find:
 """
 
 # --- sidecar-freeze provenance (added by sidecars/huawei-health-cn; not upstream) ---
-# frozen-from:     tmp/huawei_health/custom_components/huawei_health/client.py
+# frozen-from:     upstream integration "custom_components/huawei_health/client.py"
 # frozen-at:       2026-11-03
 # upstream-sha256: 44398d75e6c6b2276d48eafa973870f5426a34a51fe1dec51056c755d54dea37
 # code-unchanged:  this block is the only difference; delete these five lines to get the original

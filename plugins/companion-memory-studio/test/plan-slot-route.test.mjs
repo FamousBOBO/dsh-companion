@@ -7,7 +7,7 @@ import { createStudioHandlers, ROUTES, groupRoutesByPath } from '../server.mjs';
 // the real handler through the real route table with a stub engine and a stub runtime.
 
 const PATH = '/api/companion-memory/plan-slot';
-const VIEWER = { userId: 'owner-1', personaId: 'march7', worldId: 'world:default' };
+const VIEWER = { userId: 'owner-1', personaId: 'bot', worldId: 'world:default' };
 
 function engine() {
   return { internal: async () => ({ viewer: () => VIEWER }) };
@@ -49,7 +49,7 @@ test('H5: lock hands the slot to the runtime and reports what it did', async () 
   assert.equal(payload.data.slotId, 'slot-next');
   assert.equal(payload.data.action, 'lock');
   assert.equal(seen.length, 1, 'the runtime was called exactly once');
-  assert.deepEqual(seen[0][1], { bound: { userId: 'owner-1', personaId: 'march7' }, slotId: 'slot-next', locked: true });
+  assert.deepEqual(seen[0][1], { bound: { userId: 'owner-1', personaId: 'bot' }, slotId: 'slot-next', locked: true });
 });
 
 test('H5: unlock and skip use the runtime too, and skip carries the reason', async () => {

@@ -30,11 +30,11 @@ function buildV2Fixture(dir, now = T0) {
     db.run("INSERT INTO schema_migrations (version, applied_at, note) VALUES (2, ?, 'cognitive-continuity v2 (outbox claims)')", now);
     // P1 state that must survive the upgrade untouched.
     db.run(`INSERT INTO goals (goal_id, scope, title, source, authorization, status, overdue, deadline_at, revision, created_at, updated_at, completed_steps, next_step, waiting_on, checkpoint, superseded_by, history)
-            VALUES ('goal_v2', 'u:owner-1|p:march7|w:world:default', 'v2 goal', 'conversation', 'none', 'running', 0, NULL, 3, ?, ?, '[]', 'next', '', '{}', '', '[]')`, now, now);
+            VALUES ('goal_v2', 'u:owner-1|p:bot|w:world:default', 'v2 goal', 'conversation', 'none', 'running', 0, NULL, 3, ?, ?, '[]', 'next', '', '{}', '', '[]')`, now, now);
     db.run(`INSERT INTO domain_events (seq, event_id, schema_version, kind, scope, user_id, persona_id, world_id, session_id, occurred_at, recorded_at, correlation_id, causation_id, root_evidence, reality_status, evidence_status, config_version, model_version, payload)
-            VALUES (1, 'evt_v2', 1, 'goal/proposed', 'u:owner-1|p:march7|w:world:default', 'owner-1', 'march7', 'world:default', 's1', ?, ?, '', '', '[]', 'actual_tool_activity', 'observed', 'p1-cognitive-continuity-v1', '', '{"title":"v2 goal"}')`, now, now);
+            VALUES (1, 'evt_v2', 1, 'goal/proposed', 'u:owner-1|p:bot|w:world:default', 'owner-1', 'bot', 'world:default', 's1', ?, ?, '', '', '[]', 'actual_tool_activity', 'observed', 'p1-cognitive-continuity-v1', '', '{"title":"v2 goal"}')`, now, now);
     db.run(`INSERT INTO consumer_receipts (consumer, event_id, scope, applied_at, state_version, result)
-            VALUES ('goals', 'evt_v2', 'u:owner-1|p:march7|w:world:default', ?, 1, '{}')`, now);
+            VALUES ('goals', 'evt_v2', 'u:owner-1|p:bot|w:world:default', ?, 1, '{}')`, now);
   });
   db.metaSet('generation', 'gen-v2');
   db.close();

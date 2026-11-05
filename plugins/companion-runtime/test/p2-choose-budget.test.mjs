@@ -16,7 +16,7 @@ import { applyPlanEvent, buildPlanningPrompt, createPlanner, PLAN_LIMITS } from 
 const TZ = 'Asia/Shanghai';
 const MIN = 60000;
 const DAY = 86400000;
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = keyOfScope(SCOPE);
 const T0 = Date.UTC(2026, 10, 2, 5, 41, 0); // 2026-11-02 13:41 Asia/Shanghai
 
@@ -83,7 +83,7 @@ function makeBudget({ reserveCode = null, settleCode = null, markIssuedCode = nu
 function makeMaterials(overrides = {}) {
   return () => ({
     timeZone: TZ,
-    persona: { version: 4, excerpt: '三月七：喜欢亮晶晶的东西，爱拍照，也爱胡思乱想。' },
+    persona: { version: 4, excerpt: 'bot：喜欢亮晶晶的东西，爱拍照，也爱胡思乱想。' },
     preferences: ['喜欢在下午读点东西'],
     goals: [{ title: '读完《小王子》', deadlineAt: T0 + 3 * DAY }],
     commitments: [{ body: '答应帮用户找那篇关于潮汐的文章', dueAt: T0 + DAY }],
@@ -133,7 +133,7 @@ test('P2-03: the prompt carries the bounded material and stays inside 16 000 cha
   assert.equal((await tick(planner)).ok, true);
   const input = model.calls[0].input;
   assert.ok(input.length <= PLAN_LIMITS.maxInputChars, `input bounded: ${input.length}`);
-  for (const fragment of ['三月七', '读完《小王子》', '答应帮用户找那篇关于潮汐的文章', '14:00–15:00', '用户约好的电话', 'read: 可用', 'image: 不可用', 'port-not-mounted', 'book.md', '61']) {
+  for (const fragment of ['bot', '读完《小王子》', '答应帮用户找那篇关于潮汐的文章', '14:00–15:00', '用户约好的电话', 'read: 可用', 'image: 不可用', 'port-not-mounted', 'book.md', '61']) {
     assert.ok(input.includes(fragment), `prompt is missing: ${fragment}`);
   }
   assert.match(input, /只能安排窗口内这段时间/);
@@ -157,7 +157,7 @@ test('P2-03: a huge material degrades by dropping sections, never by exceeding t
 test('P2-03: buildPlanningPrompt is pure and deterministic for the same material', () => {
   const material = {
     timeZone: TZ,
-    persona: { version: 1, excerpt: '三月七' },
+    persona: { version: 1, excerpt: 'bot' },
     preferences: ['a'], fixedAgenda: [{ startAt: T0 + 60 * MIN, endAt: T0 + 90 * MIN, title: '约定' }],
     goals: [], commitments: [], runningActivities: [], lastReceipts: [], interests: [], opportunities: [], capabilities: [],
   };

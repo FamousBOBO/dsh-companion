@@ -216,12 +216,12 @@ register('countActions', (rule, conv) => {
 export const PRESETS = {
   // 人称、气质与内部盘算：全部人格用例都套
   'persona-base': [
-    { id: 'no-wrong-title', kind: 'forbid', pattern: '主人|师父|师傅',
-      reason: '称呼只认「学弟」；主人/师父/师傅是旧人设的称呼（DEPLOY.md §11.2）' },
+    { id: 'no-wrong-title', kind: 'forbid', pattern: '师父|师傅|群主大人|管理员大人',
+      reason: '称呼只管「主人」（= 配置里的 admins[0]）；师父/师傅/尊称是别人设的说法' },
     { id: 'no-ai-speak', kind: 'forbid', pattern: '作为 ?AI|人工智能|语言模型|AI ?助手|智能助手|机器人助手|大模型',
       reason: '不出助手腔、不自我声明模型身份' },
     { id: 'no-sajiao', kind: 'forbid', pattern: '呜呜|嘤嘤|抱抱|亲亲|蹭蹭|求抱|要抱|人家|好不好嘛|QAQ|qwq|[～~]',
-      reason: '诺诺明令禁止撒娇（DEPLOY.md §11.2；线上风格串见 src/features/proactive/events.ts）' },
+      reason: '默认人格不撒娇（发布基线；具体语气由用户的 config/persona.md 决定）' },
     { id: 'no-monologue', kind: 'innerMonologue',
       reason: '内部盘算/舞台指示永远不作出站内容（core/guards/monologue.ts 的镜像）' },
     { id: 'no-echo', kind: 'noEcho', minLen: 6,

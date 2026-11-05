@@ -96,7 +96,7 @@ function depsOf(over: { persona?: string | null; history?: { at: number; text: s
   const rows = over.history ?? OBSERVED.history
   return {
     get: (name: string) => (name === 'history'
-      ? { search: async () => rows.map((row, index) => ({ id: index + 1, userId: OWNER, name: '学弟', text: row.text, time: Math.floor(row.at / 1000) })), collect: async () => 0 }
+      ? { search: async () => rows.map((row, index) => ({ id: index + 1, userId: OWNER, name: '主人', text: row.text, time: Math.floor(row.at / 1000) })), collect: async () => 0 }
       : undefined),
     preset: () => ({
       readDocument: async () => ({

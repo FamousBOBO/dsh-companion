@@ -39,7 +39,7 @@ function paint() {
     ['机器人 QQ 号', status.selfId, true],
     ['连接方式', status.connection],
     ['主群号', status.primaryGroup, true],
-    ['学弟（管理员）', status.master, true],
+    ['主人（管理员）', status.master, true],
     ['Agent 工作区', status.workspace, true],
   ]))
   const groupList = Array.isArray(status.groupList) ? status.groupList : []

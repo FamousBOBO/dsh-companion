@@ -216,7 +216,7 @@ export class InboundPipeline {
     return await this.deliverGroup(key, event, parsed, materials, { groupId, called, presence })
   }
 
-  /** 群聊：叫咱就立刻分析，开了注入模式就逐条注入，否则攒批。 */
+  /** 群聊：叫我就立刻分析，开了注入模式就逐条注入，否则攒批。 */
   private async deliverGroup(
     key: string,
     event: OneBotEvent,
@@ -284,7 +284,7 @@ export class InboundPipeline {
   /**
    * 攒批：入队、去重、够数就发、否则起安静窗口。
    *
-   * `calledLine` 在 P6b 接线：每次入队记录"最后一条是不是叫咱"（旧实现该标记从不
+   * `calledLine` 在 P6b 接线：每次入队记录"最后一条是不是叫我"（旧实现该标记从不
    * 置真、是走不到的死分支）。消费方是组包器，且只在 `context.v2` 打开时读它——
    * 关着时输出与旧行为逐字节一致。
    *

@@ -34,7 +34,7 @@
 }
 {
   "name": "qq_reply_quote",
-  "description": "引用回复某条消息：带上对方消息的#编号发一条引用回复，让对方明确知道咱回应的是哪条。文本里不要重复#编号。",
+  "description": "引用回复某条消息：带上对方消息的#编号发一条引用回复，让对方明确知道我回应的是哪条。文本里不要重复#编号。",
   "parameters": {
     "type": "object",
     "properties": {
@@ -73,7 +73,7 @@
 }
 {
   "name": "qq_send_code_review",
-  "description": "【群聊代码专用】群聊禁止出现代码。有人在群里要求写代码时，把完整代码用这个工具私信发给学弟（管理员）审核，群里只回一句\"代码已私信发给学弟审核\"。",
+  "description": "【群聊代码专用】群聊禁止出现代码。有人在群里要求写代码时，把完整代码用这个工具私信发给主人（管理员）审核，群里只回一句\"代码已私信发给主人审核\"。",
   "parameters": {
     "type": "object",
     "properties": {
@@ -93,13 +93,13 @@
 }
 {
   "name": "qq_set_affection",
-  "description": "【好感度记账】学弟的一句话/一个举动让咱心里起波澜时，用这个记账。delta 是变化值（-30~30），reason 写学弟做了什么。每次变化都要记，绝不漏账。",
+  "description": "【好感度记账】主人的一句话/一个举动让我心里起波澜时，用这个记账。delta 是变化值（-30~30），reason 写主人做了什么。每次变化都要记，绝不漏账。",
   "parameters": {
     "type": "object",
     "properties": {
       "delta": {
         "type": "number",
-        "description": "变化值：夸咱/护咱/投喂 +5~10，冷落/凶咱 -3~5"
+        "description": "变化值：夸我/护我/投喂 +5~10，冷落/凶我 -3~5"
       },
       "reason": {
         "type": "string",
@@ -114,7 +114,7 @@
 }
 {
   "name": "qq_set_stage",
-  "description": "【阶段宣言】阶段完全由咱自己定义：根据咱的记忆，说出当前真实的阶段名和理由。可以升、可以降、可以改名——说最真实的话就行。每次变更都会记入阶段史。",
+  "description": "【阶段宣言】阶段完全由我自己定义：根据我的记忆，说出当前真实的阶段名和理由。可以升、可以降、可以改名——说最真实的话就行。每次变更都会记入阶段史。",
   "parameters": {
     "type": "object",
     "properties": {
@@ -135,7 +135,7 @@
 }
 {
   "name": "qq_write_dashboard",
-  "description": "【咱自己的记分板】重写好感度悬浮窗的HTML页面（咱完全掌控的记分小黑板）。写好后立即生效。想要什么样式自己定：阶段、日记入口、小本本都随咱排。",
+  "description": "【我自己的记分板】重写好感度悬浮窗的HTML页面（我完全掌控的记分小黑板）。写好后立即生效。想要什么样式自己定：阶段、日记入口、小本本都随我排。",
   "parameters": {
     "type": "object",
     "properties": {
@@ -151,7 +151,7 @@
 }
 {
   "name": "retrieve_knowledge",
-  "description": "检索咱的长期知识库（从日记和群聊沉淀的技能/事实/偏好/事件/人物）。回答不确定的问题前先搜这里。",
+  "description": "检索我的长期知识库（从日记和群聊沉淀的技能/事实/偏好/事件/人物）。回答不确定的问题前先搜这里。",
   "parameters": {
     "type": "object",
     "properties": {
@@ -411,7 +411,7 @@
 }
 {
   "name": "qq_get_group_list",
-  "description": "获取咱加入的所有群列表（群号、群名、成员数）。",
+  "description": "获取我加入的所有群列表（群号、群名、成员数）。",
   "parameters": {
     "type": "object",
     "properties": {}
@@ -492,7 +492,7 @@
 }
 {
   "name": "qq_upload_group_file",
-  "description": "上传本地文件到群文件系统（可以从咱的工作区里挑文件发）。file 是本地绝对路径。",
+  "description": "上传本地文件到群文件系统（可以从我的工作区里挑文件发）。file 是本地绝对路径。",
   "parameters": {
     "type": "object",
     "properties": {
@@ -520,7 +520,7 @@
 }
 {
   "name": "qq_download_group_file",
-  "description": "下载群文件到咱的工作区（先拿链接再存盘），存好返回本地路径。",
+  "description": "下载群文件到我的工作区（先拿链接再存盘），存好返回本地路径。",
   "parameters": {
     "type": "object",
     "properties": {
@@ -646,7 +646,7 @@
 }
 {
   "name": "qq_list_emojis",
-  "description": "列出咱收藏的表情包（本地文件路径）。发表情前先列出来挑一张合适的。",
+  "description": "列出我收藏的表情包（本地文件路径）。发表情前先列出来挑一张合适的。",
   "parameters": {
     "type": "object",
     "properties": {}
@@ -654,7 +654,7 @@
 }
 {
   "name": "qq_search_emojis",
-  "description": "按情绪/语义搜索咱收藏的表情包（比如：嘲讽、开心、摸鱼、吃瓜）。返回最匹配的几张的文件路径和描述，用 qq_send_emoji 发送其中 file。",
+  "description": "按情绪/语义搜索我收藏的表情包（比如：嘲讽、开心、摸鱼、吃瓜）。返回最匹配的几张的文件路径和描述，用 qq_send_emoji 发送其中 file。",
   "parameters": {
     "type": "object",
     "properties": {
@@ -819,7 +819,7 @@
 }
 {
   "name": "qq_send_private_file",
-  "description": "私聊给好友发本地文件（从咱的工作区里挑）。file 是本地绝对路径；不填 name 就用原文件名。",
+  "description": "私聊给好友发本地文件（从我的工作区里挑）。file 是本地绝对路径；不填 name 就用原文件名。",
   "parameters": {
     "type": "object",
     "properties": {
@@ -844,7 +844,7 @@
 }
 {
   "name": "qq_save_private_file",
-  "description": "把私聊收到的文件存到咱的工作区 downloads/ 下（fileId 来自文件消息），返回本地路径。",
+  "description": "把私聊收到的文件存到我的工作区 downloads/ 下（fileId 来自文件消息），返回本地路径。",
   "parameters": {
     "type": "object",
     "properties": {
@@ -990,7 +990,7 @@
 }
 {
   "name": "qq_music_playlist",
-  "description": "咱的个人歌单（跨重启持久）。action: add/remove/list/clear。add 需要 songId 和 name。",
+  "description": "我的个人歌单（跨重启持久）。action: add/remove/list/clear。add 需要 songId 和 name。",
   "parameters": {
     "type": "object",
     "properties": {
@@ -1017,7 +1017,7 @@
 }
 {
   "name": "qq_netease_login",
-  "description": "网易云会员登录。action=start 返回二维码链接（发给学弟用网易云App扫码）；action=poll 用返回的 key 轮询，成功后自动保存会员 Cookie（VIP歌就能发了）。Cookie 持久保存，不用每次登。",
+  "description": "网易云会员登录。action=start 返回二维码链接（发给主人用网易云App扫码）；action=poll 用返回的 key 轮询，成功后自动保存会员 Cookie（VIP歌就能发了）。Cookie 持久保存，不用每次登。",
   "parameters": {
     "type": "object",
     "properties": {
@@ -1094,7 +1094,7 @@
 }
 {
   "name": "qq_kugou_login",
-  "description": "酷狗音乐登录。action=start 拿二维码链接（发给学弟用酷狗App扫码）；action=poll 轮询，成功自动保存 Cookie（VIP歌+搜索就通了）。",
+  "description": "酷狗音乐登录。action=start 拿二维码链接（发给主人用酷狗App扫码）；action=poll 轮询，成功自动保存 Cookie（VIP歌+搜索就通了）。",
   "parameters": {
     "type": "object",
     "properties": {

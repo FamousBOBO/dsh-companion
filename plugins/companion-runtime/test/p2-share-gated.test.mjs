@@ -19,7 +19,7 @@ import { scopeKey as scopeKeyOf } from '../lib/scope.mjs';
 const T0 = Date.UTC(2026, 10, 11, 3, 0, 0);
 const MINUTE = 60_000;
 const DAY = 24 * 3600_000;
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKeyOf(SCOPE);
 
 function world(t, { shareEnabled = true, now = () => T0 } = {}) {

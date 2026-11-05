@@ -21,7 +21,7 @@ function buildRoot(t, config) {
   return root;
 }
 
-const identity = () => ({ resolve: sessionId => ({ userId: 'owner-1', persona: 'march7', sessionId }) });
+const identity = () => ({ resolve: sessionId => ({ userId: 'owner-1', persona: 'bot', sessionId }) });
 const mount = (root, clock = () => T0) => mountRuntime(null, root, { now: clock, identity: identity() });
 
 test('HH13: a same-process replacement takes the writer lease and the old generation is fenced out', t => {

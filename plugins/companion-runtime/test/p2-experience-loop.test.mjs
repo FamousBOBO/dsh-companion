@@ -31,8 +31,8 @@ import { createMemoryEngine } from '../../companion-memory/index.mjs';
 
 const T0 = Date.UTC(2026, 10, 6, 3, 0, 0);
 const HOUR = 3600000;
-const BOUND = { userId: 'owner-1', persona: 'march7' };
-const SCOPE_KEY = 'u:owner-1|p:march7|w:world:default';
+const BOUND = { userId: 'owner-1', persona: 'bot' };
+const SCOPE_KEY = 'u:owner-1|p:bot|w:world:default';
 
 function makeRoot(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p25-loop-'));
@@ -421,7 +421,7 @@ assert.equal(typeof buildPlanningPrompt, 'function', 'buildPlanningPrompt must s
 
 const T0C = Date.UTC(2026, 10, 6, 5, 0, 0);
 const HOURC = 3600000;
-const SCOPE_C = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE_C = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY_C = scopeKeyOf(SCOPE_C);
 const OWNER = '999999:p25-2:test';
 const GEN = 'gen-p25-2';

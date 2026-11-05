@@ -1,15 +1,32 @@
 {
-  "name": "@local/companion-media",
+  "name": "@dsh-companion/media",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "description": "Shared media layer for the independent DSH companion: vision, Breeze TTS and NovelAI image generation behind one contract.",
+  "description": "Shared media plugin for DSH Companion: OpenAI/NAI image generation, five TTS adapters, and a disabled-by-default vision contract.",
+  "license": "MIT",
   "main": "index.mjs",
   "exports": {
     ".": "./index.mjs",
-    "./contract": "./contract.mjs"
+    "./config": "./src/schema.mjs",
+    "./service": "./src/service.mjs"
+  },
+  "files": [
+    "index.mjs",
+    "config.example.json",
+    "src/",
+    "README.md",
+    "CONTRACT.md",
+    "TOOL_GUIDE.md",
+    "LICENSE"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
   },
   "scripts": {
-    "test": "node --test test/"
-  }
+    "test": "node --test \"test/*.test.mjs\"",
+    "test:unit": "node --test \"test/*.test.mjs\"",
+    "build": "node -e \"import('./index.mjs').then(()=>console.log('companion-media: source loads (no build step)'))\""
+  },
+  "localVersion": "0.1.0"
 }

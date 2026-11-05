@@ -51,7 +51,7 @@ function makeRoot(t, { activities = {}, heartbeat = {} } = {}) {
   fs.writeFileSync(path.join(root, 'home/companion/works/shelf/note.md'), '# 观测\n\n一段用来读的文字。', 'utf8');
   fs.writeFileSync(path.join(root, 'home/companion/identity.json'), JSON.stringify({
     schemaVersion: 1,
-    persona: 'march7',
+    persona: 'bot',
     owner: { id: 'owner-synthetic', displayName: 'o', platform: 'qq' },
     desktop: { mode: 'local-owner', userId: 'owner-synthetic' },
     sessions: {},
@@ -92,7 +92,7 @@ function makeRoot(t, { activities = {}, heartbeat = {} } = {}) {
 
 function mount(t, root, { clock, callModel } = {}) {
   const ctx = { tools: { register() {} }, systemPrompt: { section() {} }, on() {}, get() { return undefined; } };
-  const identity = { resolve: sessionId => ({ userId: 'owner-synthetic', personaId: 'march7', sessionId }) };
+  const identity = { resolve: sessionId => ({ userId: 'owner-synthetic', personaId: 'bot', sessionId }) };
   const runtime = mountRuntime(ctx, root, {
     now: () => clock.value,
     identity,
@@ -245,7 +245,7 @@ test('dry watch: chat priority and a paused switch are named deferrals, not fail
   const root = makeRoot(t, { activities: { dispatchEnabled: true } });
   let foreground = false;
   const ctx = { tools: { register() {} }, systemPrompt: { section() {} }, on() {}, get() { return undefined; } };
-  const identity = { resolve: sessionId => ({ userId: 'owner-synthetic', personaId: 'march7', sessionId }) };
+  const identity = { resolve: sessionId => ({ userId: 'owner-synthetic', personaId: 'bot', sessionId }) };
   const runtime = mountRuntime(ctx, root, {
     now: () => clock.value,
     identity,

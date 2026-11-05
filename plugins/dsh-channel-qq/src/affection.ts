@@ -2,7 +2,7 @@
  *
  * The model books every change through the qq_set_affection tool; the state
  * lives in <dshHome>/affection.json and is served as a live dashboard on
- * 127.0.0.1:<port> (loopback-only, token-gated) for 学弟's floating window.
+ * 127.0.0.1:<port> (loopback-only, token-gated) for 主人's floating window.
  */
 
 import { readFileSync } from 'node:fs'
@@ -168,7 +168,7 @@ export class AffectionStore {
 
   async writeCustomHtml(html: string): Promise<void> {
     await atomicWriteFile(this.customHtmlPath, html)
-    this.log(`dashboard HTML updated by 诺诺 (${html.length} bytes)`)
+    this.log(`dashboard HTML updated by bot (${html.length} bytes)`)
   }
 
   get tokenValue(): string {
@@ -241,7 +241,7 @@ export class AffectionStore {
       })
     })
     this.server = server
-    this.log(`affection dashboard: http://127.0.0.1:${port}/?key=${this.token} (学弟专属悬浮窗)`)
+    this.log(`affection dashboard: http://127.0.0.1:${port}/?key=${this.token} (主人专属悬浮窗)`)
   }
 
   /**
@@ -288,7 +288,7 @@ function renderPage(token: string): string {
 <html lang="zh">
 <head>
 <meta charset="utf-8">
-<title>诺诺好感度</title>
+<title>bot好感度</title>
 <style>
   body { margin:0; background:#12101a; color:#f4e9ff; font-family:"Microsoft YaHei",sans-serif;
          overflow:hidden; user-select:none; }
@@ -310,7 +310,7 @@ function renderPage(token: string): string {
 </head>
 <body>
 <div class="wrap">
-  <div class="top"><span class="name">诺诺 → 学弟</span><span class="score" id="score">--</span></div>
+  <div class="top"><span class="name">bot → 主人</span><span class="score" id="score">--</span></div>
   <div class="stage" id="stage">…</div>
   <div class="bar"><div class="fill" id="fill" style="width:0%"></div></div>
   <div class="pct" id="pct"></div>

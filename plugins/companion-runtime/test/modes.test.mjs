@@ -7,7 +7,7 @@ import { mountRuntime } from '../index.mjs';
 import { createDb, openRuntimeDb } from '../lib/db.mjs';
 import { scopeKey } from '../lib/scope.mjs';
 
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: '' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: '' });
 const KEY = scopeKey(SCOPE);
 const T0 = Date.UTC(2026, 9, 29, 2, 0, 0);
 
@@ -17,7 +17,7 @@ function buildRoot(t, { config = null } = {}) {
     fs.mkdirSync(path.join(root, dir), { recursive: true });
   }
   fs.writeFileSync(path.join(root, 'home/companion/identity.json'), JSON.stringify({
-    schemaVersion: 1, persona: 'march7',
+    schemaVersion: 1, persona: 'bot',
     owner: { id: 'owner-1', displayName: 'owner', platform: 'qq' },
     desktop: { mode: 'local-owner', userId: 'owner-1' }, sessions: {},
   }));
@@ -37,7 +37,7 @@ function identityStub() {
   return {
     resolve(sessionId) {
       if (!sessionId) throw new Error('session required');
-      return { userId: 'owner-1', persona: 'march7', sessionId, mode: 'local-owner' };
+      return { userId: 'owner-1', persona: 'bot', sessionId, mode: 'local-owner' };
     },
   };
 }
@@ -476,7 +476,7 @@ test('A12: cross-scope reads never leak (identity determines scope, session does
   const root = buildRoot(t, { config: { enabled: true, mode: 'active' } });
   const runtime = mount(root);
   runtime.proposeGoal({ sessionId: 'session-a', title: 'A 的目标' });
-  const otherIdentity = { resolve: sessionId => ({ userId: 'owner-2', persona: 'march7', sessionId }) };
+  const otherIdentity = { resolve: sessionId => ({ userId: 'owner-2', persona: 'bot', sessionId }) };
   const otherScope = runtime.listGoals({ binding: otherIdentity.resolve('session-x') });
   assert.equal(otherScope.goals.length, 0);
   const own = runtime.listGoals({ sessionId: 'session-a' });

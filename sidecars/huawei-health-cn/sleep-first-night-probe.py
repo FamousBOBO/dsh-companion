@@ -1,14 +1,14 @@
 #!/usr/bin/env python3
-"""11/04 first-night sleep acceptance probe — low frequency, read-only, runs once.
+"""First-night sleep acceptance probe — low frequency, read-only, runs once.
 
-    # 11/04 morning, after the band has synced the night through the phone app
-    tmp\\hwvenv\\Scripts\\python.exe sidecars\\huawei-health-cn\\sleep-first-night-probe.py
+    # the morning after the band has synced the night through the phone app
+    python sidecars/huawei-health-cn/sleep-first-night-probe.py
 
-    # what the acceptance run actually uses (default output, explicit)
-    tmp\\hwvenv\\Scripts\\python.exe sidecars\\huawei-health-cn\\sleep-first-night-probe.py --out logs\\health\\sleep-first-night-20261104\\probe.json
+    # explicit output path (the default already lands under the suite data directory)
+    python sidecars/huawei-health-cn/sleep-first-night-probe.py --out <data>/logs/health/sleep-probe.json
 
     # no network at all: proves the script, the frozen client copy and the paths are sane
-    tmp\\hwvenv\\Scripts\\python.exe sidecars\\huawei-health-cn\\sleep-first-night-probe.py --dry-run
+    python sidecars/huawei-health-cn/sleep-first-night-probe.py --dry-run
 
 What it does, in order, and **nothing else**:
 
@@ -16,12 +16,11 @@ What it does, in order, and **nothing else**:
    applies) and reports what is in ``sleep_rows[]`` / whether any ``sleep_*`` metric appeared in
    ``health[]``.
 2. Calls the frozen client **exactly once**: ``health_stat(type=9)`` for the last seven days, to
-   see whether the ``professionalSleepTotal`` family answers at all.  This is the probe the
-   README (§10.1) says was empty on 11/03.  It does *not* scan types 1–32 — a burst of ~40 probe
-   calls is what earns a ``1101 Too Many Requests``.
+   see whether the ``professionalSleepTotal`` family answers at all.  It does *not* scan types
+   1–32 — a burst of ~40 probe calls is what earns a ``1101 Too Many Requests``.
 3. Writes one JSON document with the raw field names, units, timestamps and ``resultCode``,
-   redacted through :mod:`redact` (no token, no uid, no device identifiers), to
-   ``--out`` (default ``logs/health/sleep-first-night-20261104/probe.json``).
+   redacted through :mod:`redact` (no token, no uid, no device identifiers), to ``--out``
+   (default ``<data>/logs/huawei-health-cn/sleep-first-night-probe.json``).
 
 The document is the evidence for the S0–S2 acceptance: ``verdict`` is
 ``sleep_present`` as soon as a night exists, ``awaiting_first_night`` while it does not.
@@ -43,17 +42,19 @@ from pathlib import Path
 from typing import Any
 
 HERE = Path(__file__).resolve().parent
-WORKSPACE = HERE.parent.parent                      # sidecars/huawei-health-cn -> workspace
 PYTHON_DIR = HERE / "python"
-DEFAULT_BASE_URL = "http://127.0.0.1:8765"
-DEFAULT_OUT = WORKSPACE / "logs" / "health" / "sleep-first-night-20261104" / "probe.json"
-LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
-TIMEOUT_S = 25
 
 sys.path.insert(0, str(HERE))
 import redact  # noqa: E402  - same directory as this file
+import sidecar_paths  # noqa: E402  - same directory as this file
 
-#: Units straight out of tmp/HUAWEI_HEALTH_README.md §6.4 ("任何 *Time 是毫秒时间戳，睡眠时长是分钟").
+DEFAULT_BASE_URL = "http://127.0.0.1:8765"
+#: Never inside the repository: probe output is personal data (`$HUAWEI_LOG_DIR` overrides).
+DEFAULT_OUT = sidecar_paths.logs_dir() / "sleep-first-night-probe.json"
+LOOPBACK_HOSTS = ("127.0.0.1", "localhost", "::1")
+TIMEOUT_S = 25
+
+#: Units straight out of the sidecar's own field table ("任何 *Time 是毫秒时间戳，睡眠时长是分钟").
 #: Anything not listed is reported as ``"unit": "unknown"`` rather than guessed.
 SLEEP_FIELD_UNITS: dict[str, str] = {
     "allSleepTime": "min",

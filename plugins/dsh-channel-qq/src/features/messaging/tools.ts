@@ -44,7 +44,7 @@ async function pauseBetweenSegments(
 }
 
 /**
- * 记一条"咱发过的话"。
+ * 记一条"我发过的话"。
  *
  * OneBotClient.call() 成功时给的是 data 本身（见 B13）：这里读 `.data.message_id`
  * 曾经多读了一层，于是 sent-log 的 messageId 全为 null。这条注释跟着这段代码走。
@@ -195,13 +195,13 @@ function qqSendText(deps: QQToolDeps): ToolSpec {
       }
 }
 
-/** `qq_reply_quote` — 引用回复某条消息：带上对方消息的#编号发一条引用回复，让对方明确知道咱回应的是哪条。文本里不要重复#编号。… */
+/** `qq_reply_quote` — 引用回复某条消息：带上对方消息的#编号发一条引用回复，让对方明确知道我回应的是哪条。文本里不要重复#编号。… */
 function qqReplyQuote(deps: QQToolDeps): ToolSpec {
   const { api, out, log, sentLog } = deps
   const knownGroupIds = deps.knownGroups
   return {
         name: 'qq_reply_quote',
-        description: '引用回复某条消息：带上对方消息的#编号发一条引用回复，让对方明确知道咱回应的是哪条。文本里不要重复#编号。',
+        description: '引用回复某条消息：带上对方消息的#编号发一条引用回复，让对方明确知道我回应的是哪条。文本里不要重复#编号。',
         parameters: {
           type: 'object',
           properties: {
@@ -222,16 +222,16 @@ function qqReplyQuote(deps: QQToolDeps): ToolSpec {
             const target = Number(args.target)
             const known = await knownGroupIds()
             if (!known.has(target)) {
-              throw new Error(`窗口验证失败：群 ${target} 不是咱加入的群（已知：${[...known].join(',') || '无'}）。先核对窗口再引用回复。`)
+              throw new Error(`窗口验证失败：群 ${target} 不是我加入的群（已知：${[...known].join(',') || '无'}）。先核对窗口再引用回复。`)
             }
           }
           if (args.isGroup === true && looksLikeCode(text)) {
-            throw new Error('群聊禁止发代码。请改用 qq_send_code_review 把代码私信给学弟审核，群里用引用只回一句"已私信学弟审核"。')
+            throw new Error('群聊禁止发代码。请改用 qq_send_code_review 把代码私信给主人审核，群里用引用只回一句"已私信主人审核"。')
           }
           // 内心戏外泄闸门：沉默决定/舞台指示/战况盘算不是群消息
           if (args.isGroup === true && isInnerMonologueLeak(text)) {
             log(`blocked inner-monologue leak (quote): ${text.slice(0, 40)}`)
-            throw new Error('这条是咱的内部盘算/舞台指示，不是要说的话，已拦下。要么把真正要对群里说的那句话引用发出来，要么不调用任何发送工具直接结束回合。')
+            throw new Error('这条是我的内部盘算/舞台指示，不是要说的话，已拦下。要么把真正要对群里说的那句话引用发出来，要么不调用任何发送工具直接结束回合。')
           }
           const message: OneBotMessageSegment[] = [
             { type: 'reply', data: { id: String(args.messageId) } },
@@ -252,12 +252,12 @@ function qqReplyQuote(deps: QQToolDeps): ToolSpec {
       }
 }
 
-/** `qq_send_code_review` — 【群聊代码专用】群聊禁止出现代码。有人在群里要求写代码时，把完整代码用这个工具私信发给学弟（管理员）审核，群里只回一句"… */
+/** `qq_send_code_review` — 【群聊代码专用】群聊禁止出现代码。有人在群里要求写代码时，把完整代码用这个工具私信发给主人（管理员）审核，群里只回一句"… */
 function qqSendCodeReview(deps: QQToolDeps): ToolSpec {
   const { api, out, config } = deps
   return {
         name: 'qq_send_code_review',
-        description: '【群聊代码专用】群聊禁止出现代码。有人在群里要求写代码时，把完整代码用这个工具私信发给学弟（管理员）审核，群里只回一句"代码已私信发给学弟审核"。',
+        description: '【群聊代码专用】群聊禁止出现代码。有人在群里要求写代码时，把完整代码用这个工具私信发给主人（管理员）审核，群里只回一句"代码已私信发给主人审核"。',
         parameters: {
           type: 'object',
           properties: {

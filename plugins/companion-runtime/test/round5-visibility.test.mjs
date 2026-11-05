@@ -15,7 +15,7 @@ import { p2Observability } from '../lib/observability.mjs';
 //   3. 连续 deferral 计数 → 超过阈值报警，恢复后清零。
 
 const T0 = Date.UTC(2026, 10, 25, 3, 0, 0);
-const SCOPE_KEY = scopeKeyOf({ userId: 'owner-1', personaId: 'march7', worldId: 'world:a' });
+const SCOPE_KEY = scopeKeyOf({ userId: 'owner-1', personaId: 'bot', worldId: 'world:a' });
 
 function world(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p2-visibility-'));
@@ -118,7 +118,7 @@ test('2. foreign / unowned 计数进诊断（p2Observability）', async t => {
 
   // …and a scope that never audited reports unavailable, never a fake 0.
   const empty = p2Observability(db, {
-    scopeKey: scopeKeyOf({ userId: 'owner-2', personaId: 'march7', worldId: 'world:z' }), now: T0,
+    scopeKey: scopeKeyOf({ userId: 'owner-2', personaId: 'bot', worldId: 'world:z' }), now: T0,
     switches: { activities: true, planning: false },
   });
   assert.equal(empty.groups.recovery.metrics.reconcile_unowned.value, null);

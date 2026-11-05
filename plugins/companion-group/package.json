@@ -1,0 +1,27 @@
+{
+  "name": "@dsh-companion/group",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Group-chat boundary for the DSH companion suite: per-group session isolation, a restricted tool allowlist and a monotonic tool guard.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./boundary.mjs": "./boundary.mjs",
+    "./core.mjs": "./core.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.mjs",
+    "boundary.mjs",
+    "core.mjs",
+    "group-isolation.test.mjs"
+  ],
+  "scripts": {
+    "test": "node --test \"group-isolation.test.mjs\""
+  }
+}

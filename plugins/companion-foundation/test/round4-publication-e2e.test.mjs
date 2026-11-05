@@ -34,12 +34,12 @@ function buildRoot(t) {
     p2: { activities: { enabled: false }, planning: { enabled: false }, share: { enabled: false } },
   }, null, 2), 'utf8');
   for (const dir of ['workspace', 'memory', 'logs']) fs.mkdirSync(path.join(root, dir), { recursive: true });
-  fs.writeFileSync(path.join(root, 'workspace', 'PERSONA.md'), '三月七', 'utf8');
+  fs.writeFileSync(path.join(root, 'workspace', 'PERSONA.md'), 'bot', 'utf8');
   // A complete identity: `createIdentity` validates every field and refuses a partial one.
   fs.writeFileSync(path.join(root, 'home', 'companion', 'identity.json'), JSON.stringify({
     schemaVersion: 1,
     owner: { id: 'owner-1', displayName: '主人' },
-    persona: 'march7',
+    persona: 'bot',
     desktop: { mode: 'local-owner', userId: 'owner-1' },
     sessions: {},
   }, null, 2), 'utf8');

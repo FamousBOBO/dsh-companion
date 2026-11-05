@@ -31,7 +31,7 @@ import { mountRuntime } from '../index.mjs';
 const T0 = Date.UTC(2026, 10, 1, 4, 0, 0); // 2026-11-01 12:00 Asia/Shanghai
 const HOUR = 3600000;
 const DAY = 24 * HOUR;
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKeyOf(SCOPE);
 const TTL = 30 * DAY;
 
@@ -415,7 +415,7 @@ function mountRoot(t, activities = { enabled: true, dispatchEnabled: true, chunk
   for (const dir of ['home/companion', 'home/companion/works/shelf', 'logs']) fs.mkdirSync(path.join(root, dir), { recursive: true });
   fs.writeFileSync(path.join(root, 'home/companion/works/shelf/note.md'), '# 海风\n\n' + '海风把纸吹得作响。'.repeat(40), 'utf8');
   fs.writeFileSync(path.join(root, 'home/companion/identity.json'), JSON.stringify({
-    schemaVersion: 1, persona: 'march7', owner: { id: 'owner-1', displayName: 'o', platform: 'qq' },
+    schemaVersion: 1, persona: 'bot', owner: { id: 'owner-1', displayName: 'o', platform: 'qq' },
     desktop: { mode: 'local-owner', userId: 'owner-1' }, sessions: {},
   }));
   fs.writeFileSync(path.join(root, 'home/companion/memory.config.json'), JSON.stringify({ schemaVersion: 1, backend: 'sqlite', injection: { budgetChars: 2400 }, extraction: { enabled: false }, embedding: { provider: 'local', dimensions: 128 }, wiki: { enabled: false } }));
@@ -432,7 +432,7 @@ test('A slice: the mounted runtime really wires the claim, and a finish yields o
   const clock = { value: T0 };
   const root = mountRoot(t);
   const ctx = { tools: { register() {} }, systemPrompt: { section() {} }, on() {}, get() { return undefined; } };
-  const identity = { resolve: sessionId => ({ userId: 'owner-1', personaId: 'march7', sessionId }) };
+  const identity = { resolve: sessionId => ({ userId: 'owner-1', personaId: 'bot', sessionId }) };
   const runtime = mountRuntime(ctx, root, {
     now: () => clock.value,
     identity,
@@ -499,7 +499,7 @@ test('A slice: an activity that is only paused or abandoned never claims to have
   const clock = { value: T0 };
   const root = mountRoot(t);
   const ctx = { tools: { register() {} }, systemPrompt: { section() {} }, on() {}, get() { return undefined; } };
-  const identity = { resolve: sessionId => ({ userId: 'owner-1', personaId: 'march7', sessionId }) };
+  const identity = { resolve: sessionId => ({ userId: 'owner-1', personaId: 'bot', sessionId }) };
   const runtime = mountRuntime(ctx, root, {
     now: () => clock.value,
     identity,
@@ -542,7 +542,7 @@ test('A slice: the mounted runtime does not dispatch until p2.activities.dispatc
   // production config has been since long before this slice), gray switch absent → false.
   const root = mountRoot(t, { enabled: true, chunkUnits: 200, maxUnitsPerStep: 4000, maxSourceBytes: 200000, maxTotalUnits: 200000, maxExcerptChars: 400 });
   const ctx = { tools: { register() {} }, systemPrompt: { section() {} }, on() {}, get() { return undefined; } };
-  const identity = { resolve: sessionId => ({ userId: 'owner-1', personaId: 'march7', sessionId }) };
+  const identity = { resolve: sessionId => ({ userId: 'owner-1', personaId: 'bot', sessionId }) };
   const runtime = mountRuntime(ctx, root, {
     now: () => clock.value,
     identity,

@@ -16,7 +16,7 @@ import { scopeKey } from '../lib/scope.mjs';
 // never rewritten. A write activity without an artifact hash can never become `done`.
 
 const T0 = Date.UTC(2026, 9, 30, 4, 0, 0);
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKey(SCOPE);
 
 function tempDir(t) {

@@ -1,12 +1,23 @@
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import crypto from 'node:crypto';
 import { ValidationError } from './errors.mjs';
+import { resolveDataRoot } from '../../companion-foundation/suite-paths.mjs';
 
 // Identity is never inferred from message text or tool arguments: callers pass the
 // host-resolved binding. Scope is the only address used for reads and writes.
 export const DEFAULT_WORLD = 'world:default';
-export const DEFAULT_PERSONA = 'march7';
+/**
+ * Persona id used when a caller does not pass one. It is a generic default, not a
+ * character: the plugin boundary resolves `DSH_COMPANION_PERSONA_ID` → the suite
+ * config → `bot` and passes the result down (D1 in the release team brief).
+ */
+export const DEFAULT_PERSONA = 'bot';
+
+/** Environment override for the default persona id, else the documented default. */
+export function defaultPersonaId(env = process.env) {
+  const value = String(env?.DSH_COMPANION_PERSONA_ID ?? '').trim();
+  return value || DEFAULT_PERSONA;
+}
 
 export function normalizeWorldId(worldId) {
   const value = typeof worldId === 'string' ? worldId.trim() : '';
@@ -17,7 +28,7 @@ export function normalizeScope(input = {}) {
   const userId = typeof input.userId === 'string' ? input.userId.trim() : String(input.userId ?? '').trim();
   const personaId = typeof input.personaId === 'string' && input.personaId.trim()
     ? input.personaId.trim()
-    : DEFAULT_PERSONA;
+    : defaultPersonaId();
   const worldId = normalizeWorldId(input.worldId);
   if (!userId) throw new ValidationError('scope requires a trusted userId');
   if (userId === '*' || personaId === '*') throw new ValidationError('wildcard scope is not writable');
@@ -59,5 +70,8 @@ export function databaseFile(root) {
 }
 
 export function packageRoot() {
-  return path.dirname(path.dirname(fileURLToPath(import.meta.url)));
+  // The runtime's own root is the suite data root (D2), not the directory this
+  // package happens to sit in. A preset passes its root explicitly; this path is
+  // only for mounting the runtime as a standalone plugin.
+  return resolveDataRoot({ moduleUrl: import.meta.url }).dataRoot;
 }

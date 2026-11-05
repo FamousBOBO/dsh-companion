@@ -16,7 +16,7 @@ import { createMemoryEngine } from '../index.mjs';
 //   id hint      → 精确命中（行为不变）。
 
 const T0 = Date.UTC(2026, 10, 6, 3, 0, 0);
-const PERSONA = 'march7';
+const PERSONA = 'bot';
 const USER = 'guard_user';
 
 function makeRoot(t) {

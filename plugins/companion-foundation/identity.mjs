@@ -1,13 +1,25 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { randomUUID } from 'node:crypto';
+import { resolvePersonaId, resolveSuiteRoot } from './suite-paths.mjs';
 
-export function createIdentity(root) {
+/**
+ * Bind the local owner identity stored in `home/companion/identity.json`.
+ *
+ * The persona id is **not** a character name baked into the source: it is
+ * resolved once per mount (`DSH_COMPANION_PERSONA_ID` → `config/suite.json`
+ * `persona.id` → `bot`) and every session row is checked against that value.
+ *
+ * @param root companion root (the data root: it contains `home/`)
+ * @param options.personaId already-resolved persona id; omit to resolve it here
+ */
+export function createIdentity(root, { personaId = null } = {}) {
   const file = path.join(root, 'home/companion/identity.json');
+  const expectedPersonaId = String(personaId ?? resolvePersonaId({ suiteRoot: resolveSuiteRoot() }).personaId).trim();
   let expectedOwner;
   const read = () => {
     const value = JSON.parse(fs.readFileSync(file, 'utf8'));
-    if (value.schemaVersion !== 1 || !value.owner?.id || !value.owner?.displayName || value.persona !== 'march7' || value.desktop?.mode !== 'local-owner' || value.desktop.userId !== value.owner.id || !value.sessions) throw new Error('Companion user identity is not configured.');
+    if (value.schemaVersion !== 1 || !value.owner?.id || !value.owner?.displayName || value.persona !== expectedPersonaId || value.desktop?.mode !== 'local-owner' || value.desktop.userId !== value.owner.id || !value.sessions) throw new Error('Companion user identity is not configured.');
     if (expectedOwner && value.owner.id !== expectedOwner) throw new Error('Local owner changed; reload the companion before accessing memories.');
     return value;
   };

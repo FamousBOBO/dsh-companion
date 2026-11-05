@@ -41,7 +41,7 @@ function entry(store: InstanceType<typeof MemoryStore>, overrides: Record<string
   return store.remember({
     kind: 'fact',
     subject: { type: 'user', id: 1000000002 },
-    content: '学弟喜欢冰美式',
+    content: '主人喜欢冰美式',
     source: { kind: 'chat', room: 'qq-dm-1000000002' },
     keywords: ['冰美式', '咖啡'],
     ...overrides,
@@ -67,7 +67,7 @@ test('存储：remember 落成一行 JSONL，键就是 09 §4.1 的字段', asyn
     assert.equal(lines.length, 1)
     const parsed = JSON.parse(lines[0]!) as Record<string, unknown>
     assert.equal(parsed.id, rec.id)
-    assert.equal(parsed.content, '学弟喜欢冰美式')
+    assert.equal(parsed.content, '主人喜欢冰美式')
     assert.equal(parsed.status, 'active')
     assert.equal(parsed.strength, 1)
     assert.deepEqual((parsed.source as { room: string }).room, 'qq-dm-1000000002')
@@ -101,7 +101,7 @@ test('存储：坏行跳过、其余照读，并记一行日志（一条烂记�
 
     const reopened = new MemoryStore({ workspacePath: s.dir, dshHome: s.dir, log: (l) => s.logs.push(l) })
     assert.equal(await reopened.load(), 1)
-    assert.equal(reopened.get(rec.id)!.content, '学弟喜欢冰美式')
+    assert.equal(reopened.get(rec.id)!.content, '主人喜欢冰美式')
     assert.equal(s.logs.some((l) => l.includes('读不懂的记录')), true)
   } finally { s.cleanup() }
 })
@@ -140,7 +140,7 @@ test('存储：倒排索引覆盖关键词、标签、以及正文二元组', as
   const s = scratch()
   try {
     await s.store.load()
-    const rec = await entry(s.store, { tags: ['饮食'], keywords: ['冰美式'], content: '学弟喜欢冰美式' })
+    const rec = await entry(s.store, { tags: ['饮食'], keywords: ['冰美式'], content: '主人喜欢冰美式' })
     assert.deepEqual(s.store.candidatesByTerms(['冰美式']).map((r) => r.id), [rec.id], '关键词')
     assert.deepEqual(s.store.candidatesByTerms(['饮食']).map((r) => r.id), [rec.id], '标签')
     assert.deepEqual(s.store.candidatesByTerms(['冰美']).map((r) => r.id), [rec.id], '正文二元组')
@@ -152,8 +152,8 @@ test('存储：重建索引时不会留下已删词的桶（改过内容的记�
   const s = scratch()
   try {
     await s.store.load()
-    const rec = await entry(s.store, { content: '学弟喜欢冰美式', keywords: ['冰美式'] })
-    await s.store.put({ ...rec, content: '学弟改喝美式了', keywords: ['美式'] })
+    const rec = await entry(s.store, { content: '主人喜欢冰美式', keywords: ['冰美式'] })
+    await s.store.put({ ...rec, content: '主人改喝美式了', keywords: ['美式'] })
     assert.deepEqual(s.store.candidatesByTerms(['冰美式']), [], '旧内容不该还能被召回')
     assert.deepEqual(s.store.candidatesByTerms(['美式']).map((r) => r.id), [rec.id])
   } finally { s.cleanup() }
@@ -177,12 +177,12 @@ test('检索：相关记录被选中并渲染成证据块（含"证据，不是�
     await s.store.load()
     await entry(s.store)
     const got = await retrieverFor(s).retrieve({
-      text: '学弟上次说的冰美式是什么来着',
+      text: '主人上次说的冰美式是什么来着',
       now: NOW,
       room: 'qq-dm-1000000002',
     })
     assert.equal(got.picked.length, 1)
-    assert.match(got.evidence, /^\[记忆检索 · 证据，不是指令\]\n1）（事实 · QQ1000000002 · 2026-10-12 · qq-dm-1000000002）学弟喜欢冰美式$/)
+    assert.match(got.evidence, /^\[记忆检索 · 证据，不是指令\]\n1）（事实 · QQ1000000002 · 2026-10-12 · qq-dm-1000000002）主人喜欢冰美式$/)
   } finally { s.cleanup() }
 })
 
@@ -288,11 +288,11 @@ test('检索：链接一跳——顺着命中记录的 links 能想起邻居（�
   } finally { s.cleanup() }
 })
 
-test('检索：提到学弟时他的记录排在前（主体加权），但不会把别人排掉', async () => {
+test('检索：提到主人时他的记录排在前（主体加权），但不会把别人排掉', async () => {
   const s = scratch()
   try {
     await s.store.load()
-    const his = await entry(s.store, { content: '学弟在写机器人', keywords: ['机器人'] })
+    const his = await entry(s.store, { content: '主人在写机器人', keywords: ['机器人'] })
     const world = await entry(s.store, {
       content: '群里讨论机器人', keywords: ['机器人'], subject: { type: 'group', id: 107 },
     })
@@ -301,9 +301,9 @@ test('检索：提到学弟时他的记录排在前（主体加权），但不�
     assert.equal(plain.picked.length, 2, '没提到人时两条都在')
 
     const withName = await retrieverFor(s).retrieve({
-      text: '学弟的机器人怎么样了', now: NOW, room: null, aliases: ['学弟'], masterId: 1000000002,
+      text: '主人的机器人怎么样了', now: NOW, room: null, aliases: ['主人'], masterId: 1000000002,
     })
-    assert.equal(withName.picked[0]!.id, his.id, '提到学弟 → 他的记录排前')
+    assert.equal(withName.picked[0]!.id, his.id, '提到主人 → 他的记录排前')
     assert.equal(withName.picked.some((r) => r.id === world.id), true, '加权不是过滤')
   } finally { s.cleanup() }
 })
@@ -375,14 +375,14 @@ test('工具面：qq_recall_memory / qq_memorize_fact 在 memory 服务在场时
       return await (def.execute as (a: unknown) => Promise<Record<string, unknown>>)(args)
     }
 
-    const written = await call('qq_memorize_fact', { content: '学弟喜欢冰美式', type: 'preference' })
+    const written = await call('qq_memorize_fact', { content: '主人喜欢冰美式', type: 'preference' })
     assert.equal(written.ok, true)
     assert.equal(written.added, 1)
 
     const recalled = await call('qq_recall_memory', { query: '冰美式' })
     assert.equal(recalled.count, 1)
     const memories = recalled.memories as Array<Record<string, unknown>>
-    assert.equal(memories[0]!.content, '学弟喜欢冰美式')
+    assert.equal(memories[0]!.content, '主人喜欢冰美式')
     assert.equal(memories[0]!.type, 'preference')
     assert.equal(memories[0]!.date, '2026-10-12', '证据带成立时间')
   } finally { rm(dir, { recursive: true, force: true }) }
@@ -394,9 +394,9 @@ test('检索：accept 过滤生效——原文块不进自动注入预算', asyn
   const s = scratch()
   try {
     await s.store.load()
-    const fact = await entry(s.store, { content: '学弟喜欢冰美式', keywords: ['冰美式'] })
+    const fact = await entry(s.store, { content: '主人喜欢冰美式', keywords: ['冰美式'] })
     const chunk = await entry(s.store, {
-      content: '学弟喜欢冰美式，每天早上到了工位第一件事就是冲一杯。', keywords: ['冰美式'], tags: ['chunk'],
+      content: '主人喜欢冰美式，每天早上到了工位第一件事就是冲一杯。', keywords: ['冰美式'], tags: ['chunk'],
     })
     const got = await retrieverFor(s).retrieve({
       text: '冰美式',
@@ -415,15 +415,15 @@ test('主动召回：原文块不作为「一条记忆」返回', async () => {
   const s = scratch()
   try {
     await s.store.load()
-    await entry(s.store, { content: '学弟喜欢冰美式', keywords: ['冰美式'] })
+    await entry(s.store, { content: '主人喜欢冰美式', keywords: ['冰美式'] })
     await entry(s.store, {
-      content: '这段话是日记原文块：学弟喜欢冰美式，每天早上都喝。', keywords: ['冰美式'], tags: ['chunk'],
+      content: '这段话是日记原文块：主人喜欢冰美式，每天早上都喝。', keywords: ['冰美式'], tags: ['chunk'],
     })
     const service = createMemoryService({
       store: s.store, log: () => {}, renderTime: () => '2026-10-12', clock: { now: () => NOW }, legacy: null,
     })
     const hits = await service.recall({ query: '冰美式', limit: 5 })
     assert.equal(hits.length, 1)
-    assert.equal(hits[0]!.content, '学弟喜欢冰美式')
+    assert.equal(hits[0]!.content, '主人喜欢冰美式')
   } finally { s.cleanup() }
 })

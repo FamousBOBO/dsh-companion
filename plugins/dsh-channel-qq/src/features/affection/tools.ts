@@ -10,16 +10,16 @@
 import type { ToolSpec } from '../../adapters/dsh-host/tools.js'
 import type { QQToolDeps } from '../tool-deps.js'
 
-/** `qq_set_affection` — 【好感度记账】学弟的一句话/一个举动让咱心里起波澜时，用这个记账。delta 是变化值（-30~30），reason 写… */
+/** `qq_set_affection` — 【好感度记账】主人的一句话/一个举动让我心里起波澜时，用这个记账。delta 是变化值（-30~30），reason 写… */
 function qqSetAffection(deps: QQToolDeps): ToolSpec {
   const { affection } = deps
   return {
         name: 'qq_set_affection',
-        description: '【好感度记账】学弟的一句话/一个举动让咱心里起波澜时，用这个记账。delta 是变化值（-30~30），reason 写学弟做了什么。每次变化都要记，绝不漏账。',
+        description: '【好感度记账】主人的一句话/一个举动让我心里起波澜时，用这个记账。delta 是变化值（-30~30），reason 写主人做了什么。每次变化都要记，绝不漏账。',
         parameters: {
           type: 'object',
           properties: {
-            delta: { type: 'number', description: '变化值：夸咱/护咱/投喂 +5~10，冷落/凶咱 -3~5' },
+            delta: { type: 'number', description: '变化值：夸我/护我/投喂 +5~10，冷落/凶我 -3~5' },
             reason: { type: 'string', description: '原因一句话' },
           },
           required: ['delta', 'reason'],
@@ -31,12 +31,12 @@ function qqSetAffection(deps: QQToolDeps): ToolSpec {
       }
 }
 
-/** `qq_set_stage` — 【阶段宣言】阶段完全由咱自己定义：根据咱的记忆，说出当前真实的阶段名和理由。可以升、可以降、可以改名——说最真实的话就行… */
+/** `qq_set_stage` — 【阶段宣言】阶段完全由我自己定义：根据我的记忆，说出当前真实的阶段名和理由。可以升、可以降、可以改名——说最真实的话就行… */
 function qqSetStage(deps: QQToolDeps): ToolSpec {
   const { affection } = deps
   return {
         name: 'qq_set_stage',
-        description: '【阶段宣言】阶段完全由咱自己定义：根据咱的记忆，说出当前真实的阶段名和理由。可以升、可以降、可以改名——说最真实的话就行。每次变更都会记入阶段史。',
+        description: '【阶段宣言】阶段完全由我自己定义：根据我的记忆，说出当前真实的阶段名和理由。可以升、可以降、可以改名——说最真实的话就行。每次变更都会记入阶段史。',
         parameters: {
           type: 'object',
           properties: {
@@ -52,12 +52,12 @@ function qqSetStage(deps: QQToolDeps): ToolSpec {
       }
 }
 
-/** `qq_write_dashboard` — 【咱自己的记分板】重写好感度悬浮窗的HTML页面（咱完全掌控的记分小黑板）。写好后立即生效。想要什么样式自己定：阶段、日… */
+/** `qq_write_dashboard` — 【我自己的记分板】重写好感度悬浮窗的HTML页面（我完全掌控的记分小黑板）。写好后立即生效。想要什么样式自己定：阶段、日… */
 function qqWriteDashboard(deps: QQToolDeps): ToolSpec {
   const { affection } = deps
   return {
         name: 'qq_write_dashboard',
-        description: '【咱自己的记分板】重写好感度悬浮窗的HTML页面（咱完全掌控的记分小黑板）。写好后立即生效。想要什么样式自己定：阶段、日记入口、小本本都随咱排。',
+        description: '【我自己的记分板】重写好感度悬浮窗的HTML页面（我完全掌控的记分小黑板）。写好后立即生效。想要什么样式自己定：阶段、日记入口、小本本都随我排。',
         parameters: {
           type: 'object',
           properties: {

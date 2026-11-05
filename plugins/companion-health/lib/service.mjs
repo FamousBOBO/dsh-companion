@@ -80,9 +80,42 @@ function clampInt(value, min, max, fallback) {
 const DATE_RE = /^\d{4}-\d{2}-\d{2}$/;
 
 /**
+ * companion home resolution, aligned with the suite convention (`tools/lib/paths.mjs`).
+ *
+ * Order: explicit `home` option → `DSH_COMPANION_HEALTH_HOME` (the suite launcher sets this) →
+ * `$DSH_COMPANION_DATA_DIR/home` → `<root>/data/home`.
+ *
+ * Nothing here is tied to a machine: the old behaviour (`<root>/home`) made runtime data land in
+ * the repository root instead of the suite's git-ignored `data/`.
+ */
+function resolveHome(root, homeOption) {
+  if (homeOption) return path.resolve(String(homeOption));
+  const envHome = process.env.DSH_COMPANION_HEALTH_HOME;
+  if (envHome && String(envHome).trim()) return path.resolve(String(envHome).trim());
+  const envData = process.env.DSH_COMPANION_DATA_DIR;
+  if (envData && String(envData).trim()) {
+    return path.join(path.resolve(String(envData).trim()), 'home');
+  }
+  return path.join(root, 'data', 'home');
+}
+
+/**
+ * Sidecar 地址的环境变量覆盖。套件配置里的 `services.health.sidecarUrl` 由启动脚本翻译成这两个
+ * 变量之一；两个地址都只允许回环，非回环会被 `validateConfig()` 打回默认值并留下 warning。
+ */
+function sidecarEnvOverride() {
+  const override = {};
+  const health = process.env.DSH_COMPANION_HEALTH_SIDECAR_URL;
+  if (health && String(health).trim()) override.collector = { baseUrl: String(health).trim() };
+  const pulse = process.env.DSH_COMPANION_PULSE_SIDECAR_URL;
+  if (pulse && String(pulse).trim()) override.pulse = { baseUrl: String(pulse).trim() };
+  return override;
+}
+
+/**
  * @param {object} [options]
  * @param {string} [options.root]        workspace root (default: `plugins/companion-health/../..`)
- * @param {string} [options.home]        companion home (default `$DSH_COMPANION_HEALTH_HOME` or `<root>/home`)
+ * @param {string} [options.home]        companion home (default `<root>/data/home`, see `resolveHome`)
  * @param {object} [options.config]      override merged over the file, then validated
  * @param {Function} [options.fetchImpl] injected fetch (adapter/tests)
  * @param {Function} [options.now]
@@ -98,9 +131,9 @@ export function createHealthService(options = {}) {
   } = options && typeof options === 'object' ? options : {};
 
   const root = path.resolve(String(rootOption ?? WORKSPACE_ROOT));
-  const home = path.resolve(String(
-    homeOption ?? process.env.DSH_COMPANION_HEALTH_HOME ?? path.join(root, 'home'),
-  ));
+  const home = resolveHome(root, homeOption);
+  // 环境变量只补「没写进配置的那一层」：显式 options.config 仍然最高优先级。
+  const mergedOverride = { ...sidecarEnvOverride(), ...(configOverride && typeof configOverride === 'object' ? configOverride : {}) };
   const healthDir = healthDirOf(home);
   const dbPath = dbFileOf(home);
   const configPath = configFileOf(home);
@@ -574,7 +607,7 @@ export function createHealthService(options = {}) {
     // 1. config (never rewritten once it exists; only created on first run of a writable service)
     let loaded;
     try {
-      loaded = loadConfig({ home, override: configOverride, writeDefaults: !readOnly, now: clock });
+      loaded = loadConfig({ home, override: mergedOverride, writeDefaults: !readOnly, now: clock });
     } catch (error) {
       return failInit('config-invalid', '读取健康配置失败', error);
     }

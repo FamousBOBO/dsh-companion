@@ -124,7 +124,7 @@ async function surfaceHarness(): Promise<SurfaceHarness> {
   const client = fakeClient({
     get_group_list: [{ group_id: GROUP }],
     get_group_info: { group_name: '主群' },
-    get_friend_list: [{ user_id: MASTER, nickname: '学弟' }],
+    get_friend_list: [{ user_id: MASTER, nickname: '主人' }],
   })
   const logs: string[] = []
   const log = (line: string): void => { logs.push(line) }
@@ -184,7 +184,9 @@ test('tools.v2 打开：宿主上正好 17 个合并工具，描述人格中立'
     for (const def of t.definitions) {
       const description = String(def.description)
       assert.ok(description.includes('动作（'), `${String(def.name)} 的描述应带动作清单`)
-      for (const banned of ['学弟', '咱', '铃铃']) {
+      // 人格中立：描述里不许出现具体人设的称呼/自称（「主人」是本插件的域内称呼，
+      // 指配置里的 admins[0]，不是人格设定，所以不在禁列）。
+      for (const banned of ['学弟', '诺诺', '三月七', '咱']) {
         assert.equal(description.includes(banned), false, `${String(def.name)} 的描述含人格称呼「${banned}」`)
       }
       assert.deepEqual((def.parameters as { required?: unknown }).required, ['action'])
@@ -249,7 +251,7 @@ test('委派：合并工具跑的就是旧实现（发送过闸门 / 风控写�
     assert.ok(t.client.calls.some((c) => c.action === 'send_group_msg' && c.params.group_id === GROUP))
     await assert.rejects(
       () => t.call('qq_message', { action: 'send', isGroup: true, target: 555, text: '在吗' }),
-      /不是咱加入的群/,
+      /不是我加入的群/,
       '发送前的目标校验原样生效',
     )
     const exempted = await t.call('qq_flood', { action: 'exempt', userId: 42 }) as { exempt: number[] }

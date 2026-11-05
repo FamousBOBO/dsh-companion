@@ -41,7 +41,7 @@ function qqFloodStats(config: QQChannelConfig, guard: FloodGuard): ToolSpec {
 function qqFloodExempt(config: QQChannelConfig, log: (line: string) => void): ToolSpec {
   return {
     name: 'qq_flood_exempt',
-    description: '把某个 QQ 号加入或移出刷屏豁免名单（学弟和咱自己永远豁免）。老群友偶尔连着说话被误判时用这个放行。名单改的是内存里的配置，重启后回到配置文件的值。',
+    description: '把某个 QQ 号加入或移出刷屏豁免名单（主人和我自己永远豁免）。老群友偶尔连着说话被误判时用这个放行。名单改的是内存里的配置，重启后回到配置文件的值。',
     parameters: params({
       userId: { type: 'number', description: 'QQ 号' },
       remove: { type: 'boolean', description: 'true = 移出豁免名单，不传/false = 加入' },

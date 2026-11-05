@@ -288,7 +288,7 @@ export function conversationFromTurns(turns) {
     }
     messages.push({
       role: 'assistant',
-      speaker: '诺诺',
+      speaker: 'bot',
       text: t.sends.map((s) => s.text).join('\n'),
       actions: t.actions.map((a) => ({ tool: a.tool, args: a.args })),
     })

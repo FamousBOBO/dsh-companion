@@ -1,0 +1,133 @@
+{
+  "$schema": "./src/schema.mjs",
+  "_comment": "companion-media 配置模板。复制到 <dataDir>/media/config.json 后填写。任何字段都可以留空；留空 = 未配置。密钥请只写在本机文件或环境变量里，不要提交。",
+  "schemaVersion": 2,
+  "enabled": true,
+  "personaId": "",
+  "limits": {
+    "requestBudgetMs": 240000,
+    "connectTimeoutMs": 10000,
+    "maxResponseBytes": 16777216,
+    "maxImageBytes": 16777216,
+    "maxAudioBytes": 33554432,
+    "maxRedirects": 2,
+    "maxImagesPerRequest": 1,
+    "maxTextChars": 4000
+  },
+  "vision": {
+    "enabled": false,
+    "baseUrl": "",
+    "apiKey": "",
+    "model": "",
+    "timeoutMs": 60000
+  },
+  "image": {
+    "enabled": false,
+    "provider": "none",
+    "openai": {
+      "baseUrl": "",
+      "apiKey": "",
+      "model": "",
+      "timeoutMs": 180000,
+      "size": "1024x1024",
+      "quality": "auto",
+      "outputFormat": "png",
+      "background": "auto"
+    },
+    "nai": {
+      "transport": "official",
+      "baseUrl": "",
+      "apiKey": "",
+      "model": "nai-diffusion-4-5-full",
+      "timeoutMs": 240000,
+      "width": 832,
+      "height": 1216,
+      "steps": 28,
+      "scale": 5,
+      "sampler": "k_euler_ancestral",
+      "noiseSchedule": "karras",
+      "seed": -1,
+      "ucPreset": 0,
+      "qualityToggle": true,
+      "sm": false,
+      "smDyn": false,
+      "negativePrompt": "",
+      "presets": {
+        "applyDefaults": false,
+        "positive": "",
+        "negative": "",
+        "custom": {
+          "positive": "",
+          "negative": ""
+        }
+      }
+    }
+  },
+  "tts": {
+    "enabled": false,
+    "provider": "none",
+    "providers": {
+      "breeze-tts-2": {
+        "enabled": false,
+        "baseUrl": "",
+        "apiKey": "",
+        "model": "breeze-tts-2",
+        "timeoutMs": 600000,
+        "instruction": "",
+        "cfgScale": 1,
+        "seed": 42,
+        "refAudioPath": "",
+        "refText": ""
+      },
+      "gpt-sovits": {
+        "enabled": false,
+        "baseUrl": "",
+        "apiKey": "",
+        "model": "",
+        "timeoutMs": 300000,
+        "refAudioPath": "",
+        "promptText": "",
+        "promptLang": "zh",
+        "textLang": "zh",
+        "mediaType": "wav",
+        "speedFactor": 1,
+        "topK": 15,
+        "topP": 1,
+        "temperature": 1,
+        "seed": -1
+      },
+      "drama3": {
+        "enabled": false,
+        "baseUrl": "https://api.fish.audio",
+        "apiKey": "",
+        "model": "drama-3",
+        "timeoutMs": 300000,
+        "referenceId": "",
+        "format": "wav",
+        "latency": "normal",
+        "temperature": 0.7,
+        "topP": 0.7
+      },
+      "index-tts": {
+        "enabled": false,
+        "baseUrl": "",
+        "apiKey": "",
+        "model": "",
+        "timeoutMs": 300000,
+        "refAudioPath": ""
+      },
+      "fish-audio": {
+        "enabled": false,
+        "baseUrl": "https://api.fish.audio",
+        "apiKey": "",
+        "model": "s2.1-pro",
+        "timeoutMs": 300000,
+        "referenceId": "",
+        "format": "wav",
+        "latency": "normal",
+        "temperature": 0.7,
+        "topP": 0.7
+      }
+    }
+  }
+}

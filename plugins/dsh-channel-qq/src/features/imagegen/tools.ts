@@ -97,7 +97,7 @@ function qqImagegenModels(deps: ImageGenToolDeps): ToolSpec {
   const { config, outDir } = deps
   return {
     name: 'qq_imagegen_models',
-    description: '查当前生图后端是什么（provider/model/分辨率）。什么时候用：生图失败想确认是不是后端配错了、或者学弟问"现在用哪个模型画图"时。',
+    description: '查当前生图后端是什么（provider/model/分辨率）。什么时候用：生图失败想确认是不是后端配错了、或者主人问"现在用哪个模型画图"时。',
     parameters: params({}),
     run: async () => {
       const imageGen = requireConfig(config)

@@ -57,7 +57,7 @@ const status_ = (v?: Rec['status']) => (v === undefined ? null : { status: v })
 // ── 1. 蒸馏与触发 ────────────────────────────────────────────────────────────
 
 test('蒸馏：去掉口语壳与句尾语气，截到 80 字', () => {
-  assert.equal(distillFact('其实学弟不吃香菜'), '学弟不吃香菜')
+  assert.equal(distillFact('其实主人不吃香菜'), '主人不吃香菜')
   assert.equal(distillFact('我觉得她好像在忙吧。'), '她好像在忙')
   assert.equal(distillFact('然后对了，他喜欢冰美式'), '他喜欢冰美式')
   assert.equal(distillFact('可能大概也许就是这样呢'), '也许就是这样')
@@ -81,8 +81,8 @@ test('触发判据：四类触发命中，寒暄/命令/链接不命中', () => 
 // ── 2. 巩固计划 ──────────────────────────────────────────────────────────────
 
 test('巩固：同一件事的两种说法合并成一条，drop 走 supersede，痕迹吸收', () => {
-  const a = rec({ content: '学弟不吃香菜，每次点菜都要提前备注好', hits: 3, strength: 2, confidence: 0.5 })
-  const b = rec({ content: '学弟不吃香菜，每次点菜都提前备注好', hits: 5, strength: 1, confidence: 0.7 })
+  const a = rec({ content: '主人不吃香菜，每次点菜都要提前备注好', hits: 3, strength: 2, confidence: 0.5 })
+  const b = rec({ content: '主人不吃香菜，每次点菜都提前备注好', hits: 5, strength: 1, confidence: 0.7 })
   const plans = planMerges([a, b])
   assert.equal(plans.length, 1, '同一件事的两种说法（重叠过门槛）合并')
   const plan = plans[0]!
@@ -99,11 +99,11 @@ test('巩固：同一件事的两种说法合并成一条，drop 走 supersede�
 })
 
 test('巩固：互不相干的事实不合并；钉住的永不合并', () => {
-  const a = rec({ content: '学弟不吃香菜' })
-  const b = rec({ content: '学弟住在 3 号楼' })
+  const a = rec({ content: '主人不吃香菜' })
+  const b = rec({ content: '主人住在 3 号楼' })
   assert.equal(planMerges([a, b]).length, 0, '同主体不同事实，重叠低')
-  const pinnedA = rec({ content: '学弟不吃香菜，点菜要备注啊一定要备注', tags: ['pin'] })
-  const pinnedB = rec({ content: '学弟不吃香菜，点菜一定要备注备注' })
+  const pinnedA = rec({ content: '主人不吃香菜，点菜要备注啊一定要备注', tags: ['pin'] })
+  const pinnedB = rec({ content: '主人不吃香菜，点菜一定要备注备注' })
   assert.equal(planMerges([pinnedA, pinnedB]).length, 0, '钉住的退出合并')
 })
 
@@ -161,13 +161,13 @@ test('走神层：8% 概率、深记忆、七天没想起；骰子大了不带',
 // ── 4. 实体词典 ──────────────────────────────────────────────────────────────
 
 test('实体词典：keywords/subject.id/person 称呼都挂接；查询点名即命中', () => {
-  const a = rec({ content: '学弟在写机器人', keywords: ['机器人'] })
-  const b = rec({ content: '团子是学弟的猫', keywords: [], kind: 'person' as never, subject: { type: 'user', id: 23456 } })
+  const a = rec({ content: '主人在写机器人', keywords: ['机器人'] })
+  const b = rec({ content: '团子是主人的猫', keywords: [], kind: 'person' as never, subject: { type: 'user', id: 23456 } })
   const chunk = rec({ content: '原文块不进实体', keywords: ['机器人'], tags: ['chunk'] })
   const index = entityIndex([a, b, chunk])
   assert.ok(index.has('机器人'), 'keywords 进实体')
   assert.ok(index.has('23456'), 'subject.id 进实体')
-  assert.ok(index.has('团子是学弟的猫'), 'person 正文开头当称呼')
+  assert.ok(index.has('团子是主人的猫'), 'person 正文开头当称呼')
   assert.ok(!index.get('机器人')!.has(chunk.id), '原文块不挂接')
   const hits = entitiesInText(index, '机器人现在写得怎么样了')
   assert.equal(hits.length, 1)
@@ -180,7 +180,7 @@ test('实体词典：keywords/subject.id/person 称呼都挂接；查询点名�
 
 test('纪念日：月日相同才算到期；年数按建档算', () => {
   // NOW = 2026-10-24 本地；validFrom = 2024-10-24 → 第 3 个年头（years=2）。
-  const birthday = rec({ content: '学弟的生日', tags: ['birthday'], validFrom: new Date(2024, 9, 24, 8).getTime() })
+  const birthday = rec({ content: '主人的生日', tags: ['birthday'], validFrom: new Date(2024, 9, 24, 8).getTime() })
   const other = rec({ content: '别的日子', tags: ['birthday'], validFrom: new Date(2024, 9, 25).getTime() })
   const untagged = rec({ content: '没标记的', validFrom: new Date(2024, 9, 24).getTime() })
   const got = dueOccasions([birthday, other, untagged], NOW, 8 * 60)
@@ -257,7 +257,7 @@ async function settle(probe: () => string, quietMs = 150, timeoutMs = 5000): Pro
 }
 
 test('即时抽取：触发才抽、蒸馏后入库、低置信带 instant 标记', async () => {
-  const h = captureHarness({ extract: async () => [{ type: 'fact', content: '其实学弟不吃香菜，点菜要备注一下的', tags: ['饮食'], source: '聊天' }] })
+  const h = captureHarness({ extract: async () => [{ type: 'fact', content: '其实主人不吃香菜，点菜要备注一下的', tags: ['饮食'], source: '聊天' }] })
   try {
     await h.store.load()
     h.c.begin('group-123', { text: '你说错了，我不吃香菜' })
@@ -265,7 +265,7 @@ test('即时抽取：触发才抽、蒸馏后入库、低置信带 instant 标�
     await waitFor('这条纠正被即时抽取写进记忆库', () => h.store.all().length === 1)
     const all = h.store.all()
     assert.equal(all.length, 1)
-    assert.equal(all[0]!.content, '学弟不吃香菜，点菜要备注一下的', '蒸馏过的短事实（≤80 字）')
+    assert.equal(all[0]!.content, '主人不吃香菜，点菜要备注一下的', '蒸馏过的短事实（≤80 字）')
     assert.equal(all[0]!.confidence, 0.5, '低置信起步')
     assert.equal(all[0]!.tags.includes('instant'), true)
     assert.equal(all[0]!.source.kind, 'extract')

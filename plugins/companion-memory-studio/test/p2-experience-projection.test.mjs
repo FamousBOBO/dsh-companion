@@ -94,8 +94,8 @@ test('E7-5 life 视图带着 experience（页面从 life.experience 取）', () 
 test('E7-6 投影与整个 dashboard 读取过程：一条写语句都没有，数据库字节不变', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'companion-e7-'));
   const file = path.join(root, 'home/companion/companion-runtime.db');
-  const kernel = { root, internal: async () => ({}), viewer: () => ({ userId: 'owner', personaId: 'march7' }), ok: x => x };
-  const scope = 'u:owner|p:march7|w:world:default';
+  const kernel = { root, internal: async () => ({}), viewer: () => ({ userId: 'owner', personaId: 'bot' }), ok: x => x };
+  const scope = 'u:owner|p:bot|w:world:default';
   try {
     fs.mkdirSync(path.dirname(file), { recursive: true });
     // 建库与塞行用可写连接（这是测试自己的准备工作，不是被测代码做的）。

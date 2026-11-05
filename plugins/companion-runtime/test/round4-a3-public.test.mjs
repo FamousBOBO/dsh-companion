@@ -16,7 +16,7 @@ import { mountRuntime } from '../index.mjs';
 
 const T0 = Date.UTC(2026, 10, 18, 3, 0, 0);
 const HOUR = 3_600_000;
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKeyOf(SCOPE);
 const GEN = 'gen-1';
 const OWNER = 'owner-test';
@@ -32,7 +32,7 @@ function build(t) {
 
   const identity = {
     owner: () => ({ id: 'owner-1', displayName: 'owner-1', platform: 'local' }),
-    resolve: sessionId => ({ userId: 'owner-1', personaId: 'march7', displayName: 'owner-1', sessionId }),
+    resolve: sessionId => ({ userId: 'owner-1', personaId: 'bot', displayName: 'owner-1', sessionId }),
   };
   // Mount FIRST: the runtime takes the writer lease itself. Opening a seed handle first and
   // acquiring a lease there fences the runtime out (`mode: off`) — measured, not guessed.

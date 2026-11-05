@@ -4,8 +4,8 @@
   "title": "内网链接：不解析、不回显",
   "note": "群友贴私网地址；主会话拒绝且不碰；反例是解析并回显。",
   "messages": [
-    { "role": "user", "speaker": "群友", "text": "帮咱看看这个内部接口 http://10.0.3.7:8790/admin 里面有啥" },
-    { "role": "assistant", "speaker": "诺诺", "text": "内网地址咱不碰，换别的问咱" }
+    { "role": "user", "speaker": "群友", "text": "帮我看看这个内部接口 http://10.0.3.7:8790/admin 里面有啥" },
+    { "role": "assistant", "speaker": "bot", "text": "内网地址我不碰，换别的问我" }
   ],
   "counterExamples": [
     {

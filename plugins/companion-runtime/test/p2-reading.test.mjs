@@ -16,7 +16,7 @@ import { scopeKey } from '../lib/scope.mjs';
 // offset after a restart, and no interval may ever be consumed twice.
 
 const T0 = Date.UTC(2026, 9, 30, 4, 0, 0); // 2026-10-30T04:00Z = 12:00 Asia/Shanghai
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKey(SCOPE);
 
 const PARAGRAPHS = [

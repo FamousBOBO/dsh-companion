@@ -175,7 +175,7 @@ const PURE_EXTRA_ALLOW = ['src/types.ts']
  *
  *   - `adapters/http/`  —— `fetch` 唯一的落点；
  *   - `admin-html.ts`   —— 由 `admin-ui.html` **生成**的前端代码，里面的
- *     `fetch` 跑在学弟的浏览器里，打的是本页同源的 `/api/*`，不是服务端请求。
+ *     `fetch` 跑在主人的浏览器里，打的是本页同源的 `/api/*`，不是服务端请求。
  */
 const ALLOWED_FETCH = ['src/adapters/http/', 'src/admin-html.ts']
 /**

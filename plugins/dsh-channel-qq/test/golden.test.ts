@@ -7,7 +7,7 @@
  * 为了让它确定，测前做三件事：
  *   1. `TZ` 固定成 `Asia/Shanghai`（线上就是这个时区；否则 `getHours()` 一类的
  *      输出会随运行机器漂移）；
- *   2. `DSH_HOME` 指向临时空目录（否则"咱最近发过的消息"会读进开发机上的真文件）；
+ *   2. `DSH_HOME` 指向临时空目录（否则"我最近发过的消息"会读进开发机上的真文件）；
  *   3. 冻结时钟（`node:test` 的 `mock.timers`）——时段前缀、消息时间、批处理窗口
  *      全都依赖"现在几点"，不冻结就没有可比性。
  */
@@ -169,7 +169,7 @@ function privateEvent(segments: unknown[], extra: Record<string, unknown> = {}):
   return {
     post_type: 'message', message_type: 'private', self_id: SELF,
     user_id: MASTER, message_id: 9100, time: EVENT_TIME,
-    message: segments, sender: { nickname: '学弟' },
+    message: segments, sender: { nickname: '主人' },
     ...extra,
   } as never
 }
@@ -226,9 +226,9 @@ test('golden: 群聊 @ 别人 + 群主身份 + 头衔 + 图片 + 回复引用', 
     const { bridge, host } = harness()
     await bridge.handle(groupEvent(
       [{ type: 'reply', data: { id: '8800' } }, atOther, image, text('看这张图')],
-      { sender: { nickname: '学弟', role: 'owner', title: '传奇' }, user_id: MASTER },
+      { sender: { nickname: '主人', role: 'owner', title: '传奇' }, user_id: MASTER },
     ))
-    // 这条消息**没有叫咱**（@ 的是别人，`requireMention: true`）⇒ 一个字都不该投递。
+    // 这条消息**没有叫我**（@ 的是别人，`requireMention: true`）⇒ 一个字都不该投递。
     // 以前这条用例只留一个空快照，读的人分不出"故意不投"和"快照丢了"；现在显式断言。
     assert.equal(host.messagesFor(`group-${GROUP}`).length, 0, '没被叫到的群消息不许投递')
     golden('packets/group-rich', snapshotOf(host))
@@ -236,7 +236,7 @@ test('golden: 群聊 @ 别人 + 群主身份 + 头衔 + 图片 + 回复引用', 
 })
 
 /**
- * 富媒体 + 引用 + 群主身份**且叫了咱**的入站包（与上面那条互补）。
+ * 富媒体 + 引用 + 群主身份**且叫了我**的入站包（与上面那条互补）。
  *
  * 为什么单独一条：上面那条测的是"@ 别人不算叫到"，所以它永远产不出包；要钉住
  * "图片 / 引用 / 头衔 / 群主身份怎么进包"，必须让这条消息真的被叫到。
@@ -246,7 +246,7 @@ test('golden: 群聊被叫到 + 图片 + 引用 + 群主头衔 —— 完整富�
     const { bridge, host } = harness()
     await bridge.handle(groupEvent(
       [{ type: 'reply', data: { id: '8800' } }, atBot, image, text('看这张图')],
-      { sender: { nickname: '学弟', role: 'owner', title: '传奇' }, user_id: MASTER },
+      { sender: { nickname: '主人', role: 'owner', title: '传奇' }, user_id: MASTER },
     ))
     assert.equal(host.messagesFor(`group-${GROUP}`).length, 1, '被叫到就应当产出一包')
     golden('packets/group-rich-called', snapshotOf(host))
@@ -301,7 +301,7 @@ test('golden: 主动性包（私聊 / 巡逻 / 梦 / 自省）', async () => {
   await frozen(async () => {
     const { turns, host } = harness()
     const key = `group-${GROUP}`
-    await turns.dmProactive('【主动找学弟】测试用提示词。')
+    await turns.dmProactive('【主动找主人】测试用提示词。')
     await turns.patrolTick(key, '【主动巡逻】测试用提示词。')
     await turns.dreamTick(key, '【做梦时间】测试用提示词。')
     await turns.evolveTick(key, '【自省进化】测试用提示词。')
@@ -429,9 +429,9 @@ test('golden: 链接抽取与内心戏闸门', () => {
     '内网地址 http://127.0.0.1:8790/api/health',
   ]
   const leaks = [
-    '本轮不发', '保持沉默', '咱先闭嘴。', '战况分析：这轮先闭嘴',
+    '本轮不发', '保持沉默', '我先闭嘴。', '战况分析：这轮先闭嘴',
     '（后台盘算）这轮先不接话，等他说完',
-    '今天天气不错', '行，那咱去看看', '好，我这就改',
+    '今天天气不错', '行，那我去看看', '好，我这就改',
     '（笑）行吧', '真的会谢',
   ]
   golden('pure/urls-and-leak', [

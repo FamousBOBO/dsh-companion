@@ -37,7 +37,7 @@ const scopeModule = path.join(here, '..', 'lib', 'scope.mjs');
 const T0 = Date.UTC(2026, 9, 30, 0, 0, 0);
 const MINUTE = 60000;
 const HOUR = 3600000;
-const SCOPE_A = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: '' });
+const SCOPE_A = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: '' });
 const KEY_A = keyOfScope(SCOPE_A);
 
 /** Generous handshake deadline: the suite runs ~20 file processes in parallel. */

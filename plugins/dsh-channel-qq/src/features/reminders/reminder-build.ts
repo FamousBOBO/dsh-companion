@@ -38,7 +38,7 @@ export interface BuiltReminder {
 /** 校验并造出这条提醒（**不落盘**；落盘由调用方负责）。 */
 export function buildReminder(input: AddInput): BuiltReminder {
   const text = String(input.text ?? '').trim()
-  if (text === '') throw new Error('提醒内容不能为空：告诉咱要到点提醒你什么。')
+  if (text === '') throw new Error('提醒内容不能为空：告诉我要到点提醒你什么。')
   const at = Number(input.at)
   if (!Number.isFinite(at) || at <= 0) throw new Error('提醒时间无效：请给 Unix 毫秒时间戳或 "YYYY-MM-DD HH:mm"。')
   const item: BuiltReminder = {

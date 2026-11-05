@@ -162,7 +162,8 @@ const SYSTEM_TEMPLATE = `你是「长期记忆」的候选提取器，服务于�
 function personaName(persona) {
   if (typeof persona === 'string' && persona.trim()) return persona.trim();
   const name = persona?.displayName ?? persona?.name;
-  return typeof name === 'string' && name.trim() ? name.trim() : '三月七';
+  // No character specific fallback: an unnamed persona is just the generic default.
+  return typeof name === 'string' && name.trim() ? name.trim() : 'bot';
 }
 
 function scopeBlock({ viewer, worldBound, personaLabel }) {

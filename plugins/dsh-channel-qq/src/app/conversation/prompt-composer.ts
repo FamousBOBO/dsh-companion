@@ -21,7 +21,7 @@ import {
 
 /** 群聊一包的素材。 */
 export interface GroupPacketInput {
-  /** 最后一条是不是"叫咱"（@ / 关键词）。 */
+  /** 最后一条是不是"叫我"（@ / 关键词）。 */
   readonly called: boolean
   /** 已经渲染好的入站行。 */
   readonly context: string
@@ -121,7 +121,7 @@ export class PromptComposer {
    * 告诉模型"你在哪个房间、该往哪发"的那一行。
    *
    * 没有它，群聊与私聊的入站行长得一模一样，而指令只说"发到本会话"却没给目标——
-   * 模型只能猜 `isGroup` 与 `target`。它真的猜错过：2026-10-14 学弟在私聊问了一句，
+   * 模型只能猜 `isGroup` 与 `target`。它真的猜错过：2026-10-14 主人在私聊问了一句，
    * 回答发到了主群。现在每一条把回合交给模型的路径都带上这一行。
    */
   roomDirective(isGroup: boolean, chatId: number): string {
@@ -239,7 +239,7 @@ export class PromptComposer {
     return `${this.timeNote(period)}\n${room}\n${prompt}`
   }
 
-  /** 戳一戳裁决：告诉模型"谁戳了咱、最近第几次"，其余交给它自己决定。 */
+  /** 戳一戳裁决：告诉模型"谁戳了我、最近第几次"，其余交给它自己决定。 */
   pokeNotice(input: { pokerId: number; minutes: number; count: number }): string {
     return this.r('notice/poke', {
       pokerId: String(input.pokerId),

@@ -25,7 +25,7 @@ import { golden } from './golden.js'
 const CASES: Array<{ name: string; patch?: Record<string, unknown>; override?: Record<string, unknown> }> = [
   { name: '00-纯默认' },
   {
-    name: '01-黄金用例（主群 + 学弟 + 关视觉）',
+    name: '01-黄金用例（主群 + 主人 + 关视觉）',
     patch: {
       selfId: 1000000001, admins: [1000000002], primaryGroup: 1000000003,
       workspacePath: '/tmp/ws', requireMention: true,

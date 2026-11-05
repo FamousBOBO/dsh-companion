@@ -1,9 +1,9 @@
 // 本文件由 scripts/build-client.mjs 生成，请勿手改。
-// package: @local/dsh-companion-memory-studio
+// package: @dsh-companion/memory-studio
 // 片段顺序与契约 design/studio/ARCHITECTURE.md §5.1 一致；改动片段后请重新运行拼装。
 // 生成的运行时只依赖浏览器模块表里的 react，不引入 CDN / UMD。
 window.__ModuleLoader__.load({
-  id: '@local/dsh-companion-memory-studio',
+  id: '@dsh-companion/memory-studio',
   factory(require) {
     const React = require('react');
 
@@ -1943,7 +1943,7 @@ function Rail({ collapsed, onToggle, compact, onCompact, compactAvailable }) {
       h('span', { className: 'cpx-brand-mark' }, h(Icon, { name: 'snow', size: 18 })),
       h('span', { className: 'cpx-brand' },
         h('span', { className: 'cpx-brand-name' }, PRODUCT),
-        h('span', { className: 'cpx-brand-state' }, '三月七的陪伴空间'))),
+        h('span', { className: 'cpx-brand-state' }, '本地陪伴'))),
     h('div', { className: 'cpx-nav' },
       groups.map((group) => h('div', { key: group.label, className: 'cpx-nav-group' },
         h('span', { className: 'cpx-nav-label' }, group.label),
@@ -2208,7 +2208,7 @@ function ChatCompanionStrip() {
       ? `${stateText} · 接下来 ${P.fmt.clock(next.startAt)} ${next.title || ''}`
       : stateText;
   return h('div', { className: 'cpx-chat-strip', role: 'note', 'aria-label': '陪伴状态摘要' },
-    h(StateLine, { state: life.state === 'running' ? 'live' : life.state === 'resting' ? 'ok' : 'idle', text: '三月七' }),
+    h(StateLine, { state: life.state === 'running' ? 'live' : life.state === 'resting' ? 'ok' : 'idle', text: '陪伴角色' }),
     h('span', { className: 'cpx-chat-strip-text' }, line),
     h('button', { type: 'button', onClick: open }, '打开陪伴空间'));
 }

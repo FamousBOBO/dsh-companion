@@ -149,7 +149,7 @@ test('S4 内部抛错 → 对外 {ok:false, code:"internal"}，绝不把异常�
     propose: async () => { throw new Error('ledger disk full') },
     attempt: async () => {},
     target: () => ({
-      scope: { userId: OWNER, personaId: 'march7', worldId: '' },
+      scope: { userId: OWNER, personaId: 'bot', worldId: '' },
       target: { channel: 'qq', room: `qq-dm-${String(OWNER)}`, isGroup: false, chatId: OWNER },
       authorization: { kind: 'standing', by: OWNER, at: 1, quote: null },
     }),
@@ -239,7 +239,7 @@ test('S7 expiresAt 来自 contact.shareTtlMs（可配置），坏值回落默认
     await custom.close()
   }
   // ② 纯函数层面：缺省/坏值/过小都回落（永不产生"立刻过期"或"永不过期"的候选）。
-  const at = { scope: { userId: OWNER, personaId: 'march7', worldId: '' }, target: { channel: 'qq' as const, room: `dm-${String(OWNER)}`, isGroup: false, chatId: OWNER }, authorization: { kind: 'standing' as const, by: OWNER, at: 1, quote: null } }
+  const at = { scope: { userId: OWNER, personaId: 'bot', worldId: '' }, target: { channel: 'qq' as const, room: `dm-${String(OWNER)}`, isGroup: false, chatId: OWNER }, authorization: { kind: 'standing' as const, by: OWNER, at: 1, quote: null } }
   const ttlOf = async (ttlMs?: () => number): Promise<number> => {
     let captured = 0
     const port = createSharePort({

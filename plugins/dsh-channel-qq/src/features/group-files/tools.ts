@@ -34,12 +34,12 @@ function qqListGroupFiles(deps: QQToolDeps): ToolSpec {
       }
 }
 
-/** `qq_upload_group_file` — 上传本地文件到群文件系统（可以从咱的工作区里挑文件发）。file 是本地绝对路径。… */
+/** `qq_upload_group_file` — 上传本地文件到群文件系统（可以从我的工作区里挑文件发）。file 是本地绝对路径。… */
 function qqUploadGroupFile(deps: QQToolDeps): ToolSpec {
   const { api } = deps
   return {
         name: 'qq_upload_group_file',
-        description: '上传本地文件到群文件系统（可以从咱的工作区里挑文件发）。file 是本地绝对路径。',
+        description: '上传本地文件到群文件系统（可以从我的工作区里挑文件发）。file 是本地绝对路径。',
         parameters: {
           type: 'object',
           properties: {
@@ -61,12 +61,12 @@ function qqUploadGroupFile(deps: QQToolDeps): ToolSpec {
       }
 }
 
-/** `qq_download_group_file` — 下载群文件到咱的工作区（先拿链接再存盘），存好返回本地路径。… */
+/** `qq_download_group_file` — 下载群文件到我的工作区（先拿链接再存盘），存好返回本地路径。… */
 function qqDownloadGroupFile(deps: QQToolDeps): ToolSpec {
   const { api, config } = deps
   return {
         name: 'qq_download_group_file',
-        description: '下载群文件到咱的工作区（先拿链接再存盘），存好返回本地路径。',
+        description: '下载群文件到我的工作区（先拿链接再存盘），存好返回本地路径。',
         parameters: {
           type: 'object',
           properties: {

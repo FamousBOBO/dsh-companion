@@ -24,13 +24,13 @@ fs.mkdirSync(testRoot, { recursive: true });
 
 const { createIdentity } = await import('../identity.mjs');
 
-const OWNER = Object.freeze({ id: 'owner-1429709395', displayName: '槑', platform: 'qq' });
+const OWNER = Object.freeze({ id: 'owner-10001', displayName: '槑', platform: 'qq' });
 
 /** 合成一份合法的 identity.json（磁盘上的真实文件，不是内存对象）。 */
 function writeIdentity(root, overrides = {}) {
   const value = {
     schemaVersion: 1,
-    persona: 'march7',
+    persona: 'bot',
     owner: { ...OWNER },
     desktop: { mode: 'local-owner', userId: OWNER.id },
     sessions: {},
@@ -63,7 +63,7 @@ test('合成 + 主人绑定：owner() 与 context() 描述同一个本地主人�
   assert.equal(bound.userId, OWNER.id);
   assert.equal(bound.displayName, OWNER.displayName);
   assert.equal(bound.sourcePlatform, 'qq');
-  assert.equal(bound.persona, 'march7');
+  assert.equal(bound.persona, 'bot');
   assert.equal(bound.mode, 'local-owner');
   assert.equal(bound.sessionId, 'sess-owner-1');
 
@@ -82,11 +82,11 @@ test('会话解析：未知会话首次解析即绑定到主人并原子落盘�
 
   assert.deepEqual(readJson(file).sessions, {}, '前置条件：还没有任何会话绑定');
 
-  const bound = identity.resolve('dm-1429709395');
+  const bound = identity.resolve('dm-10001');
   const onDisk = readJson(file);
-  const entry = onDisk.sessions['dm-1429709395'];
+  const entry = onDisk.sessions['dm-10001'];
   assert.equal(entry.userId, OWNER.id);
-  assert.equal(entry.persona, 'march7');
+  assert.equal(entry.persona, 'bot');
   assert.equal(entry.channel, 'desktop');
   const boundAt = Date.parse(entry.boundAt);
   assert.ok(Number.isFinite(boundAt), `boundAt 必须是可解析时间戳，实际 ${entry.boundAt}`);
@@ -99,7 +99,7 @@ test('会话解析：未知会话首次解析即绑定到主人并原子落盘�
 
   // 重复解析不重复绑定、不重写文件。
   const snapshot = fs.readFileSync(file, 'utf8');
-  const again = identity.resolve('dm-1429709395');
+  const again = identity.resolve('dm-10001');
   assert.deepEqual(again, bound);
   assert.equal(fs.readFileSync(file, 'utf8'), snapshot, '已绑定的会话再次解析不得改写 identity.json');
 
@@ -107,7 +107,7 @@ test('会话解析：未知会话首次解析即绑定到主人并原子落盘�
   assert.throws(() => identity.resolve(), /A runtime session is required/);
   assert.throws(() => identity.resolve(''), /A runtime session is required/);
   assert.throws(() => identity.resolve(42), /A runtime session is required/);
-  assert.deepEqual(Object.keys(readJson(file).sessions), ['dm-1429709395'], '被拒绝的解析不能留下绑定');
+  assert.deepEqual(Object.keys(readJson(file).sessions), ['dm-10001'], '被拒绝的解析不能留下绑定');
 });
 
 test('会话级隔离：一个会话被外部用户占用时如实报冲突，其他会话照常解析，且不改写别人的归属', t => {
@@ -155,7 +155,7 @@ test('未知会话不冒充主人：身份不合法 / 桌面用户不是主人 /
     ['schemaVersion 不是 1', { schemaVersion: 2 }, /not configured/],
     ['缺 owner.id', { owner: { displayName: '槑', platform: 'qq' } }, /not configured/],
     ['缺 owner.displayName', { owner: { id: OWNER.id, platform: 'qq' } }, /not configured/],
-    ['persona 不是 march7', { persona: 'someone' }, /not configured/],
+    ['persona 不是 bot', { persona: 'someone' }, /not configured/],
     ['桌面模式不是 local-owner', { desktop: { mode: 'shared', userId: OWNER.id } }, /not configured/],
     ['桌面用户不是主人', { desktop: { mode: 'local-owner', userId: 'someone-else' } }, /not configured/],
     ['sessions 段缺失', { sessions: undefined }, /not configured/],
@@ -163,7 +163,7 @@ test('未知会话不冒充主人：身份不合法 / 桌面用户不是主人 /
   for (const [label, overrides, expected] of cases) {
     const root = fs.mkdtempSync(path.join(testRoot, 'identity-bad-'));
     t.after(() => fs.rmSync(root, { recursive: true, force: true }));
-    const value = { schemaVersion: 1, persona: 'march7', owner: { ...OWNER }, desktop: { mode: 'local-owner', userId: OWNER.id }, sessions: {}, ...overrides };
+    const value = { schemaVersion: 1, persona: 'bot', owner: { ...OWNER }, desktop: { mode: 'local-owner', userId: OWNER.id }, sessions: {}, ...overrides };
     if (overrides.sessions === undefined) delete value.sessions;
     const file = path.join(root, 'home/companion/identity.json');
     fs.mkdirSync(path.dirname(file), { recursive: true });

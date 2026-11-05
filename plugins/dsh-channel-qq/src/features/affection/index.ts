@@ -1,4 +1,4 @@
-/** 好感度子插件（P5.1）：状态存储 + 学弟专属悬浮窗（本机端口）。
+/** 好感度子插件（P5.1）：状态存储 + 主人专属悬浮窗（本机端口）。
  *
  * `affectionPort` 变了就地重绑（P5.2，对齐旧 `applyEffects` 的 `relisten`）；
  * 悬浮窗的任务注入走 inbound 的 `turns.adminPrompt`——用取值函数取，因为

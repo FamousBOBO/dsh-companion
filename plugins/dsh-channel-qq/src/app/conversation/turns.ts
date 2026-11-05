@@ -99,7 +99,7 @@ ${prompt}`
     return delivered
   }
 
-  /** 主动私聊：她自己来找学弟。 */  async dmProactive(prompt: string): Promise<void> {
+  /** 主动私聊：她自己来找主人。 */  async dmProactive(prompt: string): Promise<void> {
     const master = this.deps.config().admins[0]
     if (master === undefined) return
     const key = dmRoom(master)
@@ -181,7 +181,7 @@ ${prompt}`
     }
   }
 
-  /** 只给学弟的后台指令：投进他的私聊会话。 */
+  /** 只给主人的后台指令：投进他的私聊会话。 */
   async adminPrompt(prompt: string): Promise<void> {
     const master = this.deps.config().admins[0]
     if (master === undefined) throw new Error('no admin configured')
@@ -202,7 +202,7 @@ ${prompt}`
     return this.deps.prompts.roomDirective(conversation.isGroup, conversation.chatId)
   }
 
-  /** 一条合成出来的"学弟发来的"私聊事件（会话还没物化时用它）。 */
+  /** 一条合成出来的"主人发来的"私聊事件（会话还没物化时用它）。 */
   private syntheticDm(master: number): OneBotEvent {
     return {
       time: Math.floor(this.deps.clock.now() / 1000),
@@ -210,7 +210,7 @@ ${prompt}`
       post_type: 'message',
       message_type: 'private',
       user_id: master,
-      sender: { user_id: master, nickname: '学弟' },
+      sender: { user_id: master, nickname: '主人' },
     }
   }
 

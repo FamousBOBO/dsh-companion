@@ -1,12 +1,46 @@
 {
-  "name": "dsh-companion-memory",
-  "version": "0.4.0",
+  "name": "@dsh-companion/memory",
+  "version": "0.1.0",
+  "localVersion": "0.4.0",
   "private": true,
   "type": "module",
-  "main": "index.mjs",
-  "engines": { "node": ">=22.5" },
+  "description": "Long-term memory engine for the DSH companion suite: local SQLite with FTS5 retrieval, extraction, wiki compilation and import/migration tooling.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./config.mjs": "./config.mjs",
+    "./lib/capture.mjs": "./lib/capture.mjs",
+    "./lib/db.mjs": "./lib/db.mjs",
+    "./lib/embed.mjs": "./lib/embed.mjs",
+    "./lib/extract.mjs": "./lib/extract.mjs",
+    "./lib/fusion.mjs": "./lib/fusion.mjs",
+    "./lib/import.mjs": "./lib/import.mjs",
+    "./lib/jobs.mjs": "./lib/jobs.mjs",
+    "./lib/policy.mjs": "./lib/policy.mjs",
+    "./lib/render.mjs": "./lib/render.mjs",
+    "./lib/rerank.mjs": "./lib/rerank.mjs",
+    "./lib/retrieve.mjs": "./lib/retrieve.mjs",
+    "./lib/text.mjs": "./lib/text.mjs",
+    "./lib/validate.mjs": "./lib/validate.mjs",
+    "./lib/wiki.mjs": "./lib/wiki.mjs",
+    "./lib/schema.sql": "./lib/schema.sql",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.mjs",
+    "config.mjs",
+    "lib/",
+    "scripts/",
+    "docs/",
+    "CONTRACT.md",
+    "README.md"
+  ],
   "scripts": {
-    "test": "node --test test/*.test.mjs",
+    "test": "node --test \"test/*.test.mjs\"",
     "migrate": "node scripts/migrate-memory.mjs"
   }
 }

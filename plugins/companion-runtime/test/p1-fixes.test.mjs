@@ -29,10 +29,10 @@ import { createMemoryEngine } from '../../companion-memory/index.mjs';
 
 const T0 = Date.UTC(2026, 10, 4, 3, 0, 0);
 const HOUR = 3600000;
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKey(SCOPE);
 const TTL = 60000;
-const BOUND = { userId: 'owner-1', persona: 'march7' };
+const BOUND = { userId: 'owner-1', persona: 'bot' };
 const SOURCE = Array.from({ length: 10 }, (_, index) => `第${index}段：` + '潮声一阵一阵压过来。'.repeat(6)).join('\n\n');
 
 function tempDir(t, label = 'p1-fixes') {
@@ -186,7 +186,7 @@ function mountForMemory(t, { withEngine = true } = {}) {
   for (const dir of ['home/companion/works/sources', 'home/memory', 'logs']) fs.mkdirSync(path.join(root, dir), { recursive: true });
   fs.writeFileSync(path.join(root, 'home/companion/works/sources/a.md'), '慢速观察'.repeat(40));
   fs.writeFileSync(path.join(root, 'home/companion/identity.json'), JSON.stringify({
-    schemaVersion: 1, persona: 'march7', owner: { id: 'owner-1', displayName: 'o', platform: 'qq' },
+    schemaVersion: 1, persona: 'bot', owner: { id: 'owner-1', displayName: 'o', platform: 'qq' },
     desktop: { mode: 'local-owner', userId: 'owner-1' }, sessions: {},
   }));
   fs.writeFileSync(path.join(root, 'home/companion/memory.config.json'), JSON.stringify({
@@ -203,7 +203,7 @@ function mountForMemory(t, { withEngine = true } = {}) {
 async function realEngine(t, root) {
   const engine = createMemoryEngine({
     root,
-    identity: { owner() { return { id: 'owner-1', displayName: 'memory', platform: 'local' }; }, resolve(sessionId) { return { userId: 'owner-1', personaId: 'march7', displayName: 'memory', sessionId }; } },
+    identity: { owner() { return { id: 'owner-1', displayName: 'memory', platform: 'local' }; }, resolve(sessionId) { return { userId: 'owner-1', personaId: 'bot', displayName: 'memory', sessionId }; } },
     env: {}, now: () => T0,
   });
   t.after(async () => { try { await engine.close(); } catch { /* cleanup only */ } });
@@ -329,7 +329,7 @@ test('R3: compensation replays only activities finished under the P1 scheme, and
     `p2_p1_act_legacy`, T0 - 6 * HOUR);
   // …and the fact that justifies it (the re-audit revokes marks whose fact is missing).
   w.db.run(`INSERT INTO domain_events (seq, event_id, schema_version, kind, scope, user_id, persona_id, world_id, occurred_at, recorded_at, payload)
-            VALUES (90001, 'evt-legacy-fact', 1, 'memory/ingest-request', ?, 'owner-1', 'march7', 'world:default', ?, ?, ?)`,
+            VALUES (90001, 'evt-legacy-fact', 1, 'memory/ingest-request', ?, 'owner-1', 'bot', 'world:default', ?, ?, ?)`,
   KEY, T0 - 6 * HOUR, T0 - 6 * HOUR, JSON.stringify({ namespace: 'p2/activity', facts: { activityId: 'act_legacy' } }));
   const written = [];
   const p2 = createP2({

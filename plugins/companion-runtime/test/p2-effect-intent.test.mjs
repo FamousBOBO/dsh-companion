@@ -30,7 +30,7 @@ import { parseScope, scopeKey } from '../lib/scope.mjs';
 
 const T0 = Date.UTC(2026, 10, 5, 2, 0, 0);
 const HOUR = 3600000;
-const SCOPE = Object.freeze({ userId: 'owner-9', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-9', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKey(SCOPE);
 const OWNER = '999999:r4:test';
 const GEN = 'gen-r4';

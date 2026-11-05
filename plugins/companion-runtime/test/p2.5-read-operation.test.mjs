@@ -58,7 +58,7 @@ function makeRoot(t, { activities = {}, heartbeat = {}, agenda = {}, share = nul
   // Synthetic identities only: this file must never carry a real owner id or a real path.
   fs.writeFileSync(path.join(root, 'home/companion/identity.json'), JSON.stringify({
     schemaVersion: 1,
-    persona: 'march7',
+    persona: 'bot',
     owner: { id: 'owner-synthetic', displayName: 'o', platform: 'qq' },
     desktop: { mode: 'local-owner', userId: 'owner-synthetic' },
     sessions: {},
@@ -103,7 +103,7 @@ function makeRoot(t, { activities = {}, heartbeat = {}, agenda = {}, share = nul
 
 function mount(t, root, { clock, callModel, readFile } = {}) {
   const ctx = { tools: { register() {} }, systemPrompt: { section() {} }, on() {}, get() { return undefined; } };
-  const identity = { resolve: sessionId => ({ userId: 'owner-synthetic', personaId: 'march7', sessionId }) };
+  const identity = { resolve: sessionId => ({ userId: 'owner-synthetic', personaId: 'bot', sessionId }) };
   const runtime = mountRuntime(ctx, root, {
     now: () => clock.value,
     identity,

@@ -13,7 +13,7 @@ import { createStudioHandlers } from '../server.mjs';
 //
 // 六条对应任务书：列表内容/截断、压 1 条、全不选、失败理由原样、空态、零写语句。
 
-const VIEWER = { userId: '1429709395', personaId: 'march7', worldId: '', sessionId: 's1' };
+const VIEWER = { userId: '10001', personaId: 'bot', worldId: '', sessionId: 's1' };
 
 /** 假记忆库：只实现被用到的 `getMemory`，并且**故意没有写方法**（写了就说明 UI 想直连库）。 */
 function fakeEngine(records = {}) {
@@ -108,8 +108,8 @@ test('C1 待审 2 条：count=2、两条候选正文都出来、超长的那条�
     assert.equal(data.recent[0].candidates[1].truncated, false);
     assert.equal(data.recent[0].candidates[0].kind, 'fact');
     // 身份与"将要记下的那句话"：前端要能展示给主人确认。
-    assert.equal(data.operator, 'u:1429709395');
-    assert.match(String(data.evidenceHint), /^后台人工裁决 at .+ by u:1429709395$/);
+    assert.equal(data.operator, 'u:10001');
+    assert.match(String(data.evidenceHint), /^后台人工裁决 at .+ by u:10001$/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
 
@@ -131,10 +131,10 @@ test('C2 只勾 1 条：supersedeIds 只含选中项，operator 来自宿主身�
     assert.notEqual(call, undefined, '必须调 runtime 的既有 API');
     assert.deepEqual(call.input.supersedeIds, ['mem_b'], '只许带选中的那条');
     assert.equal(call.input.recordId, 'rec_1');
-    assert.equal(call.input.operator, 'u:1429709395', 'operator 只能是宿主身份');
-    assert.match(String(call.input.evidence), /^后台人工裁决 at .+ by u:1429709395$/, 'evidence 由服务端生成');
+    assert.equal(call.input.operator, 'u:10001', 'operator 只能是宿主身份');
+    assert.match(String(call.input.evidence), /^后台人工裁决 at .+ by u:10001$/, 'evidence 由服务端生成');
     // 回执里把真正记下的证据回给前端（供页面显示"已记录：…"）。
-    assert.equal(payload.data.operator, 'u:1429709395');
+    assert.equal(payload.data.operator, 'u:10001');
     assert.match(String(payload.data.evidence), /后台人工裁决/);
   } finally { fs.rmSync(root, { recursive: true, force: true }); }
 });
@@ -210,8 +210,8 @@ test('C7 已裁决明细：outcome / supersededIds / operator / recordId / 时�
     listResolved: {
       ok: true,
       resolved: [
-        { recordId: 'rec_done_1', supersededIds: ['mem_old_1', 'mem_old_2'], operator: 'u:1429709395', at: 1761590000000, outcome: 'resolved-superseded' },
-        { recordId: 'rec_done_2', supersededIds: [], operator: 'u:1429709395', at: 1761590001000, outcome: 'resolved-none' },
+        { recordId: 'rec_done_1', supersededIds: ['mem_old_1', 'mem_old_2'], operator: 'u:10001', at: 1761590000000, outcome: 'resolved-superseded' },
+        { recordId: 'rec_done_2', supersededIds: [], operator: 'u:10001', at: 1761590001000, outcome: 'resolved-none' },
       ],
     },
   });
@@ -226,7 +226,7 @@ test('C7 已裁决明细：outcome / supersededIds / operator / recordId / 时�
     assert.equal(first.recordId, 'rec_done_1');
     assert.equal(first.outcome, 'resolved-superseded');
     assert.deepEqual(first.supersededIds, ['mem_old_1', 'mem_old_2']);
-    assert.equal(first.operator, 'u:1429709395');
+    assert.equal(first.operator, 'u:10001');
     assert.equal(first.at, 1761590000000);
     assert.equal(second.outcome, 'resolved-none');
     assert.deepEqual(second.supersededIds, []);

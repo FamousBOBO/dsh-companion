@@ -9,7 +9,7 @@ export interface PokeConfig {
    * Coalescing window: pokes inside it collapse into one adjudication, so a
    * sticker-tap storm does not submit a turn per tap.
    *
-   * `patience` and `pokeBack` used to live here — "how many pokes before 诺诺
+   * `patience` and `pokeBack` used to live here — "how many pokes before bot
    * reacts" and "poke the sender back". Adjudication mode removed auto-reaction
    * entirely (the plugin never pokes or speaks on its own; the model decides via
    * `qq_send_poke`), so both were read by nothing while still being rendered as

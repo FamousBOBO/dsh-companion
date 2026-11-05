@@ -58,6 +58,9 @@ function config(over: Partial<ContactConfig> = {}): ContactConfig {
     draftModel: true,
     timezone: 'Asia/Shanghai',
     quietHours: [],
+    // 发布基线：自主跟进复核（复用模型预算）默认关；本文件测的是复核/起草读到的上下文，
+    // 所以显式打开。
+    adaptiveFollowUp: true,
     ...over,
   }
 }
@@ -66,7 +69,7 @@ function config(over: Partial<ContactConfig> = {}): ContactConfig {
 function entry(id: number, userId: number, text: string, atMs: number): {
   id: number; userId: number; name: string; text: string; time: number
 } {
-  return { id, userId, name: userId === SELF ? '我' : '学弟', text, time: Math.floor(atMs / 1000) }
+  return { id, userId, name: userId === SELF ? '我' : '主人', text, time: Math.floor(atMs / 1000) }
 }
 
 function fakeHistory(rows: ReturnType<typeof entry>[], over: { collectThrows?: boolean; searchThrows?: boolean } = {}): unknown {
@@ -110,7 +113,7 @@ function depsFor(over: DepsOverrides = {}): DraftContextDeps {
 }
 
 /** 一个"话很短"的合成人设（不读真 preset 文档）。 */
-function fakePreset(document = '测试人设：说话短，别端着，喜欢叫学弟。', throws = false): DraftContextDeps['preset'] {
+function fakePreset(document = '测试人设：说话短，别端着，喜欢叫主人。', throws = false): DraftContextDeps['preset'] {
   return () => ({
     readDocument: async () => {
       if (throws) throw new Error('preset 文件读不出来')
@@ -224,7 +227,7 @@ test('D2a 3 条历史 → 请求里按**旧→新**出现，带发言人标记�
   const atUpstream = prompt.indexOf('先看 upstream')
   const atHealth = prompt.indexOf('健康检查超时')
   assert.ok(at502 > 0 && atUpstream > at502 && atHealth > atUpstream, `顺序必须是旧→新：\n${prompt}`)
-  assert.ok(prompt.includes('TA（学弟）：部署脚本又挂了'), `用户那侧要有发言人标记，并把称呼带出来：\n${prompt}`)
+  assert.ok(prompt.includes('TA（主人）：部署脚本又挂了'), `用户那侧要有发言人标记，并把称呼带出来：\n${prompt}`)
   assert.ok(prompt.includes('我：先看 upstream'), `她自己那侧要标成"我"（否则模型分不清谁说的）：\n${prompt}`)
   assert.ok(/\d{2}:\d{2}/.test(prompt), `每行要带时刻：\n${prompt}`)
 })
@@ -327,7 +330,7 @@ test('D4b 证据指向的东西读不出来（history 也空）→ 零调用（�
 // ── D5 最近主动外发 + 反馈：避免近义问候反复开场 ─────────────────────────────
 
 test('D5a sentLog 渲染块 + 一条 confirmed 投递 → 请求里有"上次说过什么"和送达状态', async () => {
-  const sentBlock = '【咱最近在私聊里发过的消息】\n21:30 咱发的 #9001：在吗？'
+  const sentBlock = '【我最近在私聊里发过的消息】\n21:30 我发的 #9001：在吗？'
   const context = await buildDraftContext(depsFor({
     services: { history: fakeHistory(HAPPY_LINES), sentLogHub: { for: async () => ({ render: () => sentBlock }) } },
     deliveries: () => [{

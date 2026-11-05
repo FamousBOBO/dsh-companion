@@ -39,7 +39,7 @@ async function fixture() {
   await store.putChunks([
     chunk(deployId, 0, '部署 > 端口', '部署 > 端口\n\n服务默认监听 8080，改端口要编辑 /etc/dsh/env。'),
     chunk(deployId, 1, '部署 > 依赖', '部署 > 依赖\n\n需要 Node 22 与 pnpm。'),
-    chunk(coffeeId, 0, '咖啡', '咖啡\n\n学弟喜欢冰美式，不加糖。'),
+    chunk(coffeeId, 0, '咖啡', '咖啡\n\n主人喜欢冰美式，不加糖。'),
     chunk(secretId, 0, '内部', '内部\n\n这个秘密只给 group-1 看。'),
   ])
   const scopes = { private: ['group-1'] }

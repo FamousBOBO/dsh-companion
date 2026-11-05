@@ -1933,7 +1933,7 @@ function Rail({ collapsed, onToggle, compact, onCompact, compactAvailable }) {
       h('span', { className: 'cpx-brand-mark' }, h(Icon, { name: 'snow', size: 18 })),
       h('span', { className: 'cpx-brand' },
         h('span', { className: 'cpx-brand-name' }, PRODUCT),
-        h('span', { className: 'cpx-brand-state' }, '三月七的陪伴空间'))),
+        h('span', { className: 'cpx-brand-state' }, '本地陪伴'))),
     h('div', { className: 'cpx-nav' },
       groups.map((group) => h('div', { key: group.label, className: 'cpx-nav-group' },
         h('span', { className: 'cpx-nav-label' }, group.label),
@@ -2198,7 +2198,7 @@ function ChatCompanionStrip() {
       ? `${stateText} · 接下来 ${P.fmt.clock(next.startAt)} ${next.title || ''}`
       : stateText;
   return h('div', { className: 'cpx-chat-strip', role: 'note', 'aria-label': '陪伴状态摘要' },
-    h(StateLine, { state: life.state === 'running' ? 'live' : life.state === 'resting' ? 'ok' : 'idle', text: '三月七' }),
+    h(StateLine, { state: life.state === 'running' ? 'live' : life.state === 'resting' ? 'ok' : 'idle', text: '陪伴角色' }),
     h('span', { className: 'cpx-chat-strip-text' }, line),
     h('button', { type: 'button', onClick: open }, '打开陪伴空间'));
 }

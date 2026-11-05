@@ -1,4 +1,4 @@
-# 三月七长期记忆（companion-memory）运维手册
+# bot长期记忆（companion-memory）运维手册
 
 > 适用版本：companion-memory **v0.4.0**，数据库 schema **v1**，配置 schema **v1**
 > 本文面向"要动手操作的人"：迁移、核对、调配置、备份、恢复、回滚、排障。
@@ -10,7 +10,7 @@
 
 | 我想… | 做什么 | 位置 / 命令 |
 | --- | --- | --- |
-| 看当前用的是新库还是旧路径 | 让三月七调用 `companion_status`：有 `memory.database`/`memory.stats` 就是新库；`memory.mode = "independent-snapshot"` 就是旧路径 | 工具，或 `logs/foundation-runtime.json` |
+| 看当前用的是新库还是旧路径 | 让bot调用 `companion_status`：有 `memory.database`/`memory.stats` 就是新库；`memory.mode = "independent-snapshot"` 就是旧路径 | 工具，或 `logs/foundation-runtime.json` |
 | 把旧 AstrBot 记忆导进新库 | 先 dry-run，再正式跑 | `node scripts/migrate-memory.mjs --dry-run --json` |
 | 核对导入条数 | 看报告里的 `totals` / `origins` / `reconciliation` | `logs/memory-migration-<stamp>.json` |
 | 改记忆行为（预算、向量、Wiki） | 改配置文件后**重启桌面** | `home/companion/memory.config.json` |
@@ -104,8 +104,8 @@
 | scope | 含义 | 谁的记忆 | 现实 viewer 可见 | 同世界 viewer 可见 |
 | --- | --- | --- | --- | --- |
 | `user_global` | 用户现实中的稳定信息（称呼、城市、习惯、偏好） | 用户 | ✅ | ✅ |
-| `user_persona` | 用户与三月七的关系、共同经历、旧对话摘要、约定 | 用户+角色对 | ✅ | ✅ |
-| `persona_self` | 三月七自己的行为/产物（主动消息、生图） | 角色 | ✅（但是 `tone_only`） | ✅ |
+| `user_persona` | 用户与bot的关系、共同经历、旧对话摘要、约定 | 用户+角色对 | ✅ | ✅ |
+| `persona_self` | bot自己的行为/产物（主动消息、生图） | 角色 | ✅（但是 `tone_only`） | ✅ |
 | `roleplay_world` | 剧情世界设定/台词 | 该世界 | ❌ | ✅（仅 `world_id` 相同） |
 | `session_recent` | 近期临时状态（位置、疲劳、吃饭） | 用户 | ✅，但 6 小时 TTL 后失效 | ✅ |
 
@@ -158,10 +158,10 @@
 
 | 文件 | 用途 | 现状 |
 | --- | --- | --- |
-| `home/memory/astrbot-import.json` | AstrBot 快照，manifest 声明 767 条 | 1,261,492 字节，owner `1429709395` |
+| `home/memory/astrbot-import.json` | AstrBot 快照，manifest 声明 767 条 | 1,261,492 字节，owner `10001` |
 | `home/memory/conversation.jsonl` | 新桌面会话落下的对话记录 | 3,673 字节（10 条） |
 | `home/companion/state.json`（可回退 `.previous`） | 旧 JSON 键值记忆 | 当前**不存在**，导入时会记 `state_missing` 警告 |
-| `home/companion/identity.json` | 身份（用于默认 `--user/--persona`） | 存在，owner=`1429709395`，persona=`march7` |
+| `home/companion/identity.json` | 身份（用于默认 `--user/--persona`） | 存在，owner=`10001`，persona=`bot` |
 
 ### 3.2 命令
 
@@ -233,7 +233,7 @@ warnings = [{ code: 'state_missing', detail: '…\home\companion\state.json' }]
    `store_total`、`store_by_memory_type`、`store_by_scope`、`store_ownership`、`store_duplicates(0)`、`store_evidence_linked`、`store_bot_action_not_in_user_scope(0)`、`archive_imported_all(767)`。
 3. **看库**（只读，不会写）：
    ```powershell
-   node -e "import('./lib/db.mjs').then(async ({openMemoryDatabase})=>{const db=await openMemoryDatabase({file:'../../home/memory/companion-memory.db',readOnly:true});console.log(db.stats());console.log('user_global',db.countMemories({userId:'1429709395',personaId:'march7',scope:'user_global',includeExpired:true}));console.log('persona_self',db.countMemories({userId:'1429709395',personaId:'march7',scope:'persona_self',includeExpired:true}));console.log(db.integrityCheck());db.close();})"
+   node -e "import('./lib/db.mjs').then(async ({openMemoryDatabase})=>{const db=await openMemoryDatabase({file:'../../home/memory/companion-memory.db',readOnly:true});console.log(db.stats());console.log('user_global',db.countMemories({userId:'10001',personaId:'bot',scope:'user_global',includeExpired:true}));console.log('persona_self',db.countMemories({userId:'10001',personaId:'bot',scope:'persona_self',includeExpired:true}));console.log(db.integrityCheck());db.close();})"
    ```
    期望：`memories 777`、`events 777`、`embeddings 777`、`schemaVersion 1`、`integrity ok:true`；`user_global 28`、`persona_self 474`。
 4. **抽一条验证来源**：`companion_recall`（query 用旧库里确定存在的词）返回里 `source='astrbot_import'`、`reality='imported_fact'`，`id` 与报告 `memoryIds` 一致。
@@ -359,7 +359,7 @@ Move-Item home\memory\companion-memory.db home\memory\companion-memory.db.broken
 Remove-Item home\memory\companion-memory.db-wal, home\memory\companion-memory.db-shm -ErrorAction SilentlyContinue
 # 2) 放回备份（必须是单文件 .db；不要只拷 .db 而留下旧 -wal）
 Copy-Item home\memory\backups\<stamp>\companion-memory.db home\memory\companion-memory.db
-# 3) 启动桌面，让三月七调用 companion_memory_rebuild（重建 FTS/向量/Wiki）
+# 3) 启动桌面，让bot调用 companion_memory_rebuild（重建 FTS/向量/Wiki）
 # 4) 校验：companion_status 应重新出现 memory.database 与 memory.stats，stats.memories 与备份前一致；必要再跑一次 migrate --dry-run 看对账
 ```
 
@@ -418,7 +418,7 @@ $j | ConvertTo-Json -Depth 8 | Set-Content $f -Encoding utf8
 
 ### 第 3 步：验证 `companion_status`
 
-让三月七调用 `companion_status`，看返回里的 `memory` 对象。两种后端的形状不同，按这张表核对：
+让bot调用 `companion_status`，看返回里的 `memory` 对象。两种后端的形状不同，按这张表核对：
 
 | 字段 | 回滚成功的旧路径（legacy） | 新库（sqlite） |
 | --- | --- | --- |
@@ -461,7 +461,7 @@ $j | ConvertTo-Json -Depth 8 | Set-Content $f -Encoding utf8
 | Wiki 页不更新 / 尺寸异常 | 自动编译被 `minIntervalMs` 节流；或页面超过 `maxPageBytes` | `companion_memory_rebuild`；必要时调 `wiki.minIntervalMs=0` 后重启 |
 | `companion_memory_extract` 返回 `processed:0` 但 `ok:true` | 当前没有"未入批"的消息（攒够 `extraction.minMessages` 才有批），或建批后没有未领取作业 | 正常现象：先正常聊天、再调一次；若持续 0 且 `ok:false`、error 含"总结模型"，是宿主模型不可用（见 §10.1） |
 | `companion_memory_extract` 返回 `ok:false`、error 含"总结模型不可用" | 宿主 `llm` 服务不可用 / `host-llm.mjs` 构造失败 / 未配置 provider | 看 `logs/memory-engine.jsonl` 与 `host-llm` 的失败信息；显式通道不受 `extraction.enabled` 影响，但仍需模型 |
-| 后台从不自动提炼（即使 `extraction.enabled=true`） | 宿主目前不会周期性调用 `engine.noteBatch()` 建批，只有 `capture`（只排空不建批）与显式工具会建批 | 已知缺口，见 §10.1；临时办法：让三月七调一次 `companion_memory_extract` |
+| 后台从不自动提炼（即使 `extraction.enabled=true`） | 宿主目前不会周期性调用 `engine.noteBatch()` 建批，只有 `capture`（只排空不建批）与显式工具会建批 | 已知缺口，见 §10.1；临时办法：让bot调一次 `companion_memory_extract` |
 | 作业一直 `failed` | 模型 4xx/5xx、输出不是 JSON、超时；第 5 次后不再自动重试 | 看 `memory_jobs.last_error`（`companion_memory_pending` 不显示作业，用只读脚本查表）；修好模型后用 `requeueJob` 重排 |
 | 剧情内容出现在现实回答里 | 该行 `world_id` 为空却写了 `roleplay_world` 之外的内容；或写入了 `user_global` | 用 `companion_memory_forget` 撤回，检查抽取闸门日志（`reason:roleplay*` 标签） |
 

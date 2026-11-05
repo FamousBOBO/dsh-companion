@@ -1,0 +1,130 @@
+# DSH Companion — 发布离线检查（三平台矩阵）
+#
+# 这里**只**验证「安装 → 构建 → 离线检查」这一条链：
+#   * 没有 DSH 桌面宿主，所以 `verify` 的 compose 段会输出 SKIPPED 并且不判失败；
+#   * 没有任何个人凭据、真实 API、真实平台发送、硬件；
+#   * 因此 CI 绿 = 安装/构建/离线测试通过，**不是**桌面实机验证（见 docs/07-verification-status.md）。
+#
+# 任一步非零退出即整条流水线失败（GitHub Actions 默认行为）；不要用 `continue-on-error` 掩盖。
+
+name: ci
+
+on:
+  push:
+    branches: ['**']
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.workflow }}-${{ github.ref }}
+  cancel-in-progress: true
+
+env:
+  # 让所有工具走非交互、无颜色、确定性的输出。
+  CI: '1'
+  NO_COLOR: '1'
+  FORCE_COLOR: '0'
+  # 注意：这里**故意不设置** DSH_COMPANION_DATA_DIR —— 覆盖它会改变配置解析结果，
+  # 可能让某些模块测试拿到不同默认值。CI 也不应把数据写进仓库外的位置。
+
+jobs:
+  build-and-verify:
+    name: ${{ matrix.os }} · node ${{ matrix.node }}
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 30
+
+    defaults:
+      run:
+        # 三平台统一用 bash：windows-latest 自带 Git Bash。
+        # 这样 `if [ ... ]` / 多行脚本的行为在三个平台上一致。
+        shell: bash
+
+    strategy:
+      # 一个平台挂掉要看全部平台的结果，不要让其它平台被取消。
+      fail-fast: false
+      matrix:
+        os: [ubuntu-latest, windows-latest, macos-latest]
+        node: ['24.x']
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Set up Node ${{ matrix.node }}
+        uses: actions/setup-node@v4
+        with:
+          node-version: ${{ matrix.node }}
+          # 需要 package-lock.json（由维护者统一生成）。没有锁文件时 npm ci 会直接失败——
+          # 那正是我们想要的：可复现安装是发布要求，不是可选项。
+          cache: npm
+
+      - name: Toolchain info
+        run: |
+          node --version
+          npm --version
+          node -e "console.log('node:sqlite available =', (() => { try { return typeof require('node:sqlite').DatabaseSync === 'function' } catch { return false } })())"
+
+      - name: Verify lockfile is present
+        run: |
+          if [ ! -f package-lock.json ]; then
+            echo "::error::package-lock.json 缺失。npm ci 需要锁文件；请由维护者生成后再提交。"
+            exit 1
+          fi
+
+      - name: npm ci
+        run: npm ci
+
+      - name: npm run build
+        run: npm run build
+
+      - name: npm run verify
+        # 语义：unit + static + compose。compose 在没有宿主时输出 SKIPPED，且不判失败。
+        # 任一组失败 → 退出码 1 → 本步骤红。
+        run: npm run verify
+
+      - name: Collect diagnostics on failure
+        if: failure()
+        run: |
+          echo "---- node / npm ----"
+          node --version || true
+          npm --version || true
+          echo "---- root package.json scripts ----"
+          node -e "const p=require('./package.json');console.log(JSON.stringify(p.scripts,null,2))" || true
+          echo "---- workspace packages ----"
+          cat > "$RUNNER_TEMP/ws-report.cjs" <<'NODE'
+          const fs = require('node:fs');
+          const path = require('node:path');
+          for (const dir of ['plugins', 'sidecars']) {
+            if (!fs.existsSync(dir)) continue;
+            for (const name of fs.readdirSync(dir)) {
+              const pkg = path.join(dir, name, 'package.json');
+              if (!fs.existsSync(pkg)) {
+                console.log(name, '| (no package.json)');
+                continue;
+              }
+              try {
+                const j = JSON.parse(fs.readFileSync(pkg, 'utf8'));
+                const main = j.main ? (fs.existsSync(path.join(dir, name, j.main)) ? j.main : j.main + ' (MISSING after build)') : '(none)';
+                console.log(name, '| name=' + j.name, '| main=' + main, '| scripts=' + Object.keys(j.scripts || {}).join(','));
+              } catch (e) {
+                console.log(name, '| package.json unreadable:', e.message);
+              }
+            }
+          }
+          NODE
+          node "$RUNNER_TEMP/ws-report.cjs" || true
+
+      - name: Upload failure logs
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: ci-failure-${{ matrix.os }}-node${{ matrix.node }}
+          if-no-files-found: ignore
+          retention-days: 7
+          path: |
+            npm-debug.log*
+            data/logs/**
+            **/*.stderr.log

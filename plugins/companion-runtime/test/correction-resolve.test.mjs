@@ -17,14 +17,14 @@ const T0 = Date.UTC(2026, 10, 7, 3, 0, 0);
 function mounted(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'correction-resolve-'));
   for (const dir of ['home/companion', 'logs', 'workspace']) fs.mkdirSync(path.join(root, dir), { recursive: true });
-  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), '三月七\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), 'bot\n', 'utf8');
   fs.writeFileSync(path.join(root, 'home/companion/runtime.config.json'), JSON.stringify({
     enabled: true, mode: 'active', timeZone: 'Asia/Shanghai',
   }), 'utf8');
   t.after(() => { try { fs.rmSync(root, { recursive: true, force: true, maxRetries: 5, retryDelay: 50 }); } catch { /* best effort */ } });
   const runtime = mountRuntime(null, root, {
     now: () => T0,
-    identity: { resolve: sessionId => ({ userId: 'owner-1', persona: 'march7', sessionId }) },
+    identity: { resolve: sessionId => ({ userId: 'owner-1', persona: 'bot', sessionId }) },
   });
   t.after(() => { try { runtime.dispose?.(); } catch { /* disposed */ } });
   return { runtime, root };

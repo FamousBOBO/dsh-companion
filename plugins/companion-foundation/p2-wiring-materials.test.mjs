@@ -18,9 +18,9 @@ import { createAutonomyPorts } from './autonomy.mjs';
 
 const sha256 = text => crypto.createHash('sha256').update(String(text)).digest('hex');
 const T0 = Date.UTC(2026, 9, 30, 3, 0, 0);
-const SCOPE = 'u:1429709395|p:march7|w:world:default';
+const SCOPE = 'u:10001|p:bot|w:world:default';
 
-const PERSONA_MD = `# 三月七
+const PERSONA_MD = `# bot
 
 ## 性格
 喜欢拍照，好奇心重，说话轻快。
@@ -62,9 +62,9 @@ function makeRoot(t, { persona = PERSONA_MD, identity = true } = {}) {
   if (persona !== null) fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), persona, 'utf8');
   if (identity) {
     fs.writeFileSync(path.join(root, 'home/companion/identity.json'), JSON.stringify({
-      schemaVersion: 1, persona: 'march7',
-      owner: { id: '1429709395', displayName: '测试', platform: 'qq' },
-      desktop: { mode: 'local-owner', userId: '1429709395' },
+      schemaVersion: 1, persona: 'bot',
+      owner: { id: '10001', displayName: '测试', platform: 'qq' },
+      desktop: { mode: 'local-owner', userId: '10001' },
       sessions: {},
     }, null, 2), 'utf8');
   }
@@ -131,7 +131,7 @@ test('materials carry the real persona text, never an empty placeholder', async 
   assert.match(material.persona.excerpt, /喜欢拍照/, 'the summary is the character file, not a guess');
   assert.doesNotMatch(material.persona.excerpt, /^#/m, 'markdown headings are stripped');
   assert.equal(material.persona.version, sha256(PERSONA_MD).slice(0, 8), 'the version tracks the file content');
-  assert.equal(material.persona.personaId, 'march7');
+  assert.equal(material.persona.personaId, 'bot');
   assert.equal(material.missing.includes('persona'), false);
 });
 
@@ -244,7 +244,7 @@ test('goals and commitments come from the P1 continuity provider', async t => {
   });
   const material = await port.materials({ scopeKey: SCOPE, day: '2026-10-30', now: T0, runtime: runtimeSlice() });
   assert.equal(seen.length, 1);
-  assert.equal(seen[0].scope.userId, '1429709395');
+  assert.equal(seen[0].scope.userId, '10001');
   assert.deepEqual(material.goals, [{ title: '修屋顶', deadlineAt: T0 + 86400000 }]);
   assert.deepEqual(material.commitments, [{ body: '周五前回复他', dueAt: T0 + 172800000 }]);
   assert.equal(material.sources.goals, 'p1-runtime');

@@ -52,7 +52,7 @@ export interface ConversationRecord {
   batchTimer: TimerHandle | null
   /** 已经收过的 QQ 消息号（跨窗口去重）。 */
   seenMessageIds: Set<number> | null
-  /** 最后一条入队的消息是不是"叫咱"的（P6b 起接线；仅 `context.v2` 打开时消费）。 */
+  /** 最后一条入队的消息是不是"叫我"的（P6b 起接线；仅 `context.v2` 打开时消费）。 */
   calledLine: boolean
   /** 最近一条事件；会话还没物化时用它。 */
   lastEvent: OneBotEvent

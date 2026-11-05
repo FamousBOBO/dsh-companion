@@ -27,7 +27,7 @@ import { RuntimeError } from '../../lib/errors.mjs';
 
 const MODE = process.argv[2] || 'hold';
 const ROOT = process.env.P2_FENCE_ROOT || '';
-const SCOPE = { userId: 'owner-1', personaId: 'march7', worldId: 'world:default' };
+const SCOPE = { userId: 'owner-1', personaId: 'bot', worldId: 'world:default' };
 const KEY = scopeKey(SCOPE);
 const SLOT_ID = 'slot-fence';
 const SOURCE_MD = `# 围栏测试\n\n${Array.from({ length: 10 }, (_, index) => `第${index}段：` + '潮水在傍晚退去。'.repeat(10)).join('\n\n')}\n`;

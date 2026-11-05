@@ -27,8 +27,8 @@ const { drainOutbox, enqueueIngest } = await import(moduleUrl('../companion-runt
 // fake; the production `home/` tree and the production databases are never opened.
 
 const T0 = Date.UTC(2026, 9, 30, 9, 0, 0);
-const USER = '1429709395';
-const PERSONA = 'march7';
+const USER = '10001';
+const PERSONA = 'bot';
 const SCOPE_KEY = `u:${USER}|p:${PERSONA}|w:world:default`;
 
 function makeRoot(t, prefix) {

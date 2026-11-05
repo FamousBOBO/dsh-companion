@@ -16,7 +16,7 @@ import { createMemoryEngine } from '../index.mjs';
 // 只取 `status='confirmed'`，这正是 supersede 的可见效果）。
 
 const T0 = Date.UTC(2026, 10, 5, 3, 0, 0);
-const PERSONA = 'march7';
+const PERSONA = 'bot';
 const OWNER = 'scope_owner';
 const OTHER = 'scope_other';
 

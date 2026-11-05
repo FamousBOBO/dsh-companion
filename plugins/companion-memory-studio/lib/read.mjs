@@ -498,7 +498,7 @@ function topicOf(pageId) {
   return {
     'user-profile': '用户画像与稳定偏好',
     'user-preferences': '用户偏好',
-    'relationship-march7': '三月七与用户的关系',
+    'relationship-bot': 'bot 与用户的关系',
     'important-events': '重要共同事件与未完成承诺',
   }[pageId] ?? '';
 }

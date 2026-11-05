@@ -9,7 +9,7 @@ import { companionDashboard } from '../lib/companion-dashboard.mjs';
 test('dashboard reads only trusted scope and never creates a missing database', async () => {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'companion-ui-'));
   const file = path.join(root,'home/companion/companion-runtime.db');
-  const kernel = { root, internal:async()=>({}), viewer:()=>({userId:'owner',personaId:'march7'}), ok:x=>x };
+  const kernel = { root, internal:async()=>({}), viewer:()=>({userId:'owner',personaId:'bot'}), ok:x=>x };
   try {
     assert.equal((await companionDashboard(null,kernel)).runtime.available,false);
     assert.equal(fs.existsSync(file),false);
@@ -17,8 +17,8 @@ test('dashboard reads only trusted scope and never creates a missing database', 
     const db = new DatabaseSync(file);
     db.exec('CREATE TABLE goals (scope TEXT,goal_id TEXT,title TEXT,status TEXT,deadline_at INTEGER,next_step TEXT,waiting_on TEXT,updated_at INTEGER)');
     const insert=db.prepare('INSERT INTO goals VALUES (?,?,?,?,?,?,?,?)');
-    insert.run('u:owner|p:march7|w:world:default','own','visible','active',null,'','',1);
-    insert.run('u:other|p:march7|w:world:default','other','private','active',null,'','',1);
+    insert.run('u:owner|p:bot|w:world:default','own','visible','active',null,'','',1);
+    insert.run('u:other|p:bot|w:world:default','other','private','active',null,'','',1);
     db.close();
     const result=await companionDashboard(new Request('http://localhost/?userId=other'),kernel);
     assert.deepEqual(result.sections.goals.map(row=>row.title),['visible']);

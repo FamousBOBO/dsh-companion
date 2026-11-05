@@ -9,9 +9,10 @@ test('adaptive context: 读取更完整的有界对话，发送前复核使用�
   const now = Date.UTC(2026, 10, 3, 5, 10)
   const lines = Array.from({ length: 30 }, (_, n) => ({ id: n + 1, time: (now - (30 - n) * 60_000) / 1000,
     userId: 10001, name: '主人', text: n === 10 ? '午饭已经吃过了，刚才还给你看了照片' : '这是正常聊天 ' + n }))
-  const config = { ...defaultContactConfig(), timezone: 'Asia/Shanghai' }
+  // 自主跟进复核默认关（发布基线）；这条用例测的是"复核读到哪段历史"，所以显式打开。
+  const config = { ...defaultContactConfig(), timezone: 'Asia/Shanghai', adaptiveFollowUp: true }
   const deps: DraftContextDeps = { config: () => config, get: name => name === 'history' ? { search: async () => lines, collect: async () => 0 } : undefined,
-    preset: () => ({ readDocument: async () => ({ content: '三月七' }) }),
+    preset: () => ({ readDocument: async () => ({ content: 'bot' }) }),
     roomFacts: () => ({ connected: true, roomBound: true, turnRunning: false, lastUserMessageAt: now - 60_000, queueDepth: 0 }) }
   const base = contactCandidate({ createdAt: now - 3_600_000, updatedAt: now - 3_600_000,
     evidenceSource: 'planned-followup', intent: { schemaVersion: 1, purpose: '确认午饭', originSessionId: 'qq-dm-10001', evaluations: 0 } })

@@ -20,9 +20,9 @@ import {
 import { reasonCodes, runJobs } from '../lib/jobs.mjs';
 
 const USER_ID = 'user_local';
-const PERSONA_ID = 'march7';
+const PERSONA_ID = 'bot';
 const VIEWER = { userId: USER_ID, personaId: PERSONA_ID, worldId: '' };
-const PERSONA = { id: PERSONA_ID, name: '三月七' };
+const PERSONA = { id: PERSONA_ID, name: 'bot' };
 const BASE_TIME = Date.parse('2026-03-07T10:00:00.000Z');
 const SESSION_ID = 'sess_capture_1';
 
@@ -707,8 +707,8 @@ test('跨 user/persona 不串：游标、批次与落库互不可见', async t =
   const harness = createHarness(t);
   const db = await harness.open();
 
-  const viewerA = { userId: 'user_a', personaId: 'march7', worldId: '' };
-  const viewerB = { userId: 'user_b', personaId: 'march7', worldId: '' };
+  const viewerA = { userId: 'user_a', personaId: 'bot', worldId: '' };
+  const viewerB = { userId: 'user_b', personaId: 'bot', worldId: '' };
   const viewerC = { userId: 'user_a', personaId: 'other_persona', worldId: '' };
 
   // Both streams queue a batch before either is drained: the stream-aware claim
@@ -737,29 +737,29 @@ test('跨 user/persona 不串：游标、批次与落库互不可见', async t =
   const llmA = stubLlm(JSON.stringify([candidate({ evidence_source_ids: [idsA[0]] })]));
   const summaryA = await runJobs({ db, llm: llmA, config: CONFIG, viewer: viewerA, persona: PERSONA });
   assert.equal(summaryA.processed, 1);
-  assert.equal(summaryA.results[0].streamKey, 'user_a:march7:-');
+  assert.equal(summaryA.results[0].streamKey, 'user_a:bot:-');
   assert.equal(summaryA.results[0].inserted, 1);
 
   const bJob = db.jobs({ type: EXTRACT_JOB_TYPE }).find(job => job.jobId === notedB.jobId);
   assert.equal(bJob.state, 'pending', 'A 的抽取不得领取 B 的作业');
   assert.equal(bJob.attempts, 0);
-  assert.equal(db.listMemories({ userId: 'user_a', personaId: 'march7' }).length, 1);
-  assert.equal(db.listMemories({ userId: 'user_b', personaId: 'march7' }).length, 0, 'A 的抽取不得写进 B');
+  assert.equal(db.listMemories({ userId: 'user_a', personaId: 'bot' }).length, 1);
+  assert.equal(db.listMemories({ userId: 'user_b', personaId: 'bot' }).length, 0, 'A 的抽取不得写进 B');
 
   // B's batch cannot cite A's evidence: the gate keeps it out of B's store.
   const llmB = stubLlm(JSON.stringify([candidate({ evidence_source_ids: [idsA[0]] })]));
   const summaryB = await runJobs({ db, llm: llmB, config: CONFIG, viewer: viewerB, persona: PERSONA });
   assert.equal(summaryB.processed, 1);
-  assert.equal(summaryB.results[0].streamKey, 'user_b:march7:-');
+  assert.equal(summaryB.results[0].streamKey, 'user_b:bot:-');
   assert.equal(summaryB.results[0].pending, 1, '越界证据只能是 pending');
-  const bMemories = db.listMemories({ userId: 'user_b', personaId: 'march7' });
+  const bMemories = db.listMemories({ userId: 'user_b', personaId: 'bot' });
   assert.equal(bMemories.length, 1);
   assert.equal(bMemories[0].status, 'pending');
   assert.ok(bMemories[0].tags.includes('reason:missing_evidence'));
   assert.equal(db.evidenceFor(bMemories[0].id).length, 0, '越界证据不得挂到 B 的记忆上');
 
   // A's store is untouched by B's run.
-  const aMemories = db.listMemories({ userId: 'user_a', personaId: 'march7' });
+  const aMemories = db.listMemories({ userId: 'user_a', personaId: 'bot' });
   assert.equal(aMemories.length, 1);
   assert.equal(aMemories[0].status, 'confirmed');
   assert.equal(aMemories[0].userId, 'user_a');

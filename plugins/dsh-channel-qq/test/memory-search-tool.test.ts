@@ -31,7 +31,7 @@ test('qq_memory_search：参数原样交给深召回面，结果映射成 内容
     calls.push([query, limit])
     return [
       { content: '部署时先停 dsh', kind: 'fact', source: 'memory/2026-10-12.md#L18', date: '2026-10-12', chunk: true },
-      { content: '学弟偏好深夜部署', kind: 'preference', source: 'qq-dm-1000000002', date: '2026-10-10', chunk: false },
+      { content: '主人偏好深夜部署', kind: 'preference', source: 'qq-dm-1000000002', date: '2026-10-10', chunk: false },
     ]
   })
   const got = await spec.run({ query: '部署', limit: 6 }) as { count: number; results: Array<Record<string, unknown>> }

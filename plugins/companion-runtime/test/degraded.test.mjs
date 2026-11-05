@@ -12,7 +12,7 @@ function buildRoot(t, { config = { enabled: true, mode: 'active' }, rawConfig = 
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'runtime-degraded-'));
   for (const dir of ['home/companion', 'home/memory', 'logs']) fs.mkdirSync(path.join(root, dir), { recursive: true });
   fs.writeFileSync(path.join(root, 'home/companion/identity.json'), JSON.stringify({
-    schemaVersion: 1, persona: 'march7', owner: { id: 'owner-1', displayName: 'o', platform: 'qq' },
+    schemaVersion: 1, persona: 'bot', owner: { id: 'owner-1', displayName: 'o', platform: 'qq' },
     desktop: { mode: 'local-owner', userId: 'owner-1' }, sessions: {},
   }));
   fs.writeFileSync(path.join(root, 'home/companion/memory.config.json'), JSON.stringify({
@@ -25,7 +25,7 @@ function buildRoot(t, { config = { enabled: true, mode: 'active' }, rawConfig = 
   return root;
 }
 
-const identity = () => ({ resolve: sessionId => ({ userId: 'owner-1', persona: 'march7', sessionId }) });
+const identity = () => ({ resolve: sessionId => ({ userId: 'owner-1', persona: 'bot', sessionId }) });
 const ctx = () => ({ tools: { register() {} }, systemPrompt: { section() {} }, on() {}, get() { return undefined; } });
 
 test('A11: a missing memory service degrades injection and never throws in the chat path', t => {

@@ -9,7 +9,7 @@ import {
 } from '../lib/db.mjs';
 
 const USER_ID = 'user_local';
-const PERSONA_ID = 'march7';
+const PERSONA_ID = 'bot';
 
 // Every test owns a throwaway directory and closes its handles before the
 // directory is removed (Windows keeps a lock on open SQLite files).
@@ -413,7 +413,7 @@ test('fullTextSearch isolates owners, statuses, scopes and worlds', async t => {
     [pending.id],
   );
 
-  const selfNote = await seedMemory(db, { value: '三月七喜欢给用户拍照', scope: 'persona_self', kind: 'bot_action', realityLevel: 'bot_action' });
+  const selfNote = await seedMemory(db, { value: 'bot喜欢给用户拍照', scope: 'persona_self', kind: 'bot_action', realityLevel: 'bot_action' });
   assert.deepEqual(db.fullTextSearch({ userId: USER_ID, personaId: PERSONA_ID, query: '拍照', scopes: ['user_global'] }), []);
   assert.deepEqual(
     db.fullTextSearch({ userId: USER_ID, personaId: PERSONA_ID, query: '拍照', scopes: ['persona_self'] }).map(hit => hit.id),
@@ -1167,7 +1167,7 @@ test('evidence links, revisions, relations and wiki pages round trip', async t =
   assert.equal(pageAgain.contentHash, 'def456');
   assert.equal(db.wikiPage('user-profile').notes, 'second');
   assert.equal(db.wikiPage('missing'), null);
-  db.upsertWikiPage({ pageId: 'relationship-march7', scope: 'user_persona', topic: '关系', path: 'relationships/march7-user.md' });
+  db.upsertWikiPage({ pageId: 'relationship-bot', scope: 'user_persona', topic: '关系', path: 'relationships/bot-user.md' });
   assert.equal(db.listWikiPages().length, 2);
   assert.deepEqual(db.listWikiPages('user_global').map(item => item.pageId), ['user-profile']);
 });
@@ -1183,9 +1183,9 @@ test('identity, persona and session bindings upsert instead of duplicating', asy
   assert.equal(renamed.platform, 'desktop');
   assert.equal(db.handle.prepare('SELECT count(*) AS total FROM identities').get().total, 1);
 
-  const persona = db.upsertPersona({ personaId: PERSONA_ID, displayName: '三月七', revision: 'r1' });
+  const persona = db.upsertPersona({ personaId: PERSONA_ID, displayName: 'bot', revision: 'r1' });
   assert.equal(persona.revision, 'r1');
-  const personaAgain = db.upsertPersona({ personaId: PERSONA_ID, displayName: '三月七', personaRef: 'preset:memory' });
+  const personaAgain = db.upsertPersona({ personaId: PERSONA_ID, displayName: 'bot', personaRef: 'preset:memory' });
   assert.equal(personaAgain.revision, 'r1');
   assert.equal(personaAgain.personaRef, 'preset:memory');
 
@@ -1205,7 +1205,7 @@ test('listMemories and countMemories apply filters, limits and offsets', async t
 
   await seedMemory(db, { value: '用户喜欢猫', scope: 'user_global', kind: 'preference', predicate: 'pet' });
   await seedMemory(db, { value: '用户喜欢狗', scope: 'user_global', kind: 'preference', predicate: 'pet' });
-  await seedMemory(db, { value: '三月七喜欢拍照', scope: 'persona_self', kind: 'bot_action', predicate: 'action' });
+  await seedMemory(db, { value: 'bot喜欢拍照', scope: 'persona_self', kind: 'bot_action', predicate: 'action' });
   await seedMemory(db, { value: '用户计划旅行', scope: 'user_global', kind: 'commitment', predicate: 'plan', status: 'pending' });
 
   assert.equal(db.countMemories({ userId: USER_ID, personaId: PERSONA_ID }), 4);

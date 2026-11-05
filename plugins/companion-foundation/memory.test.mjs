@@ -13,9 +13,9 @@ function fixture(t) {
   const root = fs.mkdtempSync(path.join(testRoot, 'memory-'));
   t.after(() => fs.rmSync(root, { recursive: true, force: true }));
   fs.mkdirSync(path.join(root, 'home/memory'), { recursive: true });
-  const manifest = { schemaVersion: 1, persona: '三月七', owner: 'owner', bot: 'bot', exportedAt: '2026-10-25T00:00:00Z' };
+  const manifest = { schemaVersion: 1, persona: 'bot', owner: 'owner', bot: 'bot', exportedAt: '2026-10-25T00:00:00Z' };
   const row = { id: 'astrbot:1', key: 'user_preference', value: '用户喜欢海边散步，也喜欢蓝色', memoryType: 'user_preference', realityLevel: 'real_user_fact',
-    persona: 'march7', owner: 'owner', bot: 'bot', source: 'astrbot_snapshot', updatedAt: '2026-10-24T00:00:00Z' };
+    persona: 'bot', owner: 'owner', bot: 'bot', source: 'astrbot_snapshot', updatedAt: '2026-10-24T00:00:00Z' };
   fs.writeFileSync(path.join(root, 'home/memory/astrbot-import.json'), JSON.stringify({ manifest, memories: [row,
     { ...row, id: 'astrbot:2', value: '过期的海边活动', validTo: '2000-01-01T00:00:00Z' },
     { ...row, id: 'astrbot:3', memoryType: 'core_memory', value: '不要编造承诺' }] }));

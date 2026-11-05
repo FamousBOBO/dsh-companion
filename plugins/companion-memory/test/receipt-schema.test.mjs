@@ -47,7 +47,7 @@ function receiptDraft(overrides = {}) {
     receiptId: 'rcpt_test_1',
     dedupeKey: 'dkev_test_1',
     namespace: 'companion.event',
-    scope: 'u:receipt_user|p:march7|w:',
+    scope: 'u:receipt_user|p:bot|w:',
     eventId: 'evt_receipt_1',
     transformVersion: 't1',
     status: 'accepted',
@@ -165,7 +165,7 @@ test('a newer unknown receipt schema is never overwritten and never written to',
     predicate: 'note',
     value: '收据通道不兼容时记忆库仍可用',
     userId: 'receipt_user',
-    personaId: 'march7',
+    personaId: 'bot',
     worldId: '',
   }).record;
   assert.equal(reopened.getMemory(record.id).value, '收据通道不兼容时记忆库仍可用');

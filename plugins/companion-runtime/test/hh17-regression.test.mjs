@@ -21,7 +21,7 @@ function buildRoot(t, config) {
   return root;
 }
 
-const identity = () => ({ resolve: sessionId => ({ userId: 'owner-1', persona: 'march7', sessionId }) });
+const identity = () => ({ resolve: sessionId => ({ userId: 'owner-1', persona: 'bot', sessionId }) });
 
 function openProbe(root) {
   return createDb({ file: path.join(root, 'home/companion/companion-runtime.db'), now: () => T0, pragmas: false });

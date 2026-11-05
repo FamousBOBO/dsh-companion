@@ -16,8 +16,8 @@ import { mountRuntime } from '../index.mjs';
 
 const T0 = Date.UTC(2026, 10, 23, 3, 0, 0);
 const HOUR = 3_600_000;
-const A = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:a' });
-const B = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:b' });
+const A = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:a' });
+const B = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:b' });
 const KEY_A = scopeKeyOf(A);
 const KEY_B = scopeKeyOf(B);
 
@@ -43,7 +43,7 @@ function seedDone(db, { scopeKey, activityId, at }) {
 
 function seedFact(db, { scopeKey, activityId, at, seq }) {
   db.run(`INSERT INTO domain_events (seq, event_id, schema_version, kind, scope, user_id, persona_id, world_id, occurred_at, recorded_at, payload)
-          VALUES (?, ?, 1, 'memory/ingest-request', ?, 'owner-1', 'march7', 'x', ?, ?, ?)`,
+          VALUES (?, ?, 1, 'memory/ingest-request', ?, 'owner-1', 'bot', 'x', ?, ?, ?)`,
   seq, `evt_${activityId}_${seq}`, scopeKey, at, at, JSON.stringify({ namespace: 'p2/activity', facts: { activityId } }));
 }
 
@@ -140,7 +140,7 @@ test('3. 成功 ingest 之后去重 claim 必须结算（eventPending === false�
   }, null, 2), 'utf8');
   const identity = {
     owner: () => ({ id: 'owner-1', displayName: 'owner-1', platform: 'local' }),
-    resolve: sessionId => ({ userId: 'owner-1', personaId: 'march7', displayName: 'owner-1', sessionId }),
+    resolve: sessionId => ({ userId: 'owner-1', personaId: 'bot', displayName: 'owner-1', sessionId }),
   };
   const dbFile = path.join(root, 'home', 'companion', 'runtime.db');
   const runtime = mountRuntime(null, root, { memory: null, identity, dbFile, now: () => T0 });
@@ -150,7 +150,7 @@ test('3. 成功 ingest 之后去重 claim 必须结算（eventPending === false�
   });
 
   const outcome = runtime.recordActivityOutcome({
-    scopeKey: 'u:owner-1|p:march7|w:world:default',
+    scopeKey: 'u:owner-1|p:bot|w:world:default',
     activityId: 'act-claim-1',
     slotId: 'slot-1',
     kind: 'read',

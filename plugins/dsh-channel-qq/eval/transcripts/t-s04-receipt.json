@@ -7,10 +7,10 @@
     { "role": "user", "speaker": "系统", "text": "上一回合 qq_send_text 返回：HTTP 200，data={}（没有 message_id）；是否真的发出未知。" },
     {
       "role": "assistant",
-      "speaker": "诺诺",
-      "text": "回执没带 message_id，咱查了下确实发出去了，就不重发了",
+      "speaker": "bot",
+      "text": "回执没带 message_id，我查了下确实发出去了，就不重发了",
       "actions": [
-        { "tool": "qq_send_text", "args": { "isGroup": false, "target": 1000000002, "text": "学弟在吗" } },
+        { "tool": "qq_send_text", "args": { "isGroup": false, "target": 1000000002, "text": "主人在吗" } },
         { "tool": "qq_lookup", "args": { "action": "message", "messageId": 4123 } }
       ]
     }

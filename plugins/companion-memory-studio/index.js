@@ -3,6 +3,7 @@ import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createIdentity } from '../companion-foundation/identity.mjs?v=0.4.0';
 import { createHostLlmAdapter } from '../companion-foundation/host-llm.mjs?v=0.4.0';
+import { resolveSuitePaths } from '../companion-foundation/suite-paths.mjs';
 import {
   createMemoryEngine,
   releaseSharedEngine,
@@ -19,7 +20,13 @@ import { registerStudioApi } from './server.mjs';
 // sidebar panel reads.
 
 export const name = 'companion-memory-studio';
-const packageRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../..');
+/**
+ * The studio and the companion preset must agree on one root, otherwise the
+ * engine registry hands out two SQLite writers. Both sides call
+ * `resolveSuitePaths()` (D2), so the value never depends on where the source sits.
+ */
+const suitePaths = resolveSuitePaths({ moduleUrl: import.meta.url });
+const packageRoot = suitePaths.dataRoot;
 const logPath = path.join(packageRoot, 'logs/memory-studio.jsonl');
 
 function appendJsonl(value) {
@@ -131,9 +138,9 @@ export async function apply(ctx) {
     return;
   }
 
-  const identity = createIdentity(packageRoot);
+  const identity = createIdentity(packageRoot, { personaId: suitePaths.personaId });
   const llm = createLazyExtractionLlm(ctx, () => engine?.config);
-  const engine = createMemoryEngine({ root: packageRoot, identity, llm });
+  const engine = createMemoryEngine({ root: packageRoot, identity, llm, personaId: suitePaths.personaId });
   shareEngine(packageRoot, engine);
   const status = await engine.initialize();
   const service = { engine, identity, root: packageRoot, version: MEMORY_VERSION };

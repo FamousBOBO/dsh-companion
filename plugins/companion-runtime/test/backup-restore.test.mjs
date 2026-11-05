@@ -11,7 +11,7 @@ import { createDb, openRuntimeDb, SCHEMA_VERSION } from '../lib/db.mjs';
 // same rows and a passing integrity_check.
 
 const T0 = Date.UTC(2026, 9, 30, 1, 0, 0);
-const SCOPE = 'u:owner-1|p:march7|w:world:default';
+const SCOPE = 'u:owner-1|p:bot|w:world:default';
 
 function tempDir(t, label = 'backup-restore') {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), `${label}-`));
@@ -33,7 +33,7 @@ function seedV2(dir) {
             VALUES ('goal_backup', ?, '备份前目标', 'conversation', 'none', 'running', 0, NULL, 2, ?, ?, '[]', 'next', '', '{}', '', '[]')`, SCOPE, T0, T0);
     for (let index = 0; index < 40; index += 1) {
       db.run(`INSERT INTO domain_events (seq, event_id, schema_version, kind, scope, user_id, persona_id, world_id, session_id, occurred_at, recorded_at, correlation_id, causation_id, root_evidence, reality_status, evidence_status, config_version, model_version, payload)
-              VALUES (?, ?, 1, 'goal/step', ?, 'owner-1', 'march7', 'world:default', 's1', ?, ?, '', '', '[]', 'actual_tool_activity', 'observed', 'p1-cognitive-continuity-v1', '', ?)`,
+              VALUES (?, ?, 1, 'goal/step', ?, 'owner-1', 'bot', 'world:default', 's1', ?, ?, '', '', '[]', 'actual_tool_activity', 'observed', 'p1-cognitive-continuity-v1', '', ?)`,
       index + 1, `evt_backup_${index}`, SCOPE, T0 + index, T0 + index, JSON.stringify({ goalId: 'goal_backup', step: `s${index}` }));
       db.run(`INSERT INTO consumer_receipts (consumer, event_id, scope, applied_at, state_version, result)
               VALUES ('goals', ?, ?, ?, ?, '{}')`, `evt_backup_${index}`, SCOPE, T0 + index, index + 1);

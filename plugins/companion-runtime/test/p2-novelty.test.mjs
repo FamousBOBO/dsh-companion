@@ -15,7 +15,7 @@ import { applyPlanEvent, createPlanner, dedupeKeyFor, PLAN_LIMITS } from '../lib
 const TZ = 'Asia/Shanghai';
 const MIN = 60000;
 const DAY = 86400000;
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = keyOfScope(SCOPE);
 const T0 = Date.UTC(2026, 10, 2, 5, 41, 0);
 
@@ -79,7 +79,7 @@ function makePlanner(world, { model, materials } = {}) {
     },
     callModel: model,
     budget,
-    materials: materials ?? (() => ({ timeZone: TZ, persona: { version: 1, excerpt: '三月七' }, preferences: [], goals: [], commitments: [], fixedAgenda: [], runningActivities: [], lastReceipts: [], interests: [], opportunities: [], capabilities: [], budget: null })),
+    materials: materials ?? (() => ({ timeZone: TZ, persona: { version: 1, excerpt: 'bot' }, preferences: [], goals: [], commitments: [], fixedAgenda: [], runningActivities: [], lastReceipts: [], interests: [], opportunities: [], capabilities: [], budget: null })),
     pause: { mode: 'active' },
   });
 }
@@ -150,7 +150,7 @@ test('P2-25: a novel candidate and a familiar project are presented side by side
     payload: { action: 'upsert', at: T0 - DAY, interest: { interestId: 'int_familiar', kind: 'project', title: '熟悉的小项目', note: '一直在做', status: 'active', strength: 0.6, origin: 'plan', ref: 'plan:p0' } },
   });
   const materials = () => ({
-    timeZone: TZ, persona: { version: 1, excerpt: '三月七' }, preferences: [],
+    timeZone: TZ, persona: { version: 1, excerpt: 'bot' }, preferences: [],
     goals: [], commitments: [], fixedAgenda: [], runningActivities: [], lastReceipts: [],
     interests: [{ kind: 'interest', title: '潮汐为什么有周期', note: '刚看到一半' }],
     opportunities: [{ kind: 'novelty', source: 'article-2', weight: 1 }],

@@ -14,7 +14,7 @@ import {
 // deliberately *not* re-tested (or re-implemented) here.
 
 const NOW = Date.UTC(2026, 10, 3, 13, 30, 0); // 2026-11-03 21:30 Asia/Shanghai
-const OWNER = { userId: '1429709395', displayName: 'owner', persona: 'march7', sessionId: 'session-health' };
+const OWNER = { userId: '10001', displayName: 'owner', persona: 'bot', sessionId: 'session-health' };
 
 /** Mirror `index.mjs`: identity gate first, then a JSON string. */
 function harness({ service = null, now = () => NOW } = {}) {

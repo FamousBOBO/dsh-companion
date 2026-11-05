@@ -1,5 +1,5 @@
 #!/usr/bin/env node
-// 星穹记忆档案 · Web 半拼装器
+// 陪伴空间 · Web 半拼装器
 //
 // 按 design/studio/ARCHITECTURE.md §5.1 把 src/client/*.js 片段包进浏览器模块外壳，
 // 生成 package 根目录的 client.js（提交物，勿手改）。
@@ -25,7 +25,7 @@ import { spawnSync } from 'node:child_process';
 import { fileURLToPath } from 'node:url';
 
 const PACKAGE_ROOT = path.resolve(fileURLToPath(new URL('..', import.meta.url)));
-const PACKAGE_NAME = '@local/dsh-companion-memory-studio';
+const PACKAGE_NAME = '@dsh-companion/memory-studio';
 const CLIENT_FILE = path.join(PACKAGE_ROOT, 'client.js');
 
 /** 拼装顺序即契约 §5.1 的固定顺序。 */
@@ -45,7 +45,7 @@ const FRAGMENTS = [
   { file: 'src/client/pages-overview.js', label: '运行状态（诊断）' },
 ];
 
-const HELP = `星穹记忆档案 · Web 半拼装器
+const HELP = `陪伴空间 · Web 半拼装器
 
 用法：
   node scripts/build-client.mjs            生成 client.js 并用 node --check 校验
@@ -171,7 +171,7 @@ function main(argv) {
   const core = fragments.find(fragment => fragment.required);
 
   const out = [];
-  out.push('星穹记忆档案 · Web 半拼装');
+  out.push('陪伴空间 · Web 半拼装');
   out.push(`  包名   ${PACKAGE_NAME}`);
   out.push(`  模式   ${options.check ? '只校验（--check，不写文件）' : '生成 client.js'}`);
   out.push(`  目录   ${PACKAGE_ROOT}`);
@@ -238,7 +238,7 @@ function main(argv) {
     process.stdout.write(`${out.join('\n')}\n`);
     return 1;
   }
-  out.push('  结果   完成。安装后浏览器请求 /plugins/@local/dsh-companion-memory-studio/client.js 应返回 200。');
+  out.push('  结果   完成。安装后浏览器请求 /plugins/@dsh-companion/memory-studio/client.js 应返回 200。');
   process.stdout.write(`${out.join('\n')}\n`);
   return 0;
 }

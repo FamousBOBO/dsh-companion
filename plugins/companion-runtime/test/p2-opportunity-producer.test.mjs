@@ -22,7 +22,7 @@ import { scopeKey } from '../lib/scope.mjs';
 // references only, and a throwing queue never rolls back the finish that caused it.
 
 const T0 = Date.UTC(2026, 9, 30, 4, 0, 0);
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKey(SCOPE);
 const SOURCE = Array.from({ length: 10 }, (_, index) => `第${index}段：` + '雨落在窗台上。'.repeat(6)).join('\n\n');
 const PAGE_HTML = `<html><head><title>雨天的海</title></head><body><p>${'雨声'.repeat(80)}</p></body></html>`;

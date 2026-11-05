@@ -35,13 +35,13 @@ const SKIP = hostModuleRoot() === '' ? 'host module root not found (set DSH_COMP
 function tempRoot(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'e2e-foundation-'));
   for (const dir of ['home/companion', 'logs', 'workspace', 'memory']) fs.mkdirSync(path.join(root, dir), { recursive: true });
-  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), '三月七\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), 'bot\n', 'utf8');
   // A complete, local-owner identity: `createIdentity` validates every field and refuses anything
   // partial (that refusal is exactly how the production config gets caught).
   fs.writeFileSync(path.join(root, 'home/companion/identity.json'), JSON.stringify({
     schemaVersion: 1,
     owner: { id: 'owner-1', displayName: '主人' },
-    persona: 'march7',
+    persona: 'bot',
     desktop: { mode: 'local-owner', userId: 'owner-1' },
     sessions: {},
   }, null, 2), 'utf8');
@@ -83,7 +83,7 @@ async function mounted(t) {
   const m = mountCompanion(ctx, root);
   assert.ok(m?.cognitive, 'the cognitive runtime mounted');
   t.after(() => { try { m.cognitive.dispose?.(); } catch { /* disposed */ } });
-  const scopeKey = m.cognitive.status({ sessionId: 'e2e' }).scopeKey || 'u:owner-1|p:march7|w:world:default';
+  const scopeKey = m.cognitive.status({ sessionId: 'e2e' }).scopeKey || 'u:owner-1|p:bot|w:world:default';
 
   /** The production path: foundation materials port → runtime merge → planner prompt text. */
   const promptFor = async () => {

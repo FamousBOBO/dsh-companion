@@ -175,7 +175,7 @@ export interface ToolCallFacts {
   readonly trust: Trust
   readonly tool: string
   readonly args: Readonly<Record<string, unknown>>
-  /** 这次调用属于我们的 QQ 会话吗（宿主文件工具只拦 QQ 会话的，别人的不归咱管）。 */
+  /** 这次调用属于我们的 QQ 会话吗（宿主文件工具只拦 QQ 会话的，别人的不归我管）。 */
   readonly isQqSession: boolean
   /** 回合作业的房间是群还是私聊（"仅私聊回合"一行的判据；判不出按群 = 更严）。 */
   readonly isGroupTurn: boolean

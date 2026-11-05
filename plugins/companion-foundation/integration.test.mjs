@@ -16,12 +16,12 @@ test('real DSH tool definitions, first-step recall hook, conversation capture an
   fs.mkdirSync(path.join(fixture, 'logs'), { recursive: true });
   fs.mkdirSync(path.join(fixture, 'home/memory'), { recursive: true });
   fs.mkdirSync(path.join(fixture, 'home/companion'), { recursive: true });
-  fs.writeFileSync(path.join(fixture, 'home/companion/identity.json'), JSON.stringify({ schemaVersion: 1, persona: 'march7',
+  fs.writeFileSync(path.join(fixture, 'home/companion/identity.json'), JSON.stringify({ schemaVersion: 1, persona: 'bot',
     owner: { id: 'owner', displayName: 'Test user', platform: 'qq' }, desktop: { mode: 'local-owner', userId: 'owner' }, sessions: {} }));
   fs.writeFileSync(path.join(fixture, 'workspace/PERSONA.md'), 'Synthetic test persona');
   fs.writeFileSync(path.join(fixture, 'home/memory/astrbot-import.json'), JSON.stringify({
-    manifest: { schemaVersion: 1, persona: '三月七', owner: 'owner', bot: 'bot' },
-    memories: [{ id: 'test:1', owner: 'owner', bot: 'bot', persona: 'march7', key: 'preference', value: '喜欢星空摄影', memoryType: 'user_preference', realityLevel: 'real_user_fact' }],
+    manifest: { schemaVersion: 1, persona: 'bot', owner: 'owner', bot: 'bot' },
+    memories: [{ id: 'test:1', owner: 'owner', bot: 'bot', persona: 'bot', key: 'preference', value: '喜欢星空摄影', memoryType: 'user_preference', realityLevel: 'real_user_fact' }],
   }));
   const mount = () => {
     const tools = new Map();

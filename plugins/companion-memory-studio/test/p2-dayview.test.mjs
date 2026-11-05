@@ -9,7 +9,7 @@ import { buildLife } from '../lib/companion-dashboard.mjs';
 //
 // The customer's own rows are the fixture: `test/fixtures/p2-dayview-live.json` is the real
 // production `p2_plan` / `p2_slots` / `p2_activities` / `p2_receipts` of scope
-// `u:1429709395|p:march7|w:world:default` for 2026-10-31. The page used to say 未完成 for a
+// `u:10001|p:bot|w:world:default` for 2026-10-31. The page used to say 未完成 for a
 // slot whose activity really finished, because it rendered `p2_plan_slots.status` instead of
 // looking at the evidence. These tests pin the evidence-based outcome, the whole-day timetable
 // and the honest state, then assert on the rendered component that the words are right.

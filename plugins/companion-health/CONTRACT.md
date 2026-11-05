@@ -1,12 +1,17 @@
-# companion-health · 服务层与运维入口契约（A0–A2 + 睡眠 S0–S2）
+# companion-health · 服务层与运维入口契约（A0–A2 + 睡眠 S0–S2 + Pulse）
 
 > 写者：health-service（服务层 + 运维入口）。**接口真相**是 `design/health/INTERFACES.md`；
 > 本文写的是**本层实际怎么落地**、边界在哪、怎么验、怎么停、哪些事本轮没做。
 > 所有数字都是本机实测（2026-11-03 21:0x–21:1x，Asia/Shanghai），不是估计。
 >
-> 交付文件：
-> `plugins/companion-health/{index.mjs,package.json,lib/{config,service,status}.mjs}`、
-> `scripts/check-health.mjs`、`scripts/health-stop.mjs`、本文。
+> 交付文件（发布树内，全部随模块走）：
+> `plugins/companion-health/{index.mjs,package.json}`、
+> `plugins/companion-health/lib/{config,service,status,readiness}.mjs`（以及 health-core 的
+> `db/normalize/cn-adapter/ingest/summaries/consents/sleep`、pulse 的 `pulse/pulse-adapter`）、
+> `plugins/companion-health/scripts/{check-health,health-stop}.mjs`、本文。
+>
+> **发布默认值与本机运行时的差异**（发布版最重要的一条变化，见 §3.0）：`enabled` 与
+> `pulse.enabled` 都是 **false**。采集与 BLE 心率要由用户在自己的配置里显式打开。
 
 ---
 
@@ -23,8 +28,8 @@
 9. [睡眠：预留与「等待首次真实夜间」状态机](#9-睡眠预留与等待首次真实夜间状态机)
 10. [本轮关闭的四个能力](#10-本轮关闭的四个能力)
 11. [权限矩阵](#11-权限矩阵)
-12. [验收入口 `scripts/check-health.mjs`](#12-验收入口-scriptscheck-healthmjs)
-13. [停机与回滚 `scripts/health-stop.mjs`](#13-停机与回滚-scriptshealth-stophmjs)
+12. [验收入口 `plugins/companion-health/scripts/check-health.mjs`](#12-验收入口-pluginscompanion-healthscriptscheck-healthmjs)
+13. [停机与回滚 `plugins/companion-health/scripts/health-stop.mjs`](#13-停机与回滚-pluginscompanion-healthscriptshealth-stophmjs)
 14. [与契约的偏差（逐条）](#14-与契约的偏差逐条)
 15. [自测与实测记录](#15-自测与实测记录)
 16. [NOT_RUN 清单](#16-not_run-清单)
@@ -34,17 +39,22 @@
 
 ## 1. 数据来源与协议冻结
 
-**唯一来源**：本机 sidecar（`tmp/huawei_health` 的 CN 轮廓复制件）暴露的只读 JSON 接口。
+**唯一来源**：本机 sidecar（`sidecars/huawei-health-cn/`，冻结的 CN 轮廓复制件）暴露的只读 JSON 接口。
 
 | 项 | 冻结值 | 依据 |
 | --- | --- | --- |
-| 方法/路径 | `GET /api/data?days=<1..30>[&force=1]` | `tmp/HUAWEI_HEALTH_README.md` §8 |
-| 默认基址 | `http://127.0.0.1:8765` | 计划 §11.4；`config.collector.baseUrl` |
+| 方法/路径 | `GET /api/data?days=<1..30>[&force=1]` | `sidecars/huawei-health-cn/README.md` §8 |
+| 默认基址 | `http://127.0.0.1:8765` | `config.collector.baseUrl`（可用 `DSH_COMPANION_HEALTH_SIDECAR_URL` 覆盖） |
 | 允许的主机 | **仅回环**：`127.0.0.1` / `localhost` / `::1` | 契约 §2；`lib/cn-adapter.mjs` 在开 socket 前拒绝 |
 | 鉴权 | 无（sidecar 自己持有华为 token） | 同上 §4 |
 | 缓存 | sidecar 内部 15 s；`force=1` 绕过 | 同上 §8 |
-| 成本 | 一次窗口 ≈ 7 次云调用 ≈ 1.4 s（30 天窗口 9 次） | 实测 `tmp/health-live-probe.json` |
+| 成本 | 一次窗口 ≈ 7 次云调用 ≈ 1.4 s（30 天窗口 9 次） | 本机实测（2026-11-03） |
 | 超时 | `config.collector.requestTimeoutMs`，默认 20000 ms | 计划 §11.4 |
+
+**路径不写死**：基址来自配置（`collector.baseUrl` / `pulse.baseUrl`），只接受回环地址；
+sidecar 自己的位置由用户决定（默认 `sidecars/huawei-health-cn/`，可用 `--port/--host` 或
+套件配置 `services.health.sidecarUrl` 指到别处）。本层**不读** sidecar 的安装路径、不启动它、
+不管理它的生命周期。
 
 **冻结的含义**：本层不新增、不改写、不复刻 sidecar 的协议；`payload` 的字段解释权在
 `lib/normalize.mjs`（health-core）。本层只消费 `cn-adapter` 的返回对象：
@@ -95,17 +105,20 @@ idle ──initialize()──► ready ──start()──► (running, interval
 
 ## 3. 配置：字段、默认值、校验
 
-文件：`<home>/health/config.json`（`home` 解析顺序：参数 `home` > `$DSH_COMPANION_HEALTH_HOME` > `<工作区>/home`）。
+文件：`<home>/health/config.json`。`home` 解析顺序（`lib/service.mjs` `resolveHome()`）：
+参数 `home` > `$DSH_COMPANION_HEALTH_HOME`（套件启动脚本会设置）> `$DSH_COMPANION_DATA_DIR/home`
+> `<套件根>/data/home`。**没有一处指向作者机器或源码目录**；套件配置的 `dataDir` 一改，
+> 健康数据就跟着搬。
 
 - **首次**加载时原子写默认值（临时文件 → `fsync` → `rename`），返回 `created: true`。
 - 之后**永不静默重写**：运维改过的、`health-stop.mjs` 关掉的，都原样尊重。
 - 非法值一律回落默认并在 `warnings[]` 里说明（中文），不抛、不阻止启动。
 
-默认值（与计划 §11.4 逐字段一致）：
+默认值（与计划 §11.4 逐字段一致；**`enabled` 与 `pulse.enabled` 是发布版改过的安全默认值**，见 §3.0）：
 
 ```json
 {
-  "enabled": true,
+  "enabled": false,
   "source": "huawei-cn",
   "provider": "huawei_cn_cloud",
   "displayName": "华为运动健康（CN 云）",
@@ -126,6 +139,16 @@ idle ──initialize()──► ready ──start()──► (running, interval
     "adjustSchedule": false,
     "proactiveCare": false
   },
+  "pulse": {
+    "enabled": false,
+    "baseUrl": "http://127.0.0.1:8151",
+    "deviceLabel": null,
+    "pollMs": 1000,
+    "deviceOffMs": 30000,
+    "connectTimeoutMs": 8000,
+    "inject": true,
+    "maxChars": 200
+  },
   "sleep": {
     "schemaEnabled": true,
     "displayEmptyState": true,
@@ -142,6 +165,46 @@ idle ──initialize()──► ready ──start()──► (running, interval
   }
 }
 ```
+
+### 3.0 发布安全默认值（与生产机不同，故意的）
+
+| 字段 | 发布默认 | 为什么 |
+| --- | --- | --- |
+| `enabled` | **`false`** | 采集会让本机 sidecar 访问华为云；「要不要采集」只能由用户自己说。关着时 `start()`/`syncNow()` 返回 `health-disabled`，不建库、不轮询、一次请求都不发。 |
+| `pulse.enabled` | **`false`** | 实时心率要连真硬件、要单独起 BLE sidecar，默认关闭；关着时所有 pulse 入口返回 `pulse-disabled`。 |
+| `capabilities.*`（注入/记忆/改日程/主动关怀） | false | 本轮没有实现代码路径，写 true 会被强制回落。 |
+| `privacy.ownerOnly` / `redactTokens` | true（不可关） | 硬闸。 |
+
+验证方式：`node --test test/release-defaults.test.mjs`（默认值 + 「关着时零请求」的断言）。
+
+### 3.0.1 三通道「诚实状态」（`lib/readiness.mjs`，发布版新增）
+
+**问题**：光有 `ok:false` 分不清「你没配置」「硬件不在」「功能关着」「坏了」。因此加了三通道状态表：
+`service.readiness()`，任何阶段都能调用（未初始化、sidecar 没起、压根没配置过），不读网络、
+不建文件、不抛。`status().readiness`、`describe().readiness` 和
+`scripts/check-health.mjs` 的「三态」行都读同一份结论。
+
+| 通道 | 取值 | 中文标签 | 判据（要证据，不猜） |
+| --- | --- | --- | --- |
+| `collection` | `disabled` | 未启用 | `config.enabled !== true` |
+| | `not-initialized` | 未初始化 | 采集开着但服务还没 ready |
+| | `unconfigured` | **未配置** | 开着、也 ready，但一次都没跑过（没有鉴权快照、没有 sync run） |
+| | `unavailable` | **不可用** | 最近错误是传输层（unreachable/timeout/http-error/bad-json）或云端拒绝凭证 |
+| | `unchecked` | 未检测 | 只读实例（`check-health`）：配置开着，但轮询是否真在跑只有宿主知道 |
+| | `ready` | 正常 | 最近一轮 `ok` / `partial` |
+| `account` | `unconfigured` | **未配置** | 没有任何鉴权快照（= 从没连上过本机 sidecar / 没登录账号） |
+| | `authorized` | 已授权 | 快照 `valid` / `expiring` |
+| | `reauthorize` | 需要重新登录 | 快照过期，或上游明确拒绝（1002/1004/1005/20020001/20020003/20010004） |
+| | `unavailable` | **不可用** | 传输层失败：**不知道**账号状态，不假装「未登录」 |
+| | `unknown` | 未知 | 有快照但读不懂 |
+| `ble` | `disabled` | 未启用 | `pulse.enabled !== true` |
+| | `unavailable` | **不可用** | pulse 模块没就绪，或最近一次轮询是 `device-not-found`/`connect-timeout`/`unreachable`（= 没硬件 / 没开广播 / sidecar 没起） |
+| | `no-session` | 未连接 | 设备连着但没开会话（此状态下**不会**有任何读数进提示词） |
+| | `ready` | 正常 | 会话进行中 |
+| | `unknown` | 未知 | 开着但一次成功读数都没有 —— 不做「可用」的推断 |
+
+每个状态都带 `label`（中文短词，UI 直接显示）与 `hint`（一句为什么），所以界面不需要自己拼
+文案，也就不会把「配置已保存」显示成「连接成功」。测试：`test/release-defaults.test.mjs`。
 
 校验规则（`lib/config.mjs` `validateConfig()`，每条违规都产出一条 `warnings`）：
 
@@ -381,23 +444,25 @@ idle ──initialize()──► ready ──start()──► (running, interval
 
 ---
 
-## 12. 验收入口 `scripts/check-health.mjs`
+## 12. 验收入口 `plugins/companion-health/scripts/check-health.mjs`
 
-```powershell
-node scripts/check-health.mjs                      # 人类可读（默认不联网）
-node scripts/check-health.mjs --json               # 单行 JSON
-node scripts/check-health.mjs --probe --json       # 加一次真实 sidecar 探测
-node scripts/check-health.mjs --home <dir>         # 指定 home（默认 $DSH_COMPANION_HEALTH_HOME 或 <工作区>/home）
-node scripts/check-health.mjs --days 3 --probe      # 探测窗口 1..30
-node scripts/check-health.mjs --exit-zero           # 强制 0 退出
+```bash
+node plugins/companion-health/scripts/check-health.mjs              # 人类可读（默认不联网）
+node plugins/companion-health/scripts/check-health.mjs --json       # 单行 JSON
+node plugins/companion-health/scripts/check-health.mjs --probe --json   # 加一次真实 sidecar 探测
+node plugins/companion-health/scripts/check-health.mjs --home <dir>  # 指定 home（默认见 §3）
+node plugins/companion-health/scripts/check-health.mjs --days 3 --probe  # 探测窗口 1..30
+node plugins/companion-health/scripts/check-health.mjs --exit-zero   # 强制 0 退出
 ```
 
+或者用包内 npm 脚本：`npm --workspace @dsh-companion/health run check`（等价）。
+
 - 直接 `import` `plugins/companion-health/lib/service.mjs`，建**只读实例**（`readOnly:true`）：
-  不 `start()`、不 `syncNow()`、不创建 `home/health/`、不迁移。允许用 `import.meta.url` 相对
-  定位插件路径，没有硬编码盘符。
-- 输出内容：健康源状态、最近样本时间与新鲜度、DB integrity（含校验时刻）、sleep availability、
-  服务心跳、鉴权状态（`valid/expiring/expired/required` + 剩余分钟）、故障摘要；`--probe` 追加
-  步数/心率/压力/血氧/实时值/训练/设备台数/睡眠行数/鉴权剩余。
+  不 `start()`、不 `syncNow()`、不创建 `home/health/`、不迁移。路径全部由 `import.meta.url`
+  相对定位，没有硬编码盘符；`home` 走 §3 那套解析顺序。
+- 输出内容：三通道状态（采集/账号/心率，见 §3.0.1）、健康源状态、最近样本时间与新鲜度、
+  DB integrity（含校验时刻）、sleep availability、服务心跳、鉴权状态 + 剩余分钟、故障摘要；
+  `--probe` 追加步数/心率/压力/血氧/实时值/训练/设备台数/睡眠行数/鉴权剩余。
 - **退出码**：`0` = 健康（有样本、integrity≠failed、无 fault）；`1` = 不然；`--exit-zero` 强制 0；
   未知参数 `2`。`--json` 里也镜像 `exitCode` 与 `ok`/`reason`。
 - `reason` 只出现在 check-health 自己的报告里（**不污染** service 契约）：
@@ -408,14 +473,14 @@ node scripts/check-health.mjs --exit-zero           # 强制 0 退出
 
 ---
 
-## 13. 停机与回滚 `scripts/health-stop.mjs`
+## 13. 停机与回滚 `plugins/companion-health/scripts/health-stop.mjs`
 
-```powershell
-node scripts/health-stop.mjs                       # 关采集：enabled:false（原子写，先备份）
-node scripts/health-stop.mjs --status              # 只读：当前 enabled + 最近一轮 sync
-node scripts/health-stop.mjs --status --json
-node scripts/health-stop.mjs --restore "<bak>"     # 用备份恢复（会先把当前配置另存）
-node scripts/health-stop.mjs --home <dir> --json
+```bash
+node plugins/companion-health/scripts/health-stop.mjs                       # 关采集：enabled:false（原子写，先备份）
+node plugins/companion-health/scripts/health-stop.mjs --status              # 只读：当前 enabled + 最近一轮 sync
+node plugins/companion-health/scripts/health-stop.mjs --status --json
+node plugins/companion-health/scripts/health-stop.mjs --restore "<bak>"     # 用备份恢复（会先把当前配置另存）
+node plugins/companion-health/scripts/health-stop.mjs --home <dir> --json
 ```
 
 行为：
@@ -449,7 +514,9 @@ node scripts/health-stop.mjs --home <dir> --json
 | 10 | `--probe` 失败不改退出码 | 退出码语义按任务约定只由"fault / db 不 ok"决定 | `probe.ok=false` + `notes` 里明确写失败原因 |
 | 11 | `summaries.buildSources` 用对象参数调用 | 实际实现是 `buildSources({db,config,nowMs})`（契约 §9 写的是位置参数） | 已按实现对齐 |
 | 12 | `health_meta` 多写 `auth_snapshot` / `last_integrity` | 让 `status()`/`buildSources` 在重启后仍能报鉴权与完整性，不用重跑 | 纯增量；`summaries.mjs` 已按同名键读取（已核对）；键形状已写进 INTERFACES §12 |
-| 13 | **`consents()` 回到裸 map**（曾一度返回 `{ok,consents,capabilities,notEnforced,seed}` 信封，已修）；多出来的展示数据挪到 `consentsDetail()` | 信封形状让 `service.consents()['health.read.on_demand']` 取到 `undefined`，而授权闸写的是 `=== false → deny`，`undefined !== false` → **fail-open（关了授权照样读）**。契约 §12/§11.1 本来就是裸 map，这是回到契约 | 现在裸取恒为布尔；读取失败是 typed 拒绝（**不是半张 map**），未初始化时返回 `{ok:false, code:'health-db-unavailable'}`，闸与读都会各自拒绝。回归测试：`tmp/health-svc-selftest.mjs` 的"consents() 是裸 map"与"未初始化时是 typed 拒绝"两条 |
+| 13 | **`consents()` 回到裸 map**（曾一度返回 `{ok,consents,capabilities,notEnforced,seed}` 信封，已修）；多出来的展示数据挪到 `consentsDetail()` | 信封形状让 `service.consents()['health.read.on_demand']` 取到 `undefined`，而授权闸写的是 `=== false → deny`，`undefined !== false` → **fail-open（关了授权照样读）**。契约 §12/§11.1 本来就是裸 map，这是回到契约 | 现在裸取恒为布尔；读取失败是 typed 拒绝（**不是半张 map**），未初始化时返回 `{ok:false, code:'health-db-unavailable'}`，闸与读都会各自拒绝。回归测试：`test/consents.test.mjs` 的"consents() 是裸 map"与"未初始化时是 typed 拒绝"两条 |
+| 14 | 新增 `readiness()` / `status().readiness` / `describe().readiness` | 发布要求区分「未配置 / 不可用 / 未启用 / 正常」；从 `ok:false` 反推会把"没配置"说成"坏了" | 纯增量（见 §3.0.1） |
+| 15 | 发布默认值 `enabled=false` / `pulse.enabled=false` | 安全默认值：健康采集会访问外部服务 | 见 §3.0；用户若要采集，需在自己配置里写 `"enabled": true` |
 
 ---
 
@@ -457,12 +524,23 @@ node scripts/health-stop.mjs --home <dir> --json
 
 ### 15.1 服务层自测（真实 health-core 模块 + 只有适配器是假的）
 
-`node tmp/health-svc-selftest.mjs` → **22/22 passed**（临时脚手架，不在交付范围）。
-覆盖：配置默认值/校验回落/首次原子写、真迁移 0→1、consents 只播种一次、`status()` 形状与
+发布树内的可复现入口（`plugins/companion-health/`）：
+
+```bash
+node --test test/*.test.mjs        # 2026-11-05 复核：211 条，210 pass / 1 skip / 0 fail
+```
+
+1 条 skip 是 `test/normalize.test.mjs` 最后那条「用真实快照对账」的用例：它读
+`test/fixtures/health-live-probe.json`（本机 sidecar 抓下来的样本，属于个人数据，不入库），
+文件不在就跳过 —— 这是设计好的行为，不是失败。
+
+覆盖（15 个测试文件）：配置默认值/校验回落/首次原子写、`enabled`/`pulse.enabled` 默认关闭且
+关着时**零请求**、三通道状态表的每个取值、真迁移 0→1、consents 只播种一次、`status()` 形状与
 §11.1 逐键对齐、`status()` 平均 0.20 ms、真实归一化入库、重复同步不翻倍、`start()` 只一个
 interval、失败收敛成 fault、`backup()` 可用、读路径零网络、非法入参 typed 拒绝、输出无凭证、
 `close()` 后全 `ok:false`、重启后 `heartbeat().lastRunAt` 仍在、只读实例不建文件/不改字节、
-`apply()` 连调两次同一实例、`summarizeProbePayload` 对畸形输入不抛、`maskUid` 只留 4 位。
+`apply()` 连调两次同一实例、`summarizeProbePayload` 对畸形输入不抛、`maskUid` 只留 4 位、
+pulse 三道闸与会话生命周期。
 
 ### 15.2 真实链路（sidecar 活着，2026-11-03 21:16）
 
@@ -496,21 +574,27 @@ HTTP 200   7 次云调用   冷 1.68 s / 命中 sidecar 缓存 32 ms
 ### 15.3 真实 `home/`（尚未初始化）
 
 ```
-node scripts/check-health.mjs --json
+node plugins/companion-health/scripts/check-health.mjs --json
 → ok:false, reason:not-initialized, dbExists:false, exit 1（清楚说明"还没有采集数据"，不崩）
-→ 事后核对：home/health/ 未被创建
+→ 三态行：采集 未启用 · 账号 未配置 · 心率 未启用
+→ 事后核对：home 下没有任何文件被创建
 ```
 
 ### 15.4 验收命令
 
-```powershell
-node scripts/check-health.mjs --json
-node scripts/check-health.mjs --probe --json
-node scripts/health-stop.mjs --status --json
-node --check scripts/check-health.mjs
-node --check scripts/health-stop.mjs
+```bash
+node plugins/companion-health/scripts/check-health.mjs --json
+node plugins/companion-health/scripts/check-health.mjs --probe --json   # 需要真 sidecar + 真账号
+node plugins/companion-health/scripts/health-stop.mjs --status --json
+node --check plugins/companion-health/scripts/check-health.mjs
+node --check plugins/companion-health/scripts/health-stop.mjs
 node --check plugins/companion-health/index.mjs
+node --test test/*.test.mjs
 ```
+
+> **不随包发布**：`check-pulse.mjs`（BLE 侧调试/压测脚手架，绑着本机 venv 与真硬件）与
+> `health-svc-selftest.mjs`（临时脚手架）留在开发环境，不进发布树。BLE 侧的离线部分由
+> `sidecars/ble-heart-rate/` 自己的 `--selftest` 与 `--fixture` 覆盖（见那个目录的 README）。
 
 `package.json` 的 test 脚本用 glob（`node --test test/*.test.mjs`），不依赖
 `node --test <目录>`（Node v24/Windows 上会把裸目录当模块入口而失败）。
@@ -536,6 +620,12 @@ node --check plugins/companion-health/index.mjs
 10. **`health.context/memory/schedule/care`**：本轮完全未实现（见 §10）。
 11. **Health Connect / Health Sync / Gadgetbridge / 其它睡眠来源**：未接入。
 12. **git 操作、`npm install`**：均未执行。
+13. **三通道状态的 `ble=ready` 分支没有真机证据**：只有「会话进行中」能到达，而真机会话需要
+    BLE sidecar + 手环。本轮验证的是离线分支（`disabled` / `unavailable` / `unknown` / `no-session`）。
+14. **`DSH_COMPANION_HEALTH_SIDECAR_URL` / `DSH_COMPANION_PULSE_SIDECAR_URL`** 只做了单元级验证
+    （接受回环地址、拒绝非回环），没有在真实宿主里用它改过端口。
+15. **发布版默认值与生产机不同**：生产机的 `config.json` 里写着 `enabled: true`，迁移到发布套件时
+    需要用户显式再写一次 —— 文档（`docs/02-configuration.md`）由 deploy-docs 负责说明。
 
 ---
 
@@ -556,13 +646,14 @@ node --check plugins/companion-health/index.mjs
 
 | 闸 | 位置 | 默认 | 关掉后的表现 |
 |---|---|---|---|
-| `pulse.enabled` | `home/health/config.json` | `true` | 所有 pulse 方法返回 `pulse-disabled`，注入行为空 |
+| `pulse.enabled` | `<home>/health/config.json` | **`false`**（发布默认为关） | 所有 pulse 方法返回 `pulse-disabled`，注入行为空 |
 | `health.pulse.live` | `health_consents` 表（唯一权威） | 开（`DEFAULT_ON`） | 返回 `pulse-denied`，注入行为空 |
 | 会话 | `companion_pulse action=start` / Studio 按钮 | 无会话 | 返回 `pulse-no-session`，注入行为空 |
 
-sidecar 本身还得手动起（`start-sidecar.ps1`），所以"没在测"是正常静息态：**空闲时不扫描、不轮询、不连 BLE**，
-注入行为空，聊天与其它能力零影响。会话只有三种开法：`companion_pulse action=start`、Studio 的开始按钮、
-或者主人自己说了算的 `minutes`（定时会话）。
+sidecar 本身还得手动起（Windows：`sidecars/ble-heart-rate/start-sidecar.ps1`；
+Linux/macOS：`sidecars/ble-heart-rate/start-sidecar.sh`），所以"没在测"是正常静息态：
+**空闲时不扫描、不轮询、不连 BLE**，注入行为空，聊天与其它能力零影响。会话只有三种开法：
+`companion_pulse action=start`、Studio 的开始按钮、或者主人自己说了算的 `minutes`（定时会话）。
 
 ### 17.2.1 会话生命周期（2026-11-04 主人定："不用窗口"）
 
@@ -577,12 +668,13 @@ sidecar 本身还得手动起（`start-sidecar.ps1`），所以"没在测"是正
 ### 17.3 配置（`pulse` 段，校验风格同 §3）
 
 ```json
-"pulse": { "enabled": true, "baseUrl": "http://127.0.0.1:8151", "deviceLabel": null,
+"pulse": { "enabled": false, "baseUrl": "http://127.0.0.1:8151", "deviceLabel": null,
            "pollMs": 1000, "deviceOffMs": 30000, "connectTimeoutMs": 8000, "inject": true, "maxChars": 200 }
 ```
 `baseUrl` 非 loopback → 回落默认 + 关键 `warnings`（`config.mjs` 与 `pulse-adapter.mjs` 双重拒绝）。
 `deviceLabel` 只是**显示别名**（设备不上报名字时用它）；"连哪个设备"由 sidecar 决定
-（`start-sidecar.ps1 -NameHint / -Address`），这一层不重复配置。
+（Windows `start-sidecar.ps1 -NameHint / -Address`，Linux/macOS `start-sidecar.sh --name-hint / --address`），
+这一层不重复配置。
 `pollMs` 夹在 250–10000；`deviceOffMs` 夹在 10000–300000；`connectTimeoutMs` 夹在 3000–30000；`maxChars` 夹在 80–400。
 `sessionMinutes` **已删除**（会话不再有默认时长）。
 
@@ -617,12 +709,12 @@ sidecar 本身还得手动起（`start-sidecar.ps1`），所以"没在测"是正
 ### 17.7 验收
 
 ```text
-node --test plugins/companion-health/test/*.test.mjs                 # 164 条全绿（含 pulse-engine/adapter/service）
+node --test plugins/companion-health/test/*.test.mjs                 # 210 pass / 1 skip（含 pulse-engine/adapter/service）
 node --test plugins/companion-foundation/pulse-tools.test.mjs       # 工具层
-node scripts/check-pulse.mjs --fixture                              # sidecar 侧（无硬件）
+sidecars/ble-heart-rate/start-sidecar.sh --fixture                  # sidecar 侧（无硬件；Windows 用 .ps1 -Fixture）
 ```
 真机：`--scan` → `--watch 30` 对表 → `companion_pulse action=start` 出现【心跳读数】→ `stop` 立刻消失 →
-`stop-sidecar.ps1` 后降级为诚实句。
+`stop-sidecar.ps1` / `stop-sidecar.sh` 后降级为诚实句。
 
 ### 17.8 本层已知边界
 

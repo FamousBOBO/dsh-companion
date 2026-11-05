@@ -14,7 +14,7 @@ import { mountRuntime } from '../index.mjs';
 function tempRoot(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'agenda-next-'));
   for (const rel of ['home/companion', 'logs', 'workspace']) fs.mkdirSync(path.join(root, rel), { recursive: true });
-  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), '三月七\n', 'utf8');
+  fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), 'bot\n', 'utf8');
   fs.writeFileSync(path.join(root, 'home/companion/runtime.config.json'), JSON.stringify({
     enabled: true, mode: 'active', timeZone: 'Asia/Shanghai',
     agenda: { enabled: true, generationHorizonHours: 72, maxItemsPerScope: 32, querySpanDays: 14 },
@@ -24,7 +24,7 @@ function tempRoot(t) {
 }
 
 const BOUND = { userId: 'owner-1' };
-const identity = () => ({ resolve: sessionId => ({ userId: 'owner-1', persona: 'march7', sessionId }) });
+const identity = () => ({ resolve: sessionId => ({ userId: 'owner-1', persona: 'bot', sessionId }) });
 
 function mounted(t, { agendaEnabled = true, timeZone = 'Asia/Shanghai', clock = () => Date.UTC(2026, 10, 4, 3, 0, 0), horizonHours = 72 } = {}) {
   const root = tempRoot(t);

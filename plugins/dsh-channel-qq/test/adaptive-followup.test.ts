@@ -19,6 +19,8 @@ async function rig(t: TestContext, decision: (request: AdaptiveRequest) => Promi
   const home = tempHome('qq-adaptive-'), clock = new FakeClock(T0), logs: string[] = [], platform = new FakePlatform()
   const config = { ...defaultContactConfig(), enabled: true, dryRun: false, allowExternalSend: true, sendMode: 'turn' as const,
     timezone: 'Asia/Shanghai', quietHours: [], allowedRooms: ['dm-10001'], draftModel: false,
+    // 发布基线：自主跟进复核（会复用模型预算）默认关；这组用例测的就是它，所以显式打开。
+    adaptiveFollowUp: true,
     ...(options.budget === undefined ? {} : { draftDailyBudget: options.budget }) }
   const file = path.join(home.dir, 'contact.json')
   const store = new ContactStore({ file, lockFile: path.join(home.dir, 'contact.lock'), clock, log: line => logs.push(line),
@@ -35,7 +37,7 @@ async function rig(t: TestContext, decision: (request: AdaptiveRequest) => Promi
   const facts = () => ({ connected: true, roomBound: true, turnRunning: false, lastUserMessageAt: message.at, queueDepth: 0 })
   const runtime = () => contactRuntime({ lastUserMessageAtByRoom: { 'dm-10001': message.at }, queueDepthByRoom: { 'dm-10001': 0 } })
   const source = { build: async (candidate: ContactCandidate): Promise<DraftContext> => ({
-    persona: { personaId: 'companion', document: '三月七', truncated: false }, history: contextMissing ? [] : [{ ...message }],
+    persona: { personaId: 'companion', document: 'bot', truncated: false }, history: contextMissing ? [] : [{ ...message }],
     memory: null, pending: [], evidence: [], outbound: [], sentBlock: null, unansweredStreak: 0,
     clock: { tz: 'Asia/Shanghai', tzLabel: 'Asia/Shanghai', dayKey: '2026-11-03', hhmm: '13:10', minutes: 790, period: '下午' },
     revision: { candidateVersion: candidate.version, candidateUpdatedAt: candidate.updatedAt, lastUserAt: message.at,

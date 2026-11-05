@@ -95,7 +95,7 @@ const group = (groupId = GROUP) => ({
   message: [{ type: 'text', data: { text: '随便聊聊' } }],
 }) as never
 
-/** 群里叫了咱的一条消息（@）。 */
+/** 群里叫了我的一条消息（@）。 */
 const groupAt = (groupId = GROUP) => ({
   time: 0, self_id: 1, post_type: 'message', message_type: 'group', message_id: 3, user_id: STRANGER,
   group_id: groupId, sender: { user_id: STRANGER, nickname: '群友' },
@@ -168,7 +168,7 @@ test('门控：groupPolicy=allowlist 时未列名单的群直接拒绝、不配�
   h.cleanup()
 })
 
-test('门控：未批准的群里，没人叫咱的消息不建请求、不回话', async () => {
+test('门控：未批准的群里，没人叫我的消息不建请求、不回话', async () => {
   const h = harness()
   assert.equal(h.service.allow(group()), false)
   await wait()

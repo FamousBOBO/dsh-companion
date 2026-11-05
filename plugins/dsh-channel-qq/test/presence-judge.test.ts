@@ -43,12 +43,12 @@ function backgroundSection(prompt: string): string {
 
 // ── 提示词：角色、兴趣、条件、格式 ──────────────────────────────────────────
 
-test('提示词以三月七第一人称，给出兴趣领域，但不许"命中词就说"', () => {
+test('提示词以bot第一人称、中性人格基线，但不许"命中词就说"', () => {
   const prompt = promptOf([entry('小王', 10001, '小王(10001) 22:20：这个构图怎么调才好看？')])
-  assert.match(prompt, /你是「三月七」/)
-  assert.match(prompt, /摄影/)
-  assert.match(prompt, /旅行见闻/)
-  assert.match(prompt, /星穹列车/)
+  assert.match(prompt, /你是用户的 AI 陪伴助手/)
+  assert.match(prompt, /显示名「bot」/)
+  // 人格去角色化：不得出现具体作品/角色设定（身份由 config/persona.md 决定）
+  assert.doesNotMatch(prompt, /星穹列车|三月七|开朗直率|喜欢摄影/)
   // 关键口径：兴趣词只是判断依据，不是触发器
   assert.match(prompt, /不等于\*\*你该说话|不等于.*该说话/)
   assert.match(prompt, /我今天拍了好多照片/)
@@ -95,11 +95,11 @@ test('背景按时间正序渲染、她自己那条被标出来、没有背景�
   const prompt = promptOf([
     entry('小王', 10001, '小王(10001) 22:20：第一句'),
     entry('小李', 10002, '小李(10002) 22:21：第二句'),
-    entry('', 99_999, '咱刚才说的那句', true),
+    entry('', 99_999, '我刚才说的那句', true),
   ])
   const section = backgroundSection(prompt)
   assert.ok(section.indexOf('第一句') < section.indexOf('第二句'))
-  assert.match(section, /- 你（自己）：咱刚才说的那句/)
+  assert.match(section, /- 你（自己）：我刚才说的那句/)
   const empty = backgroundSection(promptOf([]))
   assert.match(empty, /这一段没有别人的消息/)
 })
@@ -111,8 +111,9 @@ test('强相关且有具体可补充内容 → 允许说（提示词给足条件
     entry('小王', 10001, '小王(10001) 22:20：晚上拍月亮，f/1.8 1/60 老是糊'),
     entry('小李', 10002, '小李(10002) 22:21：是不是得用三脚架'),
   ])
-  // 这段对话确实是"摄影的具体做法"，提示词里的判断条件覆盖得到
-  assert.match(prompt, /构图、取景、光线|光线/)
+  // 这段对话确实是"具体的做法问题"，提示词里的判断条件覆盖得到
+  // （去角色化后不再列具体兴趣领域，判据是"你确实知道具体、可靠的做法"）
+  assert.match(prompt, /具体的、可靠、别人未必知道|具体的、有用的、别人未必知道/)
   assert.match(prompt, /可以接话的条件/)
   const outcome = parseJudgeReply(
     '{"speak":true,"reply":"手持的话把快门提到 1/250 试试，月亮够亮，糊多半是手抖不是光不够。","why":"这是具体的摄影参数问题，我有靠谱的建议"}',

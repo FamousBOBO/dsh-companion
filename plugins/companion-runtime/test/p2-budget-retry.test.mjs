@@ -14,7 +14,7 @@ import { createBudget } from '../lib/budget.mjs';
 // The contract now is: every *attempt* owns a distinct reservation, the previous issued attempt
 // keeps its conservative charge, and `settle` settles the reservation that was returned.
 
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = keyOfScope(SCOPE);
 const T0 = Date.UTC(2026, 10, 5, 3, 0, 0);
 

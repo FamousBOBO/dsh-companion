@@ -16,7 +16,7 @@ import { EDITABLE_KEYS } from '../lib/read.mjs';
 import { ROUTES, createStudioHandlers, registerStudioApi } from '../server.mjs';
 
 const USER_ID = 'u1';
-const PERSONA_ID = 'march7';
+const PERSONA_ID = 'bot';
 
 const state = {
   root: '',
@@ -95,7 +95,7 @@ function seed(db) {
   });
   ids.relationship = insertMemory(db, {
     scope: 'user_persona', kind: 'relationship', predicate: 'bond',
-    value: '三月七和用户一起看过流星雨', importance: 0.5,
+    value: 'bot和用户一起看过流星雨', importance: 0.5,
   });
   // 另一个 owner 的记录：详情接口必须当作不存在。
   ids.foreign = db.insertMemory({

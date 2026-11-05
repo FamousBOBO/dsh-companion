@@ -14,8 +14,8 @@ import { mountRuntime } from '../index.mjs';
 //   以及 `review-failed` 要是普通 SQLite 异常时的**精确**返回码，并且 ABORT 之后连接仍然可用。
 
 const T0 = Date.UTC(2026, 10, 27, 3, 0, 0);
-const A = scopeKeyOf({ userId: 'owner-1', personaId: 'march7', worldId: 'world:a' });
-const B = scopeKeyOf({ userId: 'owner-1', personaId: 'march7', worldId: 'world:b' });
+const A = scopeKeyOf({ userId: 'owner-1', personaId: 'bot', worldId: 'world:a' });
+const B = scopeKeyOf({ userId: 'owner-1', personaId: 'bot', worldId: 'world:b' });
 
 function world(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p2-round7-'));
@@ -84,7 +84,7 @@ test('review-failed：普通 SQLite 异常返回精确的 review-failed，且之
   const dbFile = path.join(root, 'home', 'companion', 'runtime.db');
   const identity = {
     owner: () => ({ id: 'owner-1', displayName: 'owner-1', platform: 'local' }),
-    resolve: sessionId => ({ userId: 'owner-1', personaId: 'march7', displayName: 'owner-1', sessionId }),
+    resolve: sessionId => ({ userId: 'owner-1', personaId: 'bot', displayName: 'owner-1', sessionId }),
   };
   const runtime = mountRuntime(null, root, { memory: null, identity, dbFile, now: () => T0 });
   const db = openRuntimeDb({ file: dbFile, now: () => T0 });
@@ -95,7 +95,7 @@ test('review-failed：普通 SQLite 异常返回精确的 review-failed，且之
     try { fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* best effort */ }
   });
 
-  const KEY = scopeKeyOf({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+  const KEY = scopeKeyOf({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
   db.run(`INSERT INTO runtime_meta (meta_key, meta_value, updated_at) VALUES ('p2_correction_resolved:rec-rf', ?, ?)`,
   JSON.stringify({ recordId: 'rec-rf', requestId: 'req-rf', supersedeIds: ['mem_a'], outcome: 'needs-review', requestedAt: T0 }), T0);
   db.run(`INSERT INTO memory_outbox (outbox_id, scope, event_id, namespace, payload, status, receipt_id, attempts, last_error, claimed_until, claim_owner, created_at, updated_at)
@@ -138,7 +138,7 @@ test('第四轮：空选择不写轮转键；写失败会 noteError；键数量�
   for (let index = 0; index < 205; index += 1) {
     db.run(`INSERT INTO runtime_meta (meta_key, meta_value, updated_at) VALUES (?, ?, ?)
             ON CONFLICT(meta_key) DO UPDATE SET meta_value = excluded.meta_value, updated_at = excluded.updated_at`,
-    `p2_share_rotation:u:owner-1|p:march7|w:world:bulk-${index}`, 'pending', T0 + index);
+    `p2_share_rotation:u:owner-1|p:bot|w:world:bulk-${index}`, 'pending', T0 + index);
   }
   p2.createShareCandidate({ scopeKey: A, activityId: 'served-again', title: 'served-again', body: '正文' });
   await p2.deliverShareCandidates({ scopeKey: A, limit: 1 });
@@ -158,7 +158,7 @@ test('第九轮：关键错误不会被常规错误挤掉（单独一档）', t 
   const dbFile = path.join(root, 'home', 'companion', 'runtime.db');
   const identity = {
     owner: () => ({ id: 'owner-1', displayName: 'owner-1', platform: 'local' }),
-    resolve: sessionId => ({ userId: 'owner-1', personaId: 'march7', displayName: 'owner-1', sessionId }),
+    resolve: sessionId => ({ userId: 'owner-1', personaId: 'bot', displayName: 'owner-1', sessionId }),
   };
   const runtime = mountRuntime(null, root, { memory: null, identity, dbFile, now: () => T0 });
   const db = openRuntimeDb({ file: dbFile, now: () => T0 });
@@ -169,7 +169,7 @@ test('第九轮：关键错误不会被常规错误挤掉（单独一档）', t 
     try { fs.rmSync(root, { recursive: true, force: true, maxRetries: 10, retryDelay: 100 }); } catch { /* best effort */ }
   });
 
-  const KEY = scopeKeyOf({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+  const KEY = scopeKeyOf({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
   db.run(`INSERT INTO runtime_meta (meta_key, meta_value, updated_at) VALUES ('p2_correction_resolved:rec-c', ?, ?)`,
   JSON.stringify({ recordId: 'rec-c', requestId: 'req-c', supersedeIds: ['mem_a'], outcome: 'needs-review', requestedAt: T0 }), T0);
   db.run(`INSERT INTO memory_outbox (outbox_id, scope, event_id, namespace, payload, status, receipt_id, attempts, last_error, claimed_until, claim_owner, created_at, updated_at)
@@ -229,7 +229,7 @@ test('第十轮：关键档不会被第 11 条关键错误挤掉，未知 code �
   const dbFile = path.join(root, 'home', 'companion', 'runtime.db');
   const identity = {
     owner: () => ({ id: 'owner-1', displayName: 'owner-1', platform: 'local' }),
-    resolve: sessionId => ({ userId: 'owner-1', personaId: 'march7', displayName: 'owner-1', sessionId }),
+    resolve: sessionId => ({ userId: 'owner-1', personaId: 'bot', displayName: 'owner-1', sessionId }),
   };
   const runtime = mountRuntime(null, root, { memory: null, identity, dbFile, now: () => T0 });
   t.after(() => {

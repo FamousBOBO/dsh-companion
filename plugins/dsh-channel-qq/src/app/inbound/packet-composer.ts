@@ -248,10 +248,10 @@ export class PacketComposer {
     const { raw: rawContext, compacted, current } = this.packContext(conversation, v2)
     conversation.queue = []
     conversation.pendingImages = []
-    // "最后一条是叫咱"这个标记旧实现从不置真（死分支），P6b 才接线；消费只发生在
+    // "最后一条是叫我"这个标记旧实现从不置真（死分支），P6b 才接线；消费只发生在
     // v2 打开时（关掉时 `called` 恒为 false，走与旧版逐字节一致的渲染）。近似：
     // 标记在**入队时**置上，而这里读的是"队列最后一条"——两条消息几乎同时到时
-    // （叫咱的那条之后又插进一条），两者可能不是同一条；按后者近似，不加机制。
+    // （叫我的那条之后又插进一条），两者可能不是同一条；按后者近似，不加机制。
     const called = v2 && conversation.calledLine
     conversation.calledLine = false
     const ctx = timeContext(new Date(this.deps.clock.now()))

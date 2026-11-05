@@ -16,7 +16,7 @@ const SEED = 'https://zh.wikisource.org/wiki/%E6%98%A5%E6%9B%89';
 const SEED2 = 'https://zh.wikisource.org/wiki/%E9%9D%9C%E5%A4%9C%E6%80%9D';
 
 const realPortShape = {
-  persona: { excerpt: '…', personaId: 'march7', version: 'abcd1234' },
+  persona: { excerpt: '…', personaId: 'bot', version: 'abcd1234' },
   sources: {
     persona: 'workspace/PERSONA.md',
     fixedAgenda: 'runtime',

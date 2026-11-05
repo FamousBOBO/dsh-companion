@@ -19,8 +19,8 @@ import {
 
 const here = path.dirname(fileURLToPath(import.meta.url));
 const T0 = Date.UTC(2026, 9, 30, 10, 0, 0);
-const SCOPE_A = 'u:1429709395|p:march7|w:world:default';
-const SCOPE_B = 'u:2000000001|p:march7|w:world:default';
+const SCOPE_A = 'u:10001|p:bot|w:world:default';
+const SCOPE_B = 'u:2000000001|p:bot|w:world:default';
 
 function makeRoot(t) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'p2-share-'));
@@ -123,7 +123,7 @@ test('a malformed or missing scope is refused instead of written', async t => {
   const port = createShareCandidatePort({ root, enabled: true, now: () => T0 });
   for (const candidate of [
     { ...CANDIDATE, scopeKey: '' },
-    { ...CANDIDATE, scopeKey: 'u:1429709395|p:march7' },
+    { ...CANDIDATE, scopeKey: 'u:10001|p:bot' },
     { ...CANDIDATE, candidateId: '' },
     { ...CANDIDATE, title: '   ' },
   ]) {

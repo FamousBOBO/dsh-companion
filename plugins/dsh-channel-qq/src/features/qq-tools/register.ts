@@ -10,7 +10,7 @@
  *
  *   1. `knownGroupIds()` —— "这个群我能发吗"。原来 `qq_send_text` 只认主群、
  *      `qq_reply_quote` 却认任何 NapCat 能报出来的群：同一个意图从一个工具走通、
- *      从另一个工具抛"目标群不在咱的配置里"。现在两者都问这里。`get_group_list`
+ *      从另一个工具抛"目标群不在我的配置里"。现在两者都问这里。`get_group_list`
  *      是一次 WebSocket 往返，所以答案要缓存——发送路径不该每条消息付一次。
  *      调用失败时保留上一次的好值（冷启动失败则退回主群），因为一次 NapCat 抖动
  *      不该变成"我们忘了自己在哪些群"。
@@ -103,8 +103,8 @@ function toolDeps(args: RegisterToolsArgs): QQToolDeps {
     if (config.groupAdmin?.dangerous === true) return
     throw new Error(
       `${action}当前是关闭状态（groupAdmin.dangerous=false）：这类动作会真的影响到群成员，`
-      + `而"谁让咱做的"目前无法验证。需要时请学弟在 QQ 里手动操作；`
-      + `确实要让咱自己动手，就在后台把 groupAdmin.dangerous 打开。`,
+      + `而"谁让我做的"目前无法验证。需要时请主人在 QQ 里手动操作；`
+      + `确实要让我自己动手，就在后台把 groupAdmin.dangerous 打开。`,
     )
   }
 

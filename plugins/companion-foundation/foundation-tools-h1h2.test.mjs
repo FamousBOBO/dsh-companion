@@ -28,9 +28,9 @@ function buildRoot(t, runtime = null) {
   const root = fs.mkdtempSync(path.join(os.tmpdir(), 'foundation-h1h2-'));
   for (const dir of ['workspace', 'logs', 'home/memory', 'home/companion', 'home/channel-qq']) fs.mkdirSync(path.join(root, dir), { recursive: true });
   fs.writeFileSync(path.join(root, 'home/companion/identity.json'), JSON.stringify({
-    schemaVersion: 1, persona: 'march7',
-    owner: { id: '1429709395', displayName: 'owner', platform: 'qq' },
-    desktop: { mode: 'local-owner', userId: '1429709395' },
+    schemaVersion: 1, persona: 'bot',
+    owner: { id: '10001', displayName: 'owner', platform: 'qq' },
+    desktop: { mode: 'local-owner', userId: '10001' },
     sessions: {},
   }));
   fs.writeFileSync(path.join(root, 'workspace/PERSONA.md'), '# persona\n\ntest persona\n');
@@ -154,7 +154,7 @@ test('HH16: real identity, revision fence, preview handshake and honest reminder
   const row = db.get('SELECT scope FROM agenda_items WHERE item_id = ?', created.itemId);
   db.close();
   assert.ok(row, 'the definition was persisted');
-  assert.equal(row.scope, 'u:1429709395|p:march7|w:world:default');
+  assert.equal(row.scope, 'u:10001|p:bot|w:world:default');
   assert.ok(!row.scope.includes('attacker'), 'a forged identity never reaches storage');
   assert.equal(forgedRejected || true, true);
 

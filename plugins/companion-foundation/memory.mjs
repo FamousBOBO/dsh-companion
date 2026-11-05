@@ -43,8 +43,8 @@ export function createMemory(root, store, expectedOwner = null) {
     const next = `${stat.mtimeMs}:${stat.size}`;
     if (next === version) return;
     const archive = JSON.parse(fs.readFileSync(archivePath, 'utf8'));
-    if (archive.manifest?.schemaVersion !== 1 || archive.manifest.persona !== '三月七' || !Array.isArray(archive.memories)) throw new Error('Invalid imported memory archive.');
-    if (archive.memories.some(row => row.owner !== archive.manifest.owner || row.bot !== archive.manifest.bot || row.persona !== 'march7')) throw new Error('Memory identity mismatch.');
+    if (archive.manifest?.schemaVersion !== 1 || archive.manifest.persona !== 'bot' || !Array.isArray(archive.memories)) throw new Error('Invalid imported memory archive.');
+    if (archive.memories.some(row => row.owner !== archive.manifest.owner || row.bot !== archive.manifest.bot || row.persona !== 'bot')) throw new Error('Memory identity mismatch.');
     if (expectedOwner && archive.manifest.owner !== expectedOwner) throw new Error('Imported memory owner does not match the bound desktop user.');
     manifest = archive.manifest;
     imported = archive.memories;
@@ -114,7 +114,7 @@ export function createMemory(root, store, expectedOwner = null) {
       const id = `${sessionId}:${event.seq}`;
       if (seen.has(id)) return;
       const record = { id, sessionId, seq: event.seq, at: new Date(event.time).toISOString(),
-        role: event.type === 'user/message' ? 'user' : 'assistant', text: clean.slice(0, 16000), source: 'desktop_conversation', persona: 'march7', ...(expectedOwner ? { userId: expectedOwner } : {}) };
+        role: event.type === 'user/message' ? 'user' : 'assistant', text: clean.slice(0, 16000), source: 'desktop_conversation', persona: 'bot', ...(expectedOwner ? { userId: expectedOwner } : {}) };
       fs.appendFileSync(journalPath, JSON.stringify(record) + '\n', 'utf8');
       seen.add(id);
       recent.push(record);

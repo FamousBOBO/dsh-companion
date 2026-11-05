@@ -16,7 +16,7 @@ import { scopeKey } from '../lib/scope.mjs';
 // evidence (`source-invalid`) that creates **no** activity row.
 
 const T0 = Date.UTC(2026, 9, 30, 4, 0, 0);
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKey(SCOPE);
 
 const PAGE_HTML = `<html><head><title>潮汐与月亮</title><style>body{color:#333}</style></head><body>

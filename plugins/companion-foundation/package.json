@@ -1,8 +1,53 @@
 {
-  "name": "dsh-companion-foundation",
-  "version": "0.4.0",
+  "name": "@dsh-companion/foundation",
+  "version": "0.1.0",
+  "localVersion": "0.4.0",
   "private": true,
   "type": "module",
-  "main": "index.mjs",
-  "scripts": { "test": "node --test store.test.mjs memory.test.mjs integration.test.mjs" }
+  "description": "Companion foundation for the DSH companion suite: persona loading, identity binding, cognition mount, tools and the service bridge.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./identity.mjs": "./identity.mjs",
+    "./host-llm.mjs": "./host-llm.mjs",
+    "./store.mjs": "./store.mjs",
+    "./memory.mjs": "./memory.mjs",
+    "./suite-paths.mjs": "./suite-paths.mjs",
+    "./workspace-context.mjs": "./workspace-context.mjs",
+    "./workspace-context-state.mjs": "./workspace-context-state.mjs",
+    "./service-bridge.mjs": "./service-bridge.mjs",
+    "./agenda-port.mjs": "./agenda-port.mjs",
+    "./autonomy.mjs": "./autonomy.mjs",
+    "./autonomy-host-web.mjs": "./autonomy-host-web.mjs",
+    "./autonomy-materials.mjs": "./autonomy-materials.mjs",
+    "./autonomy-memory.mjs": "./autonomy-memory.mjs",
+    "./autonomy-share.mjs": "./autonomy-share.mjs",
+    "./autonomy-web.mjs": "./autonomy-web.mjs",
+    "./contact-share-port.mjs": "./contact-share-port.mjs",
+    "./health-service-ref.mjs": "./health-service-ref.mjs",
+    "./health-tools.mjs": "./health-tools.mjs",
+    "./pulse-tools.mjs": "./pulse-tools.mjs",
+    "./qq-conversation.mjs": "./qq-conversation.mjs",
+    "./qq-sender-refresh.mjs": "./qq-sender-refresh.mjs",
+    "./qq-autonomy-refresh-20261102.mjs": "./qq-autonomy-refresh-20261102.mjs",
+    "./qq-autonomy-policy.txt": "./qq-autonomy-policy.txt",
+    "./share-diagnostics.mjs": "./share-diagnostics.mjs",
+    "./share-producer.mjs": "./share-producer.mjs",
+    "./wardrobe.mjs": "./wardrobe.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "*.mjs",
+    "qq-autonomy-policy.txt",
+    "test-fixtures/",
+    "test/",
+    "README.md"
+  ],
+  "scripts": {
+    "test": "node --test \"*.test.mjs\" \"test/*.test.mjs\""
+  }
 }

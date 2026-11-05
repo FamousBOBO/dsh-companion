@@ -81,11 +81,11 @@ test('遗忘：常用记忆衰减更慢（strength 上限 20）', () => {
 })
 
 test('冲突检出：同主体同类 + 正文高度重叠才算，内容相同不算', () => {
-  const a = rec({ kind: 'preference', content: '学弟不吃香菜，点菜要记得备注' })
-  const b = rec({ kind: 'preference', content: '学弟不吃香菜，点外卖要记得备注' })
-  const same = rec({ kind: 'preference', content: '学弟不吃香菜，点菜要记得备注' })
-  const other = rec({ kind: 'preference', content: '学弟喜欢在凌晨干活，白天睡觉' })
-  const otherUser = rec({ kind: 'preference', subject: { type: 'user', id: 999 }, content: '学弟不吃香菜，点菜要记得备注' })
+  const a = rec({ kind: 'preference', content: '主人不吃香菜，点菜要记得备注' })
+  const b = rec({ kind: 'preference', content: '主人不吃香菜，点外卖要记得备注' })
+  const same = rec({ kind: 'preference', content: '主人不吃香菜，点菜要记得备注' })
+  const other = rec({ kind: 'preference', content: '主人喜欢在凌晨干活，白天睡觉' })
+  const otherUser = rec({ kind: 'preference', subject: { type: 'user', id: 999 }, content: '主人不吃香菜，点菜要记得备注' })
   const pairs = findConflicts([a, b, same, other, otherUser])
   assert.ok(pairs.length >= 1)
   const hit = pairs.find((p) => (p.left.id === a.id && p.right.id === b.id) || (p.left.id === b.id && p.right.id === a.id))
@@ -98,7 +98,7 @@ test('冲突检出：同主体同类 + 正文高度重叠才算，内容相同�
 })
 
 test('DIGEST：只收 active、按重要性与近因排序、整条截断、带头注释', () => {
-  const high = rec({ importance: 10, content: '主人叫学弟' })
+  const high = rec({ importance: 10, content: '主人叫主人' })
   const low = rec({ importance: 2, content: '今天天气一般' })
   const old = rec({ importance: 10, content: '很久以前的大事', recordedAt: NOW - 200 * DAY, lastHitAt: NOW - 200 * DAY })
   const candidate = rec({ importance: 10, status: 'candidate', content: '还没确认的候选' })
@@ -107,7 +107,7 @@ test('DIGEST：只收 active、按重要性与近因排序、整条截断、带�
   assert.deepEqual(picks.map((p) => p.record.id), [high.id, low.id, old.id])
   const text = renderDigest(picks, { generatedAt: '2026-10-17', maxBytes: DIGEST_MAX_BYTES })
   assert.match(text, /自动生成，勿手改/)
-  assert.match(text, /主人叫学弟/)
+  assert.match(text, /主人叫主人/)
   assert.ok(!text.includes('还没确认的候选'), '候选不进 DIGEST')
   // 小的字节上限：条目按**整条**截断——不会出现半行（头部始终保留，它是定位信息）
   const tiny = renderDigest(picks, { generatedAt: '2026-10-17', maxBytes: 320 })
@@ -119,9 +119,9 @@ test('DIGEST：只收 active、按重要性与近因排序、整条截断、带�
 })
 
 test('链接：同主体或高重叠建双向链、最多 4 个、无变化时返回空', () => {
-  const a = rec({ kind: 'fact', content: '学弟住在三号楼' })
-  const b = rec({ kind: 'fact', content: '学弟住在三号楼东侧' })
-  const c = rec({ kind: 'fact', content: '学弟住在三号楼东侧', subject: { type: 'user', id: 1000000002 } })
+  const a = rec({ kind: 'fact', content: '主人住在三号楼' })
+  const b = rec({ kind: 'fact', content: '主人住在三号楼东侧' })
+  const c = rec({ kind: 'fact', content: '主人住在三号楼东侧', subject: { type: 'user', id: 1000000002 } })
   const changed = buildLinks([a, b, c])
   assert.ok(changed.length >= 2)
   const updatedA = changed.find((r) => r.id === a.id)
@@ -249,12 +249,12 @@ test('DIGEST job：写出 memory/DIGEST.md（带自动生成头）', async () =>
   const h = await harness()
   try {
     const store = h.store()!
-    await store.remember({ kind: 'preference', subject: { type: 'user', id: 1 }, content: '学弟喜欢喝冰美式', source: { kind: 'chat' }, importance: 9 }, NOW - DAY, () => 0.5)
+    await store.remember({ kind: 'preference', subject: { type: 'user', id: 1 }, content: '主人喜欢喝冰美式', source: { kind: 'chat' }, importance: 9 }, NOW - DAY, () => 0.5)
     const outcome = await resolveJob('memory.digest')!(ctxOf(h.dir, h.dir))
     assert.match(String(outcome?.note), /DIGEST/)
     const text = readFileSync(path.join(h.dir, 'memory', 'DIGEST.md'), 'utf-8')
     assert.match(text, /自动生成，勿手改/)
-    assert.match(text, /学弟喜欢喝冰美式/)
+    assert.match(text, /主人喜欢喝冰美式/)
     assert.match(text, /qq_memory/)
   } finally { h.cleanup() }
 })
@@ -263,8 +263,8 @@ test('链接 job：把邻居挂上并写库', async () => {
   const h = await harness()
   try {
     const store = h.store()!
-    const a = await store.remember({ kind: 'fact', subject: { type: 'user', id: 7 }, content: '学弟在准备考试', source: { kind: 'diary' } }, NOW - DAY, () => 0.5)
-    await store.remember({ kind: 'fact', subject: { type: 'user', id: 7 }, content: '学弟在准备考试，快考完了', source: { kind: 'diary' } }, NOW - DAY, () => 0.5)
+    const a = await store.remember({ kind: 'fact', subject: { type: 'user', id: 7 }, content: '主人在准备考试', source: { kind: 'diary' } }, NOW - DAY, () => 0.5)
+    await store.remember({ kind: 'fact', subject: { type: 'user', id: 7 }, content: '主人在准备考试，快考完了', source: { kind: 'diary' } }, NOW - DAY, () => 0.5)
     const outcome = await resolveJob('memory.links')!(ctxOf(h.dir, h.dir))
     assert.match(String(outcome?.note), /链接/)
     assert.ok((store.get(a.id)?.links.length ?? 0) > 0)
@@ -275,8 +275,8 @@ test('矛盾扫描 job：检出 → 冻结进队列，但不改记录本身（P1
   const h = await harness()
   try {
     const store = h.store()!
-    await store.remember({ kind: 'preference', subject: { type: 'user', id: 7 }, content: '学弟不吃香菜，点菜要备注', source: { kind: 'chat' } }, NOW - DAY, () => 0.5)
-    await store.remember({ kind: 'preference', subject: { type: 'user', id: 7 }, content: '学弟不吃香菜，点外卖要备注', source: { kind: 'chat' } }, NOW - DAY, () => 0.6)
+    await store.remember({ kind: 'preference', subject: { type: 'user', id: 7 }, content: '主人不吃香菜，点菜要备注', source: { kind: 'chat' } }, NOW - DAY, () => 0.5)
+    await store.remember({ kind: 'preference', subject: { type: 'user', id: 7 }, content: '主人不吃香菜，点外卖要备注', source: { kind: 'chat' } }, NOW - DAY, () => 0.6)
     const before = store.all().map((r) => r.status)
     const outcome = await resolveJob('memory.contradictions')!(ctxOf(h.dir, h.dir))
     assert.match(String(outcome?.note), /新冻结 1 对/)
@@ -298,16 +298,16 @@ test('日记抽取 job：没有抽取器就具名跳过；有抽取器才写记�
   } finally { noRoute.cleanup() }
 
   const withRoute = await harness({
-    extract: async () => [{ type: 'preference', content: '学弟不吃香菜', tags: ['饮食'], source: '日记' }],
+    extract: async () => [{ type: 'preference', content: '主人不吃香菜', tags: ['饮食'], source: '日记' }],
   })
   try {
     const dir = withRoute.dir
     mkdirSync(path.join(dir, 'memory'), { recursive: true })
     // 04:20 的 job 处理**昨天**的日记（日记从每天 00:01 起写，当天凌晨只有几小时）。
-    writeFileSync(path.join(dir, 'memory', '2026-10-16.md'), '今天学弟说他从来不吃香菜，点菜的时候要记得备注一下；晚上他又提了一次，说上次那家店放了很多香菜他一口都没吃，看来这条得记牢。', 'utf-8')
+    writeFileSync(path.join(dir, 'memory', '2026-10-16.md'), '今天主人说他从来不吃香菜，点菜的时候要记得备注一下；晚上他又提了一次，说上次那家店放了很多香菜他一口都没吃，看来这条得记牢。', 'utf-8')
     const outcome = await resolveJob('memory.diary-extract')!(ctxOf(dir, dir))
     assert.match(String(outcome?.note), /新增 1/)
-    assert.equal(withRoute.store()!.all().filter((r) => r.content === '学弟不吃香菜').length, 1)
+    assert.equal(withRoute.store()!.all().filter((r) => r.content === '主人不吃香菜').length, 1)
     // 再跑一次：同一条内容命中"已有"，不再新增
     const again = await resolveJob('memory.diary-extract')!(ctxOf(dir, dir))
     assert.match(String(again?.note), /命中已有 1/)

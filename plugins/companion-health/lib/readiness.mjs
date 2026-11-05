@@ -95,7 +95,11 @@ export function buildReadiness(input = {}) {
   // ── 采集 ────────────────────────────────────────────────────────────────────────────────────
   let collection;
   if (readOnly) {
-    collection = pick('unknown', 'collection', '只读实例只报告别人的状态，不判定采集是否在跑。');
+    // 只读实例（`check-health`）能读到配置，但**不能**替宿主断言轮询是否真的在跑：
+    // 关着就如实说「未启用」，开着只能说「未检测」——「配置已保存」不是「采集在跑」。
+    collection = collectionEnabled
+      ? pick('unchecked', 'collection', '只读实例：配置里采集是开启的，但轮询是否真的在跑只有宿主进程知道。')
+      : pick('disabled', 'collection', '健康采集默认关闭：config.enabled=false 时不会访问 sidecar、不建库、不轮询。');
   } else if (!collectionEnabled) {
     collection = pick('disabled', 'collection',
       '健康采集默认关闭：config.enabled=false 时不会访问 sidecar、不建库、不轮询。');

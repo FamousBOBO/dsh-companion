@@ -23,8 +23,8 @@ import { scopeKey } from '../lib/scope.mjs';
 // and never invents a version.
 
 const T0 = Date.UTC(2026, 9, 30, 4, 0, 0);
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
-const OTHER = Object.freeze({ userId: 'owner-2', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
+const OTHER = Object.freeze({ userId: 'owner-2', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKey(SCOPE);
 const OTHER_KEY = scopeKey(OTHER);
 const PARAGRAPHS = Array.from({ length: 12 }, (_, index) => `第${index}段：` + '潮水在傍晚退去。'.repeat(10));

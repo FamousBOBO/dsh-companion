@@ -83,7 +83,7 @@ async function resetRoom(
     await fs.mkdir(path.dirname(backup), { recursive: true })
     await fs.rename(dir, backup)
     // 本地补丁 COMPANION-QQ-PATCH-12：备份把整个会话目录搬走之后，**必须把原路径建回来**。
-    // 2026-11-04 02:26 事故：换血（231945/262144 tokens）搬走 `--C-…-workspace--/qq-dm-1429709395`
+    // 2026-11-04 02:26 事故：换血（231945/262144 tokens）搬走 `--C-…-workspace--/qq-dm-10001`
     // 后没重建，下一轮 agent 恢复会话时 `open …/session.v4.jsonl.zstd` 直接 ENOENT，
     // 界面上就是「本轮运行失败」。建一个空目录，宿主下一次 append 会自己落新文件。
     await fs.mkdir(dir, { recursive: true })

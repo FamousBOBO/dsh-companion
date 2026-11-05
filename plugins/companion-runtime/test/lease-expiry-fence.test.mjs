@@ -27,7 +27,7 @@ import { mountRuntime } from '../index.mjs';
 // production database.
 
 const T0 = Date.UTC(2026, 10, 2, 2, 0, 0);
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: 'world:default' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: 'world:default' });
 const KEY = scopeKey(SCOPE);
 const TTL = 60000;
 
@@ -261,7 +261,7 @@ function mountRoot(t, config) {
   const root = tempRoot(t);
   for (const dir of ['home/companion', 'logs']) fs.mkdirSync(path.join(root, dir), { recursive: true });
   fs.writeFileSync(path.join(root, 'home/companion/identity.json'), JSON.stringify({
-    schemaVersion: 1, persona: 'march7', owner: { id: 'owner-1', displayName: 'o', platform: 'qq' },
+    schemaVersion: 1, persona: 'bot', owner: { id: 'owner-1', displayName: 'o', platform: 'qq' },
     desktop: { mode: 'local-owner', userId: 'owner-1' }, sessions: {},
   }));
   fs.writeFileSync(path.join(root, 'home/companion/runtime.config.json'), JSON.stringify(config));
@@ -272,7 +272,7 @@ test('4A: after the lease lapses a mounted runtime is fenced, and renewal cannot
   const clock = { value: T0 };
   const root = mountRoot(t, { enabled: true, mode: 'active', leaseTtlMs: 10000 });
   const ctx = { tools: { register() {} }, systemPrompt: { section() {} }, on() {}, get() { return undefined; } };
-  const identity = { resolve: sessionId => ({ userId: 'owner-1', personaId: 'march7', sessionId }) };
+  const identity = { resolve: sessionId => ({ userId: 'owner-1', personaId: 'bot', sessionId }) };
   const runtime = mountRuntime(ctx, root, { now: () => clock.value, identity });
   t.after(() => { try { runtime.dispose(); } catch { /* already disposed */ } });
   assert.equal(runtime.writable, true);

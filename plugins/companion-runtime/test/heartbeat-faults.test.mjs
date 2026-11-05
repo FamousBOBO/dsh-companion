@@ -19,8 +19,8 @@ const MINUTE = 60000;
 const HOUR = 3600000;
 const DAY = 24 * HOUR;
 const TTL = 30 * DAY;
-const KEY_A = keyOfScope({ userId: 'owner-a', personaId: 'march7', worldId: '' });
-const KEY_B = keyOfScope({ userId: 'owner-b', personaId: 'march7', worldId: '' });
+const KEY_A = keyOfScope({ userId: 'owner-a', personaId: 'bot', worldId: '' });
+const KEY_B = keyOfScope({ userId: 'owner-b', personaId: 'bot', worldId: '' });
 
 // ---------------------------------------------------------------------------
 // harness
@@ -364,7 +364,7 @@ test('HH11/A1-B2: a retried half-applied event keeps one event id and still take
   // retry must reproduce the same content-addressed event id.
   const replay = appendEvent(db, {
     kind: 'agenda/occurrence-due',
-    scope: { userId: 'owner-a', personaId: 'march7', worldId: '' },
+    scope: { userId: 'owner-a', personaId: 'bot', worldId: '' },
     occurredAt: scheduledAt,
     payload: { occurrenceId, expectedRevision: 1, scheduledAt },
   }, { generation });

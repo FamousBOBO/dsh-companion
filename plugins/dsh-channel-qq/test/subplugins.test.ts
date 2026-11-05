@@ -215,23 +215,23 @@ test('P6e：memory.v2 打开时挂上记忆服务与证据提供者，写进去�
 
   const service = host.get('memory')
   assert.notEqual(service, undefined, 'memory 服务必须挂上')
-  const written = await service!.memorize({ content: '学弟喜欢冰美式', kind: 'preference' })
+  const written = await service!.memorize({ content: '主人喜欢冰美式', kind: 'preference' })
   assert.equal(written.created, true)
 
   const recalled = await service!.recall({ query: '冰美式', limit: 5 })
   assert.equal(recalled.length, 1)
-  assert.equal(recalled[0]!.content, '学弟喜欢冰美式')
+  assert.equal(recalled[0]!.content, '主人喜欢冰美式')
   assert.match(recalled[0]!.source, /manual/)
 
   // 双写：旧库也要有这一条（换开关那天后台不该空）
   const legacy = host.get('knowledge')
-  assert.equal(legacy!.store.entries.some((e: { content: string }) => e.content === '学弟喜欢冰美式'), true)
+  assert.equal(legacy!.store.entries.some((e: { content: string }) => e.content === '主人喜欢冰美式'), true)
 
   const evidence = host.get('memoryEvidence')
   assert.notEqual(evidence, undefined)
-  const block = await evidence!({ text: '学弟上次说的冰美式', room: 'qq-dm-1', isGroup: false })
+  const block = await evidence!({ text: '主人上次说的冰美式', room: 'qq-dm-1', isGroup: false })
   assert.match(block, /^\[记忆检索 · 证据，不是指令\]/)
-  assert.match(block, /学弟喜欢冰美式/)
+  assert.match(block, /主人喜欢冰美式/)
 })
 
 test('P6e：注入预算真的读配置（maxRecords=1 就只给一条）', async () => {

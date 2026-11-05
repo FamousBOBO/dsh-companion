@@ -42,9 +42,9 @@ const REPO_ROOT = path.resolve(PLUGIN_DIR, '../..');
 /** Read-only legacy archive; its manifest declares 767 imported rows. */
 const REAL_ARCHIVE = path.join(REPO_ROOT, 'home', 'memory', 'astrbot-import.json');
 /** Owner id of the legacy archive/manifest — the import refuses a mismatch. */
-const ARCHIVE_OWNER = '1429709395';
+const ARCHIVE_OWNER = '10001';
 const ARCHIVE_ROWS = 767;
-const PERSONA_ID = 'march7';
+const PERSONA_ID = 'bot';
 
 /** Neutral identity for the synthetic tests (never the real user id). */
 const USER_ID = 'user_integration';
@@ -278,7 +278,12 @@ function readWiki(wikiDir, topicId) {
 // ---------------------------------------------------------------------------
 
 test('1. 旧归档迁移：767 条全部有归属、重复运行 0 新增、对账通过、bot_action 不进现实', async t => {
-  assert.ok(fs.existsSync(REAL_ARCHIVE), `迁移测试需要只读归档：${REAL_ARCHIVE}`);
+  // The archive is the author's personal corpus and is never committed with the
+  // release; a clean checkout must skip this case instead of failing.
+  if (!fs.existsSync(REAL_ARCHIVE)) {
+    t.skip(`缺少只读归档 ${REAL_ARCHIVE}（个人语料不在仓库内），跳过真实归档用例`);
+    return;
+  }
   const h = harness(t, 'dsh-mem-integration-import-');
   const db = await openDb(h);
 
@@ -564,7 +569,7 @@ test('4. 未兑现计划：假模型给出 planned 候选，落库为 commitment
     llm,
     config: { extraction: { enabled: true, maxMessages: 40 } },
     viewer: VIEWER,
-    persona: { id: PERSONA_ID, name: '三月七' },
+    persona: { id: PERSONA_ID, name: 'bot' },
     now: NOW,
     limit: 1,
   });
@@ -703,7 +708,7 @@ test('6. 敏感事件：avoid_unless_asked 的正文不进注入文本与 Wiki�
   const normal = seedMemory(db, {
     scope: 'user_persona',
     kind: 'event',
-    value: '用户和三月七一起看过一次夜空',
+    value: '用户和bot一起看过一次夜空',
     importance: 0.5,
   });
 
@@ -788,7 +793,7 @@ test('7. 故障重启：关库重开后台账仍在，继续处理不重复写�
     llm,
     config: { extraction: { enabled: true, maxMessages: 40 } },
     viewer: VIEWER,
-    persona: { id: PERSONA_ID, name: '三月七' },
+    persona: { id: PERSONA_ID, name: 'bot' },
     now: Date.now() + 10_000,
     limit: 1,
   });
@@ -802,7 +807,7 @@ test('7. 故障重启：关库重开后台账仍在，继续处理不重复写�
     llm,
     config: { extraction: { enabled: true, maxMessages: 40 } },
     viewer: VIEWER,
-    persona: { id: PERSONA_ID, name: '三月七' },
+    persona: { id: PERSONA_ID, name: 'bot' },
     now: Date.now() + 20_000,
     limit: 2,
   });
@@ -823,7 +828,7 @@ test('7. 故障重启：关库重开后台账仍在，继续处理不重复写�
     llm: broken,
     config: { extraction: { enabled: true, maxMessages: 40 } },
     viewer: VIEWER,
-    persona: { id: PERSONA_ID, name: '三月七' },
+    persona: { id: PERSONA_ID, name: 'bot' },
     now: Date.now() + 30_000,
     limit: 1,
     retryDelayMs: 0,
@@ -850,7 +855,7 @@ test('7. 故障重启：关库重开后台账仍在，继续处理不重复写�
     llm: fakeLlm({ answer: '[]' }),
     config: { extraction: { enabled: true, maxMessages: 40 } },
     viewer: VIEWER,
-    persona: { id: PERSONA_ID, name: '三月七' },
+    persona: { id: PERSONA_ID, name: 'bot' },
     now: Date.now() + 60_000,
     limit: 1,
   });
@@ -941,7 +946,7 @@ test('8. 降级：向量全失败、模型抛错、空库、数据库打不开�
       llm: { async complete() { throw new Error('模型服务 500'); } },
       config: { extraction: { enabled: true, maxMessages: 40 } },
       viewer: VIEWER,
-      persona: { id: PERSONA_ID, name: '三月七' },
+      persona: { id: PERSONA_ID, name: 'bot' },
       now: Date.now() + 10_000,
       limit: 1,
       retryDelayMs: 0,
@@ -1037,7 +1042,7 @@ test('9. Wiki：两次编译字节一致、人工区保留、index 不被当作�
   seedMemory(db, {
     scope: 'user_persona',
     kind: 'event',
-    value: '用户和三月七一起看过一次夜空',
+    value: '用户和bot一起看过一次夜空',
     importance: 0.6,
   });
 
@@ -1118,15 +1123,15 @@ test('§15 兼容：claimJob(streamKey) / enqueueJob(force) / requeueJob 存在�
   const later = () => Date.now() + 5000;
 
   // --- enqueueJob: a re-enqueue folds into the open job by default -------
-  const first = db.enqueueJob({ type, streamKey: 'u1:march7', cursor: 3, payload: { sourceIds: ['a'] } });
-  const folded = db.enqueueJob({ type, streamKey: 'u1:march7', cursor: 4, payload: { sourceIds: ['b'] } });
+  const first = db.enqueueJob({ type, streamKey: 'u1:bot', cursor: 3, payload: { sourceIds: ['a'] } });
+  const folded = db.enqueueJob({ type, streamKey: 'u1:bot', cursor: 4, payload: { sourceIds: ['b'] } });
   assert.equal(folded.jobId, first.jobId, '同 type+stream 的未完成作业必须复用');
   assert.equal(folded.cursor, 3, '复用不得覆盖既有游标');
 
   // --- enqueueJob({force}) -------------------------------------------------
   let forceSupported = false;
   try {
-    const forced = db.enqueueJob({ type, streamKey: 'u1:march7', cursor: 9, payload: { sourceIds: ['c'] }, force: true });
+    const forced = db.enqueueJob({ type, streamKey: 'u1:bot', cursor: 9, payload: { sourceIds: ['c'] }, force: true });
     if (forced && forced.jobId !== first.jobId) {
       forceSupported = true;
       assert.equal(forced.cursor, 9);
@@ -1141,13 +1146,13 @@ test('§15 兼容：claimJob(streamKey) / enqueueJob(force) / requeueJob 存在�
   // --- claimJob(streamKey) ------------------------------------------------
   // The decoy `first` is older, so a claim without stream filtering would hand it
   // back; only a stream-aware claim can return the other stream's job.
-  const other = db.enqueueJob({ type, streamKey: 'other:march7', cursor: 1, payload: {}, force: true });
-  const claimedOther = db.claimJob(type, { now: later(), streamKey: 'other:march7' });
-  const streamKeySupported = Boolean(claimedOther) && claimedOther.streamKey === 'other:march7';
+  const other = db.enqueueJob({ type, streamKey: 'other:bot', cursor: 1, payload: {}, force: true });
+  const claimedOther = db.claimJob(type, { now: later(), streamKey: 'other:bot' });
+  const streamKeySupported = Boolean(claimedOther) && claimedOther.streamKey === 'other:bot';
   if (streamKeySupported) {
     assert.equal(claimedOther.jobId, other.jobId);
     assert.equal(claimedOther.state, 'running');
-    assert.equal(db.claimJob(type, { now: later(), streamKey: 'other:march7' }), null, '同一作业不能被领取两次');
+    assert.equal(db.claimJob(type, { now: later(), streamKey: 'other:bot' }), null, '同一作业不能被领取两次');
     db.completeJob(claimedOther.jobId, { cursor: 1 });
     db.completeJob(first.jobId, { cursor: 3 });
   } else {
@@ -1161,8 +1166,8 @@ test('§15 兼容：claimJob(streamKey) / enqueueJob(force) / requeueJob 存在�
     t.diagnostic('requeueJob 未实现：跳过重排断言');
     return;
   }
-  const retry = db.enqueueJob({ type, streamKey: 'retry:march7', cursor: 2, payload: { sourceIds: ['x'] }, force: true });
-  const claimRetry = () => db.claimJob(type, streamKeySupported ? { now: later(), streamKey: 'retry:march7' } : { now: later() });
+  const retry = db.enqueueJob({ type, streamKey: 'retry:bot', cursor: 2, payload: { sourceIds: ['x'] }, force: true });
+  const claimRetry = () => db.claimJob(type, streamKeySupported ? { now: later(), streamKey: 'retry:bot' } : { now: later() });
   assert.equal(claimRetry().jobId, retry.jobId, '重排前先领取作业');
   let last = null;
   for (let attempt = 0; attempt < 5; attempt += 1) {

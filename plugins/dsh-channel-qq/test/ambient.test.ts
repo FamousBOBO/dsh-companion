@@ -183,7 +183,7 @@ test('take：excludeMessageId 把"当前这条消息"排除在背景之外', () 
   ring.add(entry(0, '背景-1', { messageId: 11 }))
   ring.add(entry(0, '背景-2', { messageId: 12 }))
   // 当前这条（被 @ 的那条）自己也已经进了旁听：它在待回块里，不该再当背景重复一遍。
-  ring.add(entry(0, '@三月七 你怎么看', { messageId: 13 }))
+  ring.add(entry(0, '@bot 你怎么看', { messageId: 13 }))
 
   const taken = ring.take(0, { excludeMessageId: 13 })
   assert.deepEqual(taken.map((e) => e.text), ['背景-1', '背景-2'], '当前这条不在背景里')

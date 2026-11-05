@@ -58,7 +58,8 @@ export const CONTACT_DEFAULTS: ContactConfig = {
   followUpIntervalMs: 24 * 3_600_000,
   maxCatchupHours: 24,
   maxPerTick: 1,
-  adaptiveFollowUp: true,
+  // 默认关：这条复核会**复用模型预算**（一次短补全），属于后台模型任务。
+  adaptiveFollowUp: false,
   sleepSummaryRecipient: '',
   draftModel: false,
   draftDailyBudget: 20,
@@ -183,7 +184,12 @@ export const CONTACT_GROUPS: FieldGroup[] = [
         help: '每次 tick 最多领取几条候选。默认 1 是工程建议：一条一条来，'
           + '某一条草稿失败也不会把同一轮的其它候选一起拖住。',
       }),
-      adaptiveFollowUp: b('自主跟进复核', true, { hot: 'live', help: '仅复核 qq_followup 创建的意图；复用模型预算，目的已完成或无需再问时静默结束。不会开启主动发送总开关。' }),
+      adaptiveFollowUp: b('自主跟进复核', CONTACT_DEFAULTS.adaptiveFollowUp === true, {
+        hot: 'live',
+        help: '默认关。打开后会为 qq_followup 创建的意图**复用模型预算**做一次复核'
+          + '（属于后台模型任务，所以默认不开）；目的已完成或无需再问时静默结束。'
+          + '它不会开启主动发送总开关。',
+      }),
       sleepSummaryRecipient: s('授权接收睡眠摘要的主人 QQ 号', CONTACT_DEFAULTS.sleepSummaryRecipient ?? '', {
         hot: 'live',
         help: '留空关闭。仅当号码与当前主人一致时，才允许向该私聊披露睡眠起止与时长。仍需健康关怀同意和主动联系门控放行。',

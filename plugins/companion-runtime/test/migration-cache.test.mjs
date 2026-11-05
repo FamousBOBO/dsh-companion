@@ -39,9 +39,9 @@ function buildV1(file) {
       attempts INTEGER NOT NULL DEFAULT 0, last_error TEXT NOT NULL DEFAULT '',
       created_at INTEGER NOT NULL, updated_at INTEGER NOT NULL);
     INSERT INTO memory_outbox (outbox_id, scope, event_id, namespace, payload, status, receipt_id, attempts, last_error, created_at, updated_at)
-      VALUES ('ob-v1', 'u:owner-1|p:march7|w:world:default', 'ev-v1', 'companion.event', '${V1_ROW_PAYLOAD}', 'queued', '', 0, '', ${T0}, ${T0});
+      VALUES ('ob-v1', 'u:owner-1|p:bot|w:world:default', 'ev-v1', 'companion.event', '${V1_ROW_PAYLOAD}', 'queued', '', 0, '', ${T0}, ${T0});
     INSERT INTO memory_outbox (outbox_id, scope, event_id, namespace, payload, status, receipt_id, attempts, last_error, created_at, updated_at)
-      VALUES ('ob-v1b', 'u:owner-1|p:march7|w:world:default', 'ev-v1b', 'companion.event', '${V1_ROW_PAYLOAD}', 'failed', 'rcpt-1', 3, 'rejected', ${T0 + 5}, ${T0 + 7});`);
+      VALUES ('ob-v1b', 'u:owner-1|p:bot|w:world:default', 'ev-v1b', 'companion.event', '${V1_ROW_PAYLOAD}', 'failed', 'rcpt-1', 3, 'rejected', ${T0 + 5}, ${T0 + 7});`);
   return db;
 }
 

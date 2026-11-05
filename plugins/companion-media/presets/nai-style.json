@@ -1,9 +1,0 @@
-{
-  "migratedAt": "2026-10-28T13:59:12.385Z",
-  "source": "C:/Users/bobo/Documents/Bot/astrbot/data/config/astrbot_plugin_image_pipeline_config.json",
-  "note": "Migrated from the live image_pipeline config. The old pipeline prepended defaultPrompt to every tag and defaultNegative to every negative; artist is rendered first by the encoder. Edit here, not in the old install.",
-  "applyDefaults": true,
-  "artist": "",
-  "defaultPrompt": "4::masterpiece, best quality ::, 2::official art::, 0.7::artist:mashiro_shiki::,0.50::artist:machi_(machi0910)::,0.10::water color::,0.20::artist:yajuu::, year2024, 1.4::official style::",
-  "defaultNegative": "lowres, artistic error, film grain, scan artifacts, worst quality, bad quality, jpeg artifacts, very displeasing, chromatic aberration, dithering, halftone, screentone, multiple views, logo, too many watermarks, negative space, blank page"
-}

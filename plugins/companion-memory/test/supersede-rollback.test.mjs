@@ -19,7 +19,7 @@ import { createMemoryEngine } from '../index.mjs';
 // 所以"第一条已被压掉"也能让测试通过。
 
 const T0 = Date.UTC(2026, 10, 16, 3, 0, 0);
-const PERSONA = 'march7';
+const PERSONA = 'bot';
 const USER = 'rollback_user';
 const SCOPE = { userId: USER, personaId: PERSONA, worldId: '' };
 

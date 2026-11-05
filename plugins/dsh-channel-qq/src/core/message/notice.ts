@@ -33,7 +33,7 @@ export function describeNotice(event: OneBotEvent, kind: string): string | null 
     case 'group_increase':
       return operator !== null && operator !== actor ? `${actor} 被 ${operator} 拉进群了` : `${actor} 进群了`
     case 'group_decrease':
-      if (event.sub_type === 'kick_me') return '咱自己被踢出群了'
+      if (event.sub_type === 'kick_me') return '我自己被踢出群了'
       if (event.sub_type === 'kick') return operator !== null ? `${actor} 被 ${operator} 踢出群了` : `${actor} 被踢出群了`
       return `${actor} 退群了`
     case 'group_admin':
@@ -51,7 +51,7 @@ export function describeNotice(event: OneBotEvent, kind: string): string | null 
       return `${actor} 的群名片改成了「${event.card_new ?? ''}」${from}`
     }
     case 'friend_add':
-      return `QQ${event.user_id ?? '?'} 加了咱好友`
+      return `QQ${event.user_id ?? '?'} 加了我好友`
     case 'group_honor':
       return `群荣誉：${actor} 拿到了 ${event.honor_type ?? '未知'}`
     default:

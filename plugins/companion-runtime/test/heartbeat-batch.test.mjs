@@ -25,7 +25,7 @@ const T0 = Date.UTC(2026, 9, 30, 0, 0, 0); // 2026-10-30T00:00:00Z
 const HOUR = 3600000;
 const DAY = 24 * HOUR;
 const TTL = 7 * DAY;
-const SCOPE_A = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: '' });
+const SCOPE_A = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: '' });
 const KEY_A = keyOfScope(SCOPE_A);
 
 // ---------------------------------------------------------------------------
@@ -331,7 +331,7 @@ test('HH07: 129 due occurrences sharing one scheduled_at drain in bounded, dupli
 
 test('HH07: several scopes drain without starvation and the fairness cursor rotates', t => {
   const clock = { value: T0 };
-  const scopes = ['owner-a', 'owner-b', 'owner-c', 'owner-d', 'owner-e'].map(userId => keyOfScope({ userId, personaId: 'march7', worldId: '' }));
+  const scopes = ['owner-a', 'owner-b', 'owner-c', 'owner-d', 'owner-e'].map(userId => keyOfScope({ userId, personaId: 'bot', worldId: '' }));
   const { db, generation } = openWorld(t, { clock, scopes, label: 'fair' });
   const agenda = makeAgenda();
   const { dispatch, calls } = makeDispatch(db, { generation });
@@ -418,7 +418,7 @@ test('HH07: an instance that becomes due earlier than the watermark is still pro
 
 test('HH07: generation is bounded per cycle across scopes and never duplicates a slot', t => {
   const clock = { value: T0 };
-  const scopes = ['owner-a', 'owner-b', 'owner-c'].map(userId => keyOfScope({ userId, personaId: 'march7', worldId: '' }));
+  const scopes = ['owner-a', 'owner-b', 'owner-c'].map(userId => keyOfScope({ userId, personaId: 'bot', worldId: '' }));
   const { db, generation } = openWorld(t, { clock, scopes, label: 'generate' });
   const agenda = makeAgenda();
   const { dispatch, calls } = makeDispatch(db, { generation });
@@ -458,7 +458,7 @@ test('HH07: generation is bounded per cycle across scopes and never duplicates a
 
 test('HH07: an exhausted time budget commits the current scope and leaves the rest for the next round', t => {
   const clock = { value: T0 };
-  const scopes = ['owner-a', 'owner-b', 'owner-c'].map(userId => keyOfScope({ userId, personaId: 'march7', worldId: '' }));
+  const scopes = ['owner-a', 'owner-b', 'owner-c'].map(userId => keyOfScope({ userId, personaId: 'bot', worldId: '' }));
   const { db, generation } = openWorld(t, { clock, scopes, label: 'budget' });
   const agenda = makeAgenda();
   const { dispatch, calls } = makeDispatch(db, { generation });

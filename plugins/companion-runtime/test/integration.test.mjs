@@ -24,7 +24,7 @@ function buildRoot(t, config = { enabled: true, mode: 'active' }) {
   return root;
 }
 
-const identity = () => ({ resolve: sessionId => ({ userId: 'owner-1', persona: 'march7', sessionId }) });
+const identity = () => ({ resolve: sessionId => ({ userId: 'owner-1', persona: 'bot', sessionId }) });
 const ctx = () => ({ tools: { register() {} }, systemPrompt: { section() {} }, on() {}, get() { return undefined; } });
 
 function memoryStub({ mode = 'accepted' } = {}) {
@@ -209,7 +209,7 @@ test('cross-scope isolation holds for the whole runtime surface', t => {
   runtime.proposeGoal({ sessionId: 'session-a', title: 'owner-1 的目标' });
   runtime.makeCommitment({ sessionId: 'session-a', text: 'owner-1 的承诺' });
   runtime.assertBelief({ sessionId: 'session-a', proposition: 'owner-1 的判断', rootEvidenceIds: ['ev-1'] });
-  const other = { userId: 'owner-2', persona: 'march7', worldId: 'world:game', sessionId: 'session-z' };
+  const other = { userId: 'owner-2', persona: 'bot', worldId: 'world:game', sessionId: 'session-z' };
   assert.equal(runtime.listGoals({ binding: other }).goals.length, 0);
   assert.equal(runtime.listBeliefs({ binding: other }).beliefs.length, 0);
   const otherView = runtime.workingMemory({ binding: other });

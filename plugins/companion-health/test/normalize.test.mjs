@@ -1,11 +1,11 @@
 // Payload -> facts (INTERFACES.md §6).
 //
-// The last test in this file reads the captured live snapshot from
-// `tmp/health-live-probe.json`. It **skips** when the file is absent, so the suite
-// still passes on a machine that never ran the sidecar — but when the file is
-// there, the assertions are the real numbers the CN contour produced (steps 1112,
-// heart rate 95/112/58, resting 79, stress 65/69/61, SpO2 97.11/99/95), not
-// invented ones.
+// The last test in this file reads a captured live snapshot from
+// `test/fixtures/health-live-probe.json`. It **skips** when the file is absent (it is a local
+// artifact produced by the sidecar, deliberately not committed), so the suite still passes on a
+// machine that never ran the sidecar — but when the file is there, the assertions are the real
+// numbers the CN contour produced (steps 1112, heart rate 95/112/58, resting 79, stress
+// 65/69/61, SpO2 97.11/99/95), not invented ones.
 
 import fs from 'node:fs';
 
@@ -33,7 +33,7 @@ import {
   shortHash,
 } from '../lib/normalize.mjs';
 
-const LIVE_PROBE = new URL('../../../tmp/health-live-probe.json', import.meta.url);
+const LIVE_PROBE = new URL('./fixtures/health-live-probe.json', import.meta.url);
 
 // 2026-11-03T21:05:00+08:00
 const NOW = Date.parse('2026-11-03T21:05:00+08:00');
@@ -365,7 +365,7 @@ test('observation value round-trips through the stored envelope', () => {
 
 test('live CN snapshot normalises to the numbers the account actually produced', (t) => {
   if (!fs.existsSync(LIVE_PROBE)) {
-    t.skip('tmp/health-live-probe.json not present');
+    t.skip('test/fixtures/health-live-probe.json not present (local artifact, not committed)');
     return;
   }
   const payload = JSON.parse(fs.readFileSync(LIVE_PROBE, 'utf8'));

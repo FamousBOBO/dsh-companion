@@ -58,7 +58,7 @@ function qqSaveQuote(deps: QuoteToolDeps): ToolSpec {
     parameters: params({
       text: { type: 'string', description: '语录正文，4-300 字，原话照抄不要改写' },
       speaker: { type: 'string', description: '说话人昵称' },
-      speakerId: { type: 'number', description: '说话人QQ号，省略则用配置里的学弟' },
+      speakerId: { type: 'number', description: '说话人QQ号，省略则用配置里的主人' },
       groupId: { type: 'number', description: '来源群号，省略则用 primaryGroup' },
       tags: { type: 'array', items: { type: 'string' }, description: '检索标签，如 ["摸鱼","退网"]' },
       note: { type: 'string', description: '备注：当时什么场景' },

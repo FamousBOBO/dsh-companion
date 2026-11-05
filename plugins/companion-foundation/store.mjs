@@ -43,7 +43,7 @@ export function createStore(root) {
       if (typeof value !== 'string' || !value.trim() || value.length > 4000) throw new Error('Invalid memory value.');
       const state = load();
       if (!Object.hasOwn(state.memories, key) && Object.keys(state.memories).length >= 1000) throw new Error('Memory capacity reached.');
-      state.memories[key] = { key, value, updatedAt: new Date().toISOString(), source: 'desktop', persona: 'march7', ...(userId ? { userId } : {}) };
+      state.memories[key] = { key, value, updatedAt: new Date().toISOString(), source: 'desktop', persona: 'bot', ...(userId ? { userId } : {}) };
       commit(state);
       return state.memories[key];
     },
@@ -55,7 +55,7 @@ export function createStore(root) {
       if (!['desktop', 'qq', 'bilibili', 'system'].includes(source)) throw new Error('Invalid event source.');
       if (typeof text !== 'string' || !text.trim() || text.length > 4000) throw new Error('Invalid event text.');
       const state = load();
-      const event = { id: randomUUID(), at: new Date().toISOString(), source, text, persona: 'march7', ...(userId ? { userId } : {}) };
+      const event = { id: randomUUID(), at: new Date().toISOString(), source, text, persona: 'bot', ...(userId ? { userId } : {}) };
       state.events.push(event);
       if (state.events.length > 500) throw new Error('Event capacity reached; archive events before continuing.');
       commit(state);

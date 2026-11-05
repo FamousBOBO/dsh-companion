@@ -3,7 +3,7 @@
  * 背景（实测）：本机 LLM 网关 `http://127.0.0.1:3123/v1` 只有 chat 接口，
  * `POST /v1/images/generations` 返回 404，所以默认后端只能是外部端点。
  * 选了 pollinations 的免 key 公开端点（`https://image.pollinations.ai/prompt/<urlencoded>`
- * 实测返回 200 + 真 JPEG），同时保留 `openai` 分支，方便学弟以后接自己的
+ * 实测返回 200 + 真 JPEG），同时保留 `openai` 分支，方便主人以后接自己的
  * 中转站/自建绘图服务（任何实现了 `/images/generations` 的 OpenAI 兼容端点）。
  *
  * 落盘而不是直接转发 URL：OneBot 的图片段需要本地文件或 URL，本地文件更可控，
@@ -169,7 +169,7 @@ async function generateViaOpenAi(
 ): Promise<{ bytes: Buffer; contentType: string }> {
   const baseUrl = (config.baseUrl ?? '').trim().replace(/\/+$/, '')
   if (baseUrl === '') {
-    throw new Error('生图后端是 openai 但 config.imageGen.baseUrl 是空的。让学弟在配置里填上 OpenAI 兼容地址（例如 https://api.example.com/v1），或把 provider 改成 pollinations 用免 key 端点。')
+    throw new Error('生图后端是 openai 但 config.imageGen.baseUrl 是空的。让主人在配置里填上 OpenAI 兼容地址（例如 https://api.example.com/v1），或把 provider 改成 pollinations 用免 key 端点。')
   }
   const headers: Record<string, string> = { 'Content-Type': 'application/json', 'User-Agent': 'dsh-channel-qq/1.0' }
   if ((config.apiKey ?? '') !== '' && config.apiKey !== null) headers.Authorization = `Bearer ${config.apiKey}`

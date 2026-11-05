@@ -62,7 +62,7 @@ export interface QQToolDeps {
   /**
    * 高危群管动作的总闸门（踢人 / 全员禁言 / 设管理员）。
    *
-   * 默认关闭：这类动作会真的影响到群成员，而"谁让咱做的"目前无法验证。
+   * 默认关闭：这类动作会真的影响到群成员，而"谁让我做的"目前无法验证。
    */
   readonly assertDangerous: (action: string) => void
 }

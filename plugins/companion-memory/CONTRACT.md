@@ -12,7 +12,7 @@
 
 ## 1. 目标与边界
 
-- 目标：把「DSH 三月七陪伴基座」的记忆从 `state.json` + 只读快照升级为
+- 目标：把「DSH bot陪伴基座」的记忆从 `state.json` + 只读快照升级为
   **SQLite 结构化事实 + FTS5 字面检索 + 向量通道（可配置，失败降级）+ Wiki 主题页 + 陪伴连续性**。
 - 不重写已稳定的宿主层：人格注入、身份绑定、预设挂载、工具名与参数保持兼容。
 - 零外部依赖：只用 Node 内置模块（`node:sqlite`、`node:crypto`、`node:fs`、`node:path`）。
@@ -276,7 +276,7 @@ export function packBudget({ entries, budget, weights }) -> { lines, used, dropp
 export const WIKI_TOPICS = [
   { id: 'user-profile', scope: 'user_global', topic: '用户画像与稳定偏好', path: 'user/profile.md' },
   { id: 'user-preferences', scope: 'user_global', topic: '用户偏好', path: 'user/preferences.md' },
-  { id: 'relationship-march7', scope: 'user_persona', topic: '三月七与用户的关系', path: 'relationships/march7-user.md' },
+  { id: 'relationship-bot', scope: 'user_persona', topic: 'bot与用户的关系', path: 'relationships/bot-user.md' },
   { id: 'important-events', scope: 'user_persona', topic: '重要共同事件与未完成承诺', path: 'events/important-events.md' },
 ];
 export function renderPage({ topic, records, evidenceById, viewer, now }) -> { markdown, sourceRevision, entryCount }

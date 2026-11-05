@@ -27,9 +27,9 @@ import {
   resolveExtractionConfig,
 } from '../lib/extract.mjs';
 
-const VIEWER = { userId: 'u_local', personaId: 'p_march7', worldId: '' };
-const WORLD_VIEWER = { userId: 'u_local', personaId: 'p_march7', worldId: 'w_knights' };
-const PERSONA = { displayName: '三月七' };
+const VIEWER = { userId: 'u_local', personaId: 'p_bot', worldId: '' };
+const WORLD_VIEWER = { userId: 'u_local', personaId: 'p_bot', worldId: 'w_knights' };
+const PERSONA = { displayName: 'bot' };
 const NOW = Date.parse('2026-03-07T12:00:00.000Z');
 
 /** A realistic small batch: reality chatter plus one in-chat roleplay scene. */
@@ -357,7 +357,7 @@ test('角色自身行为不能写进用户现实作用域', () => {
   const result = gated(baseCandidate({
     kind: 'bot_action',
     predicate: 'sent_photo',
-    value: '三月七发了一张照片',
+    value: 'bot发了一张照片',
     evidence_source_ids: ['m7'],
   }));
   assert.equal(result.decision, 'reject');
@@ -390,7 +390,7 @@ test('敏感情绪只影响语气，隐私请求改为回避', () => {
   const private_ = gated(baseCandidate({
     kind: 'note',
     predicate: 'private_topic',
-    value: '用户有一件只想让三月七知道的事',
+    value: '用户有一件只想让bot知道的事',
     evidence_source_ids: ['m6'],
   }));
   assert.equal(private_.decision, 'accept');

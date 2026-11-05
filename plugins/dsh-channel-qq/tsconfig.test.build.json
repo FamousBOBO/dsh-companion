@@ -1,5 +1,0 @@
-{
-  "//": "Companion-repo addition (not upstream). tsconfig.test.json 的同一份设置（src+test，emit 到 build/lib-test）。",
-  "//paths": "peer 包 → vendor/types/* 的类型映射不在这里重复：它在 tsconfig.json 里（标准配置），经 tsconfig.test.json 继承下来。此前这里与 tsconfig.build.json 各抄了一份同样的 paths，是**四处同源**的隐患——改一处漏一处就会有某条命令突然红掉（Codex 验收把这件事记成了阻断项）。",
-  "extends": "./tsconfig.test.json"
-}

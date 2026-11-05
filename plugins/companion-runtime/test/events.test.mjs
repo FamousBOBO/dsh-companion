@@ -11,7 +11,7 @@ import {
 import { scopeKey } from '../lib/scope.mjs';
 import { StaleGenerationError, RuntimeStoppedError, RuntimeError } from '../lib/errors.mjs';
 
-const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'march7', worldId: '' });
+const SCOPE = Object.freeze({ userId: 'owner-1', personaId: 'bot', worldId: '' });
 const KEY = scopeKey(SCOPE);
 const T0 = Date.UTC(2026, 9, 29, 2, 0, 0);
 

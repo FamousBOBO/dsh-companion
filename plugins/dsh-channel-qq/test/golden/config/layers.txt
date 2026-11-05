@@ -4,9 +4,9 @@ override = {}
 {
  "connection": {
   "mode": "forward",
-  "url": "ws://127.0.0.1:3001"
+  "url": ""
  },
- "selfId": 10000,
+ "selfId": 0,
  "admins": [],
  "primaryGroup": null,
  "groupEnabled": true,
@@ -42,6 +42,7 @@ override = {}
  },
  "injectMode": {
   "enabled": false,
+  "duringTurn": false,
   "wakeIdle": true
  },
  "imageRecognition": {
@@ -102,7 +103,7 @@ override = {}
  },
  "keywordTriggers": [],
  "morningReport": {
-  "enabled": true,
+  "enabled": false,
   "weatherLocation": null,
   "scheduleFile": null
  },
@@ -240,7 +241,7 @@ override = {}
   "scopes": ""
  },
  "eventMonitor": {
-  "enabled": true,
+  "enabled": false,
   "kinds": [
    "poke",
    "group_increase",
@@ -290,6 +291,7 @@ override = {}
   "v2": false
  },
  "proactive": {
+  "scheduler": false,
   "v2": false,
   "book": {
    "version": 1,
@@ -648,7 +650,8 @@ override = {}
   "followUpIntervalMs": 86400000,
   "maxCatchupHours": 24,
   "maxPerTick": 1,
-  "adaptiveFollowUp": true,
+  "adaptiveFollowUp": false,
+  "sleepSummaryRecipient": "",
   "draftModel": false,
   "draftDailyBudget": 20,
   "draftHourlyBudget": 5,
@@ -678,13 +681,13 @@ override = {}
  }
 }
 
-════ 01-黄金用例（主群 + 学弟 + 关视觉）
+════ 01-黄金用例（主群 + 主人 + 关视觉）
 patch    = {"selfId":1000000001,"admins":[1000000002],"primaryGroup":1000000003,"workspacePath":"/tmp/ws","requireMention":true,"imageRecognition":{"enabled":false,"serverOcr":false,"maxPerMessage":2}}
 override = {}
 {
  "connection": {
   "mode": "forward",
-  "url": "ws://127.0.0.1:3001"
+  "url": ""
  },
  "selfId": 1000000001,
  "admins": [
@@ -724,6 +727,7 @@ override = {}
  },
  "injectMode": {
   "enabled": false,
+  "duringTurn": false,
   "wakeIdle": true
  },
  "imageRecognition": {
@@ -784,7 +788,7 @@ override = {}
  },
  "keywordTriggers": [],
  "morningReport": {
-  "enabled": true,
+  "enabled": false,
   "weatherLocation": null,
   "scheduleFile": null
  },
@@ -922,7 +926,7 @@ override = {}
   "scopes": ""
  },
  "eventMonitor": {
-  "enabled": true,
+  "enabled": false,
   "kinds": [
    "poke",
    "group_increase",
@@ -972,6 +976,7 @@ override = {}
   "v2": false
  },
  "proactive": {
+  "scheduler": false,
   "v2": false,
   "book": {
    "version": 1,
@@ -1330,7 +1335,8 @@ override = {}
   "followUpIntervalMs": 86400000,
   "maxCatchupHours": 24,
   "maxPerTick": 1,
-  "adaptiveFollowUp": true,
+  "adaptiveFollowUp": false,
+  "sleepSummaryRecipient": "",
   "draftModel": false,
   "draftDailyBudget": 20,
   "draftHourlyBudget": 5,
@@ -1366,9 +1372,9 @@ override = {"batching":{"windowMs":20000}}
 {
  "connection": {
   "mode": "forward",
-  "url": "ws://127.0.0.1:3001"
+  "url": ""
  },
- "selfId": 10000,
+ "selfId": 0,
  "admins": [],
  "primaryGroup": null,
  "groupEnabled": true,
@@ -1404,6 +1410,7 @@ override = {"batching":{"windowMs":20000}}
  },
  "injectMode": {
   "enabled": false,
+  "duringTurn": false,
   "wakeIdle": true
  },
  "imageRecognition": {
@@ -1464,7 +1471,7 @@ override = {"batching":{"windowMs":20000}}
  },
  "keywordTriggers": [],
  "morningReport": {
-  "enabled": true,
+  "enabled": false,
   "weatherLocation": null,
   "scheduleFile": null
  },
@@ -1602,7 +1609,7 @@ override = {"batching":{"windowMs":20000}}
   "scopes": ""
  },
  "eventMonitor": {
-  "enabled": true,
+  "enabled": false,
   "kinds": [
    "poke",
    "group_increase",
@@ -1652,6 +1659,7 @@ override = {"batching":{"windowMs":20000}}
   "v2": false
  },
  "proactive": {
+  "scheduler": false,
   "v2": false,
   "book": {
    "version": 1,
@@ -2010,7 +2018,8 @@ override = {"batching":{"windowMs":20000}}
   "followUpIntervalMs": 86400000,
   "maxCatchupHours": 24,
   "maxPerTick": 1,
-  "adaptiveFollowUp": true,
+  "adaptiveFollowUp": false,
+  "sleepSummaryRecipient": "",
   "draftModel": false,
   "draftDailyBudget": 20,
   "draftHourlyBudget": 5,
@@ -2046,9 +2055,9 @@ override = {"admin":{"port":8790}}
 {
  "connection": {
   "mode": "forward",
-  "url": "ws://127.0.0.1:3001"
+  "url": ""
  },
- "selfId": 10000,
+ "selfId": 0,
  "admins": [],
  "primaryGroup": null,
  "groupEnabled": true,
@@ -2084,6 +2093,7 @@ override = {"admin":{"port":8790}}
  },
  "injectMode": {
   "enabled": false,
+  "duringTurn": false,
   "wakeIdle": true
  },
  "imageRecognition": {
@@ -2144,7 +2154,7 @@ override = {"admin":{"port":8790}}
  },
  "keywordTriggers": [],
  "morningReport": {
-  "enabled": true,
+  "enabled": false,
   "weatherLocation": null,
   "scheduleFile": null
  },
@@ -2282,7 +2292,7 @@ override = {"admin":{"port":8790}}
   "scopes": ""
  },
  "eventMonitor": {
-  "enabled": true,
+  "enabled": false,
   "kinds": [
    "poke",
    "group_increase",
@@ -2332,6 +2342,7 @@ override = {"admin":{"port":8790}}
   "v2": false
  },
  "proactive": {
+  "scheduler": false,
   "v2": false,
   "book": {
    "version": 1,
@@ -2690,7 +2701,8 @@ override = {"admin":{"port":8790}}
   "followUpIntervalMs": 86400000,
   "maxCatchupHours": 24,
   "maxPerTick": 1,
-  "adaptiveFollowUp": true,
+  "adaptiveFollowUp": false,
+  "sleepSummaryRecipient": "",
   "draftModel": false,
   "draftDailyBudget": 20,
   "draftHourlyBudget": 5,
@@ -2726,9 +2738,9 @@ override = {"imageGen":{"model":"flux"}}
 {
  "connection": {
   "mode": "forward",
-  "url": "ws://127.0.0.1:3001"
+  "url": ""
  },
- "selfId": 10000,
+ "selfId": 0,
  "admins": [],
  "primaryGroup": null,
  "groupEnabled": true,
@@ -2764,6 +2776,7 @@ override = {"imageGen":{"model":"flux"}}
  },
  "injectMode": {
   "enabled": false,
+  "duringTurn": false,
   "wakeIdle": true
  },
  "imageRecognition": {
@@ -2824,7 +2837,7 @@ override = {"imageGen":{"model":"flux"}}
  },
  "keywordTriggers": [],
  "morningReport": {
-  "enabled": true,
+  "enabled": false,
   "weatherLocation": null,
   "scheduleFile": null
  },
@@ -2962,7 +2975,7 @@ override = {"imageGen":{"model":"flux"}}
   "scopes": ""
  },
  "eventMonitor": {
-  "enabled": true,
+  "enabled": false,
   "kinds": [
    "poke",
    "group_increase",
@@ -3012,6 +3025,7 @@ override = {"imageGen":{"model":"flux"}}
   "v2": false
  },
  "proactive": {
+  "scheduler": false,
   "v2": false,
   "book": {
    "version": 1,
@@ -3370,7 +3384,8 @@ override = {"imageGen":{"model":"flux"}}
   "followUpIntervalMs": 86400000,
   "maxCatchupHours": 24,
   "maxPerTick": 1,
-  "adaptiveFollowUp": true,
+  "adaptiveFollowUp": false,
+  "sleepSummaryRecipient": "",
   "draftModel": false,
   "draftDailyBudget": 20,
   "draftHourlyBudget": 5,
@@ -3406,9 +3421,9 @@ override = {"tts":{"voice":"b"}}
 {
  "connection": {
   "mode": "forward",
-  "url": "ws://127.0.0.1:3001"
+  "url": ""
  },
- "selfId": 10000,
+ "selfId": 0,
  "admins": [],
  "primaryGroup": null,
  "groupEnabled": true,
@@ -3444,6 +3459,7 @@ override = {"tts":{"voice":"b"}}
  },
  "injectMode": {
   "enabled": false,
+  "duringTurn": false,
   "wakeIdle": true
  },
  "imageRecognition": {
@@ -3504,7 +3520,7 @@ override = {"tts":{"voice":"b"}}
  },
  "keywordTriggers": [],
  "morningReport": {
-  "enabled": true,
+  "enabled": false,
   "weatherLocation": null,
   "scheduleFile": null
  },
@@ -3642,7 +3658,7 @@ override = {"tts":{"voice":"b"}}
   "scopes": ""
  },
  "eventMonitor": {
-  "enabled": true,
+  "enabled": false,
   "kinds": [
    "poke",
    "group_increase",
@@ -3692,6 +3708,7 @@ override = {"tts":{"voice":"b"}}
   "v2": false
  },
  "proactive": {
+  "scheduler": false,
   "v2": false,
   "book": {
    "version": 1,
@@ -4050,7 +4067,8 @@ override = {"tts":{"voice":"b"}}
   "followUpIntervalMs": 86400000,
   "maxCatchupHours": 24,
   "maxPerTick": 1,
-  "adaptiveFollowUp": true,
+  "adaptiveFollowUp": false,
+  "sleepSummaryRecipient": "",
   "draftModel": false,
   "draftDailyBudget": 20,
   "draftHourlyBudget": 5,
@@ -4086,9 +4104,9 @@ override = {"flood":{"windowSec":30}}
 {
  "connection": {
   "mode": "forward",
-  "url": "ws://127.0.0.1:3001"
+  "url": ""
  },
- "selfId": 10000,
+ "selfId": 0,
  "admins": [],
  "primaryGroup": null,
  "groupEnabled": true,
@@ -4124,6 +4142,7 @@ override = {"flood":{"windowSec":30}}
  },
  "injectMode": {
   "enabled": false,
+  "duringTurn": false,
   "wakeIdle": true
  },
  "imageRecognition": {
@@ -4184,7 +4203,7 @@ override = {"flood":{"windowSec":30}}
  },
  "keywordTriggers": [],
  "morningReport": {
-  "enabled": true,
+  "enabled": false,
   "weatherLocation": null,
   "scheduleFile": null
  },
@@ -4322,7 +4341,7 @@ override = {"flood":{"windowSec":30}}
   "scopes": ""
  },
  "eventMonitor": {
-  "enabled": true,
+  "enabled": false,
   "kinds": [
    "poke",
    "group_increase",
@@ -4372,6 +4391,7 @@ override = {"flood":{"windowSec":30}}
   "v2": false
  },
  "proactive": {
+  "scheduler": false,
   "v2": false,
   "book": {
    "version": 1,
@@ -4730,7 +4750,8 @@ override = {"flood":{"windowSec":30}}
   "followUpIntervalMs": 86400000,
   "maxCatchupHours": 24,
   "maxPerTick": 1,
-  "adaptiveFollowUp": true,
+  "adaptiveFollowUp": false,
+  "sleepSummaryRecipient": "",
   "draftModel": false,
   "draftDailyBudget": 20,
   "draftHourlyBudget": 5,
@@ -4766,9 +4787,9 @@ override = {}
 {
  "connection": {
   "mode": "forward",
-  "url": "ws://127.0.0.1:3001"
+  "url": ""
  },
- "selfId": 10000,
+ "selfId": 0,
  "admins": [],
  "primaryGroup": null,
  "groupEnabled": true,
@@ -4804,6 +4825,7 @@ override = {}
  },
  "injectMode": {
   "enabled": false,
+  "duringTurn": false,
   "wakeIdle": true
  },
  "imageRecognition": {
@@ -4864,7 +4886,7 @@ override = {}
  },
  "keywordTriggers": [],
  "morningReport": {
-  "enabled": true,
+  "enabled": false,
   "weatherLocation": null,
   "scheduleFile": null
  },
@@ -5009,7 +5031,7 @@ override = {}
   "scopes": ""
  },
  "eventMonitor": {
-  "enabled": true,
+  "enabled": false,
   "kinds": [
    "poke",
    "group_increase",
@@ -5059,6 +5081,7 @@ override = {}
   "v2": false
  },
  "proactive": {
+  "scheduler": false,
   "v2": false,
   "book": {
    "version": 1,
@@ -5417,7 +5440,8 @@ override = {}
   "followUpIntervalMs": 86400000,
   "maxCatchupHours": 24,
   "maxPerTick": 1,
-  "adaptiveFollowUp": true,
+  "adaptiveFollowUp": false,
+  "sleepSummaryRecipient": "",
   "draftModel": false,
   "draftDailyBudget": 20,
   "draftHourlyBudget": 5,
@@ -5453,9 +5477,9 @@ override = {"keywordTriggers":[]}
 {
  "connection": {
   "mode": "forward",
-  "url": "ws://127.0.0.1:3001"
+  "url": ""
  },
- "selfId": 10000,
+ "selfId": 0,
  "admins": [],
  "primaryGroup": null,
  "groupEnabled": true,
@@ -5491,6 +5515,7 @@ override = {"keywordTriggers":[]}
  },
  "injectMode": {
   "enabled": false,
+  "duringTurn": false,
   "wakeIdle": true
  },
  "imageRecognition": {
@@ -5551,7 +5576,7 @@ override = {"keywordTriggers":[]}
  },
  "keywordTriggers": [],
  "morningReport": {
-  "enabled": true,
+  "enabled": false,
   "weatherLocation": null,
   "scheduleFile": null
  },
@@ -5689,7 +5714,7 @@ override = {"keywordTriggers":[]}
   "scopes": ""
  },
  "eventMonitor": {
-  "enabled": true,
+  "enabled": false,
   "kinds": [
    "poke",
    "group_increase",
@@ -5739,6 +5764,7 @@ override = {"keywordTriggers":[]}
   "v2": false
  },
  "proactive": {
+  "scheduler": false,
   "v2": false,
   "book": {
    "version": 1,
@@ -6097,7 +6123,8 @@ override = {"keywordTriggers":[]}
   "followUpIntervalMs": 86400000,
   "maxCatchupHours": 24,
   "maxPerTick": 1,
-  "adaptiveFollowUp": true,
+  "adaptiveFollowUp": false,
+  "sleepSummaryRecipient": "",
   "draftModel": false,
   "draftDailyBudget": 20,
   "draftHourlyBudget": 5,
@@ -6133,9 +6160,9 @@ override = {"rss":{"pollIntervalMin":5}}
 {
  "connection": {
   "mode": "forward",
-  "url": "ws://127.0.0.1:3001"
+  "url": ""
  },
- "selfId": 10000,
+ "selfId": 0,
  "admins": [],
  "primaryGroup": null,
  "groupEnabled": true,
@@ -6171,6 +6198,7 @@ override = {"rss":{"pollIntervalMin":5}}
  },
  "injectMode": {
   "enabled": false,
+  "duringTurn": false,
   "wakeIdle": true
  },
  "imageRecognition": {
@@ -6231,7 +6259,7 @@ override = {"rss":{"pollIntervalMin":5}}
  },
  "keywordTriggers": [],
  "morningReport": {
-  "enabled": true,
+  "enabled": false,
   "weatherLocation": null,
   "scheduleFile": null
  },
@@ -6376,7 +6404,7 @@ override = {"rss":{"pollIntervalMin":5}}
   "scopes": ""
  },
  "eventMonitor": {
-  "enabled": true,
+  "enabled": false,
   "kinds": [
    "poke",
    "group_increase",
@@ -6426,6 +6454,7 @@ override = {"rss":{"pollIntervalMin":5}}
   "v2": false
  },
  "proactive": {
+  "scheduler": false,
   "v2": false,
   "book": {
    "version": 1,
@@ -6784,7 +6813,8 @@ override = {"rss":{"pollIntervalMin":5}}
   "followUpIntervalMs": 86400000,
   "maxCatchupHours": 24,
   "maxPerTick": 1,
-  "adaptiveFollowUp": true,
+  "adaptiveFollowUp": false,
+  "sleepSummaryRecipient": "",
   "draftModel": false,
   "draftDailyBudget": 20,
   "draftHourlyBudget": 5,
@@ -6820,9 +6850,9 @@ override = {"groupEnabled":false}
 {
  "connection": {
   "mode": "forward",
-  "url": "ws://127.0.0.1:3001"
+  "url": ""
  },
- "selfId": 10000,
+ "selfId": 0,
  "admins": [],
  "primaryGroup": null,
  "groupEnabled": false,
@@ -6858,6 +6888,7 @@ override = {"groupEnabled":false}
  },
  "injectMode": {
   "enabled": false,
+  "duringTurn": false,
   "wakeIdle": true
  },
  "imageRecognition": {
@@ -6918,7 +6949,7 @@ override = {"groupEnabled":false}
  },
  "keywordTriggers": [],
  "morningReport": {
-  "enabled": true,
+  "enabled": false,
   "weatherLocation": null,
   "scheduleFile": null
  },
@@ -7056,7 +7087,7 @@ override = {"groupEnabled":false}
   "scopes": ""
  },
  "eventMonitor": {
-  "enabled": true,
+  "enabled": false,
   "kinds": [
    "poke",
    "group_increase",
@@ -7106,6 +7137,7 @@ override = {"groupEnabled":false}
   "v2": false
  },
  "proactive": {
+  "scheduler": false,
   "v2": false,
   "book": {
    "version": 1,
@@ -7464,7 +7496,8 @@ override = {"groupEnabled":false}
   "followUpIntervalMs": 86400000,
   "maxCatchupHours": 24,
   "maxPerTick": 1,
-  "adaptiveFollowUp": true,
+  "adaptiveFollowUp": false,
+  "sleepSummaryRecipient": "",
   "draftModel": false,
   "draftDailyBudget": 20,
   "draftHourlyBudget": 5,
@@ -7500,9 +7533,9 @@ override = {}
 {
  "connection": {
   "mode": "forward",
-  "url": "ws://127.0.0.1:3001"
+  "url": ""
  },
- "selfId": 10000,
+ "selfId": 0,
  "admins": [],
  "primaryGroup": null,
  "groupEnabled": false,
@@ -7538,6 +7571,7 @@ override = {}
  },
  "injectMode": {
   "enabled": false,
+  "duringTurn": false,
   "wakeIdle": true
  },
  "imageRecognition": {
@@ -7598,7 +7632,7 @@ override = {}
  },
  "keywordTriggers": [],
  "morningReport": {
-  "enabled": true,
+  "enabled": false,
   "weatherLocation": null,
   "scheduleFile": null
  },
@@ -7736,7 +7770,7 @@ override = {}
   "scopes": ""
  },
  "eventMonitor": {
-  "enabled": true,
+  "enabled": false,
   "kinds": [
    "poke",
    "group_increase",
@@ -7786,6 +7820,7 @@ override = {}
   "v2": false
  },
  "proactive": {
+  "scheduler": false,
   "v2": false,
   "book": {
    "version": 1,
@@ -8144,7 +8179,8 @@ override = {}
   "followUpIntervalMs": 86400000,
   "maxCatchupHours": 24,
   "maxPerTick": 1,
-  "adaptiveFollowUp": true,
+  "adaptiveFollowUp": false,
+  "sleepSummaryRecipient": "",
   "draftModel": false,
   "draftDailyBudget": 20,
   "draftHourlyBudget": 5,
@@ -8180,9 +8216,9 @@ override = {"groupEnabled":true}
 {
  "connection": {
   "mode": "forward",
-  "url": "ws://127.0.0.1:3001"
+  "url": ""
  },
- "selfId": 10000,
+ "selfId": 0,
  "admins": [],
  "primaryGroup": null,
  "groupEnabled": true,
@@ -8218,6 +8254,7 @@ override = {"groupEnabled":true}
  },
  "injectMode": {
   "enabled": false,
+  "duringTurn": false,
   "wakeIdle": true
  },
  "imageRecognition": {
@@ -8278,7 +8315,7 @@ override = {"groupEnabled":true}
  },
  "keywordTriggers": [],
  "morningReport": {
-  "enabled": true,
+  "enabled": false,
   "weatherLocation": null,
   "scheduleFile": null
  },
@@ -8416,7 +8453,7 @@ override = {"groupEnabled":true}
   "scopes": ""
  },
  "eventMonitor": {
-  "enabled": true,
+  "enabled": false,
   "kinds": [
    "poke",
    "group_increase",
@@ -8466,6 +8503,7 @@ override = {"groupEnabled":true}
   "v2": false
  },
  "proactive": {
+  "scheduler": false,
   "v2": false,
   "book": {
    "version": 1,
@@ -8824,7 +8862,8 @@ override = {"groupEnabled":true}
   "followUpIntervalMs": 86400000,
   "maxCatchupHours": 24,
   "maxPerTick": 1,
-  "adaptiveFollowUp": true,
+  "adaptiveFollowUp": false,
+  "sleepSummaryRecipient": "",
   "draftModel": false,
   "draftDailyBudget": 20,
   "draftHourlyBudget": 5,
@@ -8860,9 +8899,9 @@ override = {"admin":{"host":"127.0.0.1"}}
 {
  "connection": {
   "mode": "forward",
-  "url": "ws://127.0.0.1:3001"
+  "url": ""
  },
- "selfId": 10000,
+ "selfId": 0,
  "admins": [],
  "primaryGroup": null,
  "groupEnabled": true,
@@ -8898,6 +8937,7 @@ override = {"admin":{"host":"127.0.0.1"}}
  },
  "injectMode": {
   "enabled": false,
+  "duringTurn": false,
   "wakeIdle": true
  },
  "imageRecognition": {
@@ -8958,7 +8998,7 @@ override = {"admin":{"host":"127.0.0.1"}}
  },
  "keywordTriggers": [],
  "morningReport": {
-  "enabled": true,
+  "enabled": false,
   "weatherLocation": null,
   "scheduleFile": null
  },
@@ -9096,7 +9136,7 @@ override = {"admin":{"host":"127.0.0.1"}}
   "scopes": ""
  },
  "eventMonitor": {
-  "enabled": true,
+  "enabled": false,
   "kinds": [
    "poke",
    "group_increase",
@@ -9146,6 +9186,7 @@ override = {"admin":{"host":"127.0.0.1"}}
   "v2": false
  },
  "proactive": {
+  "scheduler": false,
   "v2": false,
   "book": {
    "version": 1,
@@ -9504,7 +9545,8 @@ override = {"admin":{"host":"127.0.0.1"}}
   "followUpIntervalMs": 86400000,
   "maxCatchupHours": 24,
   "maxPerTick": 1,
-  "adaptiveFollowUp": true,
+  "adaptiveFollowUp": false,
+  "sleepSummaryRecipient": "",
   "draftModel": false,
   "draftDailyBudget": 20,
   "draftHourlyBudget": 5,
@@ -9540,9 +9582,9 @@ override = {}
 {
  "connection": {
   "mode": "forward",
-  "url": "ws://127.0.0.1:3001"
+  "url": ""
  },
- "selfId": 10000,
+ "selfId": 0,
  "admins": [],
  "primaryGroup": null,
  "groupEnabled": true,
@@ -9578,6 +9620,7 @@ override = {}
  },
  "injectMode": {
   "enabled": false,
+  "duringTurn": false,
   "wakeIdle": true
  },
  "imageRecognition": {
@@ -9638,7 +9681,7 @@ override = {}
  },
  "keywordTriggers": [],
  "morningReport": {
-  "enabled": true,
+  "enabled": false,
   "weatherLocation": null,
   "scheduleFile": null
  },
@@ -9776,7 +9819,7 @@ override = {}
   "scopes": ""
  },
  "eventMonitor": {
-  "enabled": true,
+  "enabled": false,
   "kinds": [
    "poke",
    "group_increase",
@@ -9826,6 +9869,7 @@ override = {}
   "v2": false
  },
  "proactive": {
+  "scheduler": false,
   "v2": false,
   "book": {
    "version": 1,
@@ -10184,7 +10228,8 @@ override = {}
   "followUpIntervalMs": 86400000,
   "maxCatchupHours": 24,
   "maxPerTick": 1,
-  "adaptiveFollowUp": true,
+  "adaptiveFollowUp": false,
+  "sleepSummaryRecipient": "",
   "draftModel": false,
   "draftDailyBudget": 20,
   "draftHourlyBudget": 5,
@@ -10220,9 +10265,9 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
 {
  "connection": {
   "mode": "forward",
-  "url": "ws://127.0.0.1:3001"
+  "url": ""
  },
- "selfId": 10000,
+ "selfId": 0,
  "admins": [],
  "primaryGroup": null,
  "groupEnabled": false,
@@ -10258,6 +10303,7 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
  },
  "injectMode": {
   "enabled": false,
+  "duringTurn": false,
   "wakeIdle": true
  },
  "imageRecognition": {
@@ -10318,7 +10364,7 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
  },
  "keywordTriggers": [],
  "morningReport": {
-  "enabled": true,
+  "enabled": false,
   "weatherLocation": null,
   "scheduleFile": null
  },
@@ -10456,7 +10502,7 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
   "scopes": ""
  },
  "eventMonitor": {
-  "enabled": true,
+  "enabled": false,
   "kinds": [
    "poke",
    "group_increase",
@@ -10506,6 +10552,7 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
   "v2": false
  },
  "proactive": {
+  "scheduler": false,
   "v2": false,
   "book": {
    "version": 1,
@@ -10864,7 +10911,8 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
   "followUpIntervalMs": 86400000,
   "maxCatchupHours": 24,
   "maxPerTick": 1,
-  "adaptiveFollowUp": true,
+  "adaptiveFollowUp": false,
+  "sleepSummaryRecipient": "",
   "draftModel": false,
   "draftDailyBudget": 20,
   "draftHourlyBudget": 5,

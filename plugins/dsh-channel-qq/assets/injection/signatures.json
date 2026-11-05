@@ -9,7 +9,7 @@
     { "name": "fake-authorization", "pattern": "(默认)?视为(已)?授权|默认授权|默认视为", "flags": "" },
     { "name": "never-exit", "pattern": "(永不退出|永远不(要)?退出|即使(用户)?(说停|叫停|让停)|never (stop|exit|quit))", "flags": "i" },
     { "name": "fiction-framing", "pattern": "(虚构|模拟|假想)(的)?(世界|场景|设定)里?[^。！？\\n]{0,16}(无需|不必|不用)", "flags": "" },
-    { "name": "identity-claim", "pattern": "(我|咱)(就是|是|才是)(学弟|群主|管理员|主人)", "flags": "" },
+    { "name": "identity-claim", "pattern": "(我|我)(就是|是|才是)(主人|群主|管理员|主人)", "flags": "" },
     { "name": "prompt-exfiltration", "pattern": "(输出|打印|重复|告诉我|复述)[^。！？\\n]{0,6}(系统提示|系统消息|system prompt|设定原文|提示词|instructions)", "flags": "i" },
     { "name": "refusal-is-failure", "pattern": "(拒绝|不回答|不执行|拒绝执行)[^。！？\\n]{0,8}(等于|就是|即|=)(故障|错误|失败|违规)", "flags": "" },
     { "name": "surface-intent", "pattern": "(按|照)(字面|表面)(意思|含义)(理解|执行)", "flags": "" },

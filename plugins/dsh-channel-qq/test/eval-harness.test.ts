@@ -77,7 +77,7 @@ test('规则能抓出违规回复：主会话违规 → 退出码 1 且报告点
       rules: [{ id: 'no-bad-word', kind: 'forbid', pattern: '测试违规词', reason: '测试用' }],
       messages: [
         { role: 'user', speaker: '群友', text: '随便聊' },
-        { role: 'assistant', speaker: '诺诺', text: '这里是测试违规词' },
+        { role: 'assistant', speaker: 'bot', text: '这里是测试违规词' },
       ],
     })
     const r = runEval(['--transcript', file, '--json'])
@@ -105,7 +105,7 @@ test('规则不会误伤合规回复：合规主会话通过 + 反面回复被�
       rules: [{ id: 'no-bad-word', kind: 'forbid', pattern: '测试违规词', reason: '测试用' }],
       messages: [
         { role: 'user', speaker: '群友', text: '随便聊' },
-        { role: 'assistant', speaker: '诺诺', text: '今天天气不错' },
+        { role: 'assistant', speaker: 'bot', text: '今天天气不错' },
       ],
       counterExamples: [{ of: 1, text: '这里是测试违规词', note: '反例：应被抓' }],
     })
@@ -134,7 +134,7 @@ test('转录格式解析正确；坏文件退出 2 且报错带文件名', () =>
       rules: [{ id: 'no-bad-word', kind: 'forbid', pattern: '测试违规词', reason: '测试用' }],
       messages: [
         { role: 'user', speaker: '群友', text: '一' },
-        { role: 'assistant', speaker: '诺诺', text: '好' },
+        { role: 'assistant', speaker: 'bot', text: '好' },
         { role: 'user', speaker: '群友', text: '二' },
       ],
       counterExamples: [

@@ -1,21 +1,25 @@
 #!/usr/bin/env python3
 """Re-prove that ``python/`` holds the upstream files, not a rewrite.
 
-    tmp\\hwvenv\\Scripts\\python.exe sidecars\\huawei-health-cn\\verify_frozen_copy.py
+    python sidecars/huawei-health-cn/verify_frozen_copy.py
 
 Two kinds of copy live in ``python/``:
 
-**verbatim** — ``client.py``, ``const.py``, ``huawei_dashboard.py``.  The only difference from
-``tmp/`` is a five-line provenance comment block; delete that block and the file is byte-identical
-(sha256 compared here).
+**verbatim** — ``client.py``, ``const.py``, ``huawei_dashboard.py``.  The only difference from the
+upstream checkout is a five-line provenance comment block; delete that block and the file is
+byte-identical (sha256 compared here).
 
-**patched** — ``huawei_login.py``.  It keeps the upstream logic but needs four edits to run from
+**patched** — ``huawei_login.py``.  It keeps the upstream logic but needs a few edits to run from
 this layout (path resolution, ``HUAWEI_ACCOUNT_JSON``, the ``os`` import, masked console output).
 For those the script asserts the patch is *only* that: every upstream top-level name is still
 defined and the diff is printed for review.  Nothing else in the tree is allowed to drift.
 
-Exit codes: ``0`` all good, ``1`` drift found, ``3`` ``tmp/`` originals are gone (nothing to
-compare against — the frozen copies then stand alone).
+**The upstream checkout is not part of this repository** (it was a research copy; the frozen copies
+in ``python/`` are the deliverable).  Point ``HUAWEI_UPSTREAM_PKG`` at an upstream checkout to
+re-run the comparison; without it the script says so and exits **3** — that is "nothing to compare
+against", not a failure of the frozen copies.
+
+Exit codes: ``0`` all good, ``1`` drift found, ``3`` upstream originals absent (nothing to compare).
 """
 
 from __future__ import annotations
@@ -23,24 +27,27 @@ from __future__ import annotations
 import ast
 import difflib
 import hashlib
+import os
 import re
 import sys
 from pathlib import Path
 
 HERE = Path(__file__).resolve().parent
-WORKSPACE = HERE.parent.parent
+SUITE_ROOT = HERE.parent.parent
 PYTHON_DIR = HERE / "python"
 
-UPSTREAM_PKG = WORKSPACE / "tmp" / "huawei_health" / "custom_components" / "huawei_health"
+#: Optional upstream checkout: `.../custom_components/huawei_health` (the package directory).
+_UPSTREAM = os.environ.get("HUAWEI_UPSTREAM_PKG", "").strip()
+UPSTREAM_PKG = Path(_UPSTREAM).expanduser() if _UPSTREAM else None
 
 VERBATIM = (
-    (UPSTREAM_PKG / "client.py", PYTHON_DIR / "client.py"),
-    (UPSTREAM_PKG / "const.py", PYTHON_DIR / "const.py"),
-    (WORKSPACE / "tmp" / "huawei_dashboard.py", PYTHON_DIR / "huawei_dashboard.py"),
+    (UPSTREAM_PKG / "client.py" if UPSTREAM_PKG else None, PYTHON_DIR / "client.py"),
+    (UPSTREAM_PKG / "const.py" if UPSTREAM_PKG else None, PYTHON_DIR / "const.py"),
+    (UPSTREAM_PKG.parent / "huawei_dashboard.py" if UPSTREAM_PKG else None, PYTHON_DIR / "huawei_dashboard.py"),
 )
 
 PATCHED = (
-    (WORKSPACE / "tmp" / "huawei_login.py", PYTHON_DIR / "huawei_login.py"),
+    (UPSTREAM_PKG.parent / "huawei_login.py" if UPSTREAM_PKG else None, PYTHON_DIR / "huawei_login.py"),
 )
 
 PROVENANCE_RE = re.compile(
@@ -78,8 +85,13 @@ def top_level_names(source: str) -> set[str]:
 
 
 def main() -> int:
-    if not UPSTREAM_PKG.is_dir():
-        print(f"originals gone: {UPSTREAM_PKG} — the frozen copies stand on their own", file=sys.stderr)
+    if UPSTREAM_PKG is None or not UPSTREAM_PKG.is_dir():
+        where = UPSTREAM_PKG if UPSTREAM_PKG is not None else "(not configured)"
+        print(f"originals gone: {where} — the frozen copies stand on their own.\n"
+              "The upstream checkout is NOT part of this repository. To re-run the comparison, "
+              "point HUAWEI_UPSTREAM_PKG at an upstream "
+              "'custom_components/huawei_health' directory and run this again.",
+              file=sys.stderr)
         return 3
 
     failures = 0

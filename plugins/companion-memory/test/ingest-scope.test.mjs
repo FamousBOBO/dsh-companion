@@ -15,7 +15,7 @@ import { createMemoryEngine } from '../index.mjs';
 // opened and no model is ever called.
 
 const T0 = Date.UTC(2026, 9, 29, 3, 0, 0);
-const PERSONA = 'march7';
+const PERSONA = 'bot';
 const USER_A = 'scope_user_a';
 const USER_B = 'scope_user_b';
 const NAMESPACE = 'companion.event';

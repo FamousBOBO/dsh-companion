@@ -6,8 +6,10 @@ Three steps, each a separate command, so the browser step stays in human hands:
     python huawei_login.py exchange "<paste>"  # trade the pasted code for a token pair
     python huawei_login.py probe               # read real data with the stored pair
 
-The pair is kept in ``tmp/huawei_account.json`` (never in the repository): it grants read
-access to the account's health statistics for 180 days, so treat that file as a password.
+The pair is kept **outside the repository**, in `<data>/credentials/huawei_account.json`
+(`$HUAWEI_ACCOUNT_JSON` overrides; `<data>` is `$DSH_COMPANION_DATA_DIR` or `<suite>/data`):
+it grants read access to the account's health statistics for 180 days, so treat that file as a
+password.  It is never copied, never printed, never committed.
 
 FROZEN COPY - see ``sidecars/huawei-health-cn/PROTOCOL-FREEZE.md`` for the two adaptations
 (A1: path resolution for the flat frozen layout, A2: the uid is masked on the console).  No
@@ -29,22 +31,31 @@ from pathlib import Path
 # ── frozen-copy path resolution (adaptation A1 of the freeze, no protocol change) ──────────
 # Upstream this file lived next to the checkout and found the integration at
 # ``<here>/huawei_health/custom_components/huawei_health``.  In the frozen sidecar the pair
-# ``client.py``/``const.py`` sits right next to this file, so the flat layout is tried first and
-# the two upstream layouts are kept as fallbacks (handy when running straight from a checkout).
+# ``client.py``/``const.py`` sits right next to this file, so the flat layout is tried first.
+# An upstream checkout is optional: if the user has one, point ``HUAWEI_UPSTREAM_PKG`` at it.
 _HERE = Path(__file__).resolve().parent
-_WORKSPACE = _HERE.parent.parent.parent           # sidecars/huawei-health-cn/python -> workspace
-_PACKAGE_CANDIDATES = (
+_SIDECAR_ROOT = _HERE.parent                      # sidecars/huawei-health-cn
+_SUITE_ROOT = _SIDECAR_ROOT.parent.parent         # repository root
+_UPSTREAM = os.environ.get("HUAWEI_UPSTREAM_PKG", "").strip()
+_PACKAGE_CANDIDATES = tuple(
+    [Path(_UPSTREAM).expanduser()] if _UPSTREAM else []
+) + (
     _HERE,                                        # frozen layout: python/{client,const}.py
     _HERE / "huawei_health" / "custom_components" / "huawei_health",
-    _WORKSPACE / "tmp" / "huawei_health" / "custom_components" / "huawei_health",
 )
 PACKAGE_DIR = next((path for path in _PACKAGE_CANDIDATES if (path / "client.py").is_file()), _HERE)
 REPO = PACKAGE_DIR.parent.parent                  # kept for upstream compatibility
 
+
+def _data_dir() -> Path:
+    """Same rule as ``sidecar_paths.py`` (this file lives one level deeper, so it is repeated)."""
+    raw = os.environ.get("DSH_COMPANION_DATA_DIR", "").strip()
+    return Path(raw).expanduser() if raw else _SUITE_ROOT / "data"
+
+
 # The credential file is NEVER copied into the sidecar tree: it is read in place, by this
 # process only.  ``HUAWEI_ACCOUNT_JSON`` overrides the location for tests / other machines.
-STORE = Path(os.environ.get("HUAWEI_ACCOUNT_JSON")
-             or _WORKSPACE / "tmp" / "huawei_account.json")
+STORE = Path(os.environ.get("HUAWEI_ACCOUNT_JSON", "").strip() or _data_dir() / "credentials" / "huawei_account.json")
 
 
 def load() -> tuple[types.ModuleType, types.ModuleType]:

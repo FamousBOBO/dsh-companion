@@ -38,8 +38,8 @@ const REAL_IDENTITY = path.join(REPO_ROOT, 'home/companion/identity.json');
 const REAL_DB_MODULE = path.join(PLUGIN_ROOT, 'lib/db.mjs');
 const CLI = path.join(PLUGIN_ROOT, 'scripts/migrate-memory.mjs');
 
-const USER_ID = '1429709395';
-const PERSONA_ID = 'march7';
+const USER_ID = '10001';
+const PERSONA_ID = 'bot';
 const CLOCK = Date.parse('2026-10-27T16:39:12Z');
 const STAMP = '20261027T163912Z';
 
@@ -126,7 +126,7 @@ function buildArchiveFixture({ summaries = 4 } = {}) {
       snapshotSha256: '',
       owner: USER_ID,
       bot: '2668517323',
-      persona: '三月七',
+      persona: 'bot',
       sourceCount: memories.length,
       importedCount: memories.length,
       identityAliases: {},
@@ -146,7 +146,7 @@ function buildJournalFixture({ user = 2, assistant = 2, sessionId = 'session-fix
   let seq = startSeq;
   for (let index = 0; index < Math.max(user, assistant); index++) {
     if (index < user) records.push(journalRecord({ sessionId, seq: seq++, role: 'user', text: `用户第 ${index + 1} 句话` }));
-    if (index < assistant) records.push(journalRecord({ sessionId, seq: seq++, role: 'assistant', text: `三月七第 ${index + 1} 句回复` }));
+    if (index < assistant) records.push(journalRecord({ sessionId, seq: seq++, role: 'assistant', text: `bot第 ${index + 1} 句回复` }));
   }
   return records;
 }

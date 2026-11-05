@@ -23,6 +23,6 @@ fulfilled 是“有证据确认目的完成”，dismiss 是“没有必要再�
 
 新增24条回归覆盖真实 worker/sender、实际工具注册、上下文读取与同窗复核；用假模型/平台和临时账本，不发真实QQ。
 
-npm run verify 运行类型、全量测试、admin/语法/分层/体量检查。候选构建与被测JS需逐文件一致。源码由 D:/Bot 的 codex/adaptive-followup 分支管理；home、workspace、日志、数据库、凭据及 build 不入Git。
+npm run verify 运行类型、全量测试、admin/语法/分层/体量检查。候选构建与被测JS需逐文件一致。源码由 <repo> 的 codex/adaptive-followup 分支管理；home、workspace、日志、数据库、凭据及 build 不入Git。
 
 回滚时先停用或退役新意图，再切旧构建；不回写旧账本覆盖运行态。不要把本功能的模型回归通过当作已完成真实模型与QQ投递验收。

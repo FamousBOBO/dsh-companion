@@ -19,7 +19,7 @@ function buildRoot(t, config) {
   return root;
 }
 
-const identity = () => ({ resolve: sessionId => ({ userId: 'owner-1', persona: 'march7', sessionId }) });
+const identity = () => ({ resolve: sessionId => ({ userId: 'owner-1', persona: 'bot', sessionId }) });
 
 function mount(root, clock = () => T0) {
   return mountRuntime(null, root, { now: clock, identity: identity() });
@@ -92,7 +92,7 @@ test('HH01: shadow mode records a proposal instead of writing the authoritative 
   assert.equal(created.ok, true, JSON.stringify(created));
   assert.equal(created.shadow, true);
   assert.equal(created.enabled, false);
-  const proposals = runtime.shadowProposals({ scopeKey: 'u:owner-1|p:march7|w:world:default' });
+  const proposals = runtime.shadowProposals({ scopeKey: 'u:owner-1|p:bot|w:world:default' });
   assert.equal(proposals.length, 1);
   assert.equal(proposals[0].kind, 'agenda/created');
   const listed = runtime.listSchedule({ bound });
