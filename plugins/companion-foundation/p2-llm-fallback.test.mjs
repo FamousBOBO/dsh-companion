@@ -2,6 +2,7 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
+import { fileURLToPath } from 'node:url';
 
 // Budget accounting for physical generations (external acceptance point).
 //
@@ -15,7 +16,9 @@ import path from 'node:path';
 // three retry branches are behind it, and P2 constructs its adapter with `allowFallback: false`
 // while nothing else does.
 
-const here = path.dirname(new URL(import.meta.url).pathname.replace(/^\/([A-Za-z]:)/, '$1'));
+// fileURLToPath, not `new URL(...).pathname`: the pathname form stays percent-encoded, so an
+// install directory containing a space or CJK characters resolves to a path that does not exist.
+const here = path.dirname(fileURLToPath(import.meta.url));
 const hostLlm = fs.readFileSync(path.join(here, 'host-llm.mjs'), 'utf8');
 const autonomy = fs.readFileSync(path.join(here, 'autonomy.mjs'), 'utf8');
 

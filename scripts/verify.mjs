@@ -330,7 +330,25 @@ function runStatic() {
     record('static', rel, fs.existsSync(path.join(SUITE_ROOT, rel)) ? 'ok' : 'failed');
   }
 
-  // 6. data-root parity (TEAM-BRIEF D2): the suite CLI and the plugins must agree on where
+  // 6. Windows PowerShell 5.1 decodes a BOM-less .ps1 as ANSI, which corrupts CJK text and
+  //    breaks quoting/parens. Every .ps1 we ship must carry a UTF-8 BOM.
+  const ps1 = files.filter((f) => f.toLowerCase().endsWith('.ps1'));
+  const bomless = ps1.filter((f) => {
+    try {
+      const buf = fs.readFileSync(f);
+      return !(buf[0] === 0xef && buf[1] === 0xbb && buf[2] === 0xbf);
+    } catch {
+      return false;
+    }
+  });
+  record(
+    'static',
+    '.ps1 带 UTF-8 BOM（PowerShell 5.1 需要）',
+    bomless.length ? 'failed' : 'ok',
+    bomless.map((f) => path.relative(SUITE_ROOT, f).replace(/\\/g, '/')).slice(0, 6).join(' '),
+  );
+
+  // 7. data-root parity (TEAM-BRIEF D2): the suite CLI and the plugins must agree on where
   //    runtime data lives, otherwise the UI and the engine open two different databases.
   return checkDataRootParity();
 }
