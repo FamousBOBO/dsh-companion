@@ -159,6 +159,8 @@ npm run verify          # 6. 发布要求的离线检查与测试
   不要用 `dsh.cmd`，也不要依赖 PowerShell 脚本。
 - **预期**：Exit 0；打印本次启动日志路径与本地访问地址（带 token 的 `http://127.0.0.1:<port>/?token=…`）。
   启动日志与退出码落在 `<dataDir>/logs/`。
+- **默认是前台（阻塞）模式**：命令会一直占着终端，`Ctrl+C` 或另开一个终端跑 `npm run stop` 结束。
+  `--detach`（后台）确实存在，但**它的进程存活行为未经验收**（见 `docs/07` §3），不要把它当成生产用法。
 - **失败**：按顺序看
 
 1. `<dataDir>/logs/` 里**本次**的日志（`start` 会打印路径；不要拿「目录里最新的文件」当本次日志）。
@@ -170,17 +172,20 @@ npm run verify          # 6. 发布要求的离线检查与测试
 
 ### 3.6 `npm run verify`
 
-三个组，可单独跑：`--only=unit` / `--only=static` / `--only=compose`。
+三个组，可单独跑：`--only=unit` / `--only=static` / `--only=compose`（也可组合，如 `--only=unit,static`）。
 
 | 组 | 内容 | 需要宿主? |
 |---|---|---|
-| `unit` | 逐模块 `node --test` | 否 |
-| `static` | 包元数据自洽、`.gitignore` 覆盖、密钥 / 作者绝对路径 / 旧角色名残留、源码树里不存在构建产物 | 否 |
+| `unit` | 逐模块 `node --test`（没有测试的模块记为「无测试」，**不算通过**） | 否 |
+| `static` | 模块元数据自洽、源码树不含构建产物、7 条泄漏规则（旧角色名 / 作者路径 / 作者名 / 旧人格 id / 三类密钥形状）、配置模板可解析、core 恒启用、必需根文件、CLI↔插件 `dataRoot` 一致 | 否 |
 | `compose` | 宿主 `--dump-config` 合成检查 | **是**；没有宿主时输出 `SKIPPED` 且**不判失败** |
 
-- **预期**：全部为 PASS 时 Exit 0；任一步失败 Exit 1。
-- **`SKIPPED` 不是 PASS**：`compose` 被跳过时，说明「配置能合成」这件事**没有被验证**。
-- **失败**：`unit` 失败看具体模块；`static` 失败通常是有人在源码树里留了构建产物或路径泄漏。
+- **预期**：Exit 0。干净克隆上实测：`unit` 8 模块通过 / 1 无测试、`static` 25 项通过、`compose` SKIPPED，
+  总耗时约 44 s（Windows，详见 `docs/07` §2.1）。
+- **`SKIPPED` 不是 PASS**：`compose` 被跳过时，「配置能被真实宿主合成」这件事**没有被验证**。
+  这也意味着 **CI 绿 ≠ `compose` 通过**（CI 环境没有宿主，这一项必然跳过）。
+- **失败**：`unit` 失败看具体模块；`static` 失败通常是有人在源码树里留了构建产物、路径泄漏，
+  或某模块 `package.json` 缺字段。
 
 ---
 
@@ -276,12 +281,15 @@ npm run verify          # 6. 发布要求的离线检查与测试
 | 形态 | 结论 | 注意点 |
 |---|---|---|
 | Windows 常规（`C:\dev\dsh-companion`） | ✅ 支持 | — |
-| 路径含空格（`C:\My Projects\dsh companion`） | ✅ 支持 | 引用路径时**始终加引号**：`npm run migrate -- export --out "C:\My Exports\b"`；profile 里的 `file://` URL 由 `setup` 生成，不要手写 |
-| 路径含中文（`D:\陪伴\dsh-companion`） | ✅ 支持 | 文件系统必须为 UTF-8 路径（Windows 10+ 默认）。**不要**把数据目录放到非 UTF-8 编码的压缩包/网络盘挂载点 |
-| 不同盘符（仓库在 `C:`，`dataDir` 在 `D:`） | ✅ 支持 | `dataDir` 可以写绝对路径；`D:` 盘必须存在且可写。跨盘符时 `file://` URL 会带盘符，属正常 |
-| 仓库与数据目录同一盘、深层嵌套（>200 字符） | ⚠️ | Windows 默认 260 字符上限；SQLite 的 `-wal`/`-shm` 会再加后缀。**建议源码根不超过 3 层** |
-| 网络盘 / OneDrive 同步目录 | ❌ 不建议 | SQLite WAL 在同步盘上易损坏；`npm ci` 也常被占用失败 |
-| UNC 路径（`\\server\share\…`） | ⚠️ 未验证 | 它不在 CI 覆盖范围，也没做过实机验收；如同实验，请只读文档并自备份 |
+| 路径含空格（`C:\My Projects\dsh companion`） | ✅ **已实跑**（与中文同一目录里一起验证过） | 引用路径时**始终加引号**：`npm run migrate -- export --out "C:\My Exports\b"`；profile 里的 `file://` URL 由 `setup` 生成，不要手写 |
+| 路径含中文 / 非 ASCII（`D:\陪伴\dsh-companion`） | ✅ **已实跑**（`…/含 空格 and CJK/dsh-companion`：干净克隆 → `npm ci` → `build` → `verify` 全绿） | 文件系统必须为 UTF-8 路径（Windows 10+ 默认）。**不要**把数据目录放到非 UTF-8 编码的压缩包/网络盘挂载点。这条曾经是红的：验收抓出过「`new URL(...).pathname` 在含空格/中文路径下拿到百分号编码串」这类 bug，已修 |
+| 不同盘符（仓库在 `C:`，`dataDir` 在 `D:`） | ⚠️ 支持但**未实跑** | `dataDir` 可以写绝对路径；`D:` 盘必须存在且可写。跨盘符时 `file://` URL 会带盘符，属正常 |
+| 仓库与数据目录同一盘、深层嵌套（>200 字符） | ⚠️ **未实跑** | Windows 默认 260 字符上限；SQLite 的 `-wal`/`-shm` 会再加后缀。**建议源码根不超过 3 层** |
+| 网络盘 / OneDrive 同步目录 | ❌ 不建议（**未实跑**） | SQLite WAL 在同步盘上易损坏；`npm ci` 也常被占用失败 |
+| UNC 路径（`\\server\share\…`） | ⚠️ **未实跑** | 不在任何验收/CI 覆盖范围；如同实验，请只读文档并自备份 |
+
+> 一句话：**只有「空格 + 中文」这一种组合是被实跑证明过的**；其余形态属于「实现上支持、但没有证据」，
+> 这正是 `docs/07` §3 里仍列为未验证的原因。
 
 ### 7.1 环境变量里带空格/中文
 
@@ -302,13 +310,14 @@ DSH_COMPANION_DATA_DIR="/home/user/陪伴 data" node tools/migrate/cli.mjs expor
 
 ## 8. Linux / macOS
 
-Windows 是实机验收平台；Linux/macOS 目前由 CI 覆盖到「构建 + 离线测试」。
+Windows 是**唯一**做过实机验收的平台（含空格/中文路径、真实宿主装载）。Linux/macOS 目前只写进了
+CI 矩阵，**且 CI 尚未实际运行过**——所以这两栏现在的准确说法是「实现上应当支持，没有任何证据」。
 
 | 项 | Windows | Linux / macOS |
 |---|---|---|
-| `npm ci` / `npm run build` / `npm run verify --only=unit` / `--only=static` | ✅ 实测 | ✅ CI 覆盖（ubuntu-latest / macos-latest） |
+| `npm ci` / `npm run build` / `npm run verify --only=unit` / `--only=static` | ✅ 实机（含空格+中文路径） | ⚠️ 未实测；CI 矩阵已写，等第一次运行 |
 | `npm run doctor` 的宿主探测 | ✅ 实机 | ⚠️ 未实测（候选路径已实现，见 §5.1） |
-| `npm run start`（桌面宿主） | ✅ 实机 | ⚠️ 未实测；且 `compose` 段在无宿主时输出 `SKIPPED` |
+| `npm run start`（桌面宿主） | ✅ 实机（起得来 / UI 200 / 可干净停止） | ⚠️ 未实测；且 `compose` 段在无宿主时输出 `SKIPPED` |
 | 侧车（BLE / 华为健康） | ✅ 实机（BLE 真机跑通过） | ⚠️ 未实测：蓝牙栈与账号授权流程只在 Windows 走过 |
 | `npm run migrate` | ✅ 已在本机真实数据副本上跑通 export / check / import --dry-run | ✅ 逻辑跨平台（纯 Node）；未在 Linux/macOS 实机跑过 |
 

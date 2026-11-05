@@ -60,7 +60,6 @@ profile 的 patch 里，见 §3.5。
 | `core` | **`true`** | `companion-foundation` + `companion-memory` + `companion-runtime` + `companion-group` | 恒为真（强制），关不掉；没有它套件没有意义 |
 | `memoryStudio` | **`true`** | `companion-memory-studio`（陪伴空间 Web UI） | 依赖 core 成套安装 |
 | `qq` | `false` | `dsh-channel-qq` | 需要外部 NapCat/OneBot 服务地址+token |
-| `qqIdleCompaction` | `false` | `qq-idle-compaction`（QQ 会话空闲压缩，**会调用模型**） | 独立于 `modules.qq`；建议同时有 `safety.backgroundModelTasks` 的明确授权 |
 | `bilibili` | `false` | **外部模块** `dsh-bili-scroll`，不在本仓库（见 §3.7） | 需要自行安装第三方 tarball + Python 环境 |
 | `health` | `false` | `companion-health` + `sidecars/huawei-health-cn` + `sidecars/ble-heart-rate` | 需要华为健康 sidecar 与/或 BLE 设备；**云端通道还要自备上游检出**（§3.6） |
 | `media` | `false` | `companion-media` | 通常还需要外部 TTS / 生图服务 |
@@ -71,6 +70,15 @@ profile 的 patch 里，见 §3.5。
 
 > **核心模块成套安装**：foundation / memory / memory-studio / runtime / group 之间是**兄弟相对
 > import**，必须成套安装（本仓库的 npm workspaces 已保证）。不要单独取用某一个包。
+
+### 2.4.1 `qqIdleCompaction`（顶层，**不在 `modules` 里**）
+
+| 字段 | 类型 | 默认 | 说明 |
+|---|---|---|---|
+| `qqIdleCompaction` | boolean | `false` | QQ 会话**空闲压缩**：**会调用模型（计费）**，默认关闭；关着时**不注册任何定时器**。独立于 `modules.qq`（通道可以开着而压缩关着）。环境变量 `QQ_IDLE_COMPACTION=0/1` 可强制覆盖本项。 |
+
+> 打开它等于允许后台产生模型费用；建议同时确认 `safety.backgroundModelTasks` 已被显式授权
+> （`config/suite.json` 不会因为开这一项就自动打开那个总闸）。
 
 ### 2.5 `services`（外部服务连接）
 
@@ -101,7 +109,7 @@ profile 的 patch 里，见 §3.5。
 
 | 字段 | 类型 | 默认 | 说明 |
 |---|---|---|---|
-| `persona.id` | string | `"bot"` | 人格标识。解析顺序：环境变量 `DSH_COMPANION_PERSONA_ID` → `persona.id` → `bot`。改了它，历史数据需要迁移（`docs/04` §7 的人格 id 映射）。 |
+| `persona.id` | string | `"bot"` | 人格标识。解析顺序：环境变量 `DSH_COMPANION_PERSONA_ID` → `persona.id` → `bot`。**改名等于换一套记忆作用域**：历史记忆不会被自动迁移，需要用 `docs/04` 的 id 映射（`npm run migrate`）。 |
 
 ### 2.8 数据目录与人格文件解析顺序
 

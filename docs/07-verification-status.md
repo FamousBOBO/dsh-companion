@@ -17,25 +17,49 @@
 
 1. **CI 绿 ≠ 桌面实机验证**。CI 跑的是 `npm ci → npm run build → npm run verify` 的**离线**部分，
    没有 DSH 桌面、没有模型、没有 QQ、没有手环。
-2. `offline-test` 通过 ≠ `host-load` 通过。测试跑在 Node 里，宿主装载是另一条路径
+2. **CI 绿 ≠ `compose` 通过**。`compose`（`--dump-config` 合成）必须有真实宿主；CI 里它**永远 SKIPPED**
+   且不判失败。CI 只能证明安装/构建/离线测试/静态卫生（细节见 §2.1.1）。
+3. `offline-test` 通过 ≠ `host-load` 通过。测试跑在 Node 里，宿主装载是另一条路径
    （isolate realm、服务注册、profile 合成都可能失败）。
-3. `配置已保存` ≠ `连接成功` ≠ `真的发出去了`。三者是不同状态（`docs/02` §6）。
+4. `配置已保存` ≠ `连接成功` ≠ `真的发出去了`。三者是不同状态（`docs/02` §6）。
 
 ## 2. 当前状态（发布树，2026-11-05）
 
-### 2.1 套件骨架与文档
+### 2.1 套件骨架 / 部署链路 / 宿主装载
+
+**证据锚点**：提交 `cebcb84`（随后打 `v0.1.0`）· 环境 Windows · `node v24.14.0` · `npm 11.9.0` · 宿主 `0.2.1-rc.3` · 日期 2026-11-05。
+
+三组独立验收（A 干净克隆 / B 工作区 / C 全新数据目录）：
 
 | 能力 | 级别 | 证据 | 说明 |
 |---|---|---|---|
-| 文档体系（`docs/01`–`07`） | — | 本仓库 | 文档不是证据。其中引用的命令行为以脚本实现为准 |
-| CI 工作流（`.github/workflows/ci.yml`） | **未运行** | 文件存在 | 尚未在 GitHub 上实际跑过；本地未执行 `npm ci`（由维护者统一生成锁文件） |
-| `npm ci` | **未验证** | — | 需要 `package-lock.json`，由维护者统一生成后才有意义 |
-| `npm run build` | **未验证** | — | 同上；仓库只存源码 |
-| `npm run doctor` / `setup` / `start` / `verify` | **未验证** | — | 实现在 `scripts/*.mjs`；本文只写了它们的输出契约 |
-| 路径形态（含空格 / 含中文 / 跨盘符） | **未验证** | — | `docs/01` §7 的结论来自实现方式（`path` / `URL` 处理），**没有**逐个形态实跑记录 |
-| `npm run verify --only=static` | **通过**（属 `offline-test` 级：离线、无宿主） | 本机 `node scripts/verify.mjs --only=static`，2026-11-05 | **24 项通过 / 0 失败**，退出码 0；扫描范围= git 跟踪 + 未忽略的文件（1296 个）。覆盖：10 个模块元数据、源码树无构建产物、7 条泄漏规则、`config/suite.example.json` 可解析、core 恒启用、5 个必需根文件、CLI↔插件的 `dataRoot` 一致性断言。**这不是 CI 的结果**（CI 尚未运行），也不是桌面实机验证 |
+| 文档体系（`docs/01`–`07`） | — | 本仓库 | 文档不是证据。引用到的行为以脚本实现为准 |
+| CI 工作流（`.github/workflows/ci.yml`） | **未运行** | 文件存在，YAML 结构已校验 | 尚未在 GitHub 上跑过。见 §2.1.1 关于 `compose` 在 CI 里必为 SKIPPED |
+| `git clone` → `npm ci` | **`offline-test`** | **A 段**：干净克隆（克隆内 `git ls-files` = 1296 文件）→ `npm ci` **exit 0 / 2.7 s** | 路径为 `<临时目录>/含 空格 and CJK/dsh-companion`（**同时含空格与非 ASCII**） |
+| `npm run build` | **`offline-test`** | **A 段**：**exit 0 / 8.5 s**（channel-qq、memory-studio、media 三个模块构建） | 同上路径；仓库只存源码，此步必然存在 |
+| `npm run verify`（离线部分） | **`offline-test`** | **A 段**：**exit 0 / 44.0 s**；`unit` 8 模块通过 / 0 失败 / 1 无测试；`static` **25 项通过 / 0 失败**（扫描 1296 个文件）；`compose` **SKIPPED**（原因：未检测到 DSH 宿主——干净克隆里没有 `config/suite.json`，这一项天然跳过） | 同一路径形态 |
+| **路径形态：含空格 + 含中文（非 ASCII）** | **已实跑通过** | A 段整体 | 这条曾经是**红的**：验收脚本抓出过两个真 bug（`npm_config_workspaces` 泄漏与 `--workspace` 冲突；测试里用 `new URL(...).pathname` 取路径，在含空格/中文目录下拿到 `%E5%90%AB%20…` 编码串导致 ENOENT）。修复后转绿 |
+| 路径形态：跨盘符 / 深层嵌套 / 网络盘 / UNC | **未验证** | — | A 段只覆盖了「空格 + 中文」这一种组合 |
+| `npm run setup` | **`host-load` 前置**（脚本成功执行） | **C 段**：`exit 0`（从默认 `web` profile 创建 `companion`；安装 `@dsh-companion/memory-studio` bundle）。数据目录为**全新空目录** | setup 成功不等于装载成功，真正的装载证据在下面两行 |
+| `npm run doctor` | **`host-load`** | **C 段**：`exit 0`，`结论：核心检查通过（注意 0、未就绪 0、共 37 项）`；`profile 合成 — 311 个条目，135 ms`；`补丁引用的插件文件 — 2 个 file:// 入口全部存在`；`companion 预设是否挂上 — preset-companion 与 workspace-context 均在合成结果里` | — |
+| `compose`（`--dump-config` 合成） | **`host-load` 的一部分** | **B 段**：`compose` **通过**，合成 **194 个 loader 行**；与 C 段 doctor 的「311 个条目」互相印证 | ⚠️ 这一项**在 CI 里必定 SKIPPED**，见 §2.1.1 |
+| `npm run start` 端到端（起得来 → UI 可访问 → 能干净停止） | **`host-load`** | **C 段**：就绪后本地地址 `http://127.0.0.1:3080/?token=…`，对该 URL **GET 返回 HTTP 200 / 38252 字节**；`npm run stop` **exit 0**（`已停止 PID 53444`），**3080 端口 2 秒内释放** | 启动日志 484 字节，**没有任何 `did not activate`** —— 见下一行 |
+| 核心五模块 + 陪伴空间 Web UI 的**真实装载** | **`host-load`** | **C 段**启动日志（脱敏后全文三行）：<br>① `[workspace-context] disabled: no home/companion/workspace-context.json …`（可选插件，默认关，预期行为）<br>② `[companion-foundation] no identity.json … created the default local owner (owner=local-owner, persona=bot)`<br>③ `dsh web: http://127.0.0.1:3080/?token=…` | 关键是**没有一条 `did not activate`**：这直接证明「空 `data/` 下 studio 挂不上」那个缺陷在真实宿主上已解决 |
 
-> 也就是说：**部署链路本身当前是 `未验证`。** 拿到本仓库的人应当先按 `docs/01` 跑一遍并把结果补进本节。
+> **A / B / C 分别是什么**：A = 干净克隆（只含已提交内容，路径含空格+中文）；B = 配好宿主的工作区；
+> C = `DSH_COMPANION_DATA_DIR` 指向**全新空目录**后走 npm scripts 的真实启动。
+>
+> 本节仍然只能说明「**在 Windows + 宿主 0.2.1-rc.3 上跑通了这些**」。它**不是** Linux/macOS 的证据，
+> 也**不是** `real-api` / `real-send` / `hardware` 的证据。
+
+#### 2.1.1 `compose` 与 CI 的关系（必读，别把它当通过）
+
+- `compose` = 用真实宿主做 `--dump-config` 合成检查，**必须有 DSH 宿主**。
+- **CI 里没有宿主**，所以 CI 上的 `compose` 永远输出 `SKIPPED`，且按设计**不判失败**。
+- 因此：**「CI 绿」≠「compose 通过」**。CI 只能证明安装、构建、离线测试、静态卫生；
+  「配置能被真实宿主合成」这件事只在有宿主的机器上（如本节的 B/C 段）才算证据。
+  这与 §1.1 的「CI 绿 ≠ 桌面实机验证」是同一条纪律的两个侧面。
+
 
 ### 2.2 迁移工具（`tools/migrate`）
 
@@ -52,20 +76,23 @@
 
 | 模块 | `offline-test` | `host-load` | `real-api` | `real-send` | `hardware` |
 |---|---|---|---|---|---|
-| `companion-foundation` | 待汇总 | 未验证 | 未验证 | — | — |
-| `companion-memory` | 待汇总 | 未验证 | 未验证 | — | — |
-| `companion-memory-studio` | 待汇总 | 未验证 | 未验证 | — | — |
-| `companion-runtime` | 待汇总 | 未验证 | 未验证 | — | — |
-| `companion-group` | 待汇总 | 未验证 | — | 未验证 | — |
-| `dsh-channel-qq` | 待汇总 | 未验证 | 未验证 | **未验证** | — |
-| `companion-media` | 待汇总 | 未验证 | 未验证 | 未验证 | — |
-| `companion-health` | 待汇总 | 未验证 | 未验证 | — | 未验证 |
+| `companion-foundation` | **213 项 / 204 通过 / 0 失败 / 9 跳过** | **✅ 已装载**（C 段：无 `did not activate`；日志出现它的 identity 初始化行） | 未验证 | — | — |
+| `companion-memory` | **268 通过 / 0 失败** | **✅ 已装载**（C 段） | 未验证 | — | — |
+| `companion-memory-studio` | **115 通过 / 0 失败** | **✅ 已装载**（C 段：UI 返回 HTTP 200 / 38252 字节） | 未验证 | — | — |
+| `companion-runtime` | **697 通过 / 0 失败** | **✅ 已装载**（C 段） | 未验证 | — | — |
+| `companion-group` | **10 通过 / 0 失败** | **✅ 已装载**（C 段） | — | 未验证 | — |
+| `dsh-channel-qq` | **1208 项 / 1207 通过 / 0 失败 / 1 跳过** | 未验证（验收未启用通道：没有 OneBot 服务） | 未验证 | **未验证** | — |
+| `companion-media` | 通过（计数未单独汇总，B 段 `unit` 全绿） | 未验证（验收未启用该模块） | 未验证 | 未验证 | — |
+| `companion-health` | 通过（计数未单独汇总，B 段 `unit` 全绿） | 未验证（验收未启用该模块） | 未验证 | — | 未验证 |
 | `sidecars/huawei-health-cn` | 待汇总（本仓库自写部分） | — | **不适用** | — | — |
 | `sidecars/ble-heart-rate` | 待汇总 | — | — | — | 未验证 |
-| `dsh-paste-search` | 待汇总 | 未验证 | — | — | — |
+| `dsh-paste-search` | **无测试**（`unit` 记为「1 无测试」） | 未验证（验收未启用该模块） | — | — | — |
 | ~~`dsh-super-injector`~~ | **未收录**（原因见 `docs/03` §1.2） | — | — | — | — |
 
-「待汇总」= 负责人报告里的数字还没并进本文；**不要当成「已通过」**。
+> 「已装载」的依据是 **C 段真实宿主启动日志里没有一条 `did not activate`**，且 doctor 的 profile 合成
+> 与 `compose` 都通过——不是「配置文件写对了」。**仍不等于能对话**：会话需要模型调用，那是 `real-api`。
+>
+> 「待汇总」= 负责人报告里的数字还没并进本文；**不要当成「已通过」**。
 
 ### 2.4 生产系统历史记录（**不是**本仓库的验收）
 
@@ -89,9 +116,14 @@
 
 **宿主与链路**
 
-- `host-load`：本仓库的 9 个插件模块 + 2 个 sidecar **没有任何一个**有「被真实 DSH 宿主装载成功」的公开证据。
-- `npm run start` 端到端（本仓库 profile 合成 + 插件装载 + 会话可用）。
-- 三平台：Linux / macOS 只到「CI 构建与离线测试」，桌面启动、侧车、宿主探测均未实测。
+- **`host-load` 已达成，但覆盖有边界**：核心五模块 + 陪伴空间 Web UI 在 Windows + 宿主 `0.2.1-rc.3` 上
+  真实装载成功（§2.1 的 C 段）。**未覆盖**：`dsh-channel-qq`（验收未启用通道，无 OneBot 服务）、
+  `companion-media` / `companion-health` / `dsh-paste-search`（验收未启用这些可选模块）、两个 sidecar。
+- **`npm run start` 的 `--detach`（后台）模式**：默认是**前台阻塞**模式，本轮只验证了前台起停；
+  `--detach` 下真实终端里进程能否存活**未验证**。
+- **路径形态**：含空格 + 含中文**已实跑通过**（§2.1 A 段）；**跨盘符、深层嵌套、网络盘、UNC 仍未验证**。
+- 三平台：Linux / macOS 只到「CI 构建与离线测试」（且 CI 尚未运行过），桌面启动、侧车、宿主探测均未实测。
+- 会话可用性：本轮只验证到「宿主起来了、UI 返回 200」，**没有做真实模型调用**，所以「能对话」仍未验证。
 
 **外部能力**
 
@@ -205,10 +237,9 @@
 
 **不允许**用豁免通道处理作者路径、作者名、真实凭据——那三类只能改掉，不能豁免。
 
-> **已知缺口（2026-11-05 记录）**：设计意图是「`.md` / `.mdx` 永远不能开豁免」（防止
-> 文档里讲一遍这个机制就把自己白掉）。但实现里 `allowedIn(text, rule, ext)` 的 ext 参数
-> 在扫描循环中**没有传入**，所以这条防线目前**没有生效**——markdown 里写标记仍然会豁免。
-> 本文档因此坚持用 `<规则名>` 占位。修好后本节改成「md 永不豁免」即可。
+> **`.md` / `.mdx` 永远不能开豁免**：即使文档里写了标记也不生效（用探针文件验证过：把
+> 带标记的 `.md` 放进 `docs/` 会被正常报出来，删掉即绿）。这样「讲解这个机制的文档」不可能顺手把
+> 自己（或别的文档）白掉。本文因此也可以安全地用 `<规则名>` 举例。
 
 ### 6.5 绿灯覆盖了什么、没覆盖什么
 

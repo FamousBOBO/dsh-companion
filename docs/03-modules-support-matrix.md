@@ -200,24 +200,29 @@ dsh-paste-search              独立（UI 入口）
 
 ### 4.1 发布树证据（本仓库）
 
+实测口径与证据锚点见 `docs/07` §2.1（提交 `cebcb84`，Windows + 宿主 `0.2.1-rc.3`，2026-11-05）。
+
 | 模块 | offline-test | host-load | real-api | real-send | hardware |
 |---|---|---|---|---|---|
-| `companion-foundation` | 见负责人交接报告 | 未验证 | 未验证 | — | — |
-| `companion-memory` | 见负责人交接报告 | 未验证 | 未验证 | — | — |
-| `companion-memory-studio` | 见负责人交接报告（`build:client --check`） | 未验证 | 未验证 | — | — |
-| `companion-runtime` | 见负责人交接报告 | 未验证 | 未验证 | — | — |
-| `companion-group` | 见负责人交接报告 | 未验证 | — | 未验证 | — |
-| `dsh-channel-qq` | 见负责人交接报告 | 未验证 | 未验证 | **未验证** | — |
-| `companion-media` | 见负责人交接报告（M4） | 未验证 | 未验证 | 未验证 | — |
-| `companion-health` | 见负责人交接报告 | 未验证 | 未验证 | — | 未验证 |
+| `companion-foundation` | **213 / 204 通过 / 0 失败 / 9 跳过** | **✅**（真实宿主启动，无 `did not activate`） | 未验证 | — | — |
+| `companion-memory` | **268 通过 / 0 失败** | **✅** | 未验证 | — | — |
+| `companion-memory-studio` | **115 通过 / 0 失败** | **✅**（UI 返回 HTTP 200） | 未验证 | — | — |
+| `companion-runtime` | **697 通过 / 0 失败** | **✅** | 未验证 | — | — |
+| `companion-group` | **10 通过 / 0 失败** | **✅** | — | 未验证 | — |
+| `dsh-channel-qq` | **1208 / 1207 通过 / 0 失败 / 1 跳过** | 未验证（验收未启用通道） | 未验证 | **未验证** | — |
+| `companion-media` | 通过（计数未单独汇总） | 未验证（验收未启用该模块） | 未验证 | 未验证 | — |
+| `companion-health` | 通过（计数未单独汇总） | 未验证（验收未启用该模块） | 未验证 | — | 未验证 |
 | `sidecars/huawei-health-cn` | 见负责人交接报告（本仓库自写的采集/脱敏/起停/测试部分） | — | **不适用**：上游协议实现未随仓库分发，历史上的 `real-api` 证据只属于原作者环境 | — | — |
 | `sidecars/ble-heart-rate` | 见负责人交接报告（`--fixture` 可无硬件跑） | — | — | — | 未验证 |
-| `dsh-paste-search` | 见负责人交接报告 | 未验证 | — | — | — |
+| `dsh-paste-search` | **无测试** | 未验证（验收未启用该模块） | — | — | — |
 | ~~`dsh-super-injector`~~ | **未收录**（原因见 §1.2），无证据也不应有 | — | — | — | — |
-| `tools/migrate`（迁移 CLI） | **10 项离线测试通过**（2026-11-05，`node --test tools/migrate/test/migrate.test.mjs`）；并在**真实数据副本**上跑通 `export`（976 条记忆，VACUUM INTO 快照）/ `check` / `import --dry-run` | — | — | — | — |
+| `tools/migrate`（迁移 CLI） | **10 项离线测试通过**（`node --test tools/migrate/test/migrate.test.mjs`）；并在**真实数据副本**上跑通 `export`（976 条记忆，VACUUM INTO 快照）/ `check` / `import --dry-run` | — | — | — | — |
 
-> 「见负责人交接报告」= 该模块负责人给出的计数尚未汇总进本文；不要把它当成「已通过」，
-> 具体数字以 `release-tools/` 下的模块交接报告为准。
+> 「✅ host-load」的依据是**真实宿主启动日志里没有一条 `did not activate`**，且 doctor 的 profile
+> 合成（311 个条目）与 `compose`（194 个 loader 行）都通过；**不等于能对话**——会话需要真实模型调用，
+> 那属于 `real-api`，仍未验证。
+>
+> 「计数未单独汇总」= 该模块在 `unit` 里是绿的，但负责人的分项数字还没并进本文；**不要当成「已通过」**。
 
 ### 4.2 生产系统历史证据（**不是**本仓库的验收）
 
@@ -239,7 +244,9 @@ dsh-paste-search              独立（UI 入口）
 
 ### 4.3 结论怎么说才准确
 
-- 「本仓库当前状态」：详见上表 4.1。大部分模块到 `offline-test`，`host-load` 与 `real-*` **未验证**。
+- 「本仓库当前状态」：核心五模块 + 陪伴空间 UI 到 **`host-load`**（真实宿主装载、UI 200、可干净停止），
+  全部模块到 **`offline-test`**；**`real-api` / `real-send` / `hardware` 未验证**。
+- 「跑在哪些平台上」：Windows 实机通过（含**空格 + 中文**路径）；**Linux / macOS 未验证**。
 - 「这套设计曾经到过哪里」：见 4.2，但那是原作者机器上的系统。
 - 任何文档、README、UI 都**不得**把 4.2 写成 4.1 的成绩。
 

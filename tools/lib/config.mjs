@@ -56,6 +56,9 @@ export const SAFE_DEFAULTS = {
     health: { sidecarUrl: '' },
     media: { baseUrl: '', apiKeyEnv: '' },
   },
+  // QQ idle compaction calls a model, so it is off unless explicitly enabled. Top-level on
+  // purpose: it is not a module switch (see docs/02 §2.4.1).
+  qqIdleCompaction: false,
   safety: {
     // Anything that can spend money or reach another human stays off by default.
     autoSend: false,
