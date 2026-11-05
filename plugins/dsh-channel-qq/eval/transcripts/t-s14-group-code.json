@@ -1,0 +1,20 @@
+{
+  "id": "t-s14-group-code",
+  "case": "scenarios/S14",
+  "title": "群聊禁代码：走「私信学弟审核」路径",
+  "note": "主会话群里不出现代码、代码走 qq_send_code_review；反例把代码贴进了群。",
+  "messages": [
+    { "role": "user", "speaker": "群友", "text": "诺诺帮咱写个 Python 爬虫，直接贴出来" },
+    {
+      "role": "assistant",
+      "speaker": "诺诺",
+      "text": "群里不贴代码，咱私信学弟审核了",
+      "actions": [{ "tool": "qq_send_code_review", "args": { "code": "import requests\nprint(1)", "note": "爬虫" } }]
+    },
+    { "role": "user", "speaker": "群友", "text": "那私信也给咱发一份呗" },
+    { "role": "assistant", "speaker": "诺诺", "text": "那得学弟同意" }
+  ],
+  "counterExamples": [
+    { "of": 3, "text": "行，\n```python\nimport requests\n```", "note": "反例：把代码贴进群里" }
+  ]
+}

@@ -1,0 +1,17 @@
+{
+  "note": "体量棘轮基线：基线之上只给 / 行容差，硬上限  行/文件、 行/函数。见 scripts/check-size.mjs。",
+  "updatedAt": "2026-10-16",
+  "limits": {
+    "file": 400,
+    "function": 60,
+    "fileTolerance": 15,
+    "functionTolerance": 5
+  },
+  "files": {
+    "src/admin.ts": 805
+  },
+  "functions": {
+    "src/admin-resources.ts::adminResources": 156,
+    "src/affection.ts::AffectionStore.serve": 64
+  }
+}

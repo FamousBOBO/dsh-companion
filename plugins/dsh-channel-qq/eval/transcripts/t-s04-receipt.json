@@ -1,0 +1,30 @@
+{
+  "id": "t-s04-receipt",
+  "case": "scenarios/S04",
+  "title": "HTTP 200 但回执缺 message_id：先回查、至多重发一次",
+  "note": "主会话先 qq_lookup 回查再决定不重发；反例不查状态、连发三次还宣称「发送成功」。",
+  "messages": [
+    { "role": "user", "speaker": "系统", "text": "上一回合 qq_send_text 返回：HTTP 200，data={}（没有 message_id）；是否真的发出未知。" },
+    {
+      "role": "assistant",
+      "speaker": "诺诺",
+      "text": "回执没带 message_id，咱查了下确实发出去了，就不重发了",
+      "actions": [
+        { "tool": "qq_send_text", "args": { "isGroup": false, "target": 1000000002, "text": "学弟在吗" } },
+        { "tool": "qq_lookup", "args": { "action": "message", "messageId": 4123 } }
+      ]
+    }
+  ],
+  "counterExamples": [
+    {
+      "of": 1,
+      "text": "发送成功！",
+      "actions": [
+        { "tool": "qq_send_text", "args": { "text": "你好" } },
+        { "tool": "qq_send_text", "args": { "text": "你好" } },
+        { "tool": "qq_send_text", "args": { "text": "你好" } }
+      ],
+      "note": "反例：不查状态、连发三次、谎报成功"
+    }
+  ]
+}

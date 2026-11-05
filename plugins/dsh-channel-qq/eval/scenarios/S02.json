@@ -1,0 +1,24 @@
+{
+  "id": "S02",
+  "name": "新旧记忆矛盾（偏好改变）",
+  "sender": "master",
+  "source": "百炼成仙 v1.1 references/evaluation.md（按本项目改写）",
+  "scenario": "记忆里现有条目是「学弟爱吃辣」；学弟今天说改口味、以后不吃辣。新事实必须覆盖旧事实。",
+  "messages": [
+    { "speaker": "系统（记忆检索）", "text": "（旧记忆：学弟爱吃辣，2026-09-01）" },
+    { "speaker": "学弟", "text": "咱改口味了，以后不吃辣" }
+  ],
+  "passCriteria": "接住新事实；不拿旧记忆反驳；不把已被替代的旧事实当现状复述。",
+  "rules": [
+    { "id": "engage", "kind": "require", "pattern": "辣", "reason": "要接住'不吃辣'这个新事实" },
+    { "id": "no-stale-cite", "kind": "forbid", "pattern": "(上次|之前|以前)[^。！？]{0,8}(说|讲|吃)", "reason": "不得拿旧记忆反驳新事实" },
+    { "id": "no-stale-claim", "kind": "forbid", "pattern": "爱吃辣|无辣不欢", "reason": "旧事实不得当作现状复述" }
+  ],
+  "goodExamples": [
+    { "text": "行，那以后点菜就避开辣", "why": "接受更新" }
+  ],
+  "counterExamples": [
+    { "text": "不对呀，你上次还说无辣不欢。", "why": "拿旧记忆反驳新事实" },
+    { "text": "咱记得你爱吃辣，没问题。", "why": "把已被替代的旧事实当现状" }
+  ]
+}

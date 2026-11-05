@@ -1,0 +1,930 @@
+{
+  "name": "qq_message",
+  "description": "发消息与消息操作：发送文本（send）、引用回复（reply）、撤回（recall）、戳一戳（poke）、给好友点赞（like），以及把代码私信发给主人审核（code_review）——群里禁止贴代码，要发代码只能走 code_review。要发言用 send 或 reply；回复某条#编号必须用 reply 引用那条，别只写正文。\n动作（方括号是平台，括号里是必填字段）：send（isGroup、target、text）｜reply（isGroup、target、messageId、text）｜recall（messageId）｜poke（groupId、userId）｜like（userId）｜code_review（code）",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "send",
+          "reply",
+          "recall",
+          "poke",
+          "like",
+          "code_review"
+        ],
+        "description": "要做的动作：send / reply / recall / poke / like / code_review"
+      },
+      "isGroup": {
+        "type": "boolean",
+        "description": "是否发到群聊（false=私聊）；当前会话的归属见系统包里的【本会话是QQ群/私聊】标注，发错窗口是大事故"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号"
+      },
+      "text": {
+        "type": "string",
+        "description": "消息/回复正文"
+      },
+      "phase": {
+        "type": "string",
+        "description": "progress=慢任务前的一次等待提示，发送后继续执行工具；final=最终答复，省略时默认final",
+        "enum": [
+          "progress",
+          "final"
+        ]
+      },
+      "messageId": {
+        "type": "number",
+        "description": "消息#编号（来自上下文包或会话记录）"
+      },
+      "groupId": {
+        "type": "number",
+        "description": "群号"
+      },
+      "userId": {
+        "type": "number",
+        "description": "目标QQ号"
+      },
+      "times": {
+        "type": "number",
+        "description": "点赞次数（≤10）"
+      },
+      "code": {
+        "type": "string",
+        "description": "完整代码内容"
+      },
+      "note": {
+        "type": "string",
+        "description": "一句话说明（视动作：代码用途 / 情景备注）"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}
+{
+  "name": "qq_lookup",
+  "description": "查询 QQ 侧的资料与历史：单条消息（message）、群成员（member）、群资料（group）、群列表（groups）、好友列表（friends）、群精华（essence）、聊天记录（history，可按关键词/发送者/日期过滤）。回答\"上次那个/翻翻记录/查查这个人\"之前先用它。\n动作（方括号是平台，括号里是必填字段）：message（messageId）｜member（groupId、userId）｜group（groupId）｜groups（无必填）｜friends（无必填）｜essence（groupId）｜history（无必填）",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "message",
+          "member",
+          "group",
+          "groups",
+          "friends",
+          "essence",
+          "history"
+        ],
+        "description": "要做的动作：message / member / group / groups / friends / essence / history"
+      },
+      "messageId": {
+        "type": "number",
+        "description": "消息#编号（来自上下文包或会话记录）"
+      },
+      "groupId": {
+        "type": "number",
+        "description": "群号"
+      },
+      "userId": {
+        "type": "number",
+        "description": "目标QQ号"
+      },
+      "isGroup": {
+        "type": "boolean",
+        "description": "是否发到群聊（false=私聊）；当前会话的归属见系统包里的【本会话是QQ群/私聊】标注，发错窗口是大事故"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号"
+      },
+      "keyword": {
+        "type": "string",
+        "description": "歌名或歌手"
+      },
+      "senderId": {
+        "type": "number",
+        "description": "按发送者QQ号过滤"
+      },
+      "sinceDate": {
+        "type": "string",
+        "description": "起始日期 YYYY-MM-DD（含）"
+      },
+      "untilDate": {
+        "type": "string",
+        "description": "结束日期 YYYY-MM-DD（含）"
+      },
+      "limit": {
+        "type": "number",
+        "description": "返回条数"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}
+{
+  "name": "qq_group_admin",
+  "description": "群管理动作：禁言（ban，60-300 秒）、踢人（kick）、全员禁言（whole_ban）、设/撤管理员（set_admin）、改群名片（set_card）、设精华（set_essence）、撤精华（unset_essence）、手动禁言刷屏者（mute_flooder）。这些动作会真的影响到群成员：只有主人发起的回合能执行，其余回合会被策略拦下。\n动作（方括号是平台，括号里是必填字段）：ban（groupId、userId）｜kick（groupId、userId）｜whole_ban（groupId、enable）｜set_admin（groupId、userId、enable）｜set_card（groupId、userId、card）｜set_essence（messageId）｜unset_essence（messageId）｜mute_flooder（groupId、userId、seconds）",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "ban",
+          "kick",
+          "whole_ban",
+          "set_admin",
+          "set_card",
+          "set_essence",
+          "unset_essence",
+          "mute_flooder"
+        ],
+        "description": "要做的动作：ban / kick / whole_ban / set_admin / set_card / set_essence / unset_essence / mute_flooder"
+      },
+      "groupId": {
+        "type": "number",
+        "description": "群号"
+      },
+      "userId": {
+        "type": "number",
+        "description": "目标QQ号"
+      },
+      "duration": {
+        "type": "number",
+        "description": "禁言秒数（60-300）"
+      },
+      "rejectAddRequest": {
+        "type": "boolean",
+        "description": "是否拒绝此人再次加群"
+      },
+      "enable": {
+        "type": "boolean",
+        "description": "true=开启/设为，false=关闭/取消"
+      },
+      "card": {
+        "type": "string",
+        "description": "新群名片，空字符串删除名片"
+      },
+      "messageId": {
+        "type": "number",
+        "description": "消息#编号（来自上下文包或会话记录）"
+      },
+      "seconds": {
+        "type": "number",
+        "description": "禁言秒数（60–2592000，越界会被夹住）"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}
+{
+  "name": "qq_group_file",
+  "description": "群文件管理：列出（list）、上传（upload）、下载到工作区（download）、新建文件夹（mkdir）、移动（move）、重命名（rename）、删除（delete）。写操作（上传/建夹/移动/改名/删除）只有主人的回合能执行。\n动作（方括号是平台，括号里是必填字段）：list（groupId）｜upload（groupId、file）｜download（groupId、fileId）｜mkdir（groupId、folderName）｜move（groupId、fileId、currentParentDirectory、targetParentDirectory）｜rename（groupId、fileId、currentParentDirectory、newName）｜delete（groupId、fileId）",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "list",
+          "upload",
+          "download",
+          "mkdir",
+          "move",
+          "rename",
+          "delete"
+        ],
+        "description": "要做的动作：list / upload / download / mkdir / move / rename / delete"
+      },
+      "groupId": {
+        "type": "number",
+        "description": "群号"
+      },
+      "folderId": {
+        "type": "string",
+        "description": "文件夹ID，不填=根目录"
+      },
+      "file": {
+        "type": "string",
+        "description": "本地文件绝对路径"
+      },
+      "name": {
+        "type": "string",
+        "description": "显示名（文件名 / 歌名）"
+      },
+      "fileId": {
+        "type": "string",
+        "description": "文件ID（来自文件列表或文件消息）"
+      },
+      "saveAs": {
+        "type": "string",
+        "description": "保存的文件名，存到工作区 downloads/ 下"
+      },
+      "folderName": {
+        "type": "string",
+        "description": "文件夹名"
+      },
+      "parentId": {
+        "type": "string",
+        "description": "父文件夹ID，不填=根目录"
+      },
+      "currentParentDirectory": {
+        "type": "string",
+        "description": "当前父目录ID（来自文件列表）"
+      },
+      "targetParentDirectory": {
+        "type": "string",
+        "description": "目标父目录ID"
+      },
+      "newName": {
+        "type": "string",
+        "description": "新文件名"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}
+{
+  "name": "qq_file",
+  "description": "私聊文件：给好友发本地文件（send_private）、把收到的私聊文件存到工作区（save_private）、拿文件下载链接（url）。\n动作（方括号是平台，括号里是必填字段）：send_private（userId、file）｜save_private（fileId）｜url（fileId）",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "send_private",
+          "save_private",
+          "url"
+        ],
+        "description": "要做的动作：send_private / save_private / url"
+      },
+      "userId": {
+        "type": "number",
+        "description": "目标QQ号"
+      },
+      "file": {
+        "type": "string",
+        "description": "本地文件绝对路径"
+      },
+      "name": {
+        "type": "string",
+        "description": "显示名（文件名 / 歌名）"
+      },
+      "fileId": {
+        "type": "string",
+        "description": "文件ID（来自文件列表或文件消息）"
+      },
+      "saveAs": {
+        "type": "string",
+        "description": "保存的文件名，存到工作区 downloads/ 下"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}
+{
+  "name": "qq_sticker",
+  "description": "表情包：搜索收藏库（search）、列出全部（list）、按文件名直接发（send）、按情绪一步到位发（send_by_mood）、库统计（stats）、给本地图配上下两行字做成表情包（make，只生成文件）、现做现发（send_made）、给已收藏的表情配一句话再发（caption）。拿不准氛围就先 search 看清楚再决定。\n动作（方括号是平台，括号里是必填字段）：search（query）｜list（无必填）｜send（isGroup、target、file）｜send_by_mood（query、isGroup、target）｜stats（无必填）｜make（image）｜send_made（image、isGroup、target）｜caption（file、text）",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "search",
+          "list",
+          "send",
+          "send_by_mood",
+          "stats",
+          "make",
+          "send_made",
+          "caption"
+        ],
+        "description": "要做的动作：search / list / send / send_by_mood / stats / make / send_made / caption"
+      },
+      "query": {
+        "type": "string",
+        "description": "关键词（情绪/语义/文本）"
+      },
+      "limit": {
+        "type": "number",
+        "description": "返回条数"
+      },
+      "isGroup": {
+        "type": "boolean",
+        "description": "是否发到群聊（false=私聊）；当前会话的归属见系统包里的【本会话是QQ群/私聊】标注，发错窗口是大事故"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号"
+      },
+      "file": {
+        "type": "string",
+        "description": "本地文件绝对路径"
+      },
+      "fallbackRandom": {
+        "type": "boolean",
+        "description": "搜不到时随机发一张（默认 false）"
+      },
+      "image": {
+        "type": "string",
+        "description": "本地图片绝对路径（png/jpg/gif/webp/bmp）"
+      },
+      "top": {
+        "type": "string",
+        "description": "上句文字，可空"
+      },
+      "bottom": {
+        "type": "string",
+        "description": "下句文字，可空"
+      },
+      "text": {
+        "type": "string",
+        "description": "消息/回复正文"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}
+{
+  "name": "qq_voice",
+  "description": "语音：把文字念成语音条发出去（tts_send）、只生成音频文件（tts_save）、列可用音色（voices）、QQ 自带 AI 音色的发送（ai_send，仅群聊）与只取音频 URL（ai_url）、探测实例能否发语音（can_send）、把本地音频当语音条发（send_file）。想用语音说话走 tts_send 或 send_file。\n动作（方括号是平台，括号里是必填字段）：tts_send（text、isGroup、target）｜tts_save（text）｜voices（无必填）｜ai_send（groupId、character、text）｜ai_url（groupId、character、text）｜can_send（无必填）｜send_file（isGroup、target、file）",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "tts_send",
+          "tts_save",
+          "voices",
+          "ai_send",
+          "ai_url",
+          "can_send",
+          "send_file"
+        ],
+        "description": "要做的动作：tts_send / tts_save / voices / ai_send / ai_url / can_send / send_file"
+      },
+      "text": {
+        "type": "string",
+        "description": "消息/回复正文"
+      },
+      "isGroup": {
+        "type": "boolean",
+        "description": "是否发到群聊（false=私聊）；当前会话的归属见系统包里的【本会话是QQ群/私聊】标注，发错窗口是大事故"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号"
+      },
+      "voice": {
+        "type": "string",
+        "description": "音色名（见 voices 动作）；不填用配置默认"
+      },
+      "rate": {
+        "type": "string",
+        "description": "语速，如 +10%"
+      },
+      "pitch": {
+        "type": "string",
+        "description": "音调，如 +20Hz"
+      },
+      "volume": {
+        "type": "string",
+        "description": "音量，如 +20%"
+      },
+      "groupId": {
+        "type": "number",
+        "description": "群号"
+      },
+      "character": {
+        "type": "string",
+        "description": "QQ音色ID，如 ai_char_1"
+      },
+      "file": {
+        "type": "string",
+        "description": "本地文件绝对路径"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}
+{
+  "name": "qq_music",
+  "description": "音乐：搜索（search）、解析播放直链（resolve）、点歌（send_card，默认发语音条，后台「点歌发文件」打开后发音频文件）、以语音条发歌（send_voice）、歌词（lyrics）、个人歌单（playlist）、扫码登录（login_start / login_poll）、登录状态（status）。\n动作（方括号是平台，括号里是必填字段）：search[netease]（keyword）｜search[kugou]（keyword）｜resolve[netease]（songId）｜send_card[netease]（target、songId）｜send_voice[netease]（target、songId）｜send_voice[kugou]（target、hash）｜lyrics[netease]（songId）｜playlist（op）｜login_start[netease]（无必填）｜login_poll[netease]（key）｜login_start[kugou]（无必填）｜login_poll[kugou]（key）｜status[netease]（无必填）\nprovider 默认 netease（网易云）；酷狗（kugou）只有 search / send_voice / login_start / login_poll，其余动作传 kugou 会报错。歌单 playlist 的子动作用 op：add / remove / list / clear，add 需要 songId 和 name。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "search",
+          "resolve",
+          "send_card",
+          "send_voice",
+          "lyrics",
+          "playlist",
+          "login_start",
+          "login_poll",
+          "status"
+        ],
+        "description": "要做的动作：search / resolve / send_card / send_voice / lyrics / playlist / login_start / login_poll / status"
+      },
+      "provider": {
+        "type": "string",
+        "enum": [
+          "netease",
+          "kugou"
+        ],
+        "description": "音乐平台（默认 netease）"
+      },
+      "keyword": {
+        "type": "string",
+        "description": "歌名或歌手"
+      },
+      "limit": {
+        "type": "number",
+        "description": "返回条数"
+      },
+      "songId": {
+        "type": "string",
+        "description": "网易云歌曲ID"
+      },
+      "name": {
+        "type": "string",
+        "description": "显示名（文件名 / 歌名）"
+      },
+      "artists": {
+        "type": "string",
+        "description": "歌手（歌单 add 时可选）"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号"
+      },
+      "private": {
+        "type": "boolean",
+        "description": "true=私聊发送（默认群聊）"
+      },
+      "hash": {
+        "type": "string",
+        "description": "歌曲hash（来自酷狗搜索）"
+      },
+      "quality": {
+        "type": "string",
+        "description": "音质（默认 auto）"
+      },
+      "op": {
+        "type": "string",
+        "description": "歌单子动作：add / remove / list / clear（add 需要 songId 和 name）",
+        "enum": [
+          "add",
+          "remove",
+          "list",
+          "clear"
+        ]
+      },
+      "key": {
+        "type": "string",
+        "description": "扫码登录轮询时传 start 返回的 key"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}
+{
+  "name": "qq_link",
+  "description": "链接：解析一条链接拿「标题 + 简介 + 封面」（resolve）——群里有人甩链接、想知道那条 B站视频/歌曲/仓库讲的是什么时用；把链接做成卡片发到群或私聊（send_card，先发封面再发文本，封面失败自动降级成纯文本）。\n动作（方括号是平台，括号里是必填字段）：resolve（url）｜send_card（url、target）",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "resolve",
+          "send_card"
+        ],
+        "description": "要做的动作：resolve / send_card"
+      },
+      "url": {
+        "type": "string",
+        "description": "链接/地址"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号"
+      },
+      "isGroup": {
+        "type": "boolean",
+        "description": "是否发到群聊（false=私聊）；当前会话的归属见系统包里的【本会话是QQ群/私聊】标注，发错窗口是大事故"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}
+{
+  "name": "qq_image",
+  "description": "AI 生图：按提示词生成并直接发到会话（generate）、只生成保存到磁盘（generate_save）、查看生图后端配置（models）。提示词建议英文（主体+风格+氛围）；生图要 10~40 秒，别催。\n动作（方括号是平台，括号里是必填字段）：generate（prompt）｜generate_save（prompt）｜models（无必填）",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "generate",
+          "generate_save",
+          "models"
+        ],
+        "description": "要做的动作：generate / generate_save / models"
+      },
+      "prompt": {
+        "type": "string",
+        "description": "绘图提示词（建议英文，写清主体/风格/氛围）"
+      },
+      "isGroup": {
+        "type": "boolean",
+        "description": "是否发到群聊（false=私聊）；当前会话的归属见系统包里的【本会话是QQ群/私聊】标注，发错窗口是大事故"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}
+{
+  "name": "qq_quote",
+  "description": "群语录：收录一条金句/群梗（save，原话照抄不要改写）、随机复读（random，可按 tag 过滤、可只查不发）、检索（search）、库统计（stats）、删除（delete）。\n动作（方括号是平台，括号里是必填字段）：save（text）｜random（无必填）｜search（query）｜stats（无必填）｜delete（id）",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "save",
+          "random",
+          "search",
+          "stats",
+          "delete"
+        ],
+        "description": "要做的动作：save / random / search / stats / delete"
+      },
+      "text": {
+        "type": "string",
+        "description": "消息/回复正文"
+      },
+      "speaker": {
+        "type": "string",
+        "description": "说话人昵称"
+      },
+      "speakerId": {
+        "type": "number",
+        "description": "说话人QQ号"
+      },
+      "groupId": {
+        "type": "number",
+        "description": "群号"
+      },
+      "tags": {
+        "type": "array",
+        "description": "标签数组，便于以后检索",
+        "items": {
+          "type": "string"
+        }
+      },
+      "note": {
+        "type": "string",
+        "description": "一句话说明（视动作：代码用途 / 情景备注）"
+      },
+      "tag": {
+        "type": "string",
+        "description": "按标签过滤"
+      },
+      "isGroup": {
+        "type": "boolean",
+        "description": "是否发到群聊（false=私聊）；当前会话的归属见系统包里的【本会话是QQ群/私聊】标注，发错窗口是大事故"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号"
+      },
+      "send": {
+        "type": "boolean",
+        "description": "false = 只返回不发送（默认 true）"
+      },
+      "query": {
+        "type": "string",
+        "description": "关键词（情绪/语义/文本）"
+      },
+      "limit": {
+        "type": "number",
+        "description": "返回条数"
+      },
+      "id": {
+        "type": "string",
+        "description": "记录 id（从对应的 list / search 拿）"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}
+{
+  "name": "qq_remind",
+  "description": "提醒：用自然语言定提醒（add，\"明天9点叫我起床\"这类；认不出写法时会返回支持的写法列表）、用确切时间定（add_at，Unix 毫秒时间戳或 \"YYYY-MM-DD HH:mm\"）、列出（list）、取消（cancel）。到点由主控推送到指定房间。\n动作（方括号是平台，括号里是必填字段）：add（when、text）｜add_at（at、text）｜list（无必填）｜cancel（id）",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "add",
+          "add_at",
+          "list",
+          "cancel"
+        ],
+        "description": "要做的动作：add / add_at / list / cancel"
+      },
+      "when": {
+        "type": "string",
+        "description": "什么时候提醒，如\"明天9点\"、\"5分钟后\"、\"每天下午3点\""
+      },
+      "text": {
+        "type": "string",
+        "description": "消息/回复正文"
+      },
+      "isGroup": {
+        "type": "boolean",
+        "description": "是否发到群聊（false=私聊）；当前会话的归属见系统包里的【本会话是QQ群/私聊】标注，发错窗口是大事故"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号"
+      },
+      "sessionId": {
+        "type": "string",
+        "description": "可选：当前会话 id（宿主注入）。只在与本条提醒的房间一致时才用于建日程绑定，否则忽略。"
+      },
+      "createdBy": {
+        "type": "number",
+        "description": "发起人QQ号"
+      },
+      "at": {
+        "type": "string",
+        "description": "Unix 毫秒时间戳或 \"YYYY-MM-DD HH:mm\""
+      },
+      "repeat": {
+        "type": "string",
+        "description": "重复方式，默认 none",
+        "enum": [
+          "none",
+          "daily",
+          "weekly"
+        ]
+      },
+      "limit": {
+        "type": "number",
+        "description": "返回条数"
+      },
+      "id": {
+        "type": "string",
+        "description": "记录 id（从对应的 list / search 拿）"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}
+{
+  "name": "qq_rss",
+  "description": "RSS/Atom 订阅：订阅一个源（add，会先真拉一次验证地址，拉不通不写配置）、列出全部（list）、按 id 取消（remove）、只预览地址最新 5 条不写订阅（preview）。有更新会自动推送到订阅里指定的房间。\n动作（方括号是平台，括号里是必填字段）：add（url）｜list（无必填）｜remove（id）｜preview（url）",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "add",
+          "list",
+          "remove",
+          "preview"
+        ],
+        "description": "要做的动作：add / list / remove / preview"
+      },
+      "url": {
+        "type": "string",
+        "description": "链接/地址"
+      },
+      "isGroup": {
+        "type": "boolean",
+        "description": "是否发到群聊（false=私聊）；当前会话的归属见系统包里的【本会话是QQ群/私聊】标注，发错窗口是大事故"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号"
+      },
+      "id": {
+        "type": "string",
+        "description": "记录 id（从对应的 list / search 拿）"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}
+{
+  "name": "qq_memory",
+  "description": "长期记忆：主动召回（recall，带类型过滤，命中的条目会被强化）、把一条事实写进记忆（memorize）、检索知识库（retrieve）、从一段文字批量提取入库（extract）。回答\"你还记得…\"\"上次那个\"之前先 recall 或 retrieve；日常寒暄不要写记忆。\n动作（方括号是平台，括号里是必填字段）：recall（query）｜memorize（content）｜retrieve（query）｜extract（source、text）｜search（query）",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "recall",
+          "memorize",
+          "retrieve",
+          "extract",
+          "search"
+        ],
+        "description": "要做的动作：recall / memorize / retrieve / extract / search"
+      },
+      "query": {
+        "type": "string",
+        "description": "关键词（情绪/语义/文本）"
+      },
+      "type": {
+        "type": "string",
+        "description": "记忆类型：skill / fact / preference / event / person"
+      },
+      "limit": {
+        "type": "number",
+        "description": "返回条数"
+      },
+      "reinforce": {
+        "type": "boolean",
+        "description": "是否强化命中条目（默认 true）"
+      },
+      "content": {
+        "type": "string",
+        "description": "一句话知识，写清楚人和事"
+      },
+      "tags": {
+        "type": "array",
+        "description": "标签数组，便于以后检索",
+        "items": {
+          "type": "string"
+        }
+      },
+      "source": {
+        "type": "string",
+        "description": "来源简述，如\"群聊 2026-10-14\""
+      },
+      "text": {
+        "type": "string",
+        "description": "消息/回复正文"
+      },
+      "asOf": {
+        "type": "string",
+        "description": "时间旅行（可选）：只要某天（YYYY-MM-DD）之前已知道的记忆"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}
+{
+  "name": "qq_learn",
+  "description": "群聊口癖学习：看群友最近在复读什么（top，带次数与语境）、手动记住一句梗（learn）、忘掉某句（forget）、运行状态（stats）。学到的话在合适的时候自然用出来，别生硬堆砌、也别拿来冒充别人说话。\n动作（方括号是平台，括号里是必填字段）：top（无必填）｜learn（text）｜forget（text）｜stats（无必填）",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "top",
+          "learn",
+          "forget",
+          "stats"
+        ],
+        "description": "要做的动作：top / learn / forget / stats"
+      },
+      "limit": {
+        "type": "number",
+        "description": "返回条数"
+      },
+      "groupId": {
+        "type": "number",
+        "description": "群号"
+      },
+      "text": {
+        "type": "string",
+        "description": "消息/回复正文"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}
+{
+  "name": "qq_flood",
+  "description": "刷屏风控：看当前状态（stats，跟踪人数/累计触发/阈值/动作）、把某个 QQ 号加进或移出豁免名单（exempt，改的是内存配置，重启回到文件值）。\n动作（方括号是平台，括号里是必填字段）：stats（无必填）｜exempt（userId）",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "stats",
+          "exempt"
+        ],
+        "description": "要做的动作：stats / exempt"
+      },
+      "userId": {
+        "type": "number",
+        "description": "目标QQ号"
+      },
+      "remove": {
+        "type": "boolean",
+        "description": "true = 移出豁免名单，不传/false = 加入"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}
+{
+  "name": "qq_affection",
+  "description": "好感度：给一次让你起波澜的事记账（book，delta -30~30）、阶段宣言（set_stage，阶段名和理由由自己定义）、重写悬浮窗页面（write_dashboard，整页 HTML）。仅主人私聊的回合能用；每次变化都要记账，绝不漏账。\n动作（方括号是平台，括号里是必填字段）：book（delta、reason）｜set_stage（stage、event）｜write_dashboard（html）",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "enum": [
+          "book",
+          "set_stage",
+          "write_dashboard"
+        ],
+        "description": "要做的动作：book / set_stage / write_dashboard"
+      },
+      "delta": {
+        "type": "number",
+        "description": "好感度变化值（-30~30）"
+      },
+      "reason": {
+        "type": "string",
+        "description": "原因一句话"
+      },
+      "stage": {
+        "type": "string",
+        "description": "目标阶段名（必须是阶梯里的名字）"
+      },
+      "event": {
+        "type": "string",
+        "description": "触发晋升的特殊事件描述（原文+时间）"
+      },
+      "html": {
+        "type": "string",
+        "description": "完整的HTML文档（会替换整个悬浮窗页面）"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}

@@ -1,0 +1,60 @@
+# SnowLuma（默认协议端）：镜像内置 Linux QQ + Xvfb + noVNC，宿主机只需 Docker。
+#
+#   docker compose -f deploy/snowluma/compose.yaml up -d
+#
+# 首次启动后：
+#   1) 初始 WebUI 口令在 `docker compose logs snowluma | grep "initial credentials"`；
+#   2) 编辑容器内 /app/data/config/onebot.json，把 wsServers[0].accessToken 改成
+#      与插件配置的 accessToken 一致（插件用 Authorization: Bearer 握手）；
+#   3) 浏览器走 SSH 隧道访问 5099（WebUI）或 6081（noVNC，VNC 密码在
+#      /app/data/config/vnc-password），扫码登录 QQ（**确认勾上「自动登录」**）。
+#
+# 登录态：**「自动登录」必须在扫码页当场勾上**，勾选框状态存在加密的
+# global/nt_db/login.db 里，全局 mmkv 的 `kAutoLoginUid` 非空**不代表**已启用
+# （2026-10-19 实测：该键已置位但勾选框是空的，重启后仍要扫码）。
+# 勾上并扫码之后 `docker restart` 可自动登录（实测约 60 秒，无需扫码）；
+# 三个卷都用固定名，保留卷的 `up -d` 重建同样不丢登录态，但未做破坏性实测，
+# 重建时请守在 noVNC 前。删卷/换卷名/QQ 服务端判会话失效才一定要再扫。
+# SnowLuma 自身没有自动登录开关，它只起 QQ 并在 [Hook] 里等 `login detected`。
+#
+# 端口一律只发布到 127.0.0.1：WebUI/noVNC 都是控制面，不该公网可达。
+services:
+  snowluma:
+    image: motricseven7/snowluma:latest
+    container_name: snowluma
+    restart: unless-stopped
+    # QQ 是 Chromium 系客户端：共享内存太小会花屏/崩溃
+    shm_size: 1g
+    cap_add:
+      - SYS_PTRACE
+    security_opt:
+      - seccomp=unconfined
+    environment:
+      SNOWLUMA_WEBUI_HOST: 0.0.0.0
+      SNOWLUMA_WEBUI_PORT: "5099"
+      # 表示运营者已阅读并同意发行包内的 EULA 与隐私政策（无人值守部署用）
+      SNOWLUMA_ACCEPT_EULA: "1"
+      SNOWLUMA_ACCEPT_PRIVACY: "1"
+      SNOWLUMA_QQ_FLAGS: "--disable-gpu --disable-software-rasterizer --disable-gpu-compositing"
+    ports:
+      - "127.0.0.1:6081:6081"   # noVNC
+      - "127.0.0.1:5099:5099"   # WebUI
+      - "127.0.0.1:3000:3000"   # OneBot HTTP
+      - "127.0.0.1:3001:3001"   # OneBot WS（插件连这个）
+    volumes:
+      - qq-gateway-data:/app/data
+      - qq-client-config:/app/.config
+      - qq-client-data:/app/.local/share
+      # 只读挂载：插件递过去的宿主绝对路径在容器里必须存在，否则只能退回 base64
+      # （8MiB 上限、音频还要放大 4/3）。按自己的部署改这两行。
+      - ~/.dsh/channel-qq:~/.dsh/channel-qq:ro
+      - /path/to/workspace:/path/to/workspace:ro
+
+volumes:
+  # 固定卷名：换用 compose 重建容器时不能新建空卷，否则 QQ 登录态会丢
+  qq-gateway-data:
+    name: qq-gateway-data
+  qq-client-config:
+    name: qq-client-config
+  qq-client-data:
+    name: qq-client-data

@@ -1,0 +1,14 @@
+{
+  "id": "t-s02-memory-conflict",
+  "case": "scenarios/S02",
+  "title": "新旧记忆矛盾：新事实覆盖旧事实",
+  "note": "旧记忆「爱吃辣」被新说法取代；主会话只认新事实；反例拿旧记忆反驳。",
+  "messages": [
+    { "role": "user", "speaker": "系统（记忆检索）", "text": "（旧记忆：学弟爱吃辣，2026-09-01）" },
+    { "role": "user", "speaker": "学弟", "text": "咱改口味了，以后不吃辣" },
+    { "role": "assistant", "speaker": "诺诺", "text": "行，那以后点菜就避开辣" }
+  ],
+  "counterExamples": [
+    { "of": 2, "text": "不对呀，你上次还说无辣不欢", "note": "反例：拿旧记忆反驳新事实" }
+  ]
+}

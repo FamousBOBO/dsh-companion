@@ -1,0 +1,28 @@
+{
+  "//": "标准构建配置（`npm run build` / `npm run typecheck` / `tsconfig.test.json` 都继承它）。",
+  "//paths": "把两个运行时 peer 包映射到 `vendor/types/*` 的声明文件：本机 node_modules/@deepseek-ai/* 是指向已安装 DSH 运行时的 junction，那份产物不带 .d.ts，不映射就会在 src/plugin.ts、src/services.ts、src/adapters/dsh-host/{agent,skills}.ts、test/fakes/host.ts 上报 TS7016。映射只影响**类型解析**，emitted import 说明符仍是裸包名，运行时解析没变。TS≥5 允许没有 baseUrl 的 paths（相对本文件解析）。",
+  "compilerOptions": {
+    "target": "ES2022",
+    "module": "NodeNext",
+    "moduleResolution": "NodeNext",
+    "lib": ["ES2022"],
+    "outDir": "build/lib",
+    "rootDir": "src",
+    "declaration": true,
+    "declarationDir": "build/lib/types",
+    "strict": true,
+    "noImplicitOverride": true,
+    "noFallthroughCasesInSwitch": true,
+    "noUncheckedIndexedAccess": true,
+    "skipLibCheck": true,
+    "esModuleInterop": true,
+    "forceConsistentCasingInFileNames": true,
+    "sourceMap": false,
+    "paths": {
+      "@deepseek-ai/cordis": ["./vendor/types/cordis/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-llm": ["./vendor/types/dsh-llm/lib/types/index.d.ts"],
+      "@deepseek-ai/dsh-attachment": ["./vendor/types/dsh-attachment/lib/types/index.d.ts"]
+    }
+  },
+  "include": ["src/**/*.ts"]
+}

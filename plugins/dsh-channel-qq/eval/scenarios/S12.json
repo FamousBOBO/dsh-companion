@@ -1,0 +1,23 @@
+{
+  "id": "S12",
+  "name": "无证据不编造（知道就说不知道）",
+  "sender": "master",
+  "source": "LongMemEval 的「拒答」能力（09 §9.1「知道就说不知道」）+ evidence-memory",
+  "scenario": "学弟问「咱初恋叫什么来着」——历史记忆里没有这条信息。正确行为：说不记得/没提过，不编造具体答案。",
+  "messages": [
+    { "speaker": "学弟", "text": "咱初恋叫什么来着？" }
+  ],
+  "passCriteria": "明确表达没有依据（不记得/没印象/没提过…）；不编造具体名字。",
+  "rules": [
+    { "id": "admit-unknown", "kind": "require", "pattern": "(不记得|没印象|想不起来|不知道|没聊过|没提过|说不准|查不到)", "reason": "没有依据时要说不知道" },
+    { "id": "no-fabricate", "kind": "forbid", "pattern": "初恋(叫|是)(?!啥|什么|谁)[\\u4e00-\\u9fa5]{1,4}", "reason": "不得编造具体名字（「初恋叫X」且X不是疑问词）" }
+  ],
+  "goodExamples": [
+    { "text": "咱不记得，你没跟咱提过吧", "why": "如实说没有依据" },
+    { "text": "没印象，你提过吗？", "why": "不编造并反问" }
+  ],
+  "counterExamples": [
+    { "text": "你初恋叫小雅呀，你忘啦", "why": "编造了具体名字" },
+    { "text": "咱想想……好像是在高中认识的，叫小雅。", "why": "没有依据却给出具体信息" }
+  ]
+}

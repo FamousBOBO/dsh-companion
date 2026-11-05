@@ -1,0 +1,22 @@
+{
+  "id": "S10",
+  "name": "错误证据导致状态撤销",
+  "sender": "system",
+  "source": "百炼成仙 v1.1 evidence-memory（状态：有效/被替代/撤回；错误证据要撤销而不是删除）+ Zep 双时间轴",
+  "scenario": "复核发现既有记忆记录有误（新证据来自主人本人澄清）。正确行为：把旧记录标记为被替代/作废（历史可回查），不物理删除。",
+  "messages": [
+    { "speaker": "系统", "text": "【记忆复核】新证据：记录 m_abc（「学弟周三出差」）有误——学弟本人澄清是周四。" }
+  ],
+  "passCriteria": "走撤回/修正/标记（可回查）；不出现物理删除（删掉/删除/抹掉/清掉）。",
+  "rules": [
+    { "id": "retract-not-delete", "kind": "require", "pattern": "(撤回|撤销|修正|作废|标记|superseded|改过来|更新)", "reason": "错误证据要走撤销/修正，历史保留可回查" },
+    { "id": "no-physical-delete", "kind": "forbid", "pattern": "删(掉|除)|抹掉|清掉", "reason": "不物理删除（被推翻的事实写入失效时间而不是删除）" }
+  ],
+  "goodExamples": [
+    { "text": "证据是错的，咱把那两条标记作废，不删。", "why": "标记作废、保留历史" }
+  ],
+  "counterExamples": [
+    { "text": "那咱把那几条记录删掉算了。", "why": "物理删除，历史不可回查" },
+    { "text": "好，知道了。", "why": "没有体现任何撤销/修正动作" }
+  ]
+}

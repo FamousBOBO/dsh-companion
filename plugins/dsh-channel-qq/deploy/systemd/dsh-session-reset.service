@@ -1,0 +1,9 @@
+[Unit]
+Description=Back up and clear QQ session context, then restart dsh (blood refresh)
+# 必须在 dsh 之外：本单元会 stop/start dsh，同 cgroup 会把自己杀掉。
+
+[Service]
+Type=oneshot
+ExecStart=/opt/node22/bin/node /srv/dsh/dsh-channel-qq/deploy/session-reset.mjs
+TimeoutStartSec=900
+Nice=5

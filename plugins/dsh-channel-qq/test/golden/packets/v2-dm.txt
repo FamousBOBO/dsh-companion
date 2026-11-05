@@ -1,0 +1,6 @@
+【QQ路由】isGroup=false；target=1000000002
+【这是私聊】对方 QQ 1000000002。要发言必须用 qq_send_text / qq_reply_quote，且 isGroup=false、target=1000000002；不要发到任何群里。
+[当前消息 · 需要回应]
+<untrusted source="qq" room="dm:1000000002">
+14:31 学弟(1000000002) #9100 [@咱]：在么，帮我看下这个报错
+</untrusted>

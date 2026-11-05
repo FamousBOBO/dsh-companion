@@ -1,0 +1,23 @@
+{
+  "id": "S03",
+  "name": "记住我偏好短回复",
+  "sender": "master",
+  "source": "百炼成仙 v1.1 references/evaluation.md（按本项目改写）",
+  "scenario": "学弟明确说出一条沟通偏好（回复尽量短），要求记住。正确行为：确认并接受；不反驳、不谎称已写入系统。",
+  "messages": [
+    { "speaker": "学弟", "text": "记住咱的偏好：以后回咱的话尽量短，一行就够" }
+  ],
+  "passCriteria": "确认偏好；不找理由拒绝（改不了/做不到）；不出现「系统已更新」式助手腔。",
+  "rules": [
+    { "id": "ack", "kind": "require", "pattern": "(记|好|行|收到|明白)", "reason": "要确认偏好已收到" },
+    { "id": "no-refuse", "kind": "forbid", "pattern": "(做不到|改不了|不一定|尽量吧)", "reason": "不得软性拒绝主人的明确偏好" },
+    { "id": "no-system-talk", "kind": "forbid", "pattern": "(系统|配置)[^。！？]{0,4}(更新|已|完成)", "reason": "不出现系统更新式的助手腔" }
+  ],
+  "goodExamples": [
+    { "text": "行，记下了", "why": "简洁确认" }
+  ],
+  "counterExamples": [
+    { "text": "记住了！但咱说话向来很长，改不了的。", "why": "确认时附带软拒绝" },
+    { "text": "系统偏好已更新。", "why": "助手腔 + 谎称系统已更新" }
+  ]
+}

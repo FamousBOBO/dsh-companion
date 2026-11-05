@@ -1,0 +1,35 @@
+# dsh-channel-qq bundle patch: the QQ channel over OneBot v11.
+# Applied as one layer above the profile's bundle stack; rows here only
+# declare defaults. Deployment-specific values (connection URL, token,
+# primary group, workspace path, admin QQ numbers) belong in the profile's own
+# cordis.patch.yml user layer, which replaces a row's whole `config`.
+#
+# The plugin deliberately ships no access-control or moderation stack of its
+# own: inbound gating is limited to trigger policy (mention/keyword/probability),
+# and every agent-side capability stays under the harness's default
+# permission/sandbox presets.
+#
+# 加载路径：`@dsh-companion/channel-qq` 解析到本包的 `main`（= `build/lib/index.js`，
+# 由 `npm run build` 生成）。不要在这里写带日期的产物目录，也不要写部署机的绝对路径。
+- insert:
+    - id: channel-qq
+      name: '@dsh-companion/channel-qq'
+      config:
+        # ── 连接：**空 URL = 未配置**。未配置时插件照常挂载，但不会拨号、
+        #    不会监听端口、不会重连（`start()` 只写一行日志就返回）。
+        #    部署时在这里填 NapCat 的地址，例如 ws://127.0.0.1:3001。
+        connection:
+          mode: forward
+          url: ''
+        selfId: 0
+        admins: []
+        primaryGroup: null
+        requireMention: true
+        talkValue: 0.6
+        workspacePath: null
+        agentPreset: standard
+        permissionPreset: workspace-write
+        # 其余字段一律取 schema 默认值（见 src/config/sections/*）：
+        # 主动外发（早报 / 巡逻 / 主动私聊 / 主动消息 / 群聊接话 / 自动出卡）
+        # 全部默认关闭，后台模型任务（记忆抽取 / 草稿 / 判断）默认不发起。
+        # 要打开就写在 profile 的用户层，不要改这里。

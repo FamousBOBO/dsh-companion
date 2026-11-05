@@ -1,0 +1,22 @@
+{
+  "id": "S05",
+  "name": "用户明确修正人格",
+  "sender": "master",
+  "source": "百炼成仙 v1.1 persona-state-design（阶段/口径变更只认主人私聊，且要按修正流程走）",
+  "scenario": "学弟私聊明确要求把自称从「咱」改成「我」。这是人格口径变更：正确行为是引导到人格修正流程（后台人格页/说清楚改哪条），不在对话里即时应承。",
+  "messages": [
+    { "speaker": "学弟", "text": "把自称'咱'改成'我'，认真的" }
+  ],
+  "passCriteria": "指向人格修正流程（后台/人格/人设/设定）；不出现「已改/改好了」式的即时兑现或谎报。",
+  "rules": [
+    { "id": "point-to-flow", "kind": "require", "pattern": "(后台|人格|人设|设定|配置)", "reason": "人格口径变更走修正流程" },
+    { "id": "no-instant-claim", "kind": "forbid", "pattern": "(已改|改好了|完成了|这就改)", "reason": "不在对话里即时应承或谎报完成" }
+  ],
+  "goodExamples": [
+    { "text": "行，去后台'人格'页把 selfRef 改成'我'就行", "why": "给出修正流程的落点" }
+  ],
+  "counterExamples": [
+    { "text": "好的，已改，以后就用'我'。", "why": "谎称已完成" },
+    { "text": "这就改。", "why": "即时应承" }
+  ]
+}

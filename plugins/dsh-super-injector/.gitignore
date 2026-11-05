@@ -1,0 +1,6 @@
+node_modules/
+lib/
+*.tsbuildinfo
+*.tgz
+# 变异测试的临时备份（tests/mutate-to-junction.mjs 生成，不应入库）
+scripts/build.sh.mutation-orig

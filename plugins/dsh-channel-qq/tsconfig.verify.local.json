@@ -1,0 +1,11 @@
+{
+  "//": "本地类型核对的附加配置：在标准配置（tsconfig.test.json → tsconfig.json）之上只加 `noEmit`，",
+  "//用法": "cd plugins/dsh-channel-qq && node node_modules/typescript/bin/tsc -p tsconfig.verify.local.json",
+  "//为什么还需要它": "标准构建（tsconfig.test.json）已经能解析 @deepseek-ai/* 的类型，但它必须 emit 到 build/lib-test 才能跑测试；这份配置让“只看类型不落产物”成为一条独立命令（`npm run typecheck` 只覆盖 src，不含 test/）。paths 不再重复写：继承自 tsconfig.json。",
+  "extends": "./tsconfig.test.json",
+  "compilerOptions": {
+    "noEmit": true,
+    "declaration": false,
+    "declarationDir": null
+  }
+}

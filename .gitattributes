@@ -1,0 +1,20 @@
+# 统一行尾，保证三平台 CI 与脚本行为一致
+* text=auto eol=lf
+
+# Windows 专用脚本保留 CRLF 也无妨，但统一成 LF 更省事
+*.ps1 text eol=lf
+*.bat text eol=crlf
+*.cmd text eol=crlf
+
+# 二进制
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.webp binary
+*.gif binary
+*.ico binary
+*.mp3 binary
+*.wav binary
+*.db binary
+*.woff binary
+*.woff2 binary

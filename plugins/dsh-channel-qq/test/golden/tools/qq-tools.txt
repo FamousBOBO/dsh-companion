@@ -1,0 +1,1246 @@
+{
+  "name": "qq_send_text",
+  "description": "发送一条QQ文本消息。isGroup=true 时 target 为群号，否则为好友QQ号。当前会话窗口的归属见系统包里的【本会话是QQ群/私聊】标注——往哪发必须与之一致，发错窗口是大事故。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "isGroup": {
+        "type": "boolean",
+        "description": "是否发送到群聊"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号"
+      },
+      "text": {
+        "type": "string",
+        "description": "消息文本"
+      },
+      "phase": {
+        "type": "string",
+        "enum": [
+          "progress",
+          "final"
+        ],
+        "description": "progress=等待提示，发送后继续工具；final=最终答复（默认）"
+      }
+    },
+    "required": [
+      "isGroup",
+      "target",
+      "text"
+    ]
+  }
+}
+{
+  "name": "qq_reply_quote",
+  "description": "引用回复某条消息：带上对方消息的#编号发一条引用回复，让对方明确知道咱回应的是哪条。文本里不要重复#编号。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "isGroup": {
+        "type": "boolean",
+        "description": "是否群聊"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或对方QQ号"
+      },
+      "messageId": {
+        "type": "number",
+        "description": "要引用的消息#编号（来自上下文包）"
+      },
+      "text": {
+        "type": "string",
+        "description": "回复正文"
+      },
+      "phase": {
+        "type": "string",
+        "enum": [
+          "progress",
+          "final"
+        ],
+        "description": "progress=等待提示，发送后继续工具；final=最终答复（默认）"
+      }
+    },
+    "required": [
+      "isGroup",
+      "target",
+      "messageId",
+      "text"
+    ]
+  }
+}
+{
+  "name": "qq_send_code_review",
+  "description": "【群聊代码专用】群聊禁止出现代码。有人在群里要求写代码时，把完整代码用这个工具私信发给学弟（管理员）审核，群里只回一句\"代码已私信发给学弟审核\"。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "code": {
+        "type": "string",
+        "description": "完整代码内容"
+      },
+      "note": {
+        "type": "string",
+        "description": "一句话说明这段代码是干什么的、谁要的"
+      }
+    },
+    "required": [
+      "code"
+    ]
+  }
+}
+{
+  "name": "qq_set_affection",
+  "description": "【好感度记账】学弟的一句话/一个举动让咱心里起波澜时，用这个记账。delta 是变化值（-30~30），reason 写学弟做了什么。每次变化都要记，绝不漏账。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "delta": {
+        "type": "number",
+        "description": "变化值：夸咱/护咱/投喂 +5~10，冷落/凶咱 -3~5"
+      },
+      "reason": {
+        "type": "string",
+        "description": "原因一句话"
+      }
+    },
+    "required": [
+      "delta",
+      "reason"
+    ]
+  }
+}
+{
+  "name": "qq_set_stage",
+  "description": "【阶段宣言】阶段完全由咱自己定义：根据咱的记忆，说出当前真实的阶段名和理由。可以升、可以降、可以改名——说最真实的话就行。每次变更都会记入阶段史。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "stage": {
+        "type": "string",
+        "description": "目标阶段名（必须是阶梯里的名字）"
+      },
+      "event": {
+        "type": "string",
+        "description": "触发晋升的特殊事件描述（原文+时间）"
+      }
+    },
+    "required": [
+      "stage",
+      "event"
+    ]
+  }
+}
+{
+  "name": "qq_write_dashboard",
+  "description": "【咱自己的记分板】重写好感度悬浮窗的HTML页面（咱完全掌控的记分小黑板）。写好后立即生效。想要什么样式自己定：阶段、日记入口、小本本都随咱排。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "html": {
+        "type": "string",
+        "description": "完整的HTML文档（会替换整个悬浮窗页面）"
+      }
+    },
+    "required": [
+      "html"
+    ]
+  }
+}
+{
+  "name": "retrieve_knowledge",
+  "description": "检索咱的长期知识库（从日记和群聊沉淀的技能/事实/偏好/事件/人物）。回答不确定的问题前先搜这里。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "自然语言查询"
+      }
+    },
+    "required": [
+      "query"
+    ]
+  }
+}
+{
+  "name": "extract_knowledge",
+  "description": "从一段文字（日记/聊天记录/文档）提取知识条目入库。别对日常寒暄用。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "source": {
+        "type": "string",
+        "description": "来源简述（如：日记 2026-09-21）"
+      },
+      "text": {
+        "type": "string",
+        "description": "要提取的文字（截取有价值的部分）"
+      }
+    },
+    "required": [
+      "source",
+      "text"
+    ]
+  }
+}
+{
+  "name": "qq_send_poke",
+  "description": "戳一戳群成员。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "number",
+        "description": "群号"
+      },
+      "userId": {
+        "type": "number",
+        "description": "要戳的用户QQ号"
+      }
+    },
+    "required": [
+      "groupId",
+      "userId"
+    ]
+  }
+}
+{
+  "name": "qq_set_group_card",
+  "description": "设置群名片（群昵称）。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "number"
+      },
+      "userId": {
+        "type": "number"
+      },
+      "card": {
+        "type": "string",
+        "description": "新群名片，空字符串删除名片"
+      }
+    },
+    "required": [
+      "groupId",
+      "userId",
+      "card"
+    ]
+  }
+}
+{
+  "name": "qq_group_ban",
+  "description": "禁言群成员，时长60-300秒。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "number"
+      },
+      "userId": {
+        "type": "number"
+      },
+      "duration": {
+        "type": "number",
+        "description": "禁言秒数（60-300）"
+      }
+    },
+    "required": [
+      "groupId",
+      "userId"
+    ]
+  }
+}
+{
+  "name": "qq_get_group_member_info",
+  "description": "查询群成员资料（昵称、群名片、角色等）。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "number"
+      },
+      "userId": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "groupId",
+      "userId"
+    ]
+  }
+}
+{
+  "name": "qq_get_group_info",
+  "description": "查询群资料（群名、成员数、上限等）。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "groupId"
+    ]
+  }
+}
+{
+  "name": "qq_get_msg",
+  "description": "按消息ID获取消息内容。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "messageId": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "messageId"
+    ]
+  }
+}
+{
+  "name": "qq_delete_msg",
+  "description": "撤回一条消息（需要对应权限）。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "messageId": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "messageId"
+    ]
+  }
+}
+{
+  "name": "qq_send_emoji",
+  "description": "发送一张本地表情包图片（stolen/registered 目录中的文件名）。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "isGroup": {
+        "type": "boolean"
+      },
+      "target": {
+        "type": "number"
+      },
+      "file": {
+        "type": "string",
+        "description": "本地图片绝对路径"
+      }
+    },
+    "required": [
+      "isGroup",
+      "target",
+      "file"
+    ]
+  }
+}
+{
+  "name": "qq_group_kick",
+  "description": "将成员移出群聊（踢人）。默认关闭，需要 groupAdmin.dangerous 打开才可用。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "number"
+      },
+      "userId": {
+        "type": "number"
+      },
+      "rejectAddRequest": {
+        "type": "boolean",
+        "description": "是否拒绝此人再次加群"
+      }
+    },
+    "required": [
+      "groupId",
+      "userId"
+    ]
+  }
+}
+{
+  "name": "qq_group_whole_ban",
+  "description": "开启或关闭全员禁言。默认关闭，需要 groupAdmin.dangerous 打开才可用。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "number"
+      },
+      "enable": {
+        "type": "boolean",
+        "description": "true=开启全员禁言，false=关闭"
+      }
+    },
+    "required": [
+      "groupId",
+      "enable"
+    ]
+  }
+}
+{
+  "name": "qq_set_group_admin",
+  "description": "设置或取消群成员的管理员身份。默认关闭，需要 groupAdmin.dangerous 打开才可用。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "number"
+      },
+      "userId": {
+        "type": "number"
+      },
+      "enable": {
+        "type": "boolean",
+        "description": "true=设为管理员，false=取消"
+      }
+    },
+    "required": [
+      "groupId",
+      "userId",
+      "enable"
+    ]
+  }
+}
+{
+  "name": "qq_get_group_list",
+  "description": "获取咱加入的所有群列表（群号、群名、成员数）。",
+  "parameters": {
+    "type": "object",
+    "properties": {}
+  }
+}
+{
+  "name": "qq_get_friend_list",
+  "description": "获取好友列表（QQ号、昵称、备注）。",
+  "parameters": {
+    "type": "object",
+    "properties": {}
+  }
+}
+{
+  "name": "qq_set_essence",
+  "description": "设置一条消息为群精华（好好记就收进精华）。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "messageId": {
+        "type": "number",
+        "description": "消息#编号"
+      }
+    },
+    "required": [
+      "messageId"
+    ]
+  }
+}
+{
+  "name": "qq_delete_essence",
+  "description": "移除一条群精华。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "messageId": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "messageId"
+    ]
+  }
+}
+{
+  "name": "qq_get_essence_list",
+  "description": "获取群精华消息列表（用于整理精华、翻重要记录）。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "number"
+      }
+    },
+    "required": [
+      "groupId"
+    ]
+  }
+}
+{
+  "name": "qq_list_group_files",
+  "description": "列出群文件系统（文件、文件夹、大小、上传者），用于整理群文件。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "number"
+      },
+      "folderId": {
+        "type": "string",
+        "description": "文件夹ID，不填=根目录"
+      }
+    },
+    "required": [
+      "groupId"
+    ]
+  }
+}
+{
+  "name": "qq_upload_group_file",
+  "description": "上传本地文件到群文件系统（可以从咱的工作区里挑文件发）。file 是本地绝对路径。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "number"
+      },
+      "file": {
+        "type": "string",
+        "description": "本地文件绝对路径"
+      },
+      "name": {
+        "type": "string",
+        "description": "显示的文件名"
+      },
+      "folderId": {
+        "type": "string",
+        "description": "目标文件夹ID，不填=根目录"
+      }
+    },
+    "required": [
+      "groupId",
+      "file"
+    ]
+  }
+}
+{
+  "name": "qq_download_group_file",
+  "description": "下载群文件到咱的工作区（先拿链接再存盘），存好返回本地路径。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "number"
+      },
+      "fileId": {
+        "type": "string",
+        "description": "群文件ID（来自文件列表）"
+      },
+      "saveAs": {
+        "type": "string",
+        "description": "保存的文件名，存到工作区 downloads/ 下"
+      }
+    },
+    "required": [
+      "groupId",
+      "fileId"
+    ]
+  }
+}
+{
+  "name": "qq_create_file_folder",
+  "description": "在群文件系统里新建文件夹（整理群文件用）。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "number"
+      },
+      "folderName": {
+        "type": "string",
+        "description": "文件夹名"
+      },
+      "parentId": {
+        "type": "string",
+        "description": "父文件夹ID，不填=根目录"
+      }
+    },
+    "required": [
+      "groupId",
+      "folderName"
+    ]
+  }
+}
+{
+  "name": "qq_move_group_file",
+  "description": "移动群文件（拖动到别的文件夹）。目录ID来自文件列表。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "number"
+      },
+      "fileId": {
+        "type": "string",
+        "description": "文件ID"
+      },
+      "currentParentDirectory": {
+        "type": "string",
+        "description": "当前父目录ID"
+      },
+      "targetParentDirectory": {
+        "type": "string",
+        "description": "目标父目录ID"
+      }
+    },
+    "required": [
+      "groupId",
+      "fileId",
+      "currentParentDirectory",
+      "targetParentDirectory"
+    ]
+  }
+}
+{
+  "name": "qq_rename_group_file",
+  "description": "重命名群文件。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "number"
+      },
+      "fileId": {
+        "type": "string"
+      },
+      "currentParentDirectory": {
+        "type": "string",
+        "description": "当前父目录ID"
+      },
+      "newName": {
+        "type": "string",
+        "description": "新文件名"
+      }
+    },
+    "required": [
+      "groupId",
+      "fileId",
+      "currentParentDirectory",
+      "newName"
+    ]
+  }
+}
+{
+  "name": "qq_delete_group_file",
+  "description": "删除群文件。慎重使用。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "number"
+      },
+      "fileId": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "groupId",
+      "fileId"
+    ]
+  }
+}
+{
+  "name": "qq_list_emojis",
+  "description": "列出咱收藏的表情包（本地文件路径）。发表情前先列出来挑一张合适的。",
+  "parameters": {
+    "type": "object",
+    "properties": {}
+  }
+}
+{
+  "name": "qq_search_emojis",
+  "description": "按情绪/语义搜索咱收藏的表情包（比如：嘲讽、开心、摸鱼、吃瓜）。返回最匹配的几张的文件路径和描述，用 qq_send_emoji 发送其中 file。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "情绪或语义关键词，如 嘲讽 / 开心 / 吃瓜"
+      },
+      "limit": {
+        "type": "number",
+        "description": "最多返回几张（默认5）"
+      }
+    },
+    "required": [
+      "query"
+    ]
+  }
+}
+{
+  "name": "qq_emoji_stats",
+  "description": "看表情库统计：总数、已打标数、常用标签 top10。",
+  "parameters": {
+    "type": "object",
+    "properties": {}
+  }
+}
+{
+  "name": "qq_search_history",
+  "description": "搜索本群/私聊的完整聊天记录（含已被折叠的旧消息）。可按关键词、发送者QQ号、日期过滤，返回带时间戳和#编号的消息列表。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "isGroup": {
+        "type": "boolean",
+        "description": "是否群聊（默认 true）"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或对方QQ号；省略则用配置里的 primaryGroup"
+      },
+      "keyword": {
+        "type": "string",
+        "description": "关键词（消息文本包含即命中）"
+      },
+      "senderId": {
+        "type": "number",
+        "description": "按发送者QQ号过滤"
+      },
+      "sinceDate": {
+        "type": "string",
+        "description": "起始日期 YYYY-MM-DD（含）"
+      },
+      "untilDate": {
+        "type": "string",
+        "description": "结束日期 YYYY-MM-DD（含）"
+      },
+      "limit": {
+        "type": "number",
+        "description": "最多返回条数（默认20，上限50）"
+      }
+    },
+    "required": []
+  }
+}
+{
+  "name": "qq_send_voice",
+  "description": "把一段本地音频文件当语音条发出去（mp3/wav等常规格式均可，NapCat 自动转 silk）。想用自定义音色就先用外部 TTS 生成音频文件再发。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "isGroup": {
+        "type": "boolean"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或对方QQ号"
+      },
+      "file": {
+        "type": "string",
+        "description": "本地音频文件绝对路径（mp3/wav/silk等）"
+      }
+    },
+    "required": [
+      "isGroup",
+      "target",
+      "file"
+    ]
+  }
+}
+{
+  "name": "qq_can_send_voice",
+  "description": "检测当前 QQ 实例是否具备发语音条的能力。",
+  "parameters": {
+    "type": "object",
+    "properties": {}
+  }
+}
+{
+  "name": "qq_send_ai_voice",
+  "description": "QQ自带AI语音（百变变声器）：选一个音色把文字念成语音条发到群里。character 是QQ音色ID（如 ai_char_1 这类，不存在的会报错，换一个试）。仅限群聊。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "number"
+      },
+      "character": {
+        "type": "string",
+        "description": "QQ音色ID，如 ai_char_1"
+      },
+      "text": {
+        "type": "string",
+        "description": "要念的文字，别太长"
+      }
+    },
+    "required": [
+      "groupId",
+      "character",
+      "text"
+    ]
+  }
+}
+{
+  "name": "qq_get_ai_voice_url",
+  "description": "获取QQ AI语音的音频URL（不发出去）。配合下载后可用 qq_send_voice 当语音条发到任意会话——这是私聊用AI音色的办法。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "number",
+        "description": "AI语音按群开通，传群号"
+      },
+      "character": {
+        "type": "string",
+        "description": "QQ音色ID"
+      },
+      "text": {
+        "type": "string"
+      }
+    },
+    "required": [
+      "groupId",
+      "character",
+      "text"
+    ]
+  }
+}
+{
+  "name": "qq_get_file_url",
+  "description": "拿私聊/群文件的下载链接（fileId 来自文件消息或群文件列表）。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "fileId": {
+        "type": "string",
+        "description": "文件ID"
+      }
+    },
+    "required": [
+      "fileId"
+    ]
+  }
+}
+{
+  "name": "qq_send_private_file",
+  "description": "私聊给好友发本地文件（从咱的工作区里挑）。file 是本地绝对路径；不填 name 就用原文件名。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "userId": {
+        "type": "number",
+        "description": "好友QQ号"
+      },
+      "file": {
+        "type": "string",
+        "description": "本地文件绝对路径"
+      },
+      "name": {
+        "type": "string",
+        "description": "显示的文件名"
+      }
+    },
+    "required": [
+      "userId",
+      "file"
+    ]
+  }
+}
+{
+  "name": "qq_save_private_file",
+  "description": "把私聊收到的文件存到咱的工作区 downloads/ 下（fileId 来自文件消息），返回本地路径。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "fileId": {
+        "type": "string",
+        "description": "私聊文件ID"
+      },
+      "saveAs": {
+        "type": "string",
+        "description": "保存的文件名，存到工作区 downloads/ 下"
+      }
+    },
+    "required": [
+      "fileId"
+    ]
+  }
+}
+{
+  "name": "qq_search_music",
+  "description": "搜索网易云音乐（歌名/歌手）。返回 id、歌名、歌手、时长列表，供点歌时选歌。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "keyword": {
+        "type": "string",
+        "description": "歌名或歌手"
+      },
+      "limit": {
+        "type": "number",
+        "description": "返回条数（默认5，最多10）"
+      }
+    },
+    "required": [
+      "keyword"
+    ]
+  }
+}
+{
+  "name": "qq_resolve_music",
+  "description": "解析一首歌的播放直链（网易云 songId）。先问已配置的落雪音源，再退回网易云直链；发语音或拿链接前用这个。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "songId": {
+        "type": "string",
+        "description": "网易云歌曲ID"
+      },
+      "name": {
+        "type": "string",
+        "description": "歌名（可选，音源用它做元数据）"
+      },
+      "artists": {
+        "type": "string",
+        "description": "歌手（可选）"
+      }
+    },
+    "required": [
+      "songId"
+    ]
+  }
+}
+{
+  "name": "qq_send_music_card",
+  "description": "点歌：解析音源后把歌曲发到群/私聊。默认发语音条；后台「点歌发文件」打开后改发音频文件。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号"
+      },
+      "songId": {
+        "type": "string",
+        "description": "网易云歌曲ID（来自 qq_search_music）"
+      },
+      "name": {
+        "type": "string",
+        "description": "歌名（可选：文件名与音源元数据用）"
+      },
+      "artists": {
+        "type": "string",
+        "description": "歌手（可选）"
+      },
+      "private": {
+        "type": "boolean",
+        "description": "true=私聊发送（默认群聊）"
+      }
+    },
+    "required": [
+      "target",
+      "songId"
+    ]
+  }
+}
+{
+  "name": "qq_send_music_voice",
+  "description": "把一首歌以语音条发到群/私聊（先走落雪音源再退回网易云；长歌可能被 QQ 客户端截断，优先用 qq_send_music_card 发文件）。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号"
+      },
+      "songId": {
+        "type": "string",
+        "description": "网易云歌曲ID"
+      },
+      "name": {
+        "type": "string",
+        "description": "歌名（可选）"
+      },
+      "artists": {
+        "type": "string",
+        "description": "歌手（可选）"
+      },
+      "private": {
+        "type": "boolean",
+        "description": "true=私聊发送（默认群聊）"
+      }
+    },
+    "required": [
+      "target",
+      "songId"
+    ]
+  }
+}
+{
+  "name": "qq_music_lyrics",
+  "description": "拿一首歌的完整歌词（网易云 songId）。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "songId": {
+        "type": "string",
+        "description": "网易云歌曲ID"
+      }
+    },
+    "required": [
+      "songId"
+    ]
+  }
+}
+{
+  "name": "qq_music_playlist",
+  "description": "咱的个人歌单（跨重启持久）。action: add/remove/list/clear。add 需要 songId 和 name。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "add / remove / list / clear"
+      },
+      "songId": {
+        "type": "string"
+      },
+      "name": {
+        "type": "string",
+        "description": "歌名（add 时记录）"
+      },
+      "artists": {
+        "type": "string",
+        "description": "歌手（add 时可选）"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}
+{
+  "name": "qq_netease_login",
+  "description": "网易云会员登录。action=start 返回二维码链接（发给学弟用网易云App扫码）；action=poll 用返回的 key 轮询，成功后自动保存会员 Cookie（VIP歌就能发了）。Cookie 持久保存，不用每次登。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "start（拿二维码）/ poll（查状态，带 key）"
+      },
+      "key": {
+        "type": "string",
+        "description": "poll 时传 start 返回的 key"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}
+{
+  "name": "qq_netease_status",
+  "description": "查网易云账号登录状态和会员等级（判断 VIP 歌能不能发）。",
+  "parameters": {
+    "type": "object",
+    "properties": {}
+  }
+}
+{
+  "name": "qq_kugou_search",
+  "description": "搜索酷狗音乐（歌名/歌手）。返回 hash、歌名、歌手，供酷狗点歌用。需要先 qq_kugou_login 登录（酷狗禁止匿名搜索）。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "keyword": {
+        "type": "string",
+        "description": "歌名或歌手"
+      },
+      "limit": {
+        "type": "number",
+        "description": "返回条数（默认5，最多10）"
+      }
+    },
+    "required": [
+      "keyword"
+    ]
+  }
+}
+{
+  "name": "qq_kugou_send",
+  "description": "发酷狗歌曲：默认发语音条（VIP歌需要先 qq_kugou_login）。quality 可选 auto/viper_tape/viper_clear/super/high/flac/320/128。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号"
+      },
+      "hash": {
+        "type": "string",
+        "description": "歌曲hash（来自 qq_kugou_search）"
+      },
+      "quality": {
+        "type": "string",
+        "description": "音质（默认 auto）"
+      },
+      "private": {
+        "type": "boolean",
+        "description": "true=私聊发送（默认群聊）"
+      }
+    },
+    "required": [
+      "target",
+      "hash"
+    ]
+  }
+}
+{
+  "name": "qq_kugou_login",
+  "description": "酷狗音乐登录。action=start 拿二维码链接（发给学弟用酷狗App扫码）；action=poll 轮询，成功自动保存 Cookie（VIP歌+搜索就通了）。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "action": {
+        "type": "string",
+        "description": "start / poll"
+      },
+      "key": {
+        "type": "string",
+        "description": "poll 时传 start 返回的 key"
+      }
+    },
+    "required": [
+      "action"
+    ]
+  }
+}
+{
+  "name": "qq_send_like",
+  "description": "给好友点赞。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "userId": {
+        "type": "number"
+      },
+      "times": {
+        "type": "number",
+        "description": "点赞次数（≤10）"
+      }
+    },
+    "required": [
+      "userId"
+    ]
+  }
+}
+{
+  "name": "qq_recall_memory",
+  "description": "【主动召回记忆】回答\"上次那个…\"\"你还记得…\"之前先搜这里。比 retrieve_knowledge 多了类型过滤，命中的条目会被强化（以后更容易想起来）。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "自然语言查询"
+      },
+      "type": {
+        "type": "string",
+        "description": "只看某类记忆：skill / fact / preference / event / person（可选）"
+      },
+      "limit": {
+        "type": "number",
+        "description": "最多几条（默认5，上限20）"
+      },
+      "reinforce": {
+        "type": "boolean",
+        "description": "是否强化命中条目（默认 true）"
+      }
+    },
+    "required": [
+      "query"
+    ]
+  }
+}
+{
+  "name": "qq_memorize_fact",
+  "description": "【主动记下来】遇到\"以后还要用\"的事实/偏好/技能/人物/事件时直接写进长期记忆，不必等日记提取。日常寒暄不要用。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "content": {
+        "type": "string",
+        "description": "一句话知识，写清楚人和事"
+      },
+      "type": {
+        "type": "string",
+        "description": "skill / fact / preference / event / person（默认 fact）"
+      },
+      "tags": {
+        "type": "array",
+        "description": "标签数组，便于以后检索",
+        "items": {
+          "type": "string"
+        }
+      },
+      "source": {
+        "type": "string",
+        "description": "来源简述，如\"群聊 2026-10-14\""
+      }
+    },
+    "required": [
+      "content"
+    ]
+  }
+}
+{
+  "name": "qq_memory_search",
+  "description": "深召回：在日记与知识库的原文块里搜（返回文件与行号），一次 5–8 条。问\"以前记过什么\"\"上次怎么弄的\"\"翻翻笔记\"时用它；日常寒暄不要用。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "自然语言查询"
+      },
+      "limit": {
+        "type": "number",
+        "description": "返回条数（默认 8，最多 8）"
+      },
+      "asOf": {
+        "type": "string",
+        "description": "可选，时间旅行：只要某天（YYYY-MM-DD）之前已知道的记忆，如\"上周二我们怎么想的\""
+      }
+    },
+    "required": [
+      "query"
+    ]
+  }
+}
+{
+  "name": "qq_send_sticker",
+  "description": "【表情包快捷调用】按情绪/语义/文件名直接发一张收藏的表情包：搜索+发送一步到位。拿不准氛围就先 qq_search_emojis 看清楚再决定。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "情绪或语义关键词，如 嘲讽 / 吃瓜 / 摸鱼；也可以直接给文件名"
+      },
+      "isGroup": {
+        "type": "boolean",
+        "description": "是否群聊"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号"
+      },
+      "fallbackRandom": {
+        "type": "boolean",
+        "description": "搜不到时随机发一张（默认 false —— 宁可不发也别乱发）"
+      }
+    },
+    "required": [
+      "query",
+      "isGroup",
+      "target"
+    ]
+  }
+}

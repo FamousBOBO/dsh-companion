@@ -1,0 +1,63 @@
+/* ==========================================================================
+   设计令牌（refactor-plan/10 §3：深浅色跟随系统且可手动切换）。
+   data-theme 由引导脚本写在 <html> 上；这里只声明两套具体值。
+
+   三组"尺度"是全站一致性的来源，组件里不许再写裸数值：
+     字号  --fs-2xs … --fs-2xl      （11 / 12 / 13 / 14 / 16 / 20 / 26）
+     间距  --sp-1 … --sp-8          （4 / 8 / 12 / 16 / 20 / 24 / 32 / 40）
+     控件  --ctl-sm/md/lg           （32 / 38 / 44，所有按钮/输入/开关只取这三档）
+   对比度：正文 fg/panel 与 fg-dim/panel 均 ≥ 4.5:1。
+   ========================================================================== */
+
+:root,
+:root[data-theme="dark"] {
+  color-scheme: dark;
+  --bg: #0b0e14; --panel: #121722; --panel-2: #171e2b; --panel-3: #1f2838;
+  --line: #212a3a; --line-2: #2c374b; --line-3: #3a4760;
+  --fg: #e8edf7; --fg-dim: #a3aec3; --fg-mute: #7b8699;
+  --accent: #5b8cff; --accent-2: #8b5cf6; --accent-soft: rgba(91, 140, 255, .13); --accent-line: rgba(91, 140, 255, .38); --on-accent: #fff;
+  --ok: #3ddc97; --ok-soft: rgba(61, 220, 151, .13); --ok-line: rgba(61, 220, 151, .38);
+  --warn: #f5b942; --warn-soft: rgba(245, 185, 66, .13); --warn-line: rgba(245, 185, 66, .38);
+  --bad: #ff6b78; --bad-soft: rgba(255, 107, 120, .12); --bad-line: rgba(255, 107, 120, .40);
+  --info: #57c7ff; --info-soft: rgba(87, 199, 255, .13); --info-line: rgba(87, 199, 255, .38);
+  --shadow-sm: 0 1px 2px rgba(0, 0, 0, .35);
+  --shadow: 0 1px 2px rgba(0, 0, 0, .35), 0 10px 28px -18px rgba(0, 0, 0, .9);
+  --shadow-lg: 0 24px 60px -28px rgba(0, 0, 0, .95);
+  --scrim: rgba(4, 7, 12, .62);
+}
+
+:root[data-theme="light"] {
+  color-scheme: light;
+  --bg: #f4f6fb; --panel: #ffffff; --panel-2: #f7f9fd; --panel-3: #eef2f9;
+  --line: #e2e7f0; --line-2: #ccd4e3; --line-3: #b3bed2;
+  --fg: #141a26; --fg-dim: #4b5567; --fg-mute: #6b7689;
+  --accent: #3563e9; --accent-2: #7c3aed; --accent-soft: rgba(53, 99, 233, .09); --accent-line: rgba(53, 99, 233, .32); --on-accent: #fff;
+  --ok: #0b7a4b; --ok-soft: rgba(11, 122, 75, .09); --ok-line: rgba(11, 122, 75, .32);
+  --warn: #8a5806; --warn-soft: rgba(138, 88, 6, .10); --warn-line: rgba(138, 88, 6, .32);
+  --bad: #c0202f; --bad-soft: rgba(192, 32, 47, .08); --bad-line: rgba(192, 32, 47, .32);
+  --info: #0a6a9c; --info-soft: rgba(10, 106, 156, .09); --info-line: rgba(10, 106, 156, .32);
+  --shadow-sm: 0 1px 2px rgba(22, 29, 42, .06);
+  --shadow: 0 1px 2px rgba(22, 29, 42, .05), 0 10px 24px -20px rgba(22, 29, 42, .35);
+  --shadow-lg: 0 24px 56px -30px rgba(22, 29, 42, .45);
+  --scrim: rgba(22, 29, 42, .32);
+}
+
+:root {
+  /* 字号 */
+  --fs-2xs: 11px; --fs-xs: 12px; --fs-sm: 13px; --fs-md: 14px;
+  --fs-lg: 16px; --fs-xl: 20px; --fs-2xl: 26px;
+  --lh-tight: 1.3; --lh-base: 1.6;
+  /* 间距 */
+  --sp-1: 4px; --sp-2: 8px; --sp-3: 12px; --sp-4: 16px;
+  --sp-5: 20px; --sp-6: 24px; --sp-7: 32px; --sp-8: 40px;
+  /* 控件高度（只有三档） */
+  --ctl-sm: 32px; --ctl-md: 38px; --ctl-lg: 44px;
+  /* 圆角 */
+  --r-xs: 6px; --r-sm: 8px; --r-md: 12px; --r-lg: 16px; --r-xl: 20px; --r-full: 999px;
+  --radius: var(--r-md); --radius-sm: var(--r-sm); --radius-xs: var(--r-xs);
+  /* 布局 */
+  --topbar-h: 56px; --sidenav-w: 248px; --content-max: 1440px;
+  /* 字体 */
+  --sans: system-ui, -apple-system, "Segoe UI", "PingFang SC", "Hiragino Sans GB", "Microsoft YaHei", "Noto Sans CJK SC", sans-serif;
+  --mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "DejaVu Sans Mono", "Liberation Mono", monospace;
+}

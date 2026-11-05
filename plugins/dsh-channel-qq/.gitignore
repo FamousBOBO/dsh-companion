@@ -1,0 +1,71 @@
+# ── 依赖 ──────────────────────────────────────────────────────────────
+node_modules/
+
+# ── 含真实凭据的一次性探测脚本（绝不入库）─────────────────────────────
+# napcat-alive.mjs      硬编码 OneBot accessToken（已过期）与旧群号
+# groq-browser-probe.mjs 硬编码 Groq API key (gsk_…)
+# 这两个都是临时排障脚本，不属于插件本体。文件仍留在工作目录里。
+napcat-alive.mjs
+groq-browser-probe.mjs
+
+# ── 编辑器 / 系统 ─────────────────────────────────────────────────────
+.DS_Store
+Thumbs.db
+*.swp
+*.log
+
+# ── 说明：以下**故意入库** ────────────────────────────────────────────
+# lib/                 编译产物。本项目的部署方式是"推送预编译 lib/"，入库
+#                      可保证 clone 出来的目录直接可部署。
+# src/admin-html.ts    由 src/admin-ui.html 生成（scripts/build-admin-html.mjs），
+#                      入库是为了 tsc 单独跑也能通过；改它没有意义，改 HTML。
+# cordis.patch.yml     插件的 bundle 默认值（不含任何部署凭据）。
+
+# ── 临时：NapCat 登录扫码页 ───────────────────────────────────────────
+# 容器重建后需要重新扫码时由脚本生成（内嵌当次二维码的 base64），一次性用完即弃，
+# 不属于项目产物。
+_qr-login.html
+
+# ── 构建产物：不入库 ──────────────────────────────────────────────────
+# `npm run build` → build/lib（tsc 产物 + .d.ts）；`npm test` → build/lib-test。
+# 两者都收在 build/ 下，仓库根因此保持干净。
+#
+# 为什么不入库：产物会**悄悄和 src/ 漂移**——曾经本地 lib/tools.js 与服务端的
+# sha256 不同（模板字符串里有 2 个 CR），于是"本地这份到底是不是线上跑的"没有答案。
+# 产物不入库，这个问题就不存在。
+#
+# ⚠️ 必须锚定仓库根：写成 `lib/` 会连 `eval/lib/`（评测底盘）一起吞掉，
+# `git add eval` 会静默跳过它，干净检出里 `npm run eval` 直接 ERR_MODULE_NOT_FOUND。
+/build/
+
+# ── 推送中转：不入库 ────────────────────────────────────────────────
+# 走 SSH 通道推文件时的本地暂存目录。
+.push-tmp/
+
+# ── 部署凭据：绝不入库 ────────────────────────────────────────────────
+# deploy/http-push-fast.mjs 与 deploy/ssh-run.mjs 从这里读服务器地址与密码。
+# 模板见 deploy/.ssh-env.example
+.ssh-env
+# 部署中转（打包产物，不入库）
+.deploy-tmp/
+
+# ── 发布产物与清单（每次打包重新生成）────────────────────────────────
+MANIFEST.sha256
+RELEASE.json
+
+# 评测器每次运行的产物（用例在 eval/ 里，报告不入库）
+eval/last-report.json
+eval/memory/last-report.json
+
+# ── 记忆评测的真实语料缓存（含私人聊天内容，绝不入库）──────────────
+eval/memory/.cache/
+
+# 本地调研缓存（GitHub / Docker Hub 快照等）
+.cache/
+
+# 运维排查时临时导出的截图 / 二维码（不要进仓库）
+.tmp-*
+.qq-login-qr.png
+
+# 一次性调研工作区（克隆的参照仓库与中间产物，不入库）
+scratch/

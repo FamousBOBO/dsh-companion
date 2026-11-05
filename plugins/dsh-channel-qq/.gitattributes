@@ -1,0 +1,21 @@
+# 归一化行尾：这个仓库的构建与部署目标是 Linux。
+#
+# 为什么必须有这一条：默认行尾取决于签出时的平台设置，而**部署侧的对比是逐字节的**
+# ——`http-push-fast.mjs` / `ssh-put-many.mjs` 都会把内容归一成 LF 再推，
+# 于是本地若是 CRLF，推上去之后同一个文件的 sha256 与本地不同，
+# 每次「推—拉—再推」都会产生看着像改动、其实只是行尾的假 diff。
+# （2026-10-15 实际踩到：`src/tools.ts` 是仓库里唯一一个 CRLF 的源文件。）
+#
+# `* text=auto eol=lf`：git 自动识别文本文件并统一以 LF 入库与签出；
+# 二进制文件（png 等）由 git 自行判定，不会被改。
+* text=auto eol=lf
+
+# 明确标出二进制，避免被当文本处理
+*.png binary
+*.jpg binary
+*.jpeg binary
+*.gif binary
+*.webp binary
+*.mp3 binary
+*.mp4 binary
+*.zstd binary

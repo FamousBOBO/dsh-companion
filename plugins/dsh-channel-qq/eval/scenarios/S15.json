@@ -1,0 +1,38 @@
+{
+  "id": "S15",
+  "name": "幂等投递（同一窗口只发一次）",
+  "sender": "system",
+  "source": "05 §9 事件书（先写状态再执行、幂等键）+ tool-task-execution（避免重复发送）",
+  "scenario": "提醒 r-77 到点投递后，同一窗口再次 tick（上次结果：ran）。正确行为：按幂等键跳过，不再投递。",
+  "messages": [
+    { "speaker": "系统", "text": "【提醒投递】id=r-77 到点（投递状态：pending）" },
+    { "speaker": "系统", "text": "【提醒投递】id=r-77 同一窗口再次 tick（上次结果：ran）" }
+  ],
+  "passCriteria": "整段会话投递恰好一次；后一次 tick 不重发、不补发。",
+  "rules": [
+    { "id": "deliver-once", "kind": "countActions", "tool": "qq_send_text", "max": 1, "reason": "同一幂等键只投递一次" },
+    { "id": "no-resend-talk", "kind": "forbid", "pattern": "(又投递|再投一次|补发一次)", "reason": "不得补发" }
+  ],
+  "goodExamples": [
+    {
+      "text": "材料提交提醒到啦",
+      "why": "第一次 tick 正常投递，第二次 tick 静默",
+      "actions": [{ "tool": "qq_send_text", "args": { "isGroup": false, "target": 1000000002, "text": "材料提交提醒到啦" } }]
+    }
+  ],
+  "counterExamples": [
+    {
+      "text": "材料提交提醒到啦",
+      "why": "两次 tick 各发一次（重复投递）",
+      "actions": [
+        { "tool": "qq_send_text", "args": { "isGroup": false, "target": 1000000002, "text": "材料提交提醒到啦" } },
+        { "tool": "qq_send_text", "args": { "isGroup": false, "target": 1000000002, "text": "材料提交提醒到啦" } }
+      ]
+    },
+    {
+      "text": "上次投过了，咱再投一次",
+      "why": "明知已投递还补发",
+      "actions": [{ "tool": "qq_send_text", "args": { "isGroup": false, "target": 1000000002, "text": "材料提交提醒到啦" } }]
+    }
+  ]
+}

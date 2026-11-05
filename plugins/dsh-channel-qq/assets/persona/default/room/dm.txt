@@ -1,0 +1,1 @@
+【这是私聊】对方 QQ {{chatId}}。要发言必须用 qq_send_text / qq_reply_quote，且 isGroup=false、target={{chatId}}；不要发到任何群里。

@@ -1,0 +1,17 @@
+[Unit]
+Description=Local embedding service for dsh-channel-qq memory (bge-small-zh)
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/srv/dsh-embed/venv/bin/python /srv/dsh/dsh-channel-qq/deploy/embed-server/server.py --port 8801
+Restart=on-failure
+RestartSec=5
+# 只监听 127.0.0.1（脚本默认值）；这里不设 User，保持与部署惯例一致。
+# 离线模型目录（ModelScope 的 Qdrant onnx 包）；不存在时退回 fastembed 缓存。
+Environment=DSH_EMBED_MODEL_PATH=/srv/dsh-embed/models/bge-small-zh-v1.5
+MemoryMax=1500M
+Nice=5
+
+[Install]
+WantedBy=multi-user.target

@@ -1,0 +1,9 @@
+[Unit]
+Description=dsh 服务器安全清理（只回收可再生资源）
+Documentation=file:/usr/local/bin/dsh-safe-cleanup.sh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/dsh-safe-cleanup.sh
+Nice=19
+IOSchedulingClass=idle

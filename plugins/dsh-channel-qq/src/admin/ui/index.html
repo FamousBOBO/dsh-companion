@@ -1,0 +1,109 @@
+<!doctype html>
+<html lang="zh-CN">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="color-scheme" content="dark light">
+<link rel="icon" href="data:,">
+<title>QQ 机器人管理后台</title>
+<script>
+/* 主题引导：在任何样式生效前把 data-theme 定下来，避免首帧闪错色。
+   存的是偏好（system/light/dark），attribute 是解析后的结果。 */
+(function () {
+  try {
+    var pref = localStorage.getItem('dsh_admin_theme');
+    if (pref !== 'light' && pref !== 'dark' && pref !== 'system') pref = 'system';
+    var resolved = pref === 'system'
+      ? (window.matchMedia && window.matchMedia('(prefers-color-scheme: light)').matches ? 'light' : 'dark')
+      : pref;
+    document.documentElement.setAttribute('data-theme', resolved);
+    document.documentElement.setAttribute('data-theme-pref', pref);
+  } catch (e) {
+    document.documentElement.setAttribute('data-theme', 'dark');
+    document.documentElement.setAttribute('data-theme-pref', 'system');
+  }
+})();
+</script>
+<link rel="stylesheet" href="/ui/styles/tokens.css">
+<link rel="stylesheet" href="/ui/styles/app.css">
+</head>
+<body>
+
+<!-- 顶部错误条：任何未捕获异常都会出现在这里，保证「绝不白屏」 -->
+<div id="errbar" class="errbar" role="alert" aria-live="assertive">
+  <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M12 9v4M12 17h.01"/><path d="M10.3 3.9 2.6 17.4A1.9 1.9 0 0 0 4.3 20.3h15.4a1.9 1.9 0 0 0 1.7-2.9L13.7 3.9a1.9 1.9 0 0 0-3.4 0z"/></svg>
+  <div class="msg"><span id="errtext">页面脚本出错</span><span id="errdetail" class="mono"></span></div>
+  <button id="errbar-close" class="iconbtn" type="button" aria-label="关闭错误提示">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M6 6l12 12M18 6L6 18"/></svg>
+  </button>
+</div>
+
+<!-- 登录页：默认可见（不依赖 JS 显示），脚本挂掉也不会黑屏 -->
+<div id="login" class="login">
+  <form id="loginform" class="loginbox" autocomplete="on" novalidate>
+    <div class="brandmark" aria-hidden="true">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.5 9.5 0 0 1-2.6-.3L4 21l1.5-4.3A8.2 8.2 0 0 1 3.6 11.5a8.4 8.4 0 0 1 8.7-8.4 8.4 8.4 0 0 1 8.7 8.4z"/><path d="M8.5 12h.01M12 12h.01M15.5 12h.01"/></svg>
+    </div>
+    <h1>QQ 机器人管理后台</h1>
+    <p class="sub">dsh-channel-qq · DeepSeek Harness</p>
+    <label class="field" for="pw">
+      <span class="flabel">访问密码</span>
+      <input id="pw" name="password" type="password" placeholder="请输入访问密码" autocomplete="current-password" enterkeyhint="go">
+    </label>
+    <div id="loginmsg" class="loginmsg" role="status" aria-live="polite"></div>
+    <button id="loginbtn" class="btn primary block" type="submit">登录</button>
+    <p class="loginhint" id="loginhint">口令由环境变量或本后台管理，见「安全」页</p>
+  </form>
+</div>
+
+<noscript>
+  <div style="padding:16px;color:#ff6b78">本页面需要 JavaScript 才能运行，请在浏览器设置中启用。</div>
+</noscript>
+
+<!-- 主应用 -->
+<div id="app" class="app off">
+  <header class="topbar" id="topbar">
+    <div class="topbar-in">
+      <button id="navtoggle" class="iconbtn navtoggle" type="button" aria-label="打开导航" title="打开导航" aria-expanded="false">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+      </button>
+      <div class="brand">
+        <span class="bdot" aria-hidden="true"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round"><path d="M21 11.5a8.4 8.4 0 0 1-9 8.4 9.5 9.5 0 0 1-2.6-.3L4 21l1.5-4.3A8.2 8.2 0 0 1 3.6 11.5a8.4 8.4 0 0 1 8.7-8.4 8.4 8.4 0 0 1 8.7 8.4z"/></svg></span>
+        <span class="brandtext"><strong>QQ 机器人</strong></span>
+      </div>
+      <h1 id="pagetitle" class="pagetitle">概览</h1>
+      <div id="pagebadges" class="pagebadges"></div>
+      <span id="connpill" class="pill"><span class="dot"></span>QQ 状态未知</span>
+      <button id="palettebtn" class="palettebtn" type="button" aria-label="打开命令面板（定位配置项）" title="定位配置项">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" aria-hidden="true"><path d="M11 4a7 7 0 1 1 0 14 7 7 0 0 1 0-14"/><path d="M16.2 16.2 21 21"/></svg>
+        <kbd class="palettekbd">Ctrl K</kbd>
+      </button>
+      <button id="refreshbtn" class="iconbtn" type="button" aria-label="刷新当前页" title="刷新当前页">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M20.5 12a8.5 8.5 0 1 1-2.6-6.1"/><path d="M20.5 4.5v4.6h-4.6"/></svg>
+      </button>
+      <button id="themebtn" class="iconbtn" type="button" aria-label="切换主题（跟随系统/浅色/深色）" title="切换主题">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M21 12.8A8.5 8.5 0 1 1 11.2 3a6.6 6.6 0 0 0 9.8 9.8z"/></svg>
+      </button>
+      <button id="logoutbtn" class="iconbtn danger" type="button" aria-label="退出登录" title="退出登录">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M15 4h3a2 2 0 0 1 2 2v12a2 2 0 0 1-2 2h-3"/><path d="M10 8l-4 4 4 4M6 12h9"/></svg>
+      </button>
+    </div>
+  </header>
+
+  <div class="shell">
+    <aside id="sidenav" class="sidenav" aria-label="主导航">
+      <nav id="navlist" class="navlist"></nav>
+      <div class="navmeta" id="navmeta"></div>
+    </aside>
+    <div id="scrim" class="scrim" aria-hidden="true"></div>
+    <main id="main" class="content" tabindex="-1"></main>
+  </div>
+
+  <div id="toasts" class="toasts" aria-live="polite"></div>
+</div>
+
+<div id="dialog-root"></div>
+
+<script type="module" src="/ui/app.js"></script>
+</body>
+</html>

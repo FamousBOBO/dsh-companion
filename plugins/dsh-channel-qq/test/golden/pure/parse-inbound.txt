@@ -1,0 +1,147 @@
+── 纯文字
+{
+  "text": "你好",
+  "plainText": "你好",
+  "imageUrls": [],
+  "imageSummaries": [],
+  "isAtBot": false,
+  "replyToMessageId": null,
+  "hasAtAll": false,
+  "recordCount": 0,
+  "files": [],
+  "forwards": [],
+  "cards": [],
+  "atIds": []
+}
+── @机器人
+{
+  "text": "在吗",
+  "plainText": "在吗",
+  "imageUrls": [],
+  "imageSummaries": [],
+  "isAtBot": true,
+  "replyToMessageId": null,
+  "hasAtAll": false,
+  "recordCount": 0,
+  "files": [],
+  "forwards": [],
+  "cards": [],
+  "atIds": []
+}
+── @别人
+{
+  "text": "看他",
+  "plainText": "看他",
+  "imageUrls": [],
+  "imageSummaries": [],
+  "isAtBot": false,
+  "replyToMessageId": null,
+  "hasAtAll": false,
+  "recordCount": 0,
+  "files": [],
+  "forwards": [],
+  "cards": [],
+  "atIds": [
+    1000000009
+  ]
+}
+── 图片无文字
+{
+  "text": "[图片]",
+  "plainText": "",
+  "imageUrls": [
+    "https://example.invalid/a.jpg"
+  ],
+  "imageSummaries": [],
+  "isAtBot": false,
+  "replyToMessageId": null,
+  "hasAtAll": false,
+  "recordCount": 0,
+  "files": [],
+  "forwards": [],
+  "cards": [],
+  "atIds": []
+}
+── 图片带文字
+{
+  "text": "[图片] 这张",
+  "plainText": "这张",
+  "imageUrls": [
+    "https://example.invalid/a.jpg"
+  ],
+  "imageSummaries": [],
+  "isAtBot": false,
+  "replyToMessageId": null,
+  "hasAtAll": false,
+  "recordCount": 0,
+  "files": [],
+  "forwards": [],
+  "cards": [],
+  "atIds": []
+}
+── 表情
+{
+  "text": "[表情:5] 哈哈",
+  "plainText": "哈哈",
+  "imageUrls": [],
+  "imageSummaries": [],
+  "isAtBot": false,
+  "replyToMessageId": null,
+  "hasAtAll": false,
+  "recordCount": 0,
+  "files": [],
+  "forwards": [],
+  "cards": [],
+  "atIds": []
+}
+── 语音
+{
+  "text": "[语音] 听下",
+  "plainText": "听下",
+  "imageUrls": [],
+  "imageSummaries": [],
+  "isAtBot": false,
+  "replyToMessageId": null,
+  "hasAtAll": false,
+  "recordCount": 1,
+  "files": [],
+  "forwards": [],
+  "cards": [],
+  "atIds": []
+}
+── 文件
+{
+  "text": "[文件：a.md]",
+  "plainText": "",
+  "imageUrls": [],
+  "imageSummaries": [],
+  "isAtBot": false,
+  "replyToMessageId": null,
+  "hasAtAll": false,
+  "recordCount": 0,
+  "files": [
+    {
+      "name": "a.md",
+      "url": "",
+      "fileId": ""
+    }
+  ],
+  "forwards": [],
+  "cards": [],
+  "atIds": []
+}
+── 引用
+{
+  "text": "回你",
+  "plainText": "回你",
+  "imageUrls": [],
+  "imageSummaries": [],
+  "isAtBot": false,
+  "replyToMessageId": 8800,
+  "hasAtAll": false,
+  "recordCount": 0,
+  "files": [],
+  "forwards": [],
+  "cards": [],
+  "atIds": []
+}

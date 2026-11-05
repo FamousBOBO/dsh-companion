@@ -1,0 +1,13 @@
+[Unit]
+Description=每天执行 dsh 工作区备份
+
+[Timer]
+# 每天 04:20（服务器时区为 UTC，即北京时间 12:20）——错开每周日的清理任务
+OnCalendar=*-*-* 04:20
+# 若因关机/维护错过，开机后补跑一次
+Persistent=true
+RandomizedDelaySec=300
+Unit=dsh-workspace-backup.service
+
+[Install]
+WantedBy=timers.target

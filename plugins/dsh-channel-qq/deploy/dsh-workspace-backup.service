@@ -1,0 +1,9 @@
+[Unit]
+Description=dsh 工作区每日备份（AGENTS.md / MEMORY.md / knowledge / persona）
+Documentation=file:/usr/local/bin/workspace-backup.sh
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/bin/workspace-backup.sh
+Nice=19
+IOSchedulingClass=idle

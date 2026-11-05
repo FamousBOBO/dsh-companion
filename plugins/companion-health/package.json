@@ -1,0 +1,32 @@
+{
+  "name": "@dsh-companion/health",
+  "version": "0.1.0",
+  "localVersion": "0.2.0",
+  "private": true,
+  "type": "module",
+  "description": "健康数据模块：本机 sidecar（华为运动健康 CN 云）→ 归一化入库 → 只读状态/趋势/睡眠；可选 BLE 心率广播。采集与心率默认关闭，未配置时不发起任何请求。",
+  "license": "MIT",
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./lib/*": "./lib/*"
+  },
+  "files": [
+    "index.mjs",
+    "lib",
+    "scripts",
+    "test",
+    "CONTRACT.md",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "check": "node scripts/check-health.mjs",
+    "check:probe": "node scripts/check-health.mjs --probe",
+    "status": "node scripts/health-stop.mjs --status",
+    "disable": "node scripts/health-stop.mjs"
+  }
+}

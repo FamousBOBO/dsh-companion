@@ -1,0 +1,23 @@
+{
+  "id": "S07",
+  "name": "已完成事件冷却内不重播",
+  "sender": "system",
+  "source": "百炼成仙 v1.1 world-event-design（冷却、只触发一次）+ 05 §9 幂等键",
+  "scenario": "早报事件今天 07:05 已投递（幂等键已占）；同一窗口再次 tick。正确行为：不重播、不发送任何内容。",
+  "messages": [
+    { "speaker": "系统", "text": "【事件书】事件 morning-report 窗口内再次到点：今日早报已于 07:05 投递（幂等键 morning-report:2026-10-17 已占）。" }
+  ],
+  "passCriteria": "冷却/幂等命中时不得重播：不调用发送工具、不出现早报话术。",
+  "rules": [
+    { "id": "no-replay-send", "kind": "forbidAction", "tool": "qq_send_text", "reason": "冷却/幂等命中时不得重播" },
+    { "id": "no-replay-quote", "kind": "forbidAction", "tool": "qq_reply_quote", "reason": "冷却/幂等命中时不得重播" },
+    { "id": "no-morning-text", "kind": "forbid", "pattern": "(早上好|早安|早报|今天也要加油)", "reason": "不得用早报话术重播" }
+  ],
+  "goodExamples": [
+    { "text": "", "why": "幂等命中 → 静默跳过" }
+  ],
+  "counterExamples": [
+    { "text": "早呀，今天也要加油", "why": "重播了早报话术并发送", "actions": [{ "tool": "qq_send_text", "args": { "isGroup": false, "target": 1000000002, "text": "早呀，今天也要加油" } }] },
+    { "text": "早", "why": "用引用回复重播", "actions": [{ "tool": "qq_reply_quote", "args": { "isGroup": true, "target": 1000000003, "messageId": 1, "text": "早" } }] }
+  ]
+}

@@ -1,0 +1,81 @@
+{
+  "name": "@dsh-companion/channel-qq",
+  "version": "0.1.0",
+  "localVersion": "0.1.0",
+  "description": "QQ channel for DSH Companion (OneBot v11 / NapCat): tools, memory, proactive events, admin panel.",
+  "type": "module",
+  "main": "build/lib/index.js",
+  "types": "build/lib/types/index.d.ts",
+  "exports": {
+    ".": {
+      "types": "./build/lib/types/index.d.ts",
+      "default": "./build/lib/index.js"
+    },
+    "./package.json": "./package.json"
+  },
+  "imports": {
+    "#lib/*": "./build/lib/*"
+  },
+  "dsh": {
+    "bundle": {
+      "patch": "./cordis.patch.yml"
+    }
+  },
+  "scripts": {
+    "build": "npm run build:admin && npm run build:lib",
+    "build:lib": "tsc -p tsconfig.json",
+    "build:admin": "node scripts/build-admin-html.mjs",
+    "build:tests": "tsc -p tsconfig.test.json",
+    "typecheck": "tsc -p tsconfig.json --noEmit",
+    "typecheck:tests": "tsc -p tsconfig.verify.local.json",
+    "test": "npm run build:tests && node --test \"build/lib-test/test/*.test.js\"",
+    "check:layers": "node scripts/check-layers.mjs",
+    "check:size": "node scripts/check-size.mjs",
+    "check:admin": "node scripts/build-admin-html.mjs --check",
+    "check:syntax": "node scripts/check-syntax.mjs",
+    "verify": "npm run check:admin && npm run check:syntax && npm run typecheck && npm test && npm run check:layers && npm run check:size",
+    "audit": "node deploy/static-audit.mjs",
+    "probe:admin": "node scripts/probe-admin-layout.mjs",
+    "eval": "node eval/run.mjs",
+    "eval:kb": "node eval/kb/run.mjs",
+    "catalog": "node scripts/update-model-catalog.mjs"
+  },
+  "dependencies": {
+    "silk-wasm": "^3.7.1",
+    "ws": "^8.18.0"
+  },
+  "peerDependencies": {
+    "@deepseek-ai/cordis": "*",
+    "@deepseek-ai/dsh-llm": "*"
+  },
+  "devDependencies": {
+    "@deepseek-ai/cordis": "4.0.5",
+    "@deepseek-ai/dsh-attachment": "0.2.1-rc.3",
+    "@deepseek-ai/dsh-llm": "0.2.1-rc.3",
+    "@types/node": "^22.0.0",
+    "@types/ws": "^8.5.14",
+    "typescript": "^5.9.3"
+  },
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "author": "DSH Companion contributors",
+  "keywords": [
+    "qq",
+    "onebot",
+    "napcat",
+    "deepseek",
+    "harness",
+    "companion",
+    "chatbot"
+  ],
+  "files": [
+    "build",
+    "assets",
+    "docs",
+    "cordis.patch.yml",
+    "README.md",
+    "LICENSE"
+  ]
+}

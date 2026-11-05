@@ -1,0 +1,11 @@
+{
+  "step": "resolve-miss",
+  "key": "D:\\Bot\\dsh-companion\\release",
+  "reasons": [
+    "registry-miss",
+    "bridge-miss"
+  ],
+  "registryKeys": [],
+  "pid": 12148,
+  "at": "2026-11-05T12:46:07.840Z"
+}

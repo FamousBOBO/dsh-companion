@@ -1,0 +1,144 @@
+{
+  "source": "logs/p2-dayview-fix/live-dashboard.json (production scope u:1429709395|p:march7|w:world:default, 2026-10-31)",
+  "observedAt": "2026-10-31T06:14:17.522Z",
+  "sections": {
+    "p2_plan": [
+      {
+        "plan_id": "plan_10df6c77aabf7e10854c7ba1",
+        "day": "2026-10-31",
+        "version": 1,
+        "status": "committed",
+        "window_start": 1793380149090,
+        "window_end": 1793462400000,
+        "summary": "凌晨一点多了，不折腾大的。翻一眼《静夜思》就睡，月亮和乡愁的念头留给梦里。",
+        "committed_at": 1793380149090
+      }
+    ],
+    "p2_slots": [
+      {
+        "slot_id": "slot_d36106e38885824d731113be",
+        "plan_id": "plan_10df6c77aabf7e10854c7ba1",
+        "start_at": 1793381409090,
+        "end_at": 1793395809090,
+        "kind": "rest",
+        "activity": "",
+        "title": "关灯睡觉",
+        "flexibility": "soft",
+        "status": "planned",
+        "locked": 0
+      },
+      {
+        "slot_id": "slot_f3615f2ece24697197f366e8",
+        "plan_id": "plan_10df6c77aabf7e10854c7ba1",
+        "start_at": 1793380509090,
+        "end_at": 1793381409090,
+        "kind": "activity",
+        "activity": "explore",
+        "title": "再看一眼《静夜思》",
+        "flexibility": "soft",
+        "status": "started",
+        "locked": 0
+      },
+      {
+        "slot_id": "slot_7716dea1381d6e763f6dfc72",
+        "plan_id": "plan_e390531f05bf3812f4ec5ae1",
+        "start_at": 1793373900000,
+        "end_at": 1793374800000,
+        "kind": "activity",
+        "activity": "explore",
+        "title": "读一首《静夜思》",
+        "flexibility": "soft",
+        "status": "started",
+        "locked": 0
+      }
+    ],
+    "p2_activities": [
+      {
+        "activity_id": "act_ea235d98beaf36ee3f5b1e7a",
+        "kind": "explore",
+        "adapter": "explore",
+        "reality": "actual_tool_activity",
+        "status": "done",
+        "target": "https://zh.wikisource.org/wiki/%E9%9D%9C%E5%A4%9C%E6%80%9D",
+        "consumed_prefix": 1203,
+        "total_units": 1203,
+        "artifact_version": 0,
+        "source_hash": "2441cb22050c807e8fdbbd4c08b9b4e0516f1a1e59ccb4d9c1a0889ce5cddf9c",
+        "started_at": 1793380509090,
+        "updated_at": 1793380635365
+      },
+      {
+        "activity_id": "act_8f08078e7379904f2a01c941",
+        "kind": "explore",
+        "adapter": "explore",
+        "reality": "actual_tool_activity",
+        "status": "done",
+        "target": "https://zh.wikisource.org/wiki/%E9%9D%9C%E5%A4%9C%E6%80%9D",
+        "consumed_prefix": 1203,
+        "total_units": 1203,
+        "artifact_version": 0,
+        "source_hash": "2441cb22050c807e8fdbbd4c08b9b4e0516f1a1e59ccb4d9c1a0889ce5cddf9c",
+        "started_at": 1793373900000,
+        "updated_at": 1793374214965
+      }
+    ],
+    "p2_receipts": [
+      {
+        "activity_id": "act_ea235d98beaf36ee3f5b1e7a",
+        "operation": "finish",
+        "ok": 1,
+        "code": "",
+        "at": 1793380635365
+      },
+      {
+        "activity_id": "act_ea235d98beaf36ee3f5b1e7a",
+        "operation": "step",
+        "ok": 1,
+        "code": "",
+        "at": 1793380635363
+      },
+      {
+        "activity_id": "act_ea235d98beaf36ee3f5b1e7a",
+        "operation": "step",
+        "ok": 1,
+        "code": "",
+        "at": 1793380576308
+      },
+      {
+        "activity_id": "act_ea235d98beaf36ee3f5b1e7a",
+        "operation": "start",
+        "ok": 1,
+        "code": "",
+        "at": 1793380509090
+      },
+      {
+        "activity_id": "act_8f08078e7379904f2a01c941",
+        "operation": "finish",
+        "ok": 1,
+        "code": "",
+        "at": 1793374214965
+      },
+      {
+        "activity_id": "act_8f08078e7379904f2a01c941",
+        "operation": "step",
+        "ok": 1,
+        "code": "",
+        "at": 1793374214962
+      },
+      {
+        "activity_id": "act_8f08078e7379904f2a01c941",
+        "operation": "step",
+        "ok": 1,
+        "code": "",
+        "at": 1793374154489
+      },
+      {
+        "activity_id": "act_8f08078e7379904f2a01c941",
+        "operation": "start",
+        "ok": 1,
+        "code": "",
+        "at": 1793373900000
+      }
+    ]
+  }
+}

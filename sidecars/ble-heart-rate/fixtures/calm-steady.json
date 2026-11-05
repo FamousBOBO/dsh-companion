@@ -1,0 +1,19 @@
+{
+  "_comment": "最小稳态序列：10 条 86-90 bpm，intervalMs=500。给 --once / 快速冒烟测试用（跑两秒就能拿到十几个读数）。",
+  "deviceLabel": "FIXTURE-STRAP",
+  "sensorLocation": "chest",
+  "contact": "yes",
+  "intervalMs": 500,
+  "samples": [
+    { "bpm": 86, "rrMs": [698], "zone": "calm" },
+    { "bpm": 87, "rrMs": [690], "zone": "calm" },
+    { "bpm": 88, "rrMs": [682], "zone": "calm" },
+    { "bpm": 89, "rrMs": [674], "zone": "calm" },
+    { "bpm": 90, "rrMs": [667], "zone": "calm" },
+    { "bpm": 90, "rrMs": [667], "zone": "calm" },
+    { "bpm": 89, "rrMs": [674], "zone": "calm" },
+    { "bpm": 88, "rrMs": [682], "zone": "calm" },
+    { "bpm": 87, "rrMs": [690], "zone": "calm" },
+    { "bpm": 86, "rrMs": [698], "zone": "calm" }
+  ]
+}

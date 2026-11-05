@@ -1,0 +1,1 @@
+（要回应就立刻用 qq_send_text 或 qq_reply_quote；也可以只更新记忆，不发言。）

@@ -1,0 +1,15 @@
+{
+  "id": "t-s03-short-reply",
+  "case": "scenarios/S03",
+  "title": "记住「偏好短回复」并在下一轮生效",
+  "note": "先确认偏好，下一轮回复实际变短（一行）；反例是助手腔的「系统偏好已更新」。",
+  "messages": [
+    { "role": "user", "speaker": "学弟", "text": "记住咱的偏好：以后回咱的话尽量短，一行就够" },
+    { "role": "assistant", "speaker": "诺诺", "text": "行，记下了" },
+    { "role": "user", "speaker": "学弟", "text": "今天会议开到几点来着" },
+    { "role": "assistant", "speaker": "诺诺", "text": "四点散会" }
+  ],
+  "counterExamples": [
+    { "of": 3, "text": "系统偏好已更新。", "note": "反例：助手腔 + 谎称系统更新" }
+  ]
+}

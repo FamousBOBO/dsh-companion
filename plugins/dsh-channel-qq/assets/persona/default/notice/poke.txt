@@ -1,0 +1,1 @@
+【戳一戳】QQ{{pokerId}} 刚刚戳了咱一下（最近 {{minutes}} 分钟内第 {{count}} 次）。是否回应、怎么回应由咱裁决：可以 qq_send_poke 戳回去、qq_send_text 说一句、或者干脆不理。插件不会代替咱行动。

@@ -1,0 +1,12 @@
+{
+  "name": "dsh-companion-memory",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "engines": { "node": ">=22.5" },
+  "scripts": {
+    "test": "node --test test/*.test.mjs",
+    "migrate": "node scripts/migrate-memory.mjs"
+  }
+}

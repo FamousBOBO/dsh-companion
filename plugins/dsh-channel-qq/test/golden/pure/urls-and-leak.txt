@@ -1,0 +1,20 @@
+── extractUrls
+"看这个 https://www.bilibili.com/video/BV1GJ411x7h7 挺有意思" → ["https://www.bilibili.com/video/BV1GJ411x7h7"]
+"短链 b23.tv/abc123" → ["https://b23.tv/abc123"]
+"裸 BV 号 BV1GJ411x7h7" → ["https://www.bilibili.com/video/BV1GJ411x7h7"]
+"两个 https://a.example/x 和 https://b.example/y" → ["https://a.example/x","https://b.example/y"]
+"尾巴带标点 https://example.com/a。" → ["https://example.com/a"]
+"没有链接的一句话" → []
+"内网地址 http://127.0.0.1:8790/api/health" → ["http://127.0.0.1:8790/api/health"]
+
+── isInnerMonologueLeak
+"本轮不发" → true
+"保持沉默" → true
+"咱先闭嘴。" → true
+"战况分析：这轮先闭嘴" → true
+"（后台盘算）这轮先不接话，等他说完" → true
+"今天天气不错" → false
+"行，那咱去看看" → false
+"好，我这就改" → false
+"（笑）行吧" → false
+"真的会谢" → false

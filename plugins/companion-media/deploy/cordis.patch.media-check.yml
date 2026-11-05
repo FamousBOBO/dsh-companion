@@ -1,0 +1,37 @@
+- id: agent-preset-registry
+  config:
+    default: companion
+- id: agent-default-model
+  config:
+    provider: opencode-go
+    model: deepseek-v4.1-flash
+    reasoningEffort: high
+- insert:
+    - id: preset-companion-media-check
+      name: '@deepseek-ai/dsh-agent-preset'
+      config:
+        id: companion-media-check
+        name: 三月七陪伴（媒体隔离检查）
+        description: 只用于验证 companion-media 挂载与工具注册的隔离预设；不接 QQ、不主动联系
+        order: 0
+        plugins:
+          - id: companion-foundation
+            name: file:///C:/Users/bobo/Documents/Bot/dsh-companion/plugins/companion-foundation/index.mjs?media-check=1
+          - id: companion-media
+            name: file:///C:/Users/bobo/Documents/Bot/dsh-companion/plugins/companion-media/index.mjs?media-check=1
+          - id: time-context
+            name: '@deepseek-ai/dsh-time-context'
+          - id: agent-instructions
+            name: '@deepseek-ai/dsh-agent-instructions'
+            config:
+              maxBytes: 16384
+          - id: tool-pwsh
+            name: '@deepseek-ai/dsh-tool-pwsh'
+          - id: tool-fs
+            name: '@deepseek-ai/dsh-tool-fs'
+- id: llm-pi-ai
+  name: '@deepseek-ai/dsh-llm-pi-ai'
+  config:
+    providers:
+      opencode-go:
+        apiKeyEnv: OPENCODE_GO_API_KEY

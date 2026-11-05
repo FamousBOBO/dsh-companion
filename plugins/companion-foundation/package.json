@@ -1,0 +1,8 @@
+{
+  "name": "dsh-companion-foundation",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "scripts": { "test": "node --test store.test.mjs memory.test.mjs integration.test.mjs" }
+}

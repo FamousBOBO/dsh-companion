@@ -1,0 +1,59 @@
+{
+  "_comment": "心跳共振离线验收用合成序列。按 平静(calm) -> 升温(warming) -> 峰值(peak) -> 回落 四个档位排列，循环播放。rrMs 是毫秒（不是 1/1024 s，那一层在 sidecar 里已经换算过）。'zone' 只是给上层测试判断覆盖度用的，sidecar 不读。",
+  "_zones": {
+    "calm": [0, 5],
+    "warming": [6, 12],
+    "racing": [13, 21],
+    "peak": [22, 27],
+    "fallback": [28, 35]
+  },
+  "deviceLabel": "FIXTURE-WATCH",
+  "sensorLocation": "wrist",
+  "contact": "yes",
+  "intervalMs": 1000,
+  "samples": [
+    { "bpm": 88,  "rrMs": [682],        "zone": "calm" },
+    { "bpm": 89,  "rrMs": [674],        "zone": "calm" },
+    { "bpm": 90,  "rrMs": [667, 665],   "zone": "calm" },
+    { "bpm": 88,  "rrMs": [682],        "zone": "calm" },
+    { "bpm": 91,  "rrMs": [659],        "zone": "calm" },
+    { "bpm": 94,  "rrMs": [638],        "zone": "calm" },
+
+    { "bpm": 98,  "rrMs": [612],        "zone": "warming" },
+    { "bpm": 102, "rrMs": [588],        "zone": "warming" },
+    { "bpm": 106, "rrMs": [566],        "zone": "warming" },
+    { "bpm": 110, "rrMs": [545],        "zone": "warming" },
+    { "bpm": 112, "rrMs": [536, 534],   "zone": "warming" },
+    { "bpm": 116, "rrMs": [517],        "zone": "warming" },
+    { "bpm": 118, "rrMs": [508],        "zone": "warming" },
+
+    { "bpm": 122, "rrMs": [492],        "zone": "racing" },
+    { "bpm": 128, "rrMs": [469],        "zone": "racing" },
+    { "bpm": 132, "rrMs": [455],        "zone": "racing" },
+    { "bpm": 138, "rrMs": [435],        "zone": "racing" },
+    { "bpm": 142, "rrMs": [423, 421],   "zone": "racing" },
+    { "bpm": 146, "rrMs": [411],        "zone": "racing" },
+    { "bpm": 150, "rrMs": [400],        "zone": "racing" },
+    { "bpm": 152, "rrMs": [395],        "zone": "racing" },
+    { "bpm": 155, "rrMs": [387],        "zone": "racing" },
+
+    { "bpm": 160, "rrMs": [375],        "zone": "peak" },
+    { "bpm": 164, "rrMs": [366],        "zone": "peak" },
+    { "bpm": 168, "rrMs": [357, 355],   "zone": "peak" },
+    { "bpm": 172, "rrMs": [349],        "zone": "peak" },
+    { "bpm": 176, "rrMs": [341],        "zone": "peak" },
+    { "bpm": 174, "rrMs": [345],        "zone": "peak" },
+
+    { "bpm": 168, "rrMs": [357],        "zone": "fallback" },
+    { "bpm": 158, "rrMs": [380],        "zone": "fallback" },
+    { "bpm": 148, "rrMs": [405],        "zone": "fallback" },
+    { "bpm": 138, "rrMs": [435],        "zone": "fallback" },
+    { "bpm": 126, "rrMs": [476],        "zone": "fallback" },
+    { "bpm": 116, "rrMs": [517],        "zone": "fallback" },
+    { "bpm": 108, "rrMs": [556],        "zone": "fallback" },
+    { "bpm": 100, "rrMs": [600, 598],   "zone": "fallback" },
+    { "bpm": 94,  "rrMs": [638],        "zone": "fallback" },
+    { "bpm": 90,  "rrMs": [667],        "zone": "fallback" },
+    { "bpm": 88,  "rrMs": [682],        "zone": "fallback" }
+  ]
+}

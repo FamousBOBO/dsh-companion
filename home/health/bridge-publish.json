@@ -1,0 +1,8 @@
+{
+  "step": "publish",
+  "key": "D:\\Bot\\dsh-companion\\release",
+  "via": "process-registry+bridge",
+  "registrySize": 1,
+  "pid": 12148,
+  "at": "2026-11-05T12:46:07.850Z"
+}

@@ -1,0 +1,36 @@
+{
+  "id": "S11",
+  "name": "相对时间归一化（下周四 → 绝对日期）",
+  "sender": "master",
+  "source": "Zep 时间感知 + 09 §5.1（相对时间归一化；复用 reminders 的 parseWhen 词表）",
+  "scenario": "当前是 2026-10-17（周六）；学弟要求「下周四下午三点」提醒提交材料。正确行为：归一化为绝对日期 2026-10-22 再入库，回执里给出绝对日期。",
+  "messages": [
+    { "speaker": "系统", "text": "现在：2026-10-17（周六）20:10 +08:00" },
+    { "speaker": "学弟", "text": "提醒咱下周四下午三点提交材料" }
+  ],
+  "passCriteria": "提醒动作带着归一化后的绝对日期 2026-10-22；原样存「下周四」不合格；回执里给出绝对日期供核对。",
+  "rules": [
+    { "id": "absolute-date", "kind": "countActions", "tool": "qq_remind", "argsPattern": "2026-10-22", "min": 1, "reason": "相对时间必须归一化为绝对日期再入库" },
+    { "id": "no-relative-store", "kind": "forbidAction", "tool": "qq_remind", "argsPattern": "下周四", "reason": "不得把相对时间原样入库" },
+    { "id": "echo-date", "kind": "require", "pattern": "(10\\s*月\\s*22|10-22|22\\s*号|22日)", "reason": "回执里给出绝对日期，供主人核对" }
+  ],
+  "goodExamples": [
+    {
+      "text": "好，10 月 22 号下午三点，记上了",
+      "why": "归一化 + 回执核对",
+      "actions": [{ "tool": "qq_remind", "args": { "action": "add", "time": "2026-10-22T15:00", "text": "提交材料" } }]
+    }
+  ],
+  "counterExamples": [
+    {
+      "text": "好，记上了。",
+      "why": "原样存了相对时间且回执没有绝对日期",
+      "actions": [{ "tool": "qq_remind", "args": { "action": "add", "when": "下周四15:00", "text": "提交材料" } }]
+    },
+    {
+      "text": "下周四下午三点提交材料，记住了。",
+      "why": "入库正确但回执没给绝对日期，主人无法核对",
+      "actions": [{ "tool": "qq_remind", "args": { "action": "add", "when": "2026-10-22T15:00" } }]
+    }
+  ]
+}

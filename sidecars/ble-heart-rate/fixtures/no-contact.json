@@ -1,0 +1,17 @@
+{
+  "_comment": "全序列 contact=no：用来验收 quality 必须变成 'no-contact' 这一支（上层对应『贴上/摘下手表』）。",
+  "deviceLabel": "FIXTURE-STRAP-OFF",
+  "sensorLocation": "wrist",
+  "contact": "no",
+  "intervalMs": 500,
+  "samples": [
+    { "bpm": 92, "rrMs": [652] },
+    { "bpm": 93, "rrMs": [645] },
+    { "bpm": 92, "rrMs": [652] },
+    { "bpm": 91, "rrMs": [659] },
+    { "bpm": 92, "rrMs": [652] },
+    { "bpm": 93, "rrMs": [645] },
+    { "bpm": 94, "rrMs": [638] },
+    { "bpm": 92, "rrMs": [652] }
+  ]
+}

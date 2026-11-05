@@ -1,0 +1,11 @@
+{
+  "name": "dsh-companion-runtime",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "main": "index.mjs",
+  "engines": { "node": ">=22.5" },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}

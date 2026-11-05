@@ -1,0 +1,65 @@
+# ---- 运行时数据（永不入库）----
+data/
+workspace/
+group-workspace/
+desktop-data/
+logs/
+backups/
+tmp/
+*.db
+*.db-wal
+*.db-shm
+*.sqlite
+*.sqlite3
+
+# ---- 本地配置与密钥 ----
+config/suite.json
+config/persona.md
+config/profile/companion.patch.yml
+config/profile/*.local.yml
+.env
+.env.*
+!.env.example
+*.pem
+*.key
+.credentials.yaml
+
+# ---- 依赖与构建产物 ----
+# 只有真正的构建输出被忽略。多数模块的 lib/ 是手写源码，不能忽略。
+node_modules/
+pnpm-lock.yaml
+plugins/**/build/**
+plugins/**/dist/**
+plugins/dsh-super-injector/lib/**
+plugins/*/node_modules/
+.plugin-manager/
+
+# ---- 媒体与模型产物（测试用的合成图例外，它们是测试资产）----
+*.png
+*.jpg
+*.jpeg
+*.webp
+*.gif
+*.mp3
+*.wav
+*.ogg
+*.flac
+*.mp4
+!plugins/**/icon.svg
+!plugins/**/assets/icon.svg
+!plugins/**/test/fixtures/**
+!docs/**/*.png
+models/
+
+# ---- 编辑器与系统 ----
+.DS_Store
+Thumbs.db
+.idea/
+.vscode/
+*.log
+*.tmp
+*.bak
+*.orig
+__pycache__/
+*.pyc
+.venv/

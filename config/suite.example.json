@@ -1,0 +1,57 @@
+{
+  "$comment": "DSH Companion 套件级配置模板。复制为 config/suite.json 后按需填写；config/suite.json 不入库。所有可花费额度或对外发送的能力默认关闭。",
+  "version": 1,
+
+  "dsh": {
+    "$comment": "宿主位置。留空 = 自动探测常见安装路径；探测失败时 doctor 会打印尝试过的路径。",
+    "executable": "",
+    "moduleRoot": "",
+    "profile": "companion",
+    "permissionMode": "workspace-write",
+    "tempDir": "",
+    "startTimeoutMs": 120000
+  },
+
+  "dataDir": "",
+  "$dataDirComment": "留空 = <套件根>/data。可写绝对路径或相对套件根的路径；不得指向源码目录内部。",
+
+  "modules": {
+    "$comment": "可选模块默认全部关闭。先跑 `npm run doctor`，再逐项打开。",
+    "core": true,
+    "memoryStudio": true,
+    "qq": false,
+    "bilibili": false,
+    "health": false,
+    "media": false,
+    "pasteSearch": false,
+    "superInjector": false
+  },
+
+  "services": {
+    "$comment": "外部服务由用户自行部署。套件只连接，不安装、不管理生命周期。",
+    "onebot": {
+      "url": "",
+      "$urlComment": "例如 ws://127.0.0.1:3001（NapCat / OneBot v11 正向 WebSocket）",
+      "accessToken": "",
+      "selfId": 0
+    },
+    "health": {
+      "sidecarUrl": "",
+      "$sidecarUrlComment": "例如 http://127.0.0.1:8765（华为健康 sidecar）"
+    },
+    "media": {
+      "baseUrl": "",
+      "apiKeyEnv": "",
+      "$apiKeyEnvComment": "只填环境变量名，密钥值放 .env.local 或系统环境，不写进本文件。"
+    }
+  },
+
+  "safety": {
+    "$comment": "没有操作者显式打开，套件不会自动外发、不会产生计费请求、不会采集健康数据。",
+    "autoSend": false,
+    "autoComment": false,
+    "backgroundModelTasks": false,
+    "healthCollection": false,
+    "billingApis": false
+  }
+}

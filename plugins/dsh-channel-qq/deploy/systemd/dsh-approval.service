@@ -1,0 +1,9 @@
+[Unit]
+Description=Execute approved dsh commands (outside the dsh cgroup)
+
+[Service]
+Type=oneshot
+# 独立 cgroup：被批准的命令可以重启 dsh 自己，而不会把执行者一起杀掉。
+ExecStart=/opt/node22/bin/node /srv/dsh/dsh-channel-qq/deploy/approve-exec.mjs
+TimeoutStartSec=600
+Nice=5

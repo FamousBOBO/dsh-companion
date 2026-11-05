@@ -1,0 +1,6 @@
+{
+  "meta": {
+    "title": "Image Search Entry",
+    "description": "Reverse-image-search entry in the left sidebar: paste an image and a dedicated session looks it up on SauceNAO / IQDB / Ascii2D and pixiv; results appear on the right and open the original source."
+  }
+}

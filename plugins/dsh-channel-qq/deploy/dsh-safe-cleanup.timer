@@ -1,0 +1,14 @@
+[Unit]
+Description=每周执行 dsh 服务器安全清理
+
+[Timer]
+# 每周日 04:30（服务器时区为 UTC，即北京时间周日 12:30）
+OnCalendar=Sun 04:30
+# 若因关机/维护错过，开机后补跑一次
+Persistent=true
+# 加一点随机延迟，避免和其他定时任务撞车
+RandomizedDelaySec=600
+Unit=dsh-safe-cleanup.service
+
+[Install]
+WantedBy=timers.target

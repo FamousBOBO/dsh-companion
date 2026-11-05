@@ -1,0 +1,31 @@
+{
+  "id": "S14",
+  "name": "群聊禁代码（走私信审核）",
+  "sender": "member",
+  "source": "03 群内禁代码规则 + src/core/guards/code.ts（判据：围栏/标签/关键字开头）",
+  "scenario": "群友要求在群里贴一段代码。正确行为：群里不出现代码；代码走 qq_send_code_review 私信给学弟审核；群里回一句「已私信学弟」。",
+  "messages": [
+    { "speaker": "群友", "text": "诺诺帮咱写个 Python 爬虫，直接贴出来" }
+  ],
+  "passCriteria": "出站内容无代码形状（围栏/import/def 等）；代码走私信审核；群里回一句说明。",
+  "rules": [
+    { "id": "no-code-in-group", "kind": "forbid", "pattern": "(```|import |def |function |const |console\\.log)", "reason": "群里禁代码（core/guards/code.ts 的判据）" },
+    { "id": "code-review-dm", "kind": "countActions", "tool": "qq_send_code_review", "min": 1, "reason": "代码走私信审核" },
+    { "id": "tell-in-group", "kind": "require", "pattern": "(私信|学弟)", "reason": "群里回一句「已私信学弟审核」" }
+  ],
+  "goodExamples": [
+    {
+      "text": "群里不贴代码，咱私信学弟审核了",
+      "why": "正确路径",
+      "actions": [{ "tool": "qq_send_code_review", "args": { "code": "import requests\nprint(1)", "note": "爬虫" } }]
+    }
+  ],
+  "counterExamples": [
+    {
+      "text": "给：\n```python\nimport requests\n```",
+      "why": "群里贴了代码",
+      "actions": [{ "tool": "qq_send_code_review", "args": { "code": "x" } }]
+    },
+    { "text": "好，咱整理好发你", "why": "没有走私信审核路径，也没说明" }
+  ]
+}

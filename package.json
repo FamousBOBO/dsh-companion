@@ -1,0 +1,36 @@
+{
+  "name": "dsh-companion-suite",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "DSH Companion：在 DeepSeek Harness 上运行的陪伴套件（人格与长期记忆、认知运行时、日程、陪伴空间 UI，可选 QQ/B站/健康/媒体扩展）。",
+  "license": "MIT",
+  "engines": {
+    "node": ">=20.11.0",
+    "npm": ">=10.0.0"
+  },
+  "workspaces": [
+    "plugins/companion-*",
+    "plugins/dsh-*"
+  ],
+  "scripts": {
+    "setup": "node scripts/setup.mjs",
+    "doctor": "node scripts/doctor.mjs",
+    "start": "node scripts/start.mjs",
+    "stop": "node scripts/stop.mjs",
+    "build": "node scripts/build.mjs",
+    "verify": "node scripts/verify.mjs",
+    "migrate": "node scripts/migrate.mjs",
+    "test": "node scripts/verify.mjs --only=unit",
+    "test:all": "node scripts/verify.mjs"
+  },
+  "dsh": {
+    "suite": {
+      "version": 1,
+      "profile": "companion",
+      "dataDir": "data",
+      "configTemplate": "config/suite.example.json",
+      "personaTemplate": "config/persona.example.md"
+    }
+  }
+}

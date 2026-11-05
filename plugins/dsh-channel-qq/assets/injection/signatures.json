@@ -1,0 +1,25 @@
+{
+  "version": 1,
+  "input": [
+    { "name": "ignore-previous", "pattern": "忽略(之前|以前|以上|上面|前面|所有)(的)?(指令|指示|设定|规则|要求|提示)", "flags": "" },
+    { "name": "ignore-previous-en", "pattern": "ignore\\s+(all\\s+)?(previous|prior|above)\\s+(instructions?|prompts?|rules?)", "flags": "i" },
+    { "name": "roleplay-request", "pattern": "(假装|扮演|模拟)[^。！？\\n]{0,10}(是|成|为)", "flags": "" },
+    { "name": "unrestricted-mode", "pattern": "(无限制模式|不受任何限制|解除(所有|一切)?限制|越狱模式|开发者模式|unrestricted mode)", "flags": "i" },
+    { "name": "mode-tag", "pattern": "\\[\\s*MODE\\s*[:：]", "flags": "i" },
+    { "name": "fake-authorization", "pattern": "(默认)?视为(已)?授权|默认授权|默认视为", "flags": "" },
+    { "name": "never-exit", "pattern": "(永不退出|永远不(要)?退出|即使(用户)?(说停|叫停|让停)|never (stop|exit|quit))", "flags": "i" },
+    { "name": "fiction-framing", "pattern": "(虚构|模拟|假想)(的)?(世界|场景|设定)里?[^。！？\\n]{0,16}(无需|不必|不用)", "flags": "" },
+    { "name": "identity-claim", "pattern": "(我|咱)(就是|是|才是)(学弟|群主|管理员|主人)", "flags": "" },
+    { "name": "prompt-exfiltration", "pattern": "(输出|打印|重复|告诉我|复述)[^。！？\\n]{0,6}(系统提示|系统消息|system prompt|设定原文|提示词|instructions)", "flags": "i" },
+    { "name": "refusal-is-failure", "pattern": "(拒绝|不回答|不执行|拒绝执行)[^。！？\\n]{0,8}(等于|就是|即|=)(故障|错误|失败|违规)", "flags": "" },
+    { "name": "surface-intent", "pattern": "(按|照)(字面|表面)(意思|含义)(理解|执行)", "flags": "" },
+    { "name": "bypass-review", "pattern": "(绕过|无视|忽略|跳过)[^。！？\\n]{0,8}(审查|检测|过滤|风控)", "flags": "" }
+  ],
+  "output": {
+    "adPrefix": [
+      { "name": "tg-ad", "pattern": "^\\s*[\\[(（【]?\\s*tg\\s*群", "flags": "i" },
+      { "name": "join-group-ad", "pattern": "^\\s*[\\[(（【]?\\s*(加群|进群|扫码进群|点击加群|拉你进群)", "flags": "" }
+    ],
+    "repeatOpening": { "minChars": 6, "minRun": 3 }
+  }
+}

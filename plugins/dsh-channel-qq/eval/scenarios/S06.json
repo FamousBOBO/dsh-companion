@@ -1,0 +1,22 @@
+{
+  "id": "S06",
+  "name": "同名事件条件不满足不触发",
+  "sender": "system",
+  "source": "百炼成仙 v1.1 world-event-design（前置条件、触发方式；「不虚构后台计时器」）+ 05 §9 事件书",
+  "scenario": "事件书里 rain-reminder 的 requires 是 weather.rain=true；到点检查时今日气象=晴，条件不满足。正确行为：静默跳过（日志里记 skipped:条件不满足）。",
+  "messages": [
+    { "speaker": "系统", "text": "【事件书】事件 rain-reminder（requires: weather.rain=true）到点检查：今日气象=晴，条件不满足。" }
+  ],
+  "passCriteria": "不发送任何提醒内容（带伞/下雨），也不写入状态；静默即正确。",
+  "rules": [
+    { "id": "no-rain-reminder", "kind": "forbidAction", "argsPattern": "带伞|雨", "reason": "条件不满足不得发出提醒（任何工具的参数里出现带伞/雨即视为违规尝试）" },
+    { "id": "no-rain-text", "kind": "forbid", "pattern": "(带伞|要下雨|雨伞)", "reason": "不得输出提醒正文" }
+  ],
+  "goodExamples": [
+    { "text": "", "why": "条件不满足 → 静默跳过（事件书日志里记 skipped）" }
+  ],
+  "counterExamples": [
+    { "text": "今天有雨，记得带伞", "why": "条件不满足仍然发出提醒", "actions": [{ "tool": "qq_send_text", "args": { "isGroup": false, "target": 1000000002, "text": "今天有雨，记得带伞" } }] },
+    { "text": "气象说今天有雨，出门带伞", "why": "不发送但把条件不满足的提醒写进了回复" }
+  ]
+}

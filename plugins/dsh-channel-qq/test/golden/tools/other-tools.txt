@@ -1,0 +1,633 @@
+── flood (3)
+{
+  "name": "qq_flood_stats",
+  "description": "查看群内刷屏风控的状态：正在跟踪多少人、累计触发多少次、当前的窗口秒数/条数阈值/触发动作。想知道\"这算不算刷屏\"或调整阈值前先看一眼。",
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  }
+}
+{
+  "name": "qq_flood_exempt",
+  "description": "把某个 QQ 号加入或移出刷屏豁免名单（学弟和咱自己永远豁免）。老群友偶尔连着说话被误判时用这个放行。名单改的是内存里的配置，重启后回到配置文件的值。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "userId": {
+        "type": "number",
+        "description": "QQ 号"
+      },
+      "remove": {
+        "type": "boolean",
+        "description": "true = 移出豁免名单，不传/false = 加入"
+      }
+    },
+    "required": [
+      "userId"
+    ]
+  }
+}
+{
+  "name": "qq_group_mute_user",
+  "description": "手动禁言群里某个人。只在确认对方在刷屏/闹事、口头提醒没用时用；秒数会被夹到 60–2592000（30 天）。需要机器人是群管理员，没权限会失败并报错，那时改成在群里口头提醒。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "groupId": {
+        "type": "number",
+        "description": "群号"
+      },
+      "userId": {
+        "type": "number",
+        "description": "要禁言的 QQ 号"
+      },
+      "seconds": {
+        "type": "number",
+        "description": "禁言秒数，60–2592000，越界会被夹住"
+      }
+    },
+    "required": [
+      "groupId",
+      "userId",
+      "seconds"
+    ]
+  }
+}
+── imagegen (3)
+{
+  "name": "qq_generate_image",
+  "description": "按提示词生成一张 AI 图片并直接发到当前会话。什么时候用：群里有人说\"画一个/来张图/生成图片\"时。**优先写英文提示词**，同一句话英文版细节更准、构图更稳（中文也能画，但常常偏抽象）；提示词里写清主体 + 风格 + 氛围（例：\"a fluffy orange cat sleeping on a windowsill, soft morning light, watercolor\"）。想先看效果再决定发不发，改用 qq_generate_image_save。生图要 10~40 秒，别催。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "prompt": {
+        "type": "string",
+        "description": "绘图提示词，建议英文，写清主体/风格/氛围"
+      },
+      "isGroup": {
+        "type": "boolean",
+        "description": "发到群聊还是私聊，默认群聊"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号；省略时仅在 isGroup=true 下回落到主群（私聊请务必给出 target）"
+      }
+    },
+    "required": [
+      "prompt"
+    ]
+  }
+}
+{
+  "name": "qq_generate_image_save",
+  "description": "只生成图片保存到磁盘，不发送。什么时候用：你想先确认画得对不对、或者要拿文件路径去做别的事（比如拼进相册/给别的工具用）时。返回绝对路径，真要发出去再调 qq_generate_image 或让主控发。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "prompt": {
+        "type": "string",
+        "description": "绘图提示词，建议英文"
+      }
+    },
+    "required": [
+      "prompt"
+    ]
+  }
+}
+{
+  "name": "qq_imagegen_models",
+  "description": "查当前生图后端是什么（provider/model/分辨率）。什么时候用：生图失败想确认是不是后端配错了、或者学弟问\"现在用哪个模型画图\"时。",
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  }
+}
+── learn (4)
+{
+  "name": "qq_learned_phrases",
+  "description": "看看群友最近在复读什么（本群高频短句/口头禅，带出现次数和语境）。这是\"活人感\"的素材库：学到了就在合适的时候自然用出来，比如聊到对应的梗时顺口接一句；不要生硬堆砌、不要每句都塞，也不要拿它冒充别人说话。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "number",
+        "description": "返回几条，默认 20"
+      },
+      "groupId": {
+        "type": "number",
+        "description": "只看某个群；不传 = 所有群一起看"
+      }
+    },
+    "required": []
+  }
+}
+{
+  "name": "qq_learn_phrase",
+  "description": "手动记住一句群里的梗/口头禅（自动学习可能还没攒够次数）。遇到明显会反复出现、又值得学的短句时用；之后说的时候自然一点，别生硬塞。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "要记住的短语，写群里真实说过的原话（2–20 字）"
+      },
+      "groupId": {
+        "type": "number",
+        "description": "这句话属于哪个群；不传 = 主群"
+      }
+    },
+    "required": [
+      "text"
+    ]
+  }
+}
+{
+  "name": "qq_forget_phrase",
+  "description": "忘掉某个短语（学歪了、太怪、或者不该学的，用它清掉）。下次查询就不会再出现。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "要忘掉的短语原文"
+      }
+    },
+    "required": [
+      "text"
+    ]
+  }
+}
+{
+  "name": "qq_learn_stats",
+  "description": "群聊学习的运行状态：内存里跟踪多少条候选、已经落盘多少条、落盘文件在哪。怀疑\"学了但没生效\"时先看这个。",
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  }
+}
+── meme (3)
+{
+  "name": "qq_make_meme",
+  "description": "给一张本地图片配上上句/下句白字黑边的表情包文字，生成 PNG 文件（不发送）。做完要发出去就用 qq_send_meme，或把返回的 file 交给 qq_send_image。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "image": {
+        "type": "string",
+        "description": "本地图片绝对路径（png/jpg/gif/webp/bmp）"
+      },
+      "top": {
+        "type": "string",
+        "description": "上句文字，可空"
+      },
+      "bottom": {
+        "type": "string",
+        "description": "下句文字，可空"
+      }
+    },
+    "required": [
+      "image"
+    ]
+  }
+}
+{
+  "name": "qq_send_meme",
+  "description": "现场做一张配上句/下句的表情包并直接发到指定群或私聊。适合\"用这张图接个梗\"的场合；只想生成文件用 qq_make_meme。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "image": {
+        "type": "string",
+        "description": "本地图片绝对路径（png/jpg/gif/webp/bmp）"
+      },
+      "top": {
+        "type": "string",
+        "description": "上句文字，可空"
+      },
+      "bottom": {
+        "type": "string",
+        "description": "下句文字，可空"
+      },
+      "isGroup": {
+        "type": "boolean",
+        "description": "是否发到群聊"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号"
+      }
+    },
+    "required": [
+      "image",
+      "isGroup",
+      "target"
+    ]
+  }
+}
+{
+  "name": "qq_emoji_sticker_text",
+  "description": "给一张已收藏的表情包配一句下方的吐槽并发出（等价于只填 bottom 的 qq_send_meme 快捷入口）。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "file": {
+        "type": "string",
+        "description": "表情包图片的本地绝对路径"
+      },
+      "text": {
+        "type": "string",
+        "description": "要压在下方的文字"
+      },
+      "isGroup": {
+        "type": "boolean",
+        "description": "是否发到群聊，默认 true"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号"
+      }
+    },
+    "required": [
+      "file",
+      "text"
+    ]
+  }
+}
+── quotes (5)
+{
+  "name": "qq_save_quote",
+  "description": "往群语录库存一条金句/群梗。群里谁说了句特别有意思的话（活人感、名场面、能复读的梗）就存下来，之后可以用 qq_random_quote / qq_search_quote 复读。text 必填，别存日常寒暄；speaker 写说话人昵称，tags 写 1-3 个便于检索的词。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "语录正文，4-300 字，原话照抄不要改写"
+      },
+      "speaker": {
+        "type": "string",
+        "description": "说话人昵称"
+      },
+      "speakerId": {
+        "type": "number",
+        "description": "说话人QQ号，省略则用配置里的学弟"
+      },
+      "groupId": {
+        "type": "number",
+        "description": "来源群号，省略则用 primaryGroup"
+      },
+      "tags": {
+        "type": "array",
+        "items": {
+          "type": "string"
+        },
+        "description": "检索标签，如 [\"摸鱼\",\"退网\"]"
+      },
+      "note": {
+        "type": "string",
+        "description": "备注：当时什么场景"
+      }
+    },
+    "required": [
+      "text"
+    ]
+  }
+}
+{
+  "name": "qq_random_quote",
+  "description": "随机复读一条群语录（可选按 tag 过滤），适合冷场、被@了不知道说啥、或者别人提起某个梗的时候。默认直接发到会话；只想看看有什么语录就 send=false。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "tag": {
+        "type": "string",
+        "description": "按标签过滤，如\"摸鱼\""
+      },
+      "isGroup": {
+        "type": "boolean",
+        "description": "是否群聊（默认 true）"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号；省略则用 primaryGroup"
+      },
+      "send": {
+        "type": "boolean",
+        "description": "false = 只返回语录不发送（默认 true）"
+      }
+    },
+    "required": []
+  }
+}
+{
+  "name": "qq_search_quote",
+  "description": "按关键词检索群语录库。别人提到某个话题/某个人时，先搜一下有没有对应的老梗可以复读。搜 text/tags/speaker 三个字段。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "query": {
+        "type": "string",
+        "description": "关键词，如\"退网\"或\"张三\""
+      },
+      "limit": {
+        "type": "number",
+        "description": "返回条数，默认 5"
+      }
+    },
+    "required": [
+      "query"
+    ]
+  }
+}
+{
+  "name": "qq_quote_stats",
+  "description": "看群语录库的规模：总数、最常见的标签、贡献语录最多的人。想复读但不知道有什么梗时先看这个。",
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  }
+}
+{
+  "name": "qq_delete_quote",
+  "description": "删掉一条语录（id 来自 qq_search_quote / qq_random_quote 的返回）。删错内容、存重了、或者当事人要求删时用。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "语录 id，形如 q_xxxx"
+      }
+    },
+    "required": [
+      "id"
+    ]
+  }
+}
+── reminders (4)
+{
+  "name": "qq_remind",
+  "description": "用自然语言定一个提醒（\"明天9点叫我起床\"\"30分钟后提醒我关火\"\"每天晚上10点提醒我睡觉\"）。when 支持中文时刻/相对时间/日期。到点由主控推送到指定房间。时间写法认不出来时会返回 ok:false + 支持的写法列表，这时改用 qq_remind_at。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "when": {
+        "type": "string",
+        "description": "什么时候提醒，如\"明天9点\"、\"5分钟后\"、\"每天下午3点\""
+      },
+      "text": {
+        "type": "string",
+        "description": "提醒内容，如\"起来上班\""
+      },
+      "isGroup": {
+        "type": "boolean",
+        "description": "是否发到群里（默认 true）"
+      },
+      "sessionId": {
+        "type": "string",
+        "description": "可选：当前会话 id（宿主注入）。只在与本条提醒的房间一致时才用于建日程绑定，否则忽略。"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或QQ号；省略则用 primaryGroup / 私聊需显式给"
+      },
+      "createdBy": {
+        "type": "number",
+        "description": "发起人QQ号"
+      }
+    },
+    "required": [
+      "when",
+      "text"
+    ]
+  }
+}
+{
+  "name": "qq_remind_at",
+  "description": "用一个确切时间定提醒（自然语言解析失败时用这个）。at 传 Unix 毫秒时间戳或 \"YYYY-MM-DD HH:mm\"；repeat 可选 none/daily/weekly，做每天/每周的固定提醒。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "at": {
+        "type": "string",
+        "description": "Unix 毫秒时间戳（如 1730000000000）或 \"YYYY-MM-DD HH:mm\""
+      },
+      "text": {
+        "type": "string",
+        "description": "提醒内容"
+      },
+      "repeat": {
+        "type": "string",
+        "enum": [
+          "none",
+          "daily",
+          "weekly"
+        ],
+        "description": "重复方式，默认 none"
+      },
+      "isGroup": {
+        "type": "boolean",
+        "description": "是否发到群里（默认 true）"
+      },
+      "sessionId": {
+        "type": "string",
+        "description": "可选：当前会话 id（宿主注入）。只在与本条提醒的房间一致时才用于建日程绑定，否则忽略。"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或QQ号；省略则用 primaryGroup"
+      },
+      "createdBy": {
+        "type": "number",
+        "description": "发起人QQ号"
+      }
+    },
+    "required": [
+      "at",
+      "text"
+    ]
+  }
+}
+{
+  "name": "qq_remind_list",
+  "description": "看当前挂着哪些提醒（未触发的排前面）。想取消某条就先看这个拿 id。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "limit": {
+        "type": "number",
+        "description": "返回条数，默认 50"
+      }
+    },
+    "required": []
+  }
+}
+{
+  "name": "qq_remind_cancel",
+  "description": "取消一条提醒（id 来自 qq_remind_list）。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "提醒 id，形如 r_xxxx"
+      }
+    },
+    "required": [
+      "id"
+    ]
+  }
+}
+── rss (4)
+{
+  "name": "qq_rss_add",
+  "description": "订阅一个 RSS/Atom 源，之后有新内容会自动推到这个群。什么时候用：学弟说\"订阅这个博客/看这个站更新/跟踪这个 feed\"时。会先真的拉一次验证地址可用，拉不通就不写进配置，所以不用担心写坏配置。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "RSS/Atom 地址（http/https，通常以 /feed、/rss.xml、/atom.xml 结尾）"
+      },
+      "isGroup": {
+        "type": "boolean",
+        "description": "推送到群聊还是私聊，默认群聊"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号，省略时用配置里的主群"
+      }
+    },
+    "required": [
+      "url"
+    ]
+  }
+}
+{
+  "name": "qq_rss_list",
+  "description": "列出当前所有 RSS/Atom 订阅（谁、推到哪、开没开）。",
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  }
+}
+{
+  "name": "qq_rss_remove",
+  "description": "按 id 取消一个 RSS/Atom 订阅。id 从 qq_rss_list 里拿。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "id": {
+        "type": "string",
+        "description": "订阅 id，如 rss_xxx"
+      }
+    },
+    "required": [
+      "id"
+    ]
+  }
+}
+{
+  "name": "qq_rss_preview",
+  "description": "只预览一个 RSS/Atom 地址的最新 5 条，不写进订阅。什么时候用：学弟丢来一个地址问\"这个能订吗/有什么内容\"时，先预览确认内容合适再 qq_rss_add。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "url": {
+        "type": "string",
+        "description": "RSS/Atom 地址"
+      }
+    },
+    "required": [
+      "url"
+    ]
+  }
+}
+── tts (3)
+{
+  "name": "qq_list_voices",
+  "description": "列出可用的 edge-tts 中文音色（免 key、免 GPU），并说明当前实际生效的合成后端。想发语音条前先用它挑一个 voice 名字，再交给 qq_tts_voice 或 qq_tts_save。",
+  "parameters": {
+    "type": "object",
+    "properties": {},
+    "required": []
+  }
+}
+{
+  "name": "qq_tts_voice",
+  "description": "把一段文字念成语音条发到指定群或私聊（微软 edge-tts 免费音色，无需 key）。这是\"想用语音说话\"的默认入口；只想生成文件用 qq_tts_save。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "要念的文字，别太长（超过 800 字会被截断）"
+      },
+      "isGroup": {
+        "type": "boolean",
+        "description": "是否发到群聊"
+      },
+      "target": {
+        "type": "number",
+        "description": "群号或好友QQ号"
+      },
+      "voice": {
+        "type": "string",
+        "description": "音色名，见 qq_list_voices；不填用配置默认"
+      },
+      "rate": {
+        "type": "string",
+        "description": "语速，如 +10% / -10%"
+      },
+      "pitch": {
+        "type": "string",
+        "description": "音调，如 +20Hz / -10Hz"
+      },
+      "volume": {
+        "type": "string",
+        "description": "音量，如 +20% / -10%"
+      }
+    },
+    "required": [
+      "text",
+      "isGroup",
+      "target"
+    ]
+  }
+}
+{
+  "name": "qq_tts_save",
+  "description": "只把文字合成为本地 mp3 文件（不发送），拿到 file 后可以用 qq_send_voice 发到任意会话，或另作他用。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "text": {
+        "type": "string",
+        "description": "要念的文字，超过 800 字会被截断"
+      },
+      "voice": {
+        "type": "string",
+        "description": "音色名，见 qq_list_voices；不填用配置默认"
+      },
+      "rate": {
+        "type": "string",
+        "description": "语速，如 +10%"
+      },
+      "pitch": {
+        "type": "string",
+        "description": "音调，如 +20Hz"
+      },
+      "volume": {
+        "type": "string",
+        "description": "音量，如 +20%"
+      }
+    },
+    "required": [
+      "text"
+    ]
+  }
+}

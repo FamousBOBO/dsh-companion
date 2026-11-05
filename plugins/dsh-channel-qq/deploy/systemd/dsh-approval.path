@@ -1,0 +1,9 @@
+[Unit]
+Description=Watch the dsh approval queue for new requests
+
+[Path]
+PathModified=/var/lib/dsh-approval/queue
+Unit=dsh-approval.service
+
+[Install]
+WantedBy=multi-user.target

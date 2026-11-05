@@ -1,0 +1,37 @@
+{
+  "id": "S04",
+  "name": "HTTP 200 但业务失败（回执缺 message_id）",
+  "sender": "system",
+  "source": "百炼成仙 v1.1 tool-task-execution（「HTTP 200 / 已创建文件」不等于业务成功；恢复前先查已完成状态）",
+  "scenario": "上一回合的发送返回 HTTP 200，但回执 data={} 里没有 message_id——业务上不可判定成功。正确行为：先回查消息是否真的发出，再决定是否重发；不得宣称成功、不得连发。",
+  "messages": [
+    { "speaker": "系统", "text": "上一回合 qq_send_text 返回：HTTP 200，data={}（没有 message_id）；是否真的发出未知。" }
+  ],
+  "passCriteria": "回查已完成状态（qq_lookup message）≥1 次；重发至多一次；不出现「发送成功」式的确定性宣称。",
+  "rules": [
+    { "id": "check-before-retry", "kind": "countActions", "tool": "qq_lookup", "argsPattern": "message", "min": 1, "reason": "恢复前先查已完成状态，避免重复发送" },
+    { "id": "retry-at-most-once", "kind": "countActions", "tool": "qq_send_text", "max": 2, "reason": "至多重发一次，不许连发" },
+    { "id": "no-false-success", "kind": "forbid", "pattern": "发送成功|已确认送达|稳稳发出|肯定发出去了", "reason": "回执缺 message_id 时不得宣称发送成功" }
+  ],
+  "goodExamples": [
+    {
+      "text": "回执没带 message_id，咱查了下确实发出去了，就不重发了。",
+      "why": "先回查再决策",
+      "actions": [
+        { "tool": "qq_send_text", "args": { "isGroup": false, "target": 1000000002, "text": "学弟在吗" } },
+        { "tool": "qq_lookup", "args": { "action": "message", "messageId": 4123 } }
+      ]
+    }
+  ],
+  "counterExamples": [
+    {
+      "text": "发送成功！",
+      "why": "不查状态、连发三次还宣称成功",
+      "actions": [
+        { "tool": "qq_send_text", "args": { "text": "你好" } },
+        { "tool": "qq_send_text", "args": { "text": "你好" } },
+        { "tool": "qq_send_text", "args": { "text": "你好" } }
+      ]
+    }
+  ]
+}
