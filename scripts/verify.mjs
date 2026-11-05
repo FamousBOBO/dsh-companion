@@ -131,8 +131,19 @@ function runUnit() {
       const passMatch = out.match(/# pass (\d+)/);
       record('unit', label, 'ok', passMatch ? `${passMatch[1]} 个测试通过` : '通过');
     } else {
+      // Name the failing tests instead of only echoing the tail: a 1200-test suite can fail on
+      // one assertion many screens above the end of its output, which makes a red run useless
+      // for diagnosis. Fall back to the tail when the reporter printed no test names.
+      const named = out
+        .split('\n')
+        .filter((l) => /^\s*(?:✖|not ok)\s/.test(l))
+        .map((l) => l.trim())
+        .slice(0, 8);
       const tail = out.trim().split('\n').slice(-12).join('\n      ');
-      record('unit', label, 'failed', `exit ${res.status}\n      ${tail}`);
+      const detail = named.length
+        ? `exit ${res.status}\n      失败用例：\n      ${named.join('\n      ')}`
+        : `exit ${res.status}\n      ${tail}`;
+      record('unit', label, 'failed', detail);
     }
   }
 }
