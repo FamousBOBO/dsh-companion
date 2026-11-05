@@ -128,7 +128,8 @@ npm run verify          # 6. 发布要求的离线检查与测试
 |---|---|---|
 | `config/suite.json` | 套件级配置（从 `config/suite.example.json` 复制） | **跳过，不覆盖**（会提示） |
 | `config/persona.md` | 人格（从 `config/persona.example.md` 复制） | **跳过，不覆盖** |
-| `<dataDir>/home/profiles/<profile>/` | 本套件独立 profile 的 `cordis.patch.yml`（插件用**本机绝对路径**的 `file://` URL） | 缺失则生成；已有则**只补缺失键**，不改用户值 |
+| `<dataDir>/home/profiles/<profile>/` | 本套件独立 profile 的运行目录（由宿主使用） | 缺失则生成；已有则复用 |
+| `config/profile/<profile>.patch.yml` | 从 `config/profile/<profile>.patch.template.yml` 生成的 **profile patch**：插件用**本机绝对路径**的 `file://` URL 挂载 | 缺失则生成；已有则**只补缺失键**，不改用户值 |
 | `<dataDir>/home/`、`workspace/`、`logs/`、`tmp/`、`backups/` | 运行期目录 | 存在则复用 |
 
 - **预期**：Exit 0，打印「新建了什么」与「跳过了什么」两份清单。
@@ -148,8 +149,12 @@ npm run verify          # 6. 发布要求的离线检查与测试
   ```
   ELECTRON_RUN_AS_NODE=1 <宿主可执行文件> --expose-internals \
     <moduleRoot>/@deepseek-ai/dsh-desktop-host/lib/cli.js \
-    --profile <profile> --patch <profile>/cordis.patch.yml
+    --profile <profile> --patch config/profile/<profile>.patch.yml
   ```
+
+  `setup` 生成的那份 patch 就是 `--patch` 的取值来源。**profile 本身由 `setup` 创建**
+  （用 `--profile <name> --from-default-profile web` 从宿主自带的 `web` 默认配置离线起步，
+  所以首次部署不需要联网）；`start` 只负责用已有 profile 启动，profile 不存在会直接报错让你回头跑 `setup`。
 
   不要用 `dsh.cmd`，也不要依赖 PowerShell 脚本。
 - **预期**：Exit 0；打印本次启动日志路径与本地访问地址（带 token 的 `http://127.0.0.1:<port>/?token=…`）。

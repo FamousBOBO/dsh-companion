@@ -141,14 +141,21 @@ const LOCAL_ONLY = new Set([
 ]);
 
 /**
- * Audited exception mechanism. A file that must contain a forbidden literal can declare it:
+ * Audited exception mechanism. A file that must contain a forbidden literal can declare it
+ * on its own comment line:
  *
  *     // leak-scan-allow: persona-三月七  (regression guard: asserts the old name is gone)
  *
- * The marker is visible in review, and the exemption covers exactly one rule name in one file.
+ * Three deliberate limits:
+ *   - the marker must be a whole comment line, not prose inside a sentence;
+ *   - markdown files can never grant an exemption, so documenting this mechanism cannot
+ *     silently whitelist the documentation itself;
+ *   - it covers exactly one rule name, in one file.
  */
-function allowedIn(text, rule) {
-  return new RegExp(`leak-scan-allow:[^\\n]*${rule.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(text);
+function allowedIn(text, rule, ext) {
+  if (ext === '.md' || ext === '.mdx') return false;
+  const escaped = rule.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+  return new RegExp(`^[ \\t]*(?://|#|/\\*|\\*)[ \\t]*leak-scan-allow:[^\\n]*\\b${escaped}\\b`, 'm').test(text);
 }
 
 /** Test trees, where placeholder credentials are expected and required. */

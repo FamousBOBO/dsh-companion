@@ -176,8 +176,9 @@ profile 的 patch 里，见 §3.5。
 
 ### 3.5 `dsh-channel-qq`（QQ 通道）
 
-- 配置位置：`<dataDir>/home/profiles/<profile>/cordis.patch.yml` 的 `- id: channel-qq` 段
-  （不是独立 JSON，这是历史与插件契约决定的）
+- 配置位置：**`config/profile/<profile>.patch.yml`**（由 `npm run setup` 从入库模板
+  `config/profile/<profile>.patch.template.yml` 生成本地版本，已 gitignore）的 `- id: channel-qq` 段
+  （不是独立 JSON，这是插件契约决定的）
 - 权威字段（按用途分组，全部默认关闭或受闸）：
 
 | 组 | 关键字段 | 安全默认 | 说明 |

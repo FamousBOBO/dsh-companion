@@ -17,7 +17,7 @@
 
 ### 1.1 发布树里的 `companion-media`（存量）
 
-存量插件是给**作者本人的生产环境**写的：`config.mjs` 里既有 `C:/Users/.../breeze-tts2/...` 之类的绝对路径，也有 `127.0.0.1:8139` 的本地 GPU 协调器、`novelai-pipeline-bridge` 的 Python 桥、HF Space 队列、屏幕截图、衣柜、自动语音等能力。它与本期规格的差距：
+存量插件是给**作者本人的生产环境**写的：`config.mjs` 里既有 `<作者机器路径>/breeze-tts2/...` 之类的绝对路径，也有本地 GPU 协调器（`127.0.0.1` 上的固定端口）、`novelai-pipeline-bridge` 的 Python 桥、HF Space 队列、屏幕截图、衣柜、自动语音等能力。它与本期规格的差距：
 
 | 存量实现 | 本期规格要求 | 处置 |
 |---|---|---|
@@ -25,7 +25,7 @@
 | `image.backend='novelai-pipeline-bridge'` + `bridge/nai_generate.py`（要用户本机 python + AstrBot 插件目录） | 「本期只通过 API 调用媒体服务」；插件加载不得依赖 python | **移除**，改为纯 HTTP adapter；旧配置里该字段迁移时标记 unsupported，不静默使用 |
 | 单后端 `speech.backend`（本地 Breeze） | 五个可独立配置/启用的 TTS adapter | **重写**为 provider registry |
 | 识图 `companion_media_inspect` 工具 + 本地/云双路由 | 「默认关闭，且工具、页面按钮、自动流程都不能绕过；只留合同」 | **移除工具**，只保留合同与配置项 |
-| 绝对路径、`march7` 音色、`bobo-` 用户号、`三月七` 文案 | 去作者化；personaId 可解析（`DSH_COMPANION_PERSONA_ID` → `suite.json` `persona.id` → `bot`） | 全部改为配置项 + 解析函数 |
+| 绝对路径、旧人格 id 的音色前缀、旧用户号前缀、旧人格名文案 | 去作者化；personaId 可解析（`DSH_COMPANION_PERSONA_ID` → `suite.json` `persona.id` → `bot`） | 全部改为配置项 + 解析函数 |
 | `lib/*.mjs` 手写源码放在 `lib/` | 团队决策 D6：`plugins/**/lib/**` 一律 gitignore（视为构建产物） | 源码迁到 `src/`，`lib/` 不再存在 |
 
 ### 1.2 依赖图（M0 交付物之一）
@@ -223,16 +223,16 @@ companion-media
 | 旧字段（生产 `home/media/config.json`） | 处置 |
 |---|---|
 | `image.backend='novelai-pipeline-bridge'` | 标记 **unsupported**，迁移时丢弃；新配置要求显式选 `openai` / `nai` |
-| `image.pythonPath` / `imagePipelineRoot` / `configPath` / `runtime.*` / `queue.*` | 丢弃（本机路径、显存协调器、HF Space 队列；`queue.userId='bobo-march7'`、`greeting='三月七'` 一并丢） |
+| `image.pythonPath` / `imagePipelineRoot` / `configPath` / `runtime.*` / `queue.*` | 丢弃（本机路径、显存协调器、HF Space 队列；`queue.userId` / `queue.greeting` 里的旧用户号与旧人格名一并丢） |
 | `image.model='nai-diffusion-5-full'`, `steps=28`, `scale=5`, `size='832x1216'`, `generationFlow='tag'` | 迁移到 `image.nai.{model,steps,scale,size}`（`steps` 默认已是 28） |
 | `image.style.{artist,defaultPrompt,defaultNegative}` | 迁到 `image.nai.presets.custom.*`；`presets/nai-style.json` 不再作为默认值来源（其中的默认串是作者个人画师串，属个人偏好，不进发布树） |
-| `speech.backend.{baseUrl='…/breeze',voice='march7_B',cfgScale,seed,speed,maxNewTokens}` | 迁到 `tts.providers['breeze-tts-2']`；`voice` 里的 `march7_B` 变为空，用户填自己的参考音频；`speed` → `breeze.speed`（本层不做变速，改用后端 `instruction`） |
-| `speech.presetsFile='C:/Users/.../march7-emotion-presets.json'` | 丢弃（作者本机文件）；`emotionPresets` 清空 |
+| `speech.backend.{baseUrl='…/breeze',voice='<旧人格id>_B',cfgScale,seed,speed,maxNewTokens}` | 迁到 `tts.providers['breeze-tts-2']`；`voice` 里的旧人格前缀被清空，用户填自己的参考音频；`speed` → `breeze.speed`（本层不做变速，改用后端 `instruction`） |
+| `speech.presetsFile`（指向作者机器上的情绪预设文件） | 丢弃（作者本机文件）；`emotionPresets` 清空 |
 | `speech.director.*`（宿主 LLM 语音导演） | 丢弃：本期没有 `host-llm` 依赖，`instruction` 由调用方直接给 |
 | `speech.auto.*`（自动语音） | 丢弃：主动外发不在媒体模块范围 |
 | `vision.*`（含 `local.model='nsfwvision-v3:q5'`、`requireCoordinator`） | 只保留合同字段（`baseUrl`/`apiKey`/`model`/`timeoutMs`），`enabled` 恒 `false` 且只读 |
 | `screen.*` / `delivery.*` / `image.quotas` / `image.tagProvider` / `image.translatePrompt` | 丢弃（屏幕、投递、宿主 LLM 相关，不属于本期媒体插件） |
-| 任何 `C:/Users/**`、`D:/Bot/**`、`127.0.0.1:8139` | 一律不迁移；迁移器只保留用户能确认的 API 选项 |
+| 任何作者机器绝对路径、本地协调器地址 | 一律不迁移；迁移器只保留用户能确认的 API 选项 |
 
 迁移执行原则：**旧配置只读**，新配置写到 `data/media/config.json`；迁移前自动备份 `config.json.bak-<时间戳>`；无法识别的字段写进迁移报告的 `dropped[]`，不静默吞掉。
 

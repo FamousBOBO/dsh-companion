@@ -100,7 +100,7 @@ npm run migrate -- help
   "format": "dsh-companion-migration",
   "formatVersion": 1,
   "source": { "suiteVersion": "0.1.0", "platform": "win32", "node": "24.x",
-              "personaId": "march7", "createdAt": "…", "consistency": "stopped" },
+              "personaId": "<旧人格 id>", "createdAt": "…", "consistency": "stopped" },
   "target": { "suiteVersion": "0.1.0", "personaId": "bot", "dataRoot": "<绝对路径>" },
   "verdict": "same",                    // same | older-source | newer-source | unknown
   "problems": [],                       // 非空 → exit 2
@@ -117,7 +117,7 @@ npm run migrate -- help
                     "target": "home/companion/identity.json",
                     "absolute": "<绝对路径>", "bytes": 1234 }],
     "willBackup": ["home/companion/identity.json"],
-    "personaMapping": { "from": "march7", "to": "bot", "appliedAt": "import" },
+    "personaMapping": { "from": "<旧人格 id>", "to": "bot", "appliedAt": "import" },
     "skipped": [{ "domain": "qq", "reason": "仅存档：外发状态不导入，避免重复发送。" }],
     "disk": { "bundleBytes": 27385560, "freeBytes": 147631128576, "requiredBytes": 54771120 }
   },
@@ -151,7 +151,7 @@ npm run migrate -- help
     { "kind": "device",  "what": "BLE 心率设备",         "action": "…" },
     { "kind": "service", "what": "外部服务地址",         "action": "…" }
   ],
-  "personaMapping": { "from": "march7", "to": "bot", "targets": [{ "file": "…", "table": "memories", "column": "persona", "rows": 976 }] },
+  "personaMapping": { "from": "<旧人格 id>", "to": "bot", "targets": [{ "file": "…", "table": "memories", "column": "persona", "rows": 976 }] },
   "backup": { "dir": "<dataDir>/backups/pre-import-<UTC>", "files": 5 },
   "report": "<dataDir>/logs/migration-import-<UTC>.json",
   "warnings": [],
@@ -213,7 +213,7 @@ npm run migrate -- help
 
 ```jsonc
 { "platform": "win32", "node": "24.x", "hostVersion": "0.2.1-rc.3",
-  "dataDirBasename": "data", "personaId": "march7", "targetPersonaId": "bot",
+  "dataDirBasename": "data", "personaId": "<旧人格 id>", "targetPersonaId": "bot",
   "identityFingerprint": "sha256:…" }   // 身份指纹是哈希，不是明文
 ```
 
@@ -259,19 +259,21 @@ npm run migrate -- help
 | `--identity adopt` | 采用包内身份（主人 / 人格）。**本机已有的会话绑定保留**，旧的按人格 id 映射改写 |
 | `--identity quarantine` | **不写身份文件**：包内数据只作隔离保留，`contextFor` / `recall` 不会把它注入对话 |
 
-### 7.2 人格 id 映射（`march7` → 目标 id）
+### 7.2 人格 id 映射（旧 id → 目标 id）
 
-老数据里的人格 id 是历史值（`march7`），新套件默认是 `bot`（`config/suite.json` 的 `persona.id`，
+老数据里的人格 id 是历史值（旧库里那个标识，**不写进代码**：它随 `bundle.json` 的
+`source.personaId` 一起搬），新套件默认是 `bot`（`config/suite.json` 的 `persona.id`，
 可被 `DSH_COMPANION_PERSONA_ID` 覆盖）。导入时：
 
 1. `identity.json` 的 `persona` 改成目标 id；
 2. 导入的**数据库副本**里，所有**名字像 persona 的文本列**（`persona` / `persona_id` / `personaId`）
    中等于旧 id 的值整列改写，事务提交；
-3. `memory-wiki` 域里的文件名若含旧 id（如 `relationships/march7-user.md`）一并改名；
+3. `memory-wiki` 域里的文件名若含旧 id（如 `relationships/<旧人格 id>-user.md`）一并改名；
 4. 全过程写进输出 JSON 的 `personaMapping.targets[]`（文件 / 表 / 列 / 行数），
    `check` 阶段就会先给出 `persona-id-mapping` 警告。
 
-**只改副本，不改迁移包**。改写的目标 id 来自本机解析结果，不是硬编码。
+**只改副本，不改迁移包**。改写的目标 id 来自本机解析结果；旧 id 来自迁移包自己的记录，
+两者都不是硬编码——所以代码里搜不到任何历史人格名（`npm run verify --only=static` 会拦）。
 
 ### 7.3 提醒：一律不重放
 
