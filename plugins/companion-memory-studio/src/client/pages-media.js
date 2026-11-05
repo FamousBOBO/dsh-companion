@@ -71,6 +71,48 @@
     .cpxp-media-badge-row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
   `);
 
+
+  P.css(`
+    .cpx-media-page > .cpx-band { padding-top:0; }
+    .cpx-media-page > .cpx-band > .cpx-band-head { padding:0 0 4px; }
+    .cpx-media-page > .cpx-band > .cpx-band-head .cpx-band-title { font-size:28px; letter-spacing:-.6px; }
+    .cpxp-media-sec { padding:0; border-radius:16px; overflow:hidden; margin-bottom:24px; background:var(--dsw-alias-bg-layer-1); border-color:var(--dsw-alias-border-l1); }
+    .cpxp-media-sec-head { padding:22px 24px; align-items:center; flex-wrap:nowrap; border-bottom:1px solid var(--dsw-alias-border-l1); }
+    .cpxp-section-name { display:flex; gap:12px; align-items:center; }
+    .cpxp-section-symbol { display:grid; place-items:center; width:38px; height:38px; border-radius:11px; background:color-mix(in srgb,var(--dsw-alias-brand-primary) 10%,transparent); color:var(--dsw-alias-brand-primary); flex:none; }
+    .cpxp-media-sec-title { font-size:20px; font-weight:650; }
+    .cpxp-section-body { padding:24px; display:flex; flex-direction:column; gap:24px; }
+    .cpxp-media-head-actions { display:flex; align-items:center; gap:14px; }
+    .cpxp-enable { display:inline-flex; align-items:center; gap:9px; padding:8px 0; border:0; background:transparent; color:var(--dsw-alias-label-secondary); font:inherit; font-size:13px; white-space:nowrap; cursor:pointer; }
+    .cpxp-enable[aria-checked=true] { color:var(--dsw-alias-label-primary); }
+    .cpxp-switch-track { width:30px; height:18px; border-radius:99px; padding:3px; background:var(--dsw-alias-border-l2); transition:background .18s; display:inline-flex; flex:none; }
+    .cpxp-switch-track::before { content:''; width:12px; height:12px; border-radius:50%; background:var(--dsw-alias-label-secondary); transition:transform .18s; }
+    [aria-checked=true] > .cpxp-switch-track { background:var(--dsw-alias-brand-primary); }
+    [aria-checked=true] > .cpxp-switch-track::before { background:var(--dsw-alias-bg-base); transform:translateX(12px); }
+    .cpxp-media-card { padding:0; border:0; border-radius:0; background:transparent; }
+    .cpxp-media-card-head { margin-bottom:20px; }
+    .cpxp-media-card-title { font-size:15px; margin-bottom:5px; }
+    .cpxp-media-fields { grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; margin:0; }
+    .cpxp-media-fields > * { min-width:0; }
+    .cpxp-media-secret { width:100%; flex-wrap:nowrap; }
+    .cpxp-media-secret .cmx-input { flex:1; width:100%; min-width:0; }
+    .cpxp-media-secret .cpx-state-line { flex:none; }
+    .cpxp-media-actions { margin-top:18px; gap:12px; }
+    .cpxp-media-badge-row { gap:8px; }
+    .cpxp-media-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-top:22px; border-top:1px solid var(--dsw-alias-border-l1); }
+    .cpxp-generation { padding-top:24px; border-top:1px solid var(--dsw-alias-border-l1); display:flex; flex-direction:column; gap:24px; }
+    .cpxp-preset-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .cpxp-preset-head h4 { margin:0; font-size:18px; font-weight:650; }
+    .cpxp-preset-head p { margin:3px 0 0; font-size:12px; }
+    .cpxp-advanced { border:1px solid var(--dsw-alias-border-l1); border-radius:10px; padding:12px 16px; }
+    .cpxp-advanced summary { cursor:pointer; color:var(--dsw-alias-label-secondary); font-size:13px; }
+    .cpxp-advanced[open] > .cpxp-media-fields { margin-top:20px; }
+    .cpxp-resolution { display:flex; gap:20px; align-items:center; flex-wrap:wrap; }
+    .cpxp-media-field-wide textarea { min-height:100px; resize:vertical; }
+    @media(max-width:760px) { .cpxp-media-sec-head,.cpxp-section-body { padding:18px; } .cpxp-media-head-actions { gap:8px; } .cpxp-media-fields { grid-template-columns:1fr; gap:18px; } .cpxp-media-sec-title { font-size:18px; } .cpxp-section-symbol { display:none; } }
+    @media(prefers-reduced-motion:reduce) { .cpxp-switch-track,.cpxp-switch-track::before { transition:none; } }
+  `);
+
   // -------------------------------------------------------------------------
   // 纯函数：视图模型与请求体构造（单测只测这些，不靠"字符串包含"）
   // -------------------------------------------------------------------------
@@ -159,8 +201,8 @@
       configured: info ? info.configured : false,
       mask: info ? info.mask : '',
       // 视图里永不携带明文：secret 的值恒为 ''，靠 configured 表达"已配置"。
-      value: secret || plain ? '' : current,
-      original: secret || plain ? '' : current,
+      value: field.type === 'json' ? JSON.stringify(current || []) : secret || plain ? '' : current,
+      original: field.type === 'json' ? JSON.stringify(current || []) : secret || plain ? '' : current,
       options: Array.isArray(field.options) ? field.options.map(item => ({ value: String(item.value), label: String(item.label) })) : null,
     };
   }
@@ -190,6 +232,7 @@
     const syntheticEnablePath = enableField || kind === 'image' ? null : `${prefix}.enabled`;
     return {
       id: provider.id,
+      generationFields: provider.generationFields || null,
       kind,
       label: provider.label || provider.id,
       prefix,
@@ -388,6 +431,7 @@
   }
 
   function coerce(type, value) {
+    if (type === 'json') { try { return JSON.parse(value || '[]'); } catch { return null; } }
     if (type === 'boolean') return value === true || value === 'true';
     if (type === 'number') {
       const number = Number(value);
@@ -487,7 +531,7 @@
       if (!meta || meta.locked || meta.secret) return;
       const next = coerce(meta.type, draft[path]);
       if (next === null) return; // 数字框留空：不发，交给用户补
-      if (sameValue(next, meta.original)) return;
+      if (meta.type === 'json' ? JSON.stringify(next) === meta.original : sameValue(next, meta.original)) return;
       setParts(patch, meta.parts, next);
     });
     Object.keys(secrets || {}).forEach((path) => {
@@ -613,17 +657,17 @@
     const controlId = `media-${entry.path}`;
     const status = fromEnv
       ? h(ui.StateLine, { state: 'idle', text: `来自环境变量${envVar ? `（${envVar}）` : ''}` })
-      : h(ui.StateLine, { state: configured ? 'ok' : 'idle', text: configured ? (mask || '已配置') : '未配置' });
+      : h(ui.StateLine, { state: configured ? 'ok' : 'idle', text: configured ? '已配置' : '未配置' });
     const hint = fromEnv
       ? '这个 provider 的密钥来自环境变量：在这里改不会生效，请改环境变量本身'
-      : (entry.hint || '只写：保存后只显示「已配置」；留空表示不修改');
+      : '';
     return h(ui.Field, { label: entry.label, hint, id: controlId },
       h('div', { className: 'cpxp-media-secret' },
         h(ui.Input, {
           id: controlId,
           type: 'password',
           value: value || '',
-          placeholder: fromEnv ? '由环境变量提供' : (configured ? '已配置（留空 = 不修改）' : '尚未配置'),
+          placeholder: fromEnv ? '由环境变量提供' : (configured ? '已保存，输入以替换' : '尚未配置'),
           disabled: Boolean(disabled || fromEnv),
           ariaLabel: entry.label,
           onChange: text => onChange(text),
@@ -683,10 +727,14 @@
     if (!open) {
       return h('div', { key: `provider-${provider.id}`, className: 'cpxp-media-card' },
         header,
-        h('p', { className: 'cpxp-media-note' }, provider.stateNote || ''),
+        null,
         !dirty && status ? testResultLine(status) : null);
     }
-    const fieldNodes = provider.fields.map((field) => {
+    const fieldNodes = provider.fields.filter(field => {
+      const key = lastSegment(field.path);
+      if (provider.generationFields && (provider.generationFields.includes(key) || ['activePresetId','generationPresets'].includes(key))) return false;
+      return !(provider.generationFields && key === 'baseUrl' && draft[provider.prefix+'.transport'] === 'official');
+    }).sort((a,b) => (lastSegment(a.path)==='transport'?-1:lastSegment(b.path)==='transport'?1:0)).map((field) => {
       const error = errors[field.path];
       if (field.secret) {
         // 环境变量来的密钥：页面只能显示来源，不能改、也不能"清除"（会被覆盖回去）。
@@ -728,13 +776,12 @@
     });
     const actions = h('div', { className: 'cpxp-media-actions' },
       h(ui.Button, {
-        variant: 'ghost',
-        size: 'sm',
-        loading: busy === `save:${provider.prefix}`,
+        variant: 'primary',
+        loading: busy === `save:${provider.kind}`,
         disabled: !dirty || Boolean(busy),
-        onClick: () => onSave(provider.prefix),
+        onClick: () => onSave(provider.kind),
         title: '只保存这个 provider 的改动（留空的密钥不会被写回）',
-      }, '保存这个 provider'),
+      }, '保存'),
       h(ui.Button, {
         variant: 'ghost',
         size: 'sm',
@@ -747,105 +794,23 @@
       }, '测试连接'),
       !dirty && status ? testResultLine(status) : null);
     const dirtyNote = dirty
-      ? h('p', { className: 'cpxp-media-note' }, '有未保存的修改：先点「保存这个 provider」，再测试——测试读的是已保存的配置。')
+      ? h('p', { className: 'cpxp-media-note' }, '请先保存修改，再测试连接。')
       : null;
-    const evidence = h(ui.Diagnostic, { title: '协议与证据（只读）', hint: provider.label },
-      h(ui.KeyValue, {
-        items: [
-          { k: 'endpoint', v: provider.endpoint || '—', mono: true, breakable: true },
-          { k: 'auth', v: provider.auth || '—' },
-          { k: 'response', v: provider.responseFormat || '—' },
-          { k: 'voice', v: provider.voiceListing || '—' },
-          { k: 'rateLimit', v: provider.rateLimit || '—' },
-          { k: 'license', v: provider.license || '—' },
-          { k: 'evidence', v: provider.evidence && provider.evidence.level ? `${provider.evidence.level} 级` : '—' },
-        ],
-      }));
     return h('div', { key: `provider-${provider.id}`, className: 'cpxp-media-card' },
       header,
-      h('p', { className: 'cpxp-media-note' }, provider.stateNote || ''),
+      null,
       h('div', { className: 'cpxp-media-fields' }, fieldNodes),
       actions,
       dirtyNote,
       status && !dirty && status.detail ? h('p', { className: 'cpxp-media-note' }, status.detail) : null,
-      evidence);
+      null);
   }
 
   function testResultLine(status) {
     if (!status) return null;
     if (status.running) return h(ui.StateLine, { state: 'idle', text: '测试中…' });
-    if (status.ok) return h(ui.StateLine, { state: 'ok', text: `测试通过（证据等级 ${status.level || 'none'}）` });
+    if (status.ok) return h(ui.StateLine, { state: 'ok', text: status.level === 'reachability' ? '地址可达 · 密钥未验证' : '测试通过' });
     return h(ui.StateLine, { state: 'danger', text: `测试失败${status.code ? ` · ${status.code}` : ''}` });
-  }
-
-  function PresetEditor({ presets, draft, busy, onDraft }) {
-    if (!presets) return null;
-    const familyCards = presets.families.map(family => h('div', { key: family.path, className: 'cpxp-media-card' },
-      h('h4', { className: 'cpxp-media-card-title' }, family.label),
-      h('div', { className: 'cpxp-media-fields' },
-        family.fields.map(field => h('div', { key: field.path, className: 'cpxp-media-field-wide' },
-          h(FieldControl, {
-            entry: field,
-            value: draft[field.path],
-            disabled: Boolean(busy),
-            onChange: text => onDraft(field.path, text),
-          }))))));
-    const artist = presets.artist;
-    const artistCard = artist
-      ? h('div', { key: 'preset-artist', className: 'cpxp-media-card' },
-        h('h4', { className: 'cpxp-media-card-title' }, artist.label || '画师串'),
-        h('div', { className: 'cpxp-media-fields' },
-          h('div', { className: 'cpxp-media-field-wide' },
-            h(FieldControl, {
-              entry: artist,
-              value: draft[artist.path],
-              disabled: Boolean(busy),
-              onChange: text => onDraft(artist.path, text),
-            }))))
-      : null;
-    return h('div', null,
-      h('p', { className: 'cpxp-media-note' }, presets.note || 'V5 与 4.5 的预设分开存储，互不串用；切换模型不会把一族的预设套到另一族。'),
-      h('div', { className: 'cpxp-media-presets' }, familyCards),
-      artistCard);
-  }
-
-  function PreviewTool({ spec, preview, form, busy, onForm, onRun }) {
-    if (!spec) return null;
-    const resolution = preview && preview.resolution ? preview.resolution : null;
-    const defaults = spec.values || {};
-    const aspects = [
-      { value: 'portrait', label: '竖图' },
-      { value: 'landscape', label: '横图' },
-      { value: 'square', label: '方图' },
-    ];
-    return h('div', { className: 'cpxp-media-card' },
-      h('h4', { className: 'cpxp-media-card-title' }, spec.label || '自动分辨率预览'),
-      h('p', { className: 'cpxp-media-note' }, spec.note || '按画幅与目标像素计算并取整到 64 的倍数；同一输入同一结果，越界会明确报错。'),
-      h('div', { className: 'cpxp-media-actions' },
-        h(ui.Select, {
-          value: form.aspect || defaults.aspect || 'portrait',
-          ariaLabel: '画幅',
-          options: aspects,
-          onChange: value => onForm({ ...form, aspect: value }),
-        }),
-        h(ui.Input, {
-          value: String(form.targetPixels || defaults.targetPixels || ''),
-          ariaLabel: '目标像素',
-          width: 150,
-          onChange: value => onForm({ ...form, targetPixels: value }),
-        }),
-        h(ui.Button, {
-          variant: 'ghost',
-          size: 'sm',
-          loading: busy === 'preview',
-          onClick: onRun,
-          title: '只在点击时计算；不生成图片、不调用模型',
-        }, '预览')),
-      resolution
-        ? h('p', { className: 'cpxp-media-note' }, resolution.ok
-          ? `结果：${resolution.size || '—'}（取整到 64 的倍数）`
-          : `计算失败：${resolution.error || resolution.code || '参数不合法'}（按后端返回照实显示，页面不改写）`)
-        : null);
   }
 
   function sectionDirty(section, draft, secrets, clears) {
@@ -871,109 +836,96 @@
     });
   }
 
-  function SectionCard({ section, states, testing, draft, secrets, clears, errors, busy, onDraft, onSecret, onClear, onSave, onTest }) {
-    const [open, setOpen] = P.useState(true);
-    const dirty = sectionDirty(section, draft, secrets, clears);
-    const selectedProvider = section.selector ? (draft[section.selector.path] ?? section.selector.value) : null;
-    const toggleNode = section.toggle
-      ? h('div', { className: 'cpxp-media-actions' },
-        h(ui.Toggle, {
-          checked: Boolean(draft[section.toggle.path] ?? section.toggle.value),
-          disabled: section.toggle.disabled,
-          label: section.toggle.label,
-          hint: section.toggle.disabled ? (section.toggle.why || '这一项本轮不可操作') : '',
-          onChange: next => onDraft(section.toggle.path, next),
-        }))
-      : null;
-    const selectorNode = section.selector
-      ? h('div', { className: 'cpxp-media-actions' },
-        h(ui.Field, { label: section.selector.label, id: `media-${section.selector.path}` },
-          h(ui.Select, {
-            id: `media-${section.selector.path}`,
-            value: selectedProvider,
-            disabled: section.selector.disabled,
-            ariaLabel: section.selector.label,
-            options: section.selector.options,
-            onChange: value => onDraft(section.selector.path, value),
-          })))
-      : null;
-    const fieldNodes = section.fields.length
-      ? h('div', { className: 'cpxp-media-fields' }, section.fields.map(field => h('div', {
-        key: field.path,
-        className: field.type === 'textarea' ? 'cpxp-media-field-wide' : '',
-      }, h(FieldControl, {
-        entry: field,
-        value: field.secret ? '' : draft[field.path],
-        disabled: field.locked || Boolean(busy),
-        error: errors[field.path],
-        onChange: text => (field.secret ? onSecret(field.path, text) : onDraft(field.path, text)),
-      }))))
-      : null;
-    const providerNodes = section.providers.length
-      ? h('div', null, section.providers.map(provider => h(ProviderCard, {
-        key: provider.id,
-        provider,
-        selected: provider.id === selectedProvider,
-        states,
-        draft,
-        secrets,
-        clears,
-        errors,
-        testing,
-        busy,
-        onDraft,
-        onSecret,
-        onClear,
-        onSave,
-        onTest,
-      })))
-      : null;
-    const saveNode = h('div', { className: 'cpxp-media-actions' },
-      h(ui.Button, {
-        variant: 'ghost',
-        size: 'sm',
-        loading: busy === `save:${section.id}`,
-        disabled: section.locked || !dirty || Boolean(busy),
-        onClick: () => onSave(section.id),
-        title: section.locked ? '这一块本轮不可编辑' : '保存这一块的改动',
-      }, '保存这一块'));
-    return h('section', { key: `section-${section.id}`, className: 'cpxp-media-sec' },
-      h('div', { className: 'cpxp-media-sec-head' },
-        h('div', null,
-          h('h3', { className: 'cpxp-media-sec-title' }, section.title),
-          h('p', { className: 'cpxp-media-note' }, section.note)),
-        h('div', { className: 'cpxp-media-actions' },
-          section.status ? h(ui.Badge, { tone: section.status === 'on' ? 'ok' : 'neutral' }, section.status === 'on' ? '已启用' : '未启用') : null,
-          h(ui.Button, { variant: 'ghost', size: 'sm', onClick: () => setOpen(!open) }, open ? '收起' : '展开'))),
-      open
-        ? h('div', null,
-          toggleNode,
-          selectorNode,
-          fieldNodes,
-          providerNodes,
-          section.presets ? h(PresetEditor, { presets: section.presets, draft, busy, onDraft }) : null,
-          saveNode)
-        : null);
+
+  function parseLibrary(value) { try { const items = JSON.parse(value || '[]'); return Array.isArray(items) ? items : []; } catch { return []; } }
+
+  function GenerationEditor({ provider, presets, draft, busy, errors, onDraft }) {
+    const prefix = provider.prefix;
+    const libraryPath = prefix + '.generationPresets';
+    const activePath = prefix + '.activePresetId';
+    const library = parseLibrary(draft[libraryPath]);
+    const active = library.find(item => item.id === draft[activePath]);
+    const model = String(draft[prefix+'.model'] || '');
+    const family = model.startsWith('nai-diffusion-5') ? '5' : model.startsWith('nai-diffusion-4') ? '4.5' : '';
+    const snapshot = (path, value) => {
+      const settings = {};
+      provider.generationFields.forEach(key => {
+        const field = provider.fields.find(f => f.path === prefix+'.'+key);
+        settings[key] = coerce(field?.type, path === prefix+'.'+key ? value : draft[prefix+'.'+key]);
+      });
+      const families = {};
+      (presets?.families || []).forEach(f => {
+        families[f.family] = {};
+        f.fields.forEach(field => { families[f.family][lastSegment(field.path)] = coerce(field.type,field.path===path?value:draft[field.path]); });
+      });
+      return {settings, presets:families};
+    };
+    const change = (path,value) => {
+      onDraft(path,value);
+      if (active) onDraft(libraryPath,JSON.stringify(library.map(item => item.id===active.id ? {...item,...snapshot(path,value)} : item)));
+    };
+    const select = id => {
+      const item = library.find(p => p.id===id);
+      onDraft(activePath,id);
+      if (!item) return;
+      Object.entries(item.settings || {}).forEach(([key,value]) => { if(provider.generationFields.includes(key))onDraft(prefix+'.'+key,value); });
+      (presets?.families || []).forEach(f => f.fields.forEach(field => {
+        const value=item.presets?.[f.family]?.[lastSegment(field.path)];
+        if(value!==undefined)onDraft(field.path,value);
+      }));
+    };
+    const create = () => {
+      const id = 'preset-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,7);
+      onDraft(libraryPath,JSON.stringify([...library,{id,name:'新预设 '+(library.length+1),...snapshot()}]));
+      onDraft(activePath,id);
+    };
+    const aspect = draft[prefix+'.aspect'] || 'portrait';
+    const setAspect = value => {
+      const sizes = {portrait:[832,1216],landscape:[1216,832],square:[1024,1024]};
+      const [width,height]=sizes[value];
+      onDraft(prefix+'.width',width); onDraft(prefix+'.height',height);
+      change(prefix+'.aspect',value);
+      // Include the derived fixed dimensions in the selected preset snapshot as well.
+      if(active) { const data=snapshot(prefix+'.aspect',value); data.settings.width=width;data.settings.height=height; onDraft(libraryPath,JSON.stringify(library.map(item=>item.id===active.id?{...item,...data}:item))); }
+    };
+    const fields = [...provider.fields,...(presets?.artist?[presets.artist]:[])].filter(field => provider.generationFields.includes(lastSegment(field.path)) && !['width','height','aspect','autoResolution'].includes(lastSegment(field.path)));
+    const advancedKeys=['seed','ucPreset','qualityToggle','sm','smDyn'];
+    const renderField=field=>h('div',{key:field.path,className:field.type==='textarea'?'cpxp-media-field-wide':''},h(FieldControl,{entry:{...field,hint:''},value:draft[field.path],disabled:!!busy,error:errors[field.path],onChange:value=>change(field.path,value)}));
+    return h('section',{className:'cpxp-generation', 'aria-label':'生成预设'},
+      h('div',{className:'cpxp-preset-head'},
+        h('div',null,h('h4',null,'生成预设'),h('p',{className:'cpx-muted'},active ? active.name : '当前参数')),
+        h(ui.Button,{onClick:create,disabled:!!busy||library.length>=32},'新建预设')),
+      h('div',{className:'cpxp-media-fields'},
+        h(ui.Field,{label:'选择预设'},h(ui.Select,{ariaLabel:'选择预设',value:active?.id||'',disabled:!!busy,options:[{value:'',label:'当前参数'},...library.map(i=>({value:i.id,label:i.name}))],onChange:select})),
+        active ? h(ui.Field,{label:'预设名称'},h(ui.Input,{ariaLabel:'预设名称',value:active.name,disabled:!!busy,onChange:name=>onDraft(libraryPath,JSON.stringify(library.map(i=>i.id===active.id?{...i,name}:i)))})) : null),
+      errors[libraryPath] ? h('p',{className:'cpxp-media-error'},errors[libraryPath]) : null,
+      h('div',{className:'cpxp-media-fields'},fields.filter(f=>!advancedKeys.includes(lastSegment(f.path))).map(renderField)),
+      h('details',{className:'cpxp-advanced'},h('summary',null,'更多生成参数'),h('div',{className:'cpxp-media-fields'},fields.filter(f=>advancedKeys.includes(lastSegment(f.path))).map(renderField))),
+      h('div',{className:'cpxp-resolution'},
+        h(ui.Field,{label:'画面比例'},h(ui.Segmented,{label:'画面比例',value:aspect,disabled:!!busy,options:[{id:'portrait',label:'竖图 2:3'},{id:'landscape',label:'横图 3:2'},{id:'square',label:'方图 1:1'}],onChange:setAspect})),
+        h('button',{type:'button',className:'cpxp-enable',role:'switch','aria-checked':draft[prefix+'.autoResolution']===true,disabled:!!busy,onClick:()=>change(prefix+'.autoResolution',draft[prefix+'.autoResolution']!==true)},h('span',{className:'cpxp-switch-track'}),'自动分辨率'),
+        h('span',{className:'cpx-muted'},draft[prefix+'.autoResolution']===true?'约 100 万像素':`${draft[prefix+'.width']} × ${draft[prefix+'.height']}`)),
+      family && presets ? h('div',{className:'cpxp-media-fields'},presets.families.find(f=>f.family===family)?.fields.map(field=>h('div',{key:field.path,className:'cpxp-media-field-wide'},h(FieldControl,{entry:{...field,label:lastSegment(field.path)==='applyDefaults'?'应用提示词预设':lastSegment(field.path)==='positive'?'正向提示词预设':'反向提示词预设'},value:draft[field.path],disabled:!!busy,onChange:value=>change(field.path,value)})))) : null);
   }
 
-  function runtimeFlagList(media) {
-    const rows = [
-      { key: 'enabled', label: '媒体总开关' },
-      { key: 'vision', label: '识图' },
-      { key: 'speech', label: '语音表达' },
-      { key: 'image', label: '图片创作' },
-      { key: 'screen', label: '屏幕感知' },
-    ];
-    return h(ui.Diagnostic, { key: 'runtime-flags', title: '运行库视角（GET companion · media）', hint: '只说明运行库读到的开关；本页的配置以媒体插件为准' },
-      h(ui.List, { label: '运行库读到的媒体开关' }, rows.map(row => h(ui.Row, {
-        key: `rt-${row.key}`,
-        title: row.label,
-        meta: '来自 GET companion',
-        status: h(ui.StateLine, {
-          state: media && media[row.key] === true ? 'ok' : 'idle',
-          text: media && media[row.key] === true ? '已启用' : media && media[row.key] === false ? '已关闭' : '未读到',
-        }),
-      }))));
+  function SectionCard({ section, states, testing, draft, secrets, clears, errors, busy, onDraft, onSecret, onClear, onSave, onTest }) {
+    const [open,setOpen] = P.useState(!section.locked);
+    const dirty=sectionDirty(section,draft,secrets,clears);
+    const selected=section.selector?(draft[section.selector.path]??section.selector.value):null;
+    const provider=section.providers.find(p=>p.id===selected&&!p.notConnected);
+    const options=section.selector?.options.filter(o=>o.value==='none'||section.providers.some(p=>p.id===o.value&&!p.notConnected))||[];
+    return h('section',{className:'cpxp-media-sec','data-section':section.id},
+      h('div',{className:'cpxp-media-sec-head'},
+        h('div',{className:'cpxp-section-name'},h('span',{className:'cpxp-section-symbol','aria-hidden':true},h(ui.Icon,{name:section.id==='image'?'image':section.id==='tts'?'audio':'eye',size:20})),h('h3',{className:'cpxp-media-sec-title'},section.title)),
+        h('div',{className:'cpxp-media-head-actions'},
+          section.toggle&&!section.locked?h('button',{type:'button',className:'cpxp-enable',role:'switch','aria-label':section.toggle.label,'aria-checked':!!draft[section.toggle.path],disabled:!!busy,onClick:()=>onDraft(section.toggle.path,!draft[section.toggle.path])},h('span',{className:'cpxp-switch-track'}),draft[section.toggle.path]?'已启用':'启用'+section.title):h(ui.Badge,{tone:'neutral'},'未启用'),
+          h(ui.Button,{size:'sm',onClick:()=>setOpen(!open),ariaLabel:(open?'收起':'展开')+section.title},open?'收起':'展开'))),
+      open?h('div',{className:'cpxp-section-body'},
+        section.selector?h(ui.Segmented,{label:section.id==='image'?'生图服务':'语音服务',value:selected,disabled:!!busy,options:options.map(o=>({id:o.value,label:o.value==='none'?'未选择':o.label.replace(' 生图','').replace('（官方直连 / 中转站）','')})),onChange:value=>onDraft(section.selector.path,value)}):null,
+        section.fields.length?h('div',{className:'cpxp-media-fields'},section.fields.map(field=>h(FieldControl,{key:field.path,entry:field,value:draft[field.path],disabled:field.locked||!!busy,error:errors[field.path],onChange:value=>onDraft(field.path,value)}))):null,
+        provider?h(ProviderCard,{provider,selected:true,states,draft,secrets,clears,errors,testing,busy,onDraft,onSecret,onClear,onSave,onTest}):null,
+        provider?.generationFields?h(GenerationEditor,{provider,presets:section.presets,draft,busy,errors,onDraft}):null,
+        !section.locked?h('div',{className:'cpxp-media-footer'},h('span',{className:'cpx-muted'},dirty?'有未保存的修改':'已保存'),h(ui.Button,{variant:'primary',disabled:!dirty||!!busy,loading:busy===`save:${section.id}`,onClick:()=>onSave(section.id)},'保存')):null):null);
   }
 
   function MediaBand({ media }) {
@@ -985,8 +937,6 @@
     const [busy, setBusy] = P.useState('');
     const [flash, setFlash] = P.useState(null);
     const [testing, setTesting] = P.useState({});
-    const [preview, setPreview] = P.useState(null);
-    const [previewForm, setPreviewForm] = P.useState({});
 
     const bundle = state.data || null;
     const descriptor = bundle && bundle.page ? bundle.page.page : null;
@@ -1096,6 +1046,10 @@
     const setField = (path, value) => {
       forgetTests(providerIdsFor(path));
       setDraft(previous => ({ ...previous, [path]: value }));
+      if (path === 'image.nai.transport') {
+        if (value === 'official') setFieldDirect('image.nai.baseUrl','https://image.novelai.net');
+        else if (draft['image.nai.baseUrl'] === 'https://image.novelai.net') setFieldDirect('image.nai.baseUrl','');
+      }
       if (!view) return;
       const section = view.sections.find(item => item.selector && item.selector.path === path);
       if (!section || !section.toggle || section.toggle.value !== true) return;
@@ -1196,8 +1150,8 @@
             text: '后端仍报告这些密钥处于配置状态。页面不会把"已清除"写在结果里——这需要媒体插件支持显式清除动作。',
           });
         } else {
-          setFlash({ tone: 'ok', title: `已保存 ${savedCount} 项`, text: '已写入媒体配置文件；页面会重新读一遍同一份数据，可对照回读。' });
-          if (typeof P.notice === 'function') P.notice('媒体配置已保存', 'ok');
+          setFlash(null);
+          if (typeof P.notice === 'function') P.notice('已保存', 'ok');
         }
         // 这次重读以服务器为准（允许覆盖草稿），因为改动刚刚落盘。
         reseedPending.current = true;
@@ -1220,36 +1174,17 @@
           ...previous,
           [id]: { ok: payload.ok === true, level: payload.level, code: payload.code, detail: payload.detail },
         }));
-        if (typeof P.notice === 'function') P.notice(payload.ok === true ? '测试通过（只到这一级证据）' : '测试失败', payload.ok === true ? 'ok' : 'danger');
+        if (typeof P.notice === 'function') P.notice(payload.ok === true ? '连接检查完成' : '测试失败', payload.ok === true ? 'ok' : 'danger');
       }, () => {
         setBusy('');
         setTesting(previous => ({ ...previous, [id]: { ok: false, detail: '网络请求没有完成' } }));
       });
     };
 
-    const runPreview = (spec) => {
-      const values = (spec && spec.values) || {};
-      const query = new URLSearchParams({
-        mode: 'auto',
-        aspect: previewForm.aspect || values.aspect || 'portrait',
-        targetPixels: String(previewForm.targetPixels || values.targetPixels || ''),
-      }).toString();
-      if (values.model) query.model = String(values.model);
-      setBusy('preview');
-      mediaFetch(`${apiPath(api.preview, 'preview')}?${query}`).then((result) => {
-        setBusy('');
-        const payload = result.payload || {};
-        setPreview(payload.resolution ? payload : { resolution: { ok: false, error: '读不到结果' } });
-      }, () => {
-        setBusy('');
-        setPreview({ resolution: { ok: false, error: '网络请求没有完成' } });
-      });
-    };
-
     const header = {
       key: 'media-settings',
       title: '媒体能力',
-      hint: '配置直接来自媒体插件；保存只走它自己的接口',
+      hint: '',
       actions: [
         unsaved
           ? h(ui.Button, {
@@ -1258,7 +1193,7 @@
             size: 'sm',
             onClick: discardDraft,
             title: '丢掉未保存的改动，回到已保存的那一份配置',
-          }, '放弃未保存的改动')
+          }, '放弃修改')
           : null,
         state.data ? h(ui.Button, {
           key: 'reload',
@@ -1281,16 +1216,16 @@
             h('p', { className: 'cpxp-media-note' }, '启用路径：编辑套件里的 config/suite.json，把 modules.media 改成 true，然后重启套件（npm run start），再用 npm run doctor 复核。'),
             h(ui.Pre, { maxHeight: 160 }, ENABLE_SNIPPET),
             h('p', { className: 'cpxp-media-note' }, 'config/suite.json 是套件级本地配置（不入库），模板是 config/suite.example.json；npm run setup 不会覆盖已有文件。'))),
-        runtimeFlagList(media));
+        null);
     }
     if (!view) {
       return h(ui.Band, header,
         h(ui.Callout, { tone: state.error ? 'danger' : 'warn', title: '读不到媒体能力页面' },
           h('span', null, P.failText(state.error, '媒体接口没有返回页面描述或配置。'))),
-        runtimeFlagList(media));
+        null);
     }
 
-    const sectionNodes = view.sections.map(section => h('div', { key: `sec-wrap-${section.id}` },
+    const sectionNodes = [...view.sections].sort((a,b)=>(a.id==='vision'?1:b.id==='vision'?-1:0)).map(section => h('div', { key: `sec-wrap-${section.id}` },
       h(SectionCard, {
         section,
         states: view.states,
@@ -1305,35 +1240,16 @@
         onClear: setClear,
         onSave: doSave,
         onTest: doTest,
-      }),
-      section.preview
-        ? h(PreviewTool, {
-          key: `preview-${section.id}`,
-          spec: section.preview,
-          preview,
-          form: previewForm,
-          busy,
-          onForm: setPreviewForm,
-          onRun: () => runPreview(section.preview),
-        })
-        : null));
+      })));
 
     return h(ui.Band, header, [
-      flash ? h(ui.Callout, { key: 'flash', tone: flash.tone === 'ok' ? 'info' : flash.tone, title: flash.title }, h('span', null, flash.text)) : null,
+      flash && flash.tone !== 'ok' ? h(ui.Callout, { key: 'flash', tone: flash.tone === 'ok' ? 'info' : flash.tone, title: flash.title }, h('span', null, flash.text)) : null,
       validation && validation.ok === false
         ? h(ui.Callout, { key: 'validation', tone: 'warn', title: '当前配置文件本身有校验问题' },
           h('ul', { className: 'cpxp-media-note' }, (validation.errors || []).slice(0, 6).map(item => h('li', { key: String(item.path || item.message) }, `${item.path || '$'}：${item.message || item.code || ''}`))))
         : null,
-      h('p', { key: 'test-hint', className: 'cpxp-media-note-inline' },
-        '测试与预览只在你点按钮时发起；测试针对的是**已保存**的配置——有未保存的修改时按钮会禁用，先保存再测试。'),
-      unsaved
-        ? h(ui.Callout, { key: 'unsaved', tone: 'info', title: '有未保存的修改' },
-          h('span', null, '这些改动还没写入媒体配置：离开本页不会丢（草稿会留到下次回来），但要生效必须点「保存」。'))
-        : null,
       h('div', { key: 'sections' }, sectionNodes),
-      runtimeFlagList(media),
-      h(ui.Diagnostic, { key: 'raw', title: '原始页面描述与配置（只读）', hint: '排查用；密钥已脱敏' },
-        h(ui.Pre, { maxHeight: 320 }, JSON.stringify({ page: redactForDebug(descriptor), config: redactForDebug(config) }, null, 2))),
+
     ]);
   }
 
@@ -1342,12 +1258,7 @@
    * be rendered from a page (this wrapper) without duplicating any rendering logic.
    */
   function MediaPage() {
-    return h('div', { className: 'cpxp-page' },
-      h('div', { className: 'cpxp-page-head' },
-        h('h1', { className: 'cpxp-page-title' }, '媒体能力'),
-        h('p', { className: 'cpxp-page-sub' },
-          '生图与语音合成的配置；识图只保留合同。所有配置由 companion-media 插件持有，本页只按它给的描述符渲染。')),
-      h(MediaBand, { media: null }));
+    return h('div', { className: 'cpxp-page cpx-media-page' }, h(MediaBand, {media:null}));
   }
 
   P.registerPage({ id: 'media', label: '媒体能力', order: 63, component: MediaPage });

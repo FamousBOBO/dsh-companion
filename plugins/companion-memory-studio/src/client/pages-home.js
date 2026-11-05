@@ -397,7 +397,6 @@
     return h(ui.Band, {
       title: '接下来的安排',
       hint: '还没开始的事',
-      info: '计划不等于已经发生；自主规划关闭时她不会自己生成日程（可在设置里打开）。',
       actions: h(ui.Button, { variant: 'ghost', size: 'sm', onClick: () => P.nav.go('life') }, '生活与日程'),
     },
     next.length
@@ -416,7 +415,6 @@
     return h(ui.Band, {
       title: '最近一起经历的事',
       hint: '',
-      info: '来自本地留存记录的短摘要；链接、命令与代码已收成一句话，原文在每行的折叠里。对话留存不等于自动确认事实。',
       actions: h(ui.Button, { variant: 'ghost', size: 'sm', onClick: () => P.nav.go('timeline') }, '完整时间线'),
     },
     events.length
@@ -456,7 +454,6 @@
     return h(ui.Band, {
       title: '需要你确认的事',
       hint: '',
-      info: '只来自真实的待核对队列与未完成计划，没有演示数字；驳回会撤回但保留证据。',
     },
     rows.length
       ? h(ui.List, { label: '待确认事项' }, rows)
@@ -579,7 +576,6 @@
       return h(ui.Band, {
         title: '今天的活动与睡眠',
         hint: '',
-        info: '来自华为运动健康（CN 云）；面板没有拿到 /api/companion-health 服务（health-unavailable），现在不编造任何读数。',
         actions: h(ui.Button, { variant: 'ghost', size: 'sm', onClick: () => P.nav.go('health') }, '健康与睡眠'),
       }, h(ui.Empty, {
         title: '健康数据未接入',
@@ -620,7 +616,6 @@
     return h(ui.Band, {
       title: '今天的活动与睡眠',
       hint: '',
-      info: '来自华为运动健康（CN 云），设备上报的指标；缺测写「无可用记录」，不补 0；新鲜度是产品参数，不是医学结论；只来自云端最后一次上传，来源没给的部分保持空白。',
       actions: h(ui.Button, { variant: 'ghost', size: 'sm', onClick: () => P.nav.go('health') }, '健康与睡眠'),
     }, [
       h('div', { key: 'vitals', className: 'cpxp-home-vitals' },
@@ -669,24 +664,7 @@
         h('p', { className: 'cpx-aside-line' },
           h('span', { className: 'cpx-muted' }, '分享候选'),
           h('strong', null, pendingShare === null ? '—' : pendingShare)),
-        h('button', { type: 'button', className: 'cpxp-home-aside-action', onClick: () => P.nav.go('life') }, '今天的时间线')),
-
-      h('section', { className: 'cpx-aside-section' },
-        h('h3', { className: 'cpx-aside-title' }, '回到开发'),
-        h('div', { className: 'cpxp-home-links' },
-          h(ui.Button, { size: 'sm', onClick: backToChat }, '回到聊天'),
-          h(ui.Button, { size: 'sm', onClick: () => P.nav.go('workspace') }, '工作区'),
-          h(ui.Button, { size: 'sm', onClick: () => P.nav.go('connections') }, '连接与工具'),
-          h(ui.Button, { size: 'sm', onClick: () => P.nav.go('settings') }, '设置'))),
-
-      h('section', { className: 'cpx-aside-section' },
-        h('h3', { className: 'cpx-aside-title' }, '数据说明'),
-        h('p', { className: 'cpx-muted' }, observedAt ? h(ui.Timestamp, { at: observedAt, prefix: '观测于' }) : '还没有观测时间'),
-        data && data.missing.length
-          ? h(ui.Callout, { tone: 'warn', title: '这一页有没读到的部分' },
-            h('span', null, `未读到：${data.missing.join('、')}。`))
-          : h('p', { className: 'cpx-muted' }, '数字口径',
-            h(ui.Info, { text: '数字来自本机记忆库；未知一律显示「—」，不用 0 占位。', label: '数字口径' }))));
+        h('button', { type: 'button', className: 'cpxp-home-aside-action', onClick: () => P.nav.go('life') }, '今天的时间线')));
   }
 
   function Home() {
@@ -742,7 +720,7 @@
     const page = {
       title: '陪伴首页',
       lead: '她现在在做什么，和还没说完的事',
-      info: HOME_INFO,
+
       status: h(P.Fragment, null,
         h(ui.StateLine, { state: P.lifeTone(life && life.state), text: life ? (STATE_SENTENCE[life.state] || '状态未知') : '尚未读到状态' }),
         observedAt ? h(ui.Timestamp, { at: observedAt, prefix: '观测于' }) : null,
@@ -765,7 +743,6 @@
       heroNode(now, life, observedAt),
       h(ui.Band, {
         title: '状态',
-        info: '每 20 秒自动探测一次；点任意一项跳到对应页面。失败只写「读不到」，不用 0 或绿色代替未知。',
         actions: h(ui.Button, { variant: 'ghost', size: 'sm', onClick: () => P.nav.go('overview') }, '运行状态'),
       }, h(ui.HealthStrip, {
         items: health.items,

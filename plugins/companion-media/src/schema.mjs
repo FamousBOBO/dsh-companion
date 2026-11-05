@@ -1,5 +1,6 @@
 import { Code, mediaError } from './errors.mjs';
 import { normalizePresets } from './presets.mjs';
+import { validateGenerationLibrary } from './generation-presets.mjs';
 import { NAI_SIZE_RULES } from './resolution.mjs';
 
 /**
@@ -85,6 +86,10 @@ export const DEFAULTS = Object.freeze({
       background: 'auto',
     },
     nai: {
+      autoResolution: false,
+      aspect: 'portrait',
+      activePresetId: '',
+      generationPresets: [],
       transport: 'official',
       baseUrl: '',
       apiKey: '',
@@ -474,6 +479,7 @@ export function normalizeConfig(raw = {}) {
   }
   merged.image.provider = canonicalImageProvider(merged.image.provider);
   merged.image.nai = { ...merged.image.nai, presets: normalizePresets(merged.image?.nai?.presets) };
+  if (merged.image.nai.transport === 'official' && !String(merged.image.nai.baseUrl || '').trim()) merged.image.nai.baseUrl = 'https://image.novelai.net';
 
   // Same folding for TTS provider sections.
   merged.tts = { ...merged.tts, providers: { ...merged.tts.providers } };
@@ -578,6 +584,7 @@ export function validateConfig(config) {
   }
   if (image.provider === 'nai') {
     const nai = image.nai ?? {};
+    errors.push(...validateGenerationLibrary(nai));
     if (!['official', 'openai-relay'].includes(nai.transport)) {
       add('image.nai.transport', Code.PROVIDER_UNKNOWN, 'transport 只能是 official 或 openai-relay');
     }

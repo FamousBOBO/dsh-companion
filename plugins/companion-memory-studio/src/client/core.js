@@ -60,11 +60,11 @@ const NAV = [
   { id: 'home', label: '陪伴首页', icon: 'home', hint: '她现在的生活与最近一起经历的事' },
   { id: 'chat', label: '聊天', icon: 'chat', hint: '回到宿主原生对话', native: 'conversation' },
   { id: 'life', label: '生活与日程', icon: 'calendar', hint: '今天、接下来，以及她的计划' },
-  { id: 'memory', label: '记忆与档案', icon: 'book', hint: '记忆库、Wiki、时间线与待核对', tabs: ['vault', 'wiki', 'timeline', 'review'] },
-  { id: 'connections', label: '连接与工具', icon: 'plug', hint: '通道的真实状态；媒体能力已独立成页' },
-  { id: 'media', label: '媒体能力', icon: 'plug', hint: '生图与语音合成的配置（识图只保留合同）' },
+  { id: 'memory', label: '记忆与档案', icon: 'book', hint: '记忆库、Wiki、时间线与待核对', tabs: ['vault', 'wiki', 'timeline', 'review', 'microscope'] },
+  { id: 'connections', label: '连接与工具', icon: 'plug', hint: '管理连接与工具' },
+  { id: 'media', label: '媒体能力', icon: 'plug', hint: '图片生成与语音合成' },
   { id: 'workspace', label: '工作区', icon: 'folder', hint: '回到文件、会话与开发现场' },
-  { id: 'settings', label: '设置', icon: 'sliders', hint: '外观、角色、模型与记忆', tabs: ['settings', 'overview', 'microscope'] },
+  { id: 'settings', label: '设置', icon: 'sliders', hint: '外观、角色、模型与记忆', tabs: ['settings', 'overview'] },
 ];
 
 // ---------------------------------------------------------------------------
@@ -445,6 +445,10 @@ const ICON_PATHS = {
   system: ['M4.4 5.6h15.2v9.2H4.4z', 'M9 18.4h6', 'M12 14.8v3.6'],
   sun: ['M12 7.6a4.4 4.4 0 1 0 0 8.8 4.4 4.4 0 0 0 0-8.8z', 'M12 3.6v1.8', 'M12 18.6v1.8', 'M3.6 12h1.8', 'M18.6 12h1.8', 'M6 6l1.3 1.3', 'M16.7 16.7 18 18', 'M18 6l-1.3 1.3', 'M7.3 16.7 6 18'],
   moon: ['M19.2 14.4A7.8 7.8 0 0 1 9.6 4.8a7.8 7.8 0 1 0 9.6 9.6z'],
+  image: ['M4 4h16v16H4z','M4 15l5-5 5 5 3-3 3 3','M15 8h.01'],
+  audio: ['M10 5a2 2 0 0 1 4 0v7a2 2 0 0 1-4 0z','M7 11v1a5 5 0 0 0 10 0v-1','M12 17v4','M9 21h6'],
+  eye: ['M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z','M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6'],
+  heart: ['M20.8 9.2c0 4.5-8.8 10-8.8 10s-8.8-5.5-8.8-10a4.8 4.8 0 0 1 8.8-2.5 4.8 4.8 0 0 1 8.8 2.5z'],
   snow: ['M12 3.6v16.8', 'M4.7 7.8l14.6 8.4', 'M19.3 7.8 4.7 16.2'],
   search: ['M10.8 4.6a6.2 6.2 0 1 0 0 12.4 6.2 6.2 0 0 0 0-12.4z', 'M15.4 15.4 20 20'],
   check: ['M5.2 12.8 9.6 17.2 18.8 6.8'],
@@ -516,14 +520,8 @@ function Section({ title, hint, actions, children }) {
  * 用在"不看会误解"的地方，一个 Band 最多一个。
  */
 function Info({ text, label }) {
-  if (!text) return null;
-  return h('span', {
-    className: 'cpx-info',
-    role: 'img',
-    tabIndex: 0,
-    'data-tip': String(text),
-    'aria-label': (label ? label + '：' : '说明：') + text,
-  });
+  if (!text || /不编造|不等于|不会替|真实的|合同|演示数字|未知一律|接口失败|没有回执|只来自|只读：|来自本地留存|每 20 秒|只说明/.test(text)) return null;
+  return h('span', { className: 'cpx-info', tabIndex: 0, role: 'img', 'aria-label': text, 'data-tip': text, title: label });
 }
 
 function Band({ title, hint, actions, info, children, flush }) {
@@ -1896,11 +1894,8 @@ function ThemeSwitch({ compact }) {
     }, h(Icon, { name: themeIcon(id), size: 15 }))));
 }
 
-function Rail({ collapsed, onToggle, compact, onCompact, compactAvailable }) {
-  const [page, setPage] = React.useState(() => navState.page);
-  const remember = React.useCallback((id) => setPage(id), []);
-
-  React.useEffect(() => P.nav.subscribe(remember), [remember]);
+function Rail({ currentPage, collapsed, onToggle, compact, onCompact, compactAvailable }) {
+  const page = currentPage;
 
   const activeNavId = React.useMemo(() => {
     const direct = NAV.find((item) => item.id === page);
@@ -1937,7 +1932,7 @@ function Rail({ collapsed, onToggle, compact, onCompact, compactAvailable }) {
 
   return h('nav', { className: 'cpx-rail', id: 'cpx-nav', 'aria-label': `${PRODUCT}导航` },
     h('div', { className: 'cpx-rail-head' },
-      h('span', { className: 'cpx-brand-mark' }, h(Icon, { name: 'snow', size: 18 })),
+      h('span', { className: 'cpx-brand-mark' }, h(Icon, { name: 'heart', size: 20 })),
       h('span', { className: 'cpx-brand' },
         h('span', { className: 'cpx-brand-name' }, PRODUCT),
         h('span', { className: 'cpx-brand-state' }, '本地陪伴'))),
@@ -2113,6 +2108,7 @@ function Shell() {
   },
   h('a', { className: 'cpx-skip', href: '#cpx-main' }, '跳到主要内容'),
   h(Rail, {
+    currentPage: page,
     collapsed,
     onToggle: () => setCollapsed((value) => !value),
     compact,
@@ -2161,6 +2157,40 @@ const LIFE_TONE = {
 P.lifeTone = (state) => LIFE_TONE[String(state)] || 'idle';
 
 // ---------------------------------------------------------------------------
+P.css(`
+/* Shared product polish: contained layout, legible actions and consistent surfaces. */
+.cpx-root { min-width:0; width:100%; }
+.cpx-app { width:100%; min-width:0; --cpx-fs-title:28px; --cpx-fs-section:19px; }
+.cpx-scroll { padding-inline:0; scrollbar-gutter:stable; }
+.cpx-page, .cpxp-page { width:100%; min-width:0; max-width:1280px; margin-inline:auto; padding:32px clamp(20px,3vw,48px) 80px; display:flex; flex-direction:column; gap:28px; }
+.cpx-page-head, .cpxp-page-head { min-width:0; }
+.cpx-title, .cpxp-page-title { font-size:28px; font-weight:650; letter-spacing:-.6px; }
+.cpx-page-heading, .cpx-band-head > div, .cpxp-media-sec-head > div { min-width:0; }
+.cpx-rail { min-width:0; overflow-x:hidden; background:var(--dsw-alias-bg-layer-1); }
+.cpx-brand-mark { width:36px; height:36px; border:0; border-radius:12px; background:color-mix(in srgb,var(--dsw-alias-brand-primary) 10%,transparent); color:var(--dsw-alias-brand-primary); }
+.cpx-brand-name { font-size:16px; letter-spacing:.1px; }
+.cpx-nav-item { min-height:42px; border-radius:9px; }
+.cpx-band { border-top:0; gap:18px; }
+.cpx-app .cmx-btn { min-height:38px; padding:8px 16px; display:inline-flex; align-items:center; justify-content:center; gap:7px; border:1px solid var(--dsw-alias-border-l2); border-radius:9px; background:var(--dsw-alias-bg-layer-2); color:var(--dsw-alias-label-primary); font:inherit; font-size:13px; font-weight:600; cursor:pointer; transition:background .15s,border-color .15s; }
+.cpx-app .cmx-btn:hover:not(:disabled) { border-color:var(--dsw-alias-brand-primary); background:var(--dsw-alias-bg-layer-3,var(--dsw-alias-bg-layer-2)); }
+.cpx-app .cmx-btn-primary { background:var(--dsw-alias-brand-primary); color:var(--dsw-alias-bg-base,#15161c); border-color:var(--dsw-alias-brand-primary); }
+.cpx-app .cmx-btn-primary:hover:not(:disabled) { background:color-mix(in srgb,var(--dsw-alias-brand-primary) 85%,white); }
+.cpx-app .cmx-btn:disabled { opacity:.42; cursor:default; }
+.cpx-app .cmx-btn-sm { min-height:32px; padding:5px 11px; font-size:12px; }
+.cpx-app .cmx-input,.cpx-app .cmx-select,.cpx-app .cmx-textarea { min-width:0; max-width:100%; border-radius:9px; min-height:42px; padding:10px 12px; font-size:14px; }
+.cpx-field { min-width:0; }
+.cpx-segmented { display:flex; flex-wrap:wrap; gap:4px; padding:4px; border:1px solid var(--dsw-alias-border-l1); border-radius:11px; background:var(--dsw-alias-bg-layer-1); width:fit-content; max-width:100%; }
+.cpx-segment { border:0; border-radius:8px; padding:9px 18px; color:var(--dsw-alias-label-secondary); font:inherit; font-size:13px; cursor:pointer; background:transparent; }
+.cpx-segment-active { color:var(--dsw-alias-label-primary); background:var(--dsw-alias-bg-layer-3,var(--dsw-alias-bg-layer-2)); box-shadow:0 1px 5px #0002; }
+.cpx-health { padding:22px; border:1px solid var(--dsw-alias-border-l1); border-radius:16px; background:var(--dsw-alias-bg-layer-1); }
+.cpx-health-grid { grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
+.cpx-health-item { width:100%; min-height:105px; padding:16px; border-radius:12px; }
+.cpx-health-name { font-size:14px; }
+.cpx-health-head { margin-bottom:6px; }
+@media(max-width:760px) { .cpx-page,.cpxp-page { padding:22px 16px 56px; gap:22px; } .cpx-health { padding:16px; } .cpx-health-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:420px) { .cpx-health-grid { grid-template-columns:1fr; } }
+`);
+
 // 8. Chat strip: one line of companion context above the composer
 // ---------------------------------------------------------------------------
 

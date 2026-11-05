@@ -70,11 +70,11 @@ const NAV = [
   { id: 'home', label: '陪伴首页', icon: 'home', hint: '她现在的生活与最近一起经历的事' },
   { id: 'chat', label: '聊天', icon: 'chat', hint: '回到宿主原生对话', native: 'conversation' },
   { id: 'life', label: '生活与日程', icon: 'calendar', hint: '今天、接下来，以及她的计划' },
-  { id: 'memory', label: '记忆与档案', icon: 'book', hint: '记忆库、Wiki、时间线与待核对', tabs: ['vault', 'wiki', 'timeline', 'review'] },
-  { id: 'connections', label: '连接与工具', icon: 'plug', hint: '通道的真实状态；媒体能力已独立成页' },
-  { id: 'media', label: '媒体能力', icon: 'plug', hint: '生图与语音合成的配置（识图只保留合同）' },
+  { id: 'memory', label: '记忆与档案', icon: 'book', hint: '记忆库、Wiki、时间线与待核对', tabs: ['vault', 'wiki', 'timeline', 'review', 'microscope'] },
+  { id: 'connections', label: '连接与工具', icon: 'plug', hint: '管理连接与工具' },
+  { id: 'media', label: '媒体能力', icon: 'plug', hint: '图片生成与语音合成' },
   { id: 'workspace', label: '工作区', icon: 'folder', hint: '回到文件、会话与开发现场' },
-  { id: 'settings', label: '设置', icon: 'sliders', hint: '外观、角色、模型与记忆', tabs: ['settings', 'overview', 'microscope'] },
+  { id: 'settings', label: '设置', icon: 'sliders', hint: '外观、角色、模型与记忆', tabs: ['settings', 'overview'] },
 ];
 
 // ---------------------------------------------------------------------------
@@ -455,6 +455,10 @@ const ICON_PATHS = {
   system: ['M4.4 5.6h15.2v9.2H4.4z', 'M9 18.4h6', 'M12 14.8v3.6'],
   sun: ['M12 7.6a4.4 4.4 0 1 0 0 8.8 4.4 4.4 0 0 0 0-8.8z', 'M12 3.6v1.8', 'M12 18.6v1.8', 'M3.6 12h1.8', 'M18.6 12h1.8', 'M6 6l1.3 1.3', 'M16.7 16.7 18 18', 'M18 6l-1.3 1.3', 'M7.3 16.7 6 18'],
   moon: ['M19.2 14.4A7.8 7.8 0 0 1 9.6 4.8a7.8 7.8 0 1 0 9.6 9.6z'],
+  image: ['M4 4h16v16H4z','M4 15l5-5 5 5 3-3 3 3','M15 8h.01'],
+  audio: ['M10 5a2 2 0 0 1 4 0v7a2 2 0 0 1-4 0z','M7 11v1a5 5 0 0 0 10 0v-1','M12 17v4','M9 21h6'],
+  eye: ['M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z','M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6'],
+  heart: ['M20.8 9.2c0 4.5-8.8 10-8.8 10s-8.8-5.5-8.8-10a4.8 4.8 0 0 1 8.8-2.5 4.8 4.8 0 0 1 8.8 2.5z'],
   snow: ['M12 3.6v16.8', 'M4.7 7.8l14.6 8.4', 'M19.3 7.8 4.7 16.2'],
   search: ['M10.8 4.6a6.2 6.2 0 1 0 0 12.4 6.2 6.2 0 0 0 0-12.4z', 'M15.4 15.4 20 20'],
   check: ['M5.2 12.8 9.6 17.2 18.8 6.8'],
@@ -526,14 +530,8 @@ function Section({ title, hint, actions, children }) {
  * 用在"不看会误解"的地方，一个 Band 最多一个。
  */
 function Info({ text, label }) {
-  if (!text) return null;
-  return h('span', {
-    className: 'cpx-info',
-    role: 'img',
-    tabIndex: 0,
-    'data-tip': String(text),
-    'aria-label': (label ? label + '：' : '说明：') + text,
-  });
+  if (!text || /不编造|不等于|不会替|真实的|合同|演示数字|未知一律|接口失败|没有回执|只来自|只读：|来自本地留存|每 20 秒|只说明/.test(text)) return null;
+  return h('span', { className: 'cpx-info', tabIndex: 0, role: 'img', 'aria-label': text, 'data-tip': text, title: label });
 }
 
 function Band({ title, hint, actions, info, children, flush }) {
@@ -1906,11 +1904,8 @@ function ThemeSwitch({ compact }) {
     }, h(Icon, { name: themeIcon(id), size: 15 }))));
 }
 
-function Rail({ collapsed, onToggle, compact, onCompact, compactAvailable }) {
-  const [page, setPage] = React.useState(() => navState.page);
-  const remember = React.useCallback((id) => setPage(id), []);
-
-  React.useEffect(() => P.nav.subscribe(remember), [remember]);
+function Rail({ currentPage, collapsed, onToggle, compact, onCompact, compactAvailable }) {
+  const page = currentPage;
 
   const activeNavId = React.useMemo(() => {
     const direct = NAV.find((item) => item.id === page);
@@ -1947,7 +1942,7 @@ function Rail({ collapsed, onToggle, compact, onCompact, compactAvailable }) {
 
   return h('nav', { className: 'cpx-rail', id: 'cpx-nav', 'aria-label': `${PRODUCT}导航` },
     h('div', { className: 'cpx-rail-head' },
-      h('span', { className: 'cpx-brand-mark' }, h(Icon, { name: 'snow', size: 18 })),
+      h('span', { className: 'cpx-brand-mark' }, h(Icon, { name: 'heart', size: 20 })),
       h('span', { className: 'cpx-brand' },
         h('span', { className: 'cpx-brand-name' }, PRODUCT),
         h('span', { className: 'cpx-brand-state' }, '本地陪伴'))),
@@ -2123,6 +2118,7 @@ function Shell() {
   },
   h('a', { className: 'cpx-skip', href: '#cpx-main' }, '跳到主要内容'),
   h(Rail, {
+    currentPage: page,
     collapsed,
     onToggle: () => setCollapsed((value) => !value),
     compact,
@@ -2171,6 +2167,40 @@ const LIFE_TONE = {
 P.lifeTone = (state) => LIFE_TONE[String(state)] || 'idle';
 
 // ---------------------------------------------------------------------------
+P.css(`
+/* Shared product polish: contained layout, legible actions and consistent surfaces. */
+.cpx-root { min-width:0; width:100%; }
+.cpx-app { width:100%; min-width:0; --cpx-fs-title:28px; --cpx-fs-section:19px; }
+.cpx-scroll { padding-inline:0; scrollbar-gutter:stable; }
+.cpx-page, .cpxp-page { width:100%; min-width:0; max-width:1280px; margin-inline:auto; padding:32px clamp(20px,3vw,48px) 80px; display:flex; flex-direction:column; gap:28px; }
+.cpx-page-head, .cpxp-page-head { min-width:0; }
+.cpx-title, .cpxp-page-title { font-size:28px; font-weight:650; letter-spacing:-.6px; }
+.cpx-page-heading, .cpx-band-head > div, .cpxp-media-sec-head > div { min-width:0; }
+.cpx-rail { min-width:0; overflow-x:hidden; background:var(--dsw-alias-bg-layer-1); }
+.cpx-brand-mark { width:36px; height:36px; border:0; border-radius:12px; background:color-mix(in srgb,var(--dsw-alias-brand-primary) 10%,transparent); color:var(--dsw-alias-brand-primary); }
+.cpx-brand-name { font-size:16px; letter-spacing:.1px; }
+.cpx-nav-item { min-height:42px; border-radius:9px; }
+.cpx-band { border-top:0; gap:18px; }
+.cpx-app .cmx-btn { min-height:38px; padding:8px 16px; display:inline-flex; align-items:center; justify-content:center; gap:7px; border:1px solid var(--dsw-alias-border-l2); border-radius:9px; background:var(--dsw-alias-bg-layer-2); color:var(--dsw-alias-label-primary); font:inherit; font-size:13px; font-weight:600; cursor:pointer; transition:background .15s,border-color .15s; }
+.cpx-app .cmx-btn:hover:not(:disabled) { border-color:var(--dsw-alias-brand-primary); background:var(--dsw-alias-bg-layer-3,var(--dsw-alias-bg-layer-2)); }
+.cpx-app .cmx-btn-primary { background:var(--dsw-alias-brand-primary); color:var(--dsw-alias-bg-base,#15161c); border-color:var(--dsw-alias-brand-primary); }
+.cpx-app .cmx-btn-primary:hover:not(:disabled) { background:color-mix(in srgb,var(--dsw-alias-brand-primary) 85%,white); }
+.cpx-app .cmx-btn:disabled { opacity:.42; cursor:default; }
+.cpx-app .cmx-btn-sm { min-height:32px; padding:5px 11px; font-size:12px; }
+.cpx-app .cmx-input,.cpx-app .cmx-select,.cpx-app .cmx-textarea { min-width:0; max-width:100%; border-radius:9px; min-height:42px; padding:10px 12px; font-size:14px; }
+.cpx-field { min-width:0; }
+.cpx-segmented { display:flex; flex-wrap:wrap; gap:4px; padding:4px; border:1px solid var(--dsw-alias-border-l1); border-radius:11px; background:var(--dsw-alias-bg-layer-1); width:fit-content; max-width:100%; }
+.cpx-segment { border:0; border-radius:8px; padding:9px 18px; color:var(--dsw-alias-label-secondary); font:inherit; font-size:13px; cursor:pointer; background:transparent; }
+.cpx-segment-active { color:var(--dsw-alias-label-primary); background:var(--dsw-alias-bg-layer-3,var(--dsw-alias-bg-layer-2)); box-shadow:0 1px 5px #0002; }
+.cpx-health { padding:22px; border:1px solid var(--dsw-alias-border-l1); border-radius:16px; background:var(--dsw-alias-bg-layer-1); }
+.cpx-health-grid { grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
+.cpx-health-item { width:100%; min-height:105px; padding:16px; border-radius:12px; }
+.cpx-health-name { font-size:14px; }
+.cpx-health-head { margin-bottom:6px; }
+@media(max-width:760px) { .cpx-page,.cpxp-page { padding:22px 16px 56px; gap:22px; } .cpx-health { padding:16px; } .cpx-health-grid { grid-template-columns:repeat(2,minmax(0,1fr)); } }
+@media(max-width:420px) { .cpx-health-grid { grid-template-columns:1fr; } }
+`);
+
 // 8. Chat strip: one line of companion context above the composer
 // ---------------------------------------------------------------------------
 
@@ -2784,7 +2814,6 @@ P.THEME_LABEL = THEME_LABEL;
     return h(ui.Band, {
       title: '接下来的安排',
       hint: '还没开始的事',
-      info: '计划不等于已经发生；自主规划关闭时她不会自己生成日程（可在设置里打开）。',
       actions: h(ui.Button, { variant: 'ghost', size: 'sm', onClick: () => P.nav.go('life') }, '生活与日程'),
     },
     next.length
@@ -2803,7 +2832,6 @@ P.THEME_LABEL = THEME_LABEL;
     return h(ui.Band, {
       title: '最近一起经历的事',
       hint: '',
-      info: '来自本地留存记录的短摘要；链接、命令与代码已收成一句话，原文在每行的折叠里。对话留存不等于自动确认事实。',
       actions: h(ui.Button, { variant: 'ghost', size: 'sm', onClick: () => P.nav.go('timeline') }, '完整时间线'),
     },
     events.length
@@ -2843,7 +2871,6 @@ P.THEME_LABEL = THEME_LABEL;
     return h(ui.Band, {
       title: '需要你确认的事',
       hint: '',
-      info: '只来自真实的待核对队列与未完成计划，没有演示数字；驳回会撤回但保留证据。',
     },
     rows.length
       ? h(ui.List, { label: '待确认事项' }, rows)
@@ -2966,7 +2993,6 @@ P.THEME_LABEL = THEME_LABEL;
       return h(ui.Band, {
         title: '今天的活动与睡眠',
         hint: '',
-        info: '来自华为运动健康（CN 云）；面板没有拿到 /api/companion-health 服务（health-unavailable），现在不编造任何读数。',
         actions: h(ui.Button, { variant: 'ghost', size: 'sm', onClick: () => P.nav.go('health') }, '健康与睡眠'),
       }, h(ui.Empty, {
         title: '健康数据未接入',
@@ -3007,7 +3033,6 @@ P.THEME_LABEL = THEME_LABEL;
     return h(ui.Band, {
       title: '今天的活动与睡眠',
       hint: '',
-      info: '来自华为运动健康（CN 云），设备上报的指标；缺测写「无可用记录」，不补 0；新鲜度是产品参数，不是医学结论；只来自云端最后一次上传，来源没给的部分保持空白。',
       actions: h(ui.Button, { variant: 'ghost', size: 'sm', onClick: () => P.nav.go('health') }, '健康与睡眠'),
     }, [
       h('div', { key: 'vitals', className: 'cpxp-home-vitals' },
@@ -3056,24 +3081,7 @@ P.THEME_LABEL = THEME_LABEL;
         h('p', { className: 'cpx-aside-line' },
           h('span', { className: 'cpx-muted' }, '分享候选'),
           h('strong', null, pendingShare === null ? '—' : pendingShare)),
-        h('button', { type: 'button', className: 'cpxp-home-aside-action', onClick: () => P.nav.go('life') }, '今天的时间线')),
-
-      h('section', { className: 'cpx-aside-section' },
-        h('h3', { className: 'cpx-aside-title' }, '回到开发'),
-        h('div', { className: 'cpxp-home-links' },
-          h(ui.Button, { size: 'sm', onClick: backToChat }, '回到聊天'),
-          h(ui.Button, { size: 'sm', onClick: () => P.nav.go('workspace') }, '工作区'),
-          h(ui.Button, { size: 'sm', onClick: () => P.nav.go('connections') }, '连接与工具'),
-          h(ui.Button, { size: 'sm', onClick: () => P.nav.go('settings') }, '设置'))),
-
-      h('section', { className: 'cpx-aside-section' },
-        h('h3', { className: 'cpx-aside-title' }, '数据说明'),
-        h('p', { className: 'cpx-muted' }, observedAt ? h(ui.Timestamp, { at: observedAt, prefix: '观测于' }) : '还没有观测时间'),
-        data && data.missing.length
-          ? h(ui.Callout, { tone: 'warn', title: '这一页有没读到的部分' },
-            h('span', null, `未读到：${data.missing.join('、')}。`))
-          : h('p', { className: 'cpx-muted' }, '数字口径',
-            h(ui.Info, { text: '数字来自本机记忆库；未知一律显示「—」，不用 0 占位。', label: '数字口径' }))));
+        h('button', { type: 'button', className: 'cpxp-home-aside-action', onClick: () => P.nav.go('life') }, '今天的时间线')));
   }
 
   function Home() {
@@ -3129,7 +3137,7 @@ P.THEME_LABEL = THEME_LABEL;
     const page = {
       title: '陪伴首页',
       lead: '她现在在做什么，和还没说完的事',
-      info: HOME_INFO,
+
       status: h(P.Fragment, null,
         h(ui.StateLine, { state: P.lifeTone(life && life.state), text: life ? (STATE_SENTENCE[life.state] || '状态未知') : '尚未读到状态' }),
         observedAt ? h(ui.Timestamp, { at: observedAt, prefix: '观测于' }) : null,
@@ -3152,7 +3160,6 @@ P.THEME_LABEL = THEME_LABEL;
       heroNode(now, life, observedAt),
       h(ui.Band, {
         title: '状态',
-        info: '每 20 秒自动探测一次；点任意一项跳到对应页面。失败只写「读不到」，不用 0 或绿色代替未知。',
         actions: h(ui.Button, { variant: 'ghost', size: 'sm', onClick: () => P.nav.go('overview') }, '运行状态'),
       }, h(ui.HealthStrip, {
         items: health.items,
@@ -8636,7 +8643,7 @@ P.THEME_LABEL = THEME_LABEL;
   const LEAD = '只读配置与本地账本，不发送任何消息。';
 
   // 解释性文案只进 ⓘ（悬停或键盘聚焦才显示）：不看不会误解的地方不挂。
-  const info = (text) => (ui.Info ? h(ui.Info, { key: 'info', text }) : null);
+  const info = () => null;
 
   P.css(`
     .cpxp-cx-note { margin:0; font-size:var(--cpx-fs-small); line-height:1.7; color:var(--dsw-alias-label-secondary); overflow-wrap:anywhere; max-width:72ch; }
@@ -8980,17 +8987,7 @@ P.THEME_LABEL = THEME_LABEL;
         enabled === null || enabled === undefined
           ? h('span', { key: 'hen', className: 'cpxp-cx-note' }, '启用状态未知')
           : null),
-      h(ui.Diagnostic, { key: 'hdiag', title: '高级诊断', hint: 'status / sources 原始字段。' },
-        h(ui.KeyValue, {
-          items: [
-            { k: 'source.id', v: source ? source.id : (sourceInfo ? sourceInfo.id : '—'), mono: true },
-            { k: 'source.provider', v: source ? source.provider : '—', mono: true },
-            { k: 'source.enabled', v: String(enabled), mono: true },
-            { k: 'auth.expiresAt', v: auth && auth.expiresAt ? auth.expiresAt : '—', mono: true },
-            { k: 'collector.baseUrl', v: collector && collector.baseUrl ? collector.baseUrl : '—', mono: true },
-            { k: 'collector.cooldownUntil', v: collector && collector.cooldownUntil ? collector.cooldownUntil : '—', mono: true },
-          ],
-        }))]);
+      null]);
   }
 
   function ConnectionsPage() {
@@ -9126,38 +9123,7 @@ P.THEME_LABEL = THEME_LABEL;
             meta: namespaces.join('、'),
             side: `${namespaces.length} 个`,
           })
-          : null)),
-
-      h(ui.Band, {
-        key: 'missing',
-        title: '未接入项',
-        actions: [info('这些能力面板里没有数据来源，按钮也不会假装存在；没接通就直接写没接通。')],
-      }, h(ui.List, { label: '未接入与未开放的能力' }, NOT_CONNECTED.map((item) => h(ui.Row, {
-        key: `missing-${item.title}`,
-        title: item.title,
-        meta: item.meta,
-        status: h(ui.Badge, { tone: 'neutral' }, item.badge),
-      })))),
-
-      h(ui.Diagnostic, {
-        key: 'diag',
-        title: '高级诊断',
-        hint: '运行库字段原文，只用于排查',
-      },
-      h(ui.KeyValue, {
-        items: [
-          { k: 'runtime.mode', v: runtime.mode || '—', mono: true },
-          {
-            k: 'runtime.pollIntervalMs',
-            v: runtime.pollIntervalMs === null || runtime.pollIntervalMs === undefined ? '—' : String(runtime.pollIntervalMs),
-            mono: true,
-          },
-          { k: 'sections.unavailable', v: unavailable.length ? unavailable.join('、') : '无', mono: true, breakable: true },
-        ],
-      }),
-      h(ui.Pre, { maxHeight: 260 }, JSON.stringify({
-        runtime, media, contact, unavailable,
-      }, null, 2))));
+          : null)));
   }
 
   P.registerPage({ id: 'connections', label: TITLE, order: 62, component: ConnectionsPage });
@@ -9235,6 +9201,48 @@ P.THEME_LABEL = THEME_LABEL;
     .cpxp-media-error { margin:4px 0 0; font-size:var(--cpx-fs-small,12px); color:var(--dsw-alias-label-danger,#c0392b); overflow-wrap:anywhere; }
     .cpxp-media-presets { display:grid; grid-template-columns:repeat(auto-fit,minmax(260px,1fr)); gap:var(--cpx-s3,12px); }
     .cpxp-media-badge-row { display:flex; gap:6px; flex-wrap:wrap; align-items:center; }
+  `);
+
+
+  P.css(`
+    .cpx-media-page > .cpx-band { padding-top:0; }
+    .cpx-media-page > .cpx-band > .cpx-band-head { padding:0 0 4px; }
+    .cpx-media-page > .cpx-band > .cpx-band-head .cpx-band-title { font-size:28px; letter-spacing:-.6px; }
+    .cpxp-media-sec { padding:0; border-radius:16px; overflow:hidden; margin-bottom:24px; background:var(--dsw-alias-bg-layer-1); border-color:var(--dsw-alias-border-l1); }
+    .cpxp-media-sec-head { padding:22px 24px; align-items:center; flex-wrap:nowrap; border-bottom:1px solid var(--dsw-alias-border-l1); }
+    .cpxp-section-name { display:flex; gap:12px; align-items:center; }
+    .cpxp-section-symbol { display:grid; place-items:center; width:38px; height:38px; border-radius:11px; background:color-mix(in srgb,var(--dsw-alias-brand-primary) 10%,transparent); color:var(--dsw-alias-brand-primary); flex:none; }
+    .cpxp-media-sec-title { font-size:20px; font-weight:650; }
+    .cpxp-section-body { padding:24px; display:flex; flex-direction:column; gap:24px; }
+    .cpxp-media-head-actions { display:flex; align-items:center; gap:14px; }
+    .cpxp-enable { display:inline-flex; align-items:center; gap:9px; padding:8px 0; border:0; background:transparent; color:var(--dsw-alias-label-secondary); font:inherit; font-size:13px; white-space:nowrap; cursor:pointer; }
+    .cpxp-enable[aria-checked=true] { color:var(--dsw-alias-label-primary); }
+    .cpxp-switch-track { width:30px; height:18px; border-radius:99px; padding:3px; background:var(--dsw-alias-border-l2); transition:background .18s; display:inline-flex; flex:none; }
+    .cpxp-switch-track::before { content:''; width:12px; height:12px; border-radius:50%; background:var(--dsw-alias-label-secondary); transition:transform .18s; }
+    [aria-checked=true] > .cpxp-switch-track { background:var(--dsw-alias-brand-primary); }
+    [aria-checked=true] > .cpxp-switch-track::before { background:var(--dsw-alias-bg-base); transform:translateX(12px); }
+    .cpxp-media-card { padding:0; border:0; border-radius:0; background:transparent; }
+    .cpxp-media-card-head { margin-bottom:20px; }
+    .cpxp-media-card-title { font-size:15px; margin-bottom:5px; }
+    .cpxp-media-fields { grid-template-columns:repeat(2,minmax(0,1fr)); gap:20px; margin:0; }
+    .cpxp-media-fields > * { min-width:0; }
+    .cpxp-media-secret { width:100%; flex-wrap:nowrap; }
+    .cpxp-media-secret .cmx-input { flex:1; width:100%; min-width:0; }
+    .cpxp-media-secret .cpx-state-line { flex:none; }
+    .cpxp-media-actions { margin-top:18px; gap:12px; }
+    .cpxp-media-badge-row { gap:8px; }
+    .cpxp-media-footer { display:flex; align-items:center; justify-content:space-between; gap:12px; padding-top:22px; border-top:1px solid var(--dsw-alias-border-l1); }
+    .cpxp-generation { padding-top:24px; border-top:1px solid var(--dsw-alias-border-l1); display:flex; flex-direction:column; gap:24px; }
+    .cpxp-preset-head { display:flex; align-items:center; justify-content:space-between; gap:12px; }
+    .cpxp-preset-head h4 { margin:0; font-size:18px; font-weight:650; }
+    .cpxp-preset-head p { margin:3px 0 0; font-size:12px; }
+    .cpxp-advanced { border:1px solid var(--dsw-alias-border-l1); border-radius:10px; padding:12px 16px; }
+    .cpxp-advanced summary { cursor:pointer; color:var(--dsw-alias-label-secondary); font-size:13px; }
+    .cpxp-advanced[open] > .cpxp-media-fields { margin-top:20px; }
+    .cpxp-resolution { display:flex; gap:20px; align-items:center; flex-wrap:wrap; }
+    .cpxp-media-field-wide textarea { min-height:100px; resize:vertical; }
+    @media(max-width:760px) { .cpxp-media-sec-head,.cpxp-section-body { padding:18px; } .cpxp-media-head-actions { gap:8px; } .cpxp-media-fields { grid-template-columns:1fr; gap:18px; } .cpxp-media-sec-title { font-size:18px; } .cpxp-section-symbol { display:none; } }
+    @media(prefers-reduced-motion:reduce) { .cpxp-switch-track,.cpxp-switch-track::before { transition:none; } }
   `);
 
   // -------------------------------------------------------------------------
@@ -9325,8 +9333,8 @@ P.THEME_LABEL = THEME_LABEL;
       configured: info ? info.configured : false,
       mask: info ? info.mask : '',
       // 视图里永不携带明文：secret 的值恒为 ''，靠 configured 表达"已配置"。
-      value: secret || plain ? '' : current,
-      original: secret || plain ? '' : current,
+      value: field.type === 'json' ? JSON.stringify(current || []) : secret || plain ? '' : current,
+      original: field.type === 'json' ? JSON.stringify(current || []) : secret || plain ? '' : current,
       options: Array.isArray(field.options) ? field.options.map(item => ({ value: String(item.value), label: String(item.label) })) : null,
     };
   }
@@ -9356,6 +9364,7 @@ P.THEME_LABEL = THEME_LABEL;
     const syntheticEnablePath = enableField || kind === 'image' ? null : `${prefix}.enabled`;
     return {
       id: provider.id,
+      generationFields: provider.generationFields || null,
       kind,
       label: provider.label || provider.id,
       prefix,
@@ -9554,6 +9563,7 @@ P.THEME_LABEL = THEME_LABEL;
   }
 
   function coerce(type, value) {
+    if (type === 'json') { try { return JSON.parse(value || '[]'); } catch { return null; } }
     if (type === 'boolean') return value === true || value === 'true';
     if (type === 'number') {
       const number = Number(value);
@@ -9653,7 +9663,7 @@ P.THEME_LABEL = THEME_LABEL;
       if (!meta || meta.locked || meta.secret) return;
       const next = coerce(meta.type, draft[path]);
       if (next === null) return; // 数字框留空：不发，交给用户补
-      if (sameValue(next, meta.original)) return;
+      if (meta.type === 'json' ? JSON.stringify(next) === meta.original : sameValue(next, meta.original)) return;
       setParts(patch, meta.parts, next);
     });
     Object.keys(secrets || {}).forEach((path) => {
@@ -9779,17 +9789,17 @@ P.THEME_LABEL = THEME_LABEL;
     const controlId = `media-${entry.path}`;
     const status = fromEnv
       ? h(ui.StateLine, { state: 'idle', text: `来自环境变量${envVar ? `（${envVar}）` : ''}` })
-      : h(ui.StateLine, { state: configured ? 'ok' : 'idle', text: configured ? (mask || '已配置') : '未配置' });
+      : h(ui.StateLine, { state: configured ? 'ok' : 'idle', text: configured ? '已配置' : '未配置' });
     const hint = fromEnv
       ? '这个 provider 的密钥来自环境变量：在这里改不会生效，请改环境变量本身'
-      : (entry.hint || '只写：保存后只显示「已配置」；留空表示不修改');
+      : '';
     return h(ui.Field, { label: entry.label, hint, id: controlId },
       h('div', { className: 'cpxp-media-secret' },
         h(ui.Input, {
           id: controlId,
           type: 'password',
           value: value || '',
-          placeholder: fromEnv ? '由环境变量提供' : (configured ? '已配置（留空 = 不修改）' : '尚未配置'),
+          placeholder: fromEnv ? '由环境变量提供' : (configured ? '已保存，输入以替换' : '尚未配置'),
           disabled: Boolean(disabled || fromEnv),
           ariaLabel: entry.label,
           onChange: text => onChange(text),
@@ -9849,10 +9859,14 @@ P.THEME_LABEL = THEME_LABEL;
     if (!open) {
       return h('div', { key: `provider-${provider.id}`, className: 'cpxp-media-card' },
         header,
-        h('p', { className: 'cpxp-media-note' }, provider.stateNote || ''),
+        null,
         !dirty && status ? testResultLine(status) : null);
     }
-    const fieldNodes = provider.fields.map((field) => {
+    const fieldNodes = provider.fields.filter(field => {
+      const key = lastSegment(field.path);
+      if (provider.generationFields && (provider.generationFields.includes(key) || ['activePresetId','generationPresets'].includes(key))) return false;
+      return !(provider.generationFields && key === 'baseUrl' && draft[provider.prefix+'.transport'] === 'official');
+    }).sort((a,b) => (lastSegment(a.path)==='transport'?-1:lastSegment(b.path)==='transport'?1:0)).map((field) => {
       const error = errors[field.path];
       if (field.secret) {
         // 环境变量来的密钥：页面只能显示来源，不能改、也不能"清除"（会被覆盖回去）。
@@ -9894,13 +9908,12 @@ P.THEME_LABEL = THEME_LABEL;
     });
     const actions = h('div', { className: 'cpxp-media-actions' },
       h(ui.Button, {
-        variant: 'ghost',
-        size: 'sm',
-        loading: busy === `save:${provider.prefix}`,
+        variant: 'primary',
+        loading: busy === `save:${provider.kind}`,
         disabled: !dirty || Boolean(busy),
-        onClick: () => onSave(provider.prefix),
+        onClick: () => onSave(provider.kind),
         title: '只保存这个 provider 的改动（留空的密钥不会被写回）',
-      }, '保存这个 provider'),
+      }, '保存'),
       h(ui.Button, {
         variant: 'ghost',
         size: 'sm',
@@ -9913,105 +9926,23 @@ P.THEME_LABEL = THEME_LABEL;
       }, '测试连接'),
       !dirty && status ? testResultLine(status) : null);
     const dirtyNote = dirty
-      ? h('p', { className: 'cpxp-media-note' }, '有未保存的修改：先点「保存这个 provider」，再测试——测试读的是已保存的配置。')
+      ? h('p', { className: 'cpxp-media-note' }, '请先保存修改，再测试连接。')
       : null;
-    const evidence = h(ui.Diagnostic, { title: '协议与证据（只读）', hint: provider.label },
-      h(ui.KeyValue, {
-        items: [
-          { k: 'endpoint', v: provider.endpoint || '—', mono: true, breakable: true },
-          { k: 'auth', v: provider.auth || '—' },
-          { k: 'response', v: provider.responseFormat || '—' },
-          { k: 'voice', v: provider.voiceListing || '—' },
-          { k: 'rateLimit', v: provider.rateLimit || '—' },
-          { k: 'license', v: provider.license || '—' },
-          { k: 'evidence', v: provider.evidence && provider.evidence.level ? `${provider.evidence.level} 级` : '—' },
-        ],
-      }));
     return h('div', { key: `provider-${provider.id}`, className: 'cpxp-media-card' },
       header,
-      h('p', { className: 'cpxp-media-note' }, provider.stateNote || ''),
+      null,
       h('div', { className: 'cpxp-media-fields' }, fieldNodes),
       actions,
       dirtyNote,
       status && !dirty && status.detail ? h('p', { className: 'cpxp-media-note' }, status.detail) : null,
-      evidence);
+      null);
   }
 
   function testResultLine(status) {
     if (!status) return null;
     if (status.running) return h(ui.StateLine, { state: 'idle', text: '测试中…' });
-    if (status.ok) return h(ui.StateLine, { state: 'ok', text: `测试通过（证据等级 ${status.level || 'none'}）` });
+    if (status.ok) return h(ui.StateLine, { state: 'ok', text: status.level === 'reachability' ? '地址可达 · 密钥未验证' : '测试通过' });
     return h(ui.StateLine, { state: 'danger', text: `测试失败${status.code ? ` · ${status.code}` : ''}` });
-  }
-
-  function PresetEditor({ presets, draft, busy, onDraft }) {
-    if (!presets) return null;
-    const familyCards = presets.families.map(family => h('div', { key: family.path, className: 'cpxp-media-card' },
-      h('h4', { className: 'cpxp-media-card-title' }, family.label),
-      h('div', { className: 'cpxp-media-fields' },
-        family.fields.map(field => h('div', { key: field.path, className: 'cpxp-media-field-wide' },
-          h(FieldControl, {
-            entry: field,
-            value: draft[field.path],
-            disabled: Boolean(busy),
-            onChange: text => onDraft(field.path, text),
-          }))))));
-    const artist = presets.artist;
-    const artistCard = artist
-      ? h('div', { key: 'preset-artist', className: 'cpxp-media-card' },
-        h('h4', { className: 'cpxp-media-card-title' }, artist.label || '画师串'),
-        h('div', { className: 'cpxp-media-fields' },
-          h('div', { className: 'cpxp-media-field-wide' },
-            h(FieldControl, {
-              entry: artist,
-              value: draft[artist.path],
-              disabled: Boolean(busy),
-              onChange: text => onDraft(artist.path, text),
-            }))))
-      : null;
-    return h('div', null,
-      h('p', { className: 'cpxp-media-note' }, presets.note || 'V5 与 4.5 的预设分开存储，互不串用；切换模型不会把一族的预设套到另一族。'),
-      h('div', { className: 'cpxp-media-presets' }, familyCards),
-      artistCard);
-  }
-
-  function PreviewTool({ spec, preview, form, busy, onForm, onRun }) {
-    if (!spec) return null;
-    const resolution = preview && preview.resolution ? preview.resolution : null;
-    const defaults = spec.values || {};
-    const aspects = [
-      { value: 'portrait', label: '竖图' },
-      { value: 'landscape', label: '横图' },
-      { value: 'square', label: '方图' },
-    ];
-    return h('div', { className: 'cpxp-media-card' },
-      h('h4', { className: 'cpxp-media-card-title' }, spec.label || '自动分辨率预览'),
-      h('p', { className: 'cpxp-media-note' }, spec.note || '按画幅与目标像素计算并取整到 64 的倍数；同一输入同一结果，越界会明确报错。'),
-      h('div', { className: 'cpxp-media-actions' },
-        h(ui.Select, {
-          value: form.aspect || defaults.aspect || 'portrait',
-          ariaLabel: '画幅',
-          options: aspects,
-          onChange: value => onForm({ ...form, aspect: value }),
-        }),
-        h(ui.Input, {
-          value: String(form.targetPixels || defaults.targetPixels || ''),
-          ariaLabel: '目标像素',
-          width: 150,
-          onChange: value => onForm({ ...form, targetPixels: value }),
-        }),
-        h(ui.Button, {
-          variant: 'ghost',
-          size: 'sm',
-          loading: busy === 'preview',
-          onClick: onRun,
-          title: '只在点击时计算；不生成图片、不调用模型',
-        }, '预览')),
-      resolution
-        ? h('p', { className: 'cpxp-media-note' }, resolution.ok
-          ? `结果：${resolution.size || '—'}（取整到 64 的倍数）`
-          : `计算失败：${resolution.error || resolution.code || '参数不合法'}（按后端返回照实显示，页面不改写）`)
-        : null);
   }
 
   function sectionDirty(section, draft, secrets, clears) {
@@ -10037,109 +9968,96 @@ P.THEME_LABEL = THEME_LABEL;
     });
   }
 
-  function SectionCard({ section, states, testing, draft, secrets, clears, errors, busy, onDraft, onSecret, onClear, onSave, onTest }) {
-    const [open, setOpen] = P.useState(true);
-    const dirty = sectionDirty(section, draft, secrets, clears);
-    const selectedProvider = section.selector ? (draft[section.selector.path] ?? section.selector.value) : null;
-    const toggleNode = section.toggle
-      ? h('div', { className: 'cpxp-media-actions' },
-        h(ui.Toggle, {
-          checked: Boolean(draft[section.toggle.path] ?? section.toggle.value),
-          disabled: section.toggle.disabled,
-          label: section.toggle.label,
-          hint: section.toggle.disabled ? (section.toggle.why || '这一项本轮不可操作') : '',
-          onChange: next => onDraft(section.toggle.path, next),
-        }))
-      : null;
-    const selectorNode = section.selector
-      ? h('div', { className: 'cpxp-media-actions' },
-        h(ui.Field, { label: section.selector.label, id: `media-${section.selector.path}` },
-          h(ui.Select, {
-            id: `media-${section.selector.path}`,
-            value: selectedProvider,
-            disabled: section.selector.disabled,
-            ariaLabel: section.selector.label,
-            options: section.selector.options,
-            onChange: value => onDraft(section.selector.path, value),
-          })))
-      : null;
-    const fieldNodes = section.fields.length
-      ? h('div', { className: 'cpxp-media-fields' }, section.fields.map(field => h('div', {
-        key: field.path,
-        className: field.type === 'textarea' ? 'cpxp-media-field-wide' : '',
-      }, h(FieldControl, {
-        entry: field,
-        value: field.secret ? '' : draft[field.path],
-        disabled: field.locked || Boolean(busy),
-        error: errors[field.path],
-        onChange: text => (field.secret ? onSecret(field.path, text) : onDraft(field.path, text)),
-      }))))
-      : null;
-    const providerNodes = section.providers.length
-      ? h('div', null, section.providers.map(provider => h(ProviderCard, {
-        key: provider.id,
-        provider,
-        selected: provider.id === selectedProvider,
-        states,
-        draft,
-        secrets,
-        clears,
-        errors,
-        testing,
-        busy,
-        onDraft,
-        onSecret,
-        onClear,
-        onSave,
-        onTest,
-      })))
-      : null;
-    const saveNode = h('div', { className: 'cpxp-media-actions' },
-      h(ui.Button, {
-        variant: 'ghost',
-        size: 'sm',
-        loading: busy === `save:${section.id}`,
-        disabled: section.locked || !dirty || Boolean(busy),
-        onClick: () => onSave(section.id),
-        title: section.locked ? '这一块本轮不可编辑' : '保存这一块的改动',
-      }, '保存这一块'));
-    return h('section', { key: `section-${section.id}`, className: 'cpxp-media-sec' },
-      h('div', { className: 'cpxp-media-sec-head' },
-        h('div', null,
-          h('h3', { className: 'cpxp-media-sec-title' }, section.title),
-          h('p', { className: 'cpxp-media-note' }, section.note)),
-        h('div', { className: 'cpxp-media-actions' },
-          section.status ? h(ui.Badge, { tone: section.status === 'on' ? 'ok' : 'neutral' }, section.status === 'on' ? '已启用' : '未启用') : null,
-          h(ui.Button, { variant: 'ghost', size: 'sm', onClick: () => setOpen(!open) }, open ? '收起' : '展开'))),
-      open
-        ? h('div', null,
-          toggleNode,
-          selectorNode,
-          fieldNodes,
-          providerNodes,
-          section.presets ? h(PresetEditor, { presets: section.presets, draft, busy, onDraft }) : null,
-          saveNode)
-        : null);
+
+  function parseLibrary(value) { try { const items = JSON.parse(value || '[]'); return Array.isArray(items) ? items : []; } catch { return []; } }
+
+  function GenerationEditor({ provider, presets, draft, busy, errors, onDraft }) {
+    const prefix = provider.prefix;
+    const libraryPath = prefix + '.generationPresets';
+    const activePath = prefix + '.activePresetId';
+    const library = parseLibrary(draft[libraryPath]);
+    const active = library.find(item => item.id === draft[activePath]);
+    const model = String(draft[prefix+'.model'] || '');
+    const family = model.startsWith('nai-diffusion-5') ? '5' : model.startsWith('nai-diffusion-4') ? '4.5' : '';
+    const snapshot = (path, value) => {
+      const settings = {};
+      provider.generationFields.forEach(key => {
+        const field = provider.fields.find(f => f.path === prefix+'.'+key);
+        settings[key] = coerce(field?.type, path === prefix+'.'+key ? value : draft[prefix+'.'+key]);
+      });
+      const families = {};
+      (presets?.families || []).forEach(f => {
+        families[f.family] = {};
+        f.fields.forEach(field => { families[f.family][lastSegment(field.path)] = coerce(field.type,field.path===path?value:draft[field.path]); });
+      });
+      return {settings, presets:families};
+    };
+    const change = (path,value) => {
+      onDraft(path,value);
+      if (active) onDraft(libraryPath,JSON.stringify(library.map(item => item.id===active.id ? {...item,...snapshot(path,value)} : item)));
+    };
+    const select = id => {
+      const item = library.find(p => p.id===id);
+      onDraft(activePath,id);
+      if (!item) return;
+      Object.entries(item.settings || {}).forEach(([key,value]) => { if(provider.generationFields.includes(key))onDraft(prefix+'.'+key,value); });
+      (presets?.families || []).forEach(f => f.fields.forEach(field => {
+        const value=item.presets?.[f.family]?.[lastSegment(field.path)];
+        if(value!==undefined)onDraft(field.path,value);
+      }));
+    };
+    const create = () => {
+      const id = 'preset-' + Date.now().toString(36) + '-' + Math.random().toString(36).slice(2,7);
+      onDraft(libraryPath,JSON.stringify([...library,{id,name:'新预设 '+(library.length+1),...snapshot()}]));
+      onDraft(activePath,id);
+    };
+    const aspect = draft[prefix+'.aspect'] || 'portrait';
+    const setAspect = value => {
+      const sizes = {portrait:[832,1216],landscape:[1216,832],square:[1024,1024]};
+      const [width,height]=sizes[value];
+      onDraft(prefix+'.width',width); onDraft(prefix+'.height',height);
+      change(prefix+'.aspect',value);
+      // Include the derived fixed dimensions in the selected preset snapshot as well.
+      if(active) { const data=snapshot(prefix+'.aspect',value); data.settings.width=width;data.settings.height=height; onDraft(libraryPath,JSON.stringify(library.map(item=>item.id===active.id?{...item,...data}:item))); }
+    };
+    const fields = [...provider.fields,...(presets?.artist?[presets.artist]:[])].filter(field => provider.generationFields.includes(lastSegment(field.path)) && !['width','height','aspect','autoResolution'].includes(lastSegment(field.path)));
+    const advancedKeys=['seed','ucPreset','qualityToggle','sm','smDyn'];
+    const renderField=field=>h('div',{key:field.path,className:field.type==='textarea'?'cpxp-media-field-wide':''},h(FieldControl,{entry:{...field,hint:''},value:draft[field.path],disabled:!!busy,error:errors[field.path],onChange:value=>change(field.path,value)}));
+    return h('section',{className:'cpxp-generation', 'aria-label':'生成预设'},
+      h('div',{className:'cpxp-preset-head'},
+        h('div',null,h('h4',null,'生成预设'),h('p',{className:'cpx-muted'},active ? active.name : '当前参数')),
+        h(ui.Button,{onClick:create,disabled:!!busy||library.length>=32},'新建预设')),
+      h('div',{className:'cpxp-media-fields'},
+        h(ui.Field,{label:'选择预设'},h(ui.Select,{ariaLabel:'选择预设',value:active?.id||'',disabled:!!busy,options:[{value:'',label:'当前参数'},...library.map(i=>({value:i.id,label:i.name}))],onChange:select})),
+        active ? h(ui.Field,{label:'预设名称'},h(ui.Input,{ariaLabel:'预设名称',value:active.name,disabled:!!busy,onChange:name=>onDraft(libraryPath,JSON.stringify(library.map(i=>i.id===active.id?{...i,name}:i)))})) : null),
+      errors[libraryPath] ? h('p',{className:'cpxp-media-error'},errors[libraryPath]) : null,
+      h('div',{className:'cpxp-media-fields'},fields.filter(f=>!advancedKeys.includes(lastSegment(f.path))).map(renderField)),
+      h('details',{className:'cpxp-advanced'},h('summary',null,'更多生成参数'),h('div',{className:'cpxp-media-fields'},fields.filter(f=>advancedKeys.includes(lastSegment(f.path))).map(renderField))),
+      h('div',{className:'cpxp-resolution'},
+        h(ui.Field,{label:'画面比例'},h(ui.Segmented,{label:'画面比例',value:aspect,disabled:!!busy,options:[{id:'portrait',label:'竖图 2:3'},{id:'landscape',label:'横图 3:2'},{id:'square',label:'方图 1:1'}],onChange:setAspect})),
+        h('button',{type:'button',className:'cpxp-enable',role:'switch','aria-checked':draft[prefix+'.autoResolution']===true,disabled:!!busy,onClick:()=>change(prefix+'.autoResolution',draft[prefix+'.autoResolution']!==true)},h('span',{className:'cpxp-switch-track'}),'自动分辨率'),
+        h('span',{className:'cpx-muted'},draft[prefix+'.autoResolution']===true?'约 100 万像素':`${draft[prefix+'.width']} × ${draft[prefix+'.height']}`)),
+      family && presets ? h('div',{className:'cpxp-media-fields'},presets.families.find(f=>f.family===family)?.fields.map(field=>h('div',{key:field.path,className:'cpxp-media-field-wide'},h(FieldControl,{entry:{...field,label:lastSegment(field.path)==='applyDefaults'?'应用提示词预设':lastSegment(field.path)==='positive'?'正向提示词预设':'反向提示词预设'},value:draft[field.path],disabled:!!busy,onChange:value=>change(field.path,value)})))) : null);
   }
 
-  function runtimeFlagList(media) {
-    const rows = [
-      { key: 'enabled', label: '媒体总开关' },
-      { key: 'vision', label: '识图' },
-      { key: 'speech', label: '语音表达' },
-      { key: 'image', label: '图片创作' },
-      { key: 'screen', label: '屏幕感知' },
-    ];
-    return h(ui.Diagnostic, { key: 'runtime-flags', title: '运行库视角（GET companion · media）', hint: '只说明运行库读到的开关；本页的配置以媒体插件为准' },
-      h(ui.List, { label: '运行库读到的媒体开关' }, rows.map(row => h(ui.Row, {
-        key: `rt-${row.key}`,
-        title: row.label,
-        meta: '来自 GET companion',
-        status: h(ui.StateLine, {
-          state: media && media[row.key] === true ? 'ok' : 'idle',
-          text: media && media[row.key] === true ? '已启用' : media && media[row.key] === false ? '已关闭' : '未读到',
-        }),
-      }))));
+  function SectionCard({ section, states, testing, draft, secrets, clears, errors, busy, onDraft, onSecret, onClear, onSave, onTest }) {
+    const [open,setOpen] = P.useState(!section.locked);
+    const dirty=sectionDirty(section,draft,secrets,clears);
+    const selected=section.selector?(draft[section.selector.path]??section.selector.value):null;
+    const provider=section.providers.find(p=>p.id===selected&&!p.notConnected);
+    const options=section.selector?.options.filter(o=>o.value==='none'||section.providers.some(p=>p.id===o.value&&!p.notConnected))||[];
+    return h('section',{className:'cpxp-media-sec','data-section':section.id},
+      h('div',{className:'cpxp-media-sec-head'},
+        h('div',{className:'cpxp-section-name'},h('span',{className:'cpxp-section-symbol','aria-hidden':true},h(ui.Icon,{name:section.id==='image'?'image':section.id==='tts'?'audio':'eye',size:20})),h('h3',{className:'cpxp-media-sec-title'},section.title)),
+        h('div',{className:'cpxp-media-head-actions'},
+          section.toggle&&!section.locked?h('button',{type:'button',className:'cpxp-enable',role:'switch','aria-label':section.toggle.label,'aria-checked':!!draft[section.toggle.path],disabled:!!busy,onClick:()=>onDraft(section.toggle.path,!draft[section.toggle.path])},h('span',{className:'cpxp-switch-track'}),draft[section.toggle.path]?'已启用':'启用'+section.title):h(ui.Badge,{tone:'neutral'},'未启用'),
+          h(ui.Button,{size:'sm',onClick:()=>setOpen(!open),ariaLabel:(open?'收起':'展开')+section.title},open?'收起':'展开'))),
+      open?h('div',{className:'cpxp-section-body'},
+        section.selector?h(ui.Segmented,{label:section.id==='image'?'生图服务':'语音服务',value:selected,disabled:!!busy,options:options.map(o=>({id:o.value,label:o.value==='none'?'未选择':o.label.replace(' 生图','').replace('（官方直连 / 中转站）','')})),onChange:value=>onDraft(section.selector.path,value)}):null,
+        section.fields.length?h('div',{className:'cpxp-media-fields'},section.fields.map(field=>h(FieldControl,{key:field.path,entry:field,value:draft[field.path],disabled:field.locked||!!busy,error:errors[field.path],onChange:value=>onDraft(field.path,value)}))):null,
+        provider?h(ProviderCard,{provider,selected:true,states,draft,secrets,clears,errors,testing,busy,onDraft,onSecret,onClear,onSave,onTest}):null,
+        provider?.generationFields?h(GenerationEditor,{provider,presets:section.presets,draft,busy,errors,onDraft}):null,
+        !section.locked?h('div',{className:'cpxp-media-footer'},h('span',{className:'cpx-muted'},dirty?'有未保存的修改':'已保存'),h(ui.Button,{variant:'primary',disabled:!dirty||!!busy,loading:busy===`save:${section.id}`,onClick:()=>onSave(section.id)},'保存')):null):null);
   }
 
   function MediaBand({ media }) {
@@ -10151,8 +10069,6 @@ P.THEME_LABEL = THEME_LABEL;
     const [busy, setBusy] = P.useState('');
     const [flash, setFlash] = P.useState(null);
     const [testing, setTesting] = P.useState({});
-    const [preview, setPreview] = P.useState(null);
-    const [previewForm, setPreviewForm] = P.useState({});
 
     const bundle = state.data || null;
     const descriptor = bundle && bundle.page ? bundle.page.page : null;
@@ -10262,6 +10178,10 @@ P.THEME_LABEL = THEME_LABEL;
     const setField = (path, value) => {
       forgetTests(providerIdsFor(path));
       setDraft(previous => ({ ...previous, [path]: value }));
+      if (path === 'image.nai.transport') {
+        if (value === 'official') setFieldDirect('image.nai.baseUrl','https://image.novelai.net');
+        else if (draft['image.nai.baseUrl'] === 'https://image.novelai.net') setFieldDirect('image.nai.baseUrl','');
+      }
       if (!view) return;
       const section = view.sections.find(item => item.selector && item.selector.path === path);
       if (!section || !section.toggle || section.toggle.value !== true) return;
@@ -10362,8 +10282,8 @@ P.THEME_LABEL = THEME_LABEL;
             text: '后端仍报告这些密钥处于配置状态。页面不会把"已清除"写在结果里——这需要媒体插件支持显式清除动作。',
           });
         } else {
-          setFlash({ tone: 'ok', title: `已保存 ${savedCount} 项`, text: '已写入媒体配置文件；页面会重新读一遍同一份数据，可对照回读。' });
-          if (typeof P.notice === 'function') P.notice('媒体配置已保存', 'ok');
+          setFlash(null);
+          if (typeof P.notice === 'function') P.notice('已保存', 'ok');
         }
         // 这次重读以服务器为准（允许覆盖草稿），因为改动刚刚落盘。
         reseedPending.current = true;
@@ -10386,36 +10306,17 @@ P.THEME_LABEL = THEME_LABEL;
           ...previous,
           [id]: { ok: payload.ok === true, level: payload.level, code: payload.code, detail: payload.detail },
         }));
-        if (typeof P.notice === 'function') P.notice(payload.ok === true ? '测试通过（只到这一级证据）' : '测试失败', payload.ok === true ? 'ok' : 'danger');
+        if (typeof P.notice === 'function') P.notice(payload.ok === true ? '连接检查完成' : '测试失败', payload.ok === true ? 'ok' : 'danger');
       }, () => {
         setBusy('');
         setTesting(previous => ({ ...previous, [id]: { ok: false, detail: '网络请求没有完成' } }));
       });
     };
 
-    const runPreview = (spec) => {
-      const values = (spec && spec.values) || {};
-      const query = new URLSearchParams({
-        mode: 'auto',
-        aspect: previewForm.aspect || values.aspect || 'portrait',
-        targetPixels: String(previewForm.targetPixels || values.targetPixels || ''),
-      }).toString();
-      if (values.model) query.model = String(values.model);
-      setBusy('preview');
-      mediaFetch(`${apiPath(api.preview, 'preview')}?${query}`).then((result) => {
-        setBusy('');
-        const payload = result.payload || {};
-        setPreview(payload.resolution ? payload : { resolution: { ok: false, error: '读不到结果' } });
-      }, () => {
-        setBusy('');
-        setPreview({ resolution: { ok: false, error: '网络请求没有完成' } });
-      });
-    };
-
     const header = {
       key: 'media-settings',
       title: '媒体能力',
-      hint: '配置直接来自媒体插件；保存只走它自己的接口',
+      hint: '',
       actions: [
         unsaved
           ? h(ui.Button, {
@@ -10424,7 +10325,7 @@ P.THEME_LABEL = THEME_LABEL;
             size: 'sm',
             onClick: discardDraft,
             title: '丢掉未保存的改动，回到已保存的那一份配置',
-          }, '放弃未保存的改动')
+          }, '放弃修改')
           : null,
         state.data ? h(ui.Button, {
           key: 'reload',
@@ -10447,16 +10348,16 @@ P.THEME_LABEL = THEME_LABEL;
             h('p', { className: 'cpxp-media-note' }, '启用路径：编辑套件里的 config/suite.json，把 modules.media 改成 true，然后重启套件（npm run start），再用 npm run doctor 复核。'),
             h(ui.Pre, { maxHeight: 160 }, ENABLE_SNIPPET),
             h('p', { className: 'cpxp-media-note' }, 'config/suite.json 是套件级本地配置（不入库），模板是 config/suite.example.json；npm run setup 不会覆盖已有文件。'))),
-        runtimeFlagList(media));
+        null);
     }
     if (!view) {
       return h(ui.Band, header,
         h(ui.Callout, { tone: state.error ? 'danger' : 'warn', title: '读不到媒体能力页面' },
           h('span', null, P.failText(state.error, '媒体接口没有返回页面描述或配置。'))),
-        runtimeFlagList(media));
+        null);
     }
 
-    const sectionNodes = view.sections.map(section => h('div', { key: `sec-wrap-${section.id}` },
+    const sectionNodes = [...view.sections].sort((a,b)=>(a.id==='vision'?1:b.id==='vision'?-1:0)).map(section => h('div', { key: `sec-wrap-${section.id}` },
       h(SectionCard, {
         section,
         states: view.states,
@@ -10471,35 +10372,16 @@ P.THEME_LABEL = THEME_LABEL;
         onClear: setClear,
         onSave: doSave,
         onTest: doTest,
-      }),
-      section.preview
-        ? h(PreviewTool, {
-          key: `preview-${section.id}`,
-          spec: section.preview,
-          preview,
-          form: previewForm,
-          busy,
-          onForm: setPreviewForm,
-          onRun: () => runPreview(section.preview),
-        })
-        : null));
+      })));
 
     return h(ui.Band, header, [
-      flash ? h(ui.Callout, { key: 'flash', tone: flash.tone === 'ok' ? 'info' : flash.tone, title: flash.title }, h('span', null, flash.text)) : null,
+      flash && flash.tone !== 'ok' ? h(ui.Callout, { key: 'flash', tone: flash.tone === 'ok' ? 'info' : flash.tone, title: flash.title }, h('span', null, flash.text)) : null,
       validation && validation.ok === false
         ? h(ui.Callout, { key: 'validation', tone: 'warn', title: '当前配置文件本身有校验问题' },
           h('ul', { className: 'cpxp-media-note' }, (validation.errors || []).slice(0, 6).map(item => h('li', { key: String(item.path || item.message) }, `${item.path || '$'}：${item.message || item.code || ''}`))))
         : null,
-      h('p', { key: 'test-hint', className: 'cpxp-media-note-inline' },
-        '测试与预览只在你点按钮时发起；测试针对的是**已保存**的配置——有未保存的修改时按钮会禁用，先保存再测试。'),
-      unsaved
-        ? h(ui.Callout, { key: 'unsaved', tone: 'info', title: '有未保存的修改' },
-          h('span', null, '这些改动还没写入媒体配置：离开本页不会丢（草稿会留到下次回来），但要生效必须点「保存」。'))
-        : null,
       h('div', { key: 'sections' }, sectionNodes),
-      runtimeFlagList(media),
-      h(ui.Diagnostic, { key: 'raw', title: '原始页面描述与配置（只读）', hint: '排查用；密钥已脱敏' },
-        h(ui.Pre, { maxHeight: 320 }, JSON.stringify({ page: redactForDebug(descriptor), config: redactForDebug(config) }, null, 2))),
+
     ]);
   }
 
@@ -10508,12 +10390,7 @@ P.THEME_LABEL = THEME_LABEL;
    * be rendered from a page (this wrapper) without duplicating any rendering logic.
    */
   function MediaPage() {
-    return h('div', { className: 'cpxp-page' },
-      h('div', { className: 'cpxp-page-head' },
-        h('h1', { className: 'cpxp-page-title' }, '媒体能力'),
-        h('p', { className: 'cpxp-page-sub' },
-          '生图与语音合成的配置；识图只保留合同。所有配置由 companion-media 插件持有，本页只按它给的描述符渲染。')),
-      h(MediaBand, { media: null }));
+    return h('div', { className: 'cpxp-page cpx-media-page' }, h(MediaBand, {media:null}));
   }
 
   P.registerPage({ id: 'media', label: '媒体能力', order: 63, component: MediaPage });

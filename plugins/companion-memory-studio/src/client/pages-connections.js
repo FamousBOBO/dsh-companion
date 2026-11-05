@@ -8,7 +8,7 @@
   const LEAD = '只读配置与本地账本，不发送任何消息。';
 
   // 解释性文案只进 ⓘ（悬停或键盘聚焦才显示）：不看不会误解的地方不挂。
-  const info = (text) => (ui.Info ? h(ui.Info, { key: 'info', text }) : null);
+  const info = () => null;
 
   P.css(`
     .cpxp-cx-note { margin:0; font-size:var(--cpx-fs-small); line-height:1.7; color:var(--dsw-alias-label-secondary); overflow-wrap:anywhere; max-width:72ch; }
@@ -352,17 +352,7 @@
         enabled === null || enabled === undefined
           ? h('span', { key: 'hen', className: 'cpxp-cx-note' }, '启用状态未知')
           : null),
-      h(ui.Diagnostic, { key: 'hdiag', title: '高级诊断', hint: 'status / sources 原始字段。' },
-        h(ui.KeyValue, {
-          items: [
-            { k: 'source.id', v: source ? source.id : (sourceInfo ? sourceInfo.id : '—'), mono: true },
-            { k: 'source.provider', v: source ? source.provider : '—', mono: true },
-            { k: 'source.enabled', v: String(enabled), mono: true },
-            { k: 'auth.expiresAt', v: auth && auth.expiresAt ? auth.expiresAt : '—', mono: true },
-            { k: 'collector.baseUrl', v: collector && collector.baseUrl ? collector.baseUrl : '—', mono: true },
-            { k: 'collector.cooldownUntil', v: collector && collector.cooldownUntil ? collector.cooldownUntil : '—', mono: true },
-          ],
-        }))]);
+      null]);
   }
 
   function ConnectionsPage() {
@@ -498,38 +488,7 @@
             meta: namespaces.join('、'),
             side: `${namespaces.length} 个`,
           })
-          : null)),
-
-      h(ui.Band, {
-        key: 'missing',
-        title: '未接入项',
-        actions: [info('这些能力面板里没有数据来源，按钮也不会假装存在；没接通就直接写没接通。')],
-      }, h(ui.List, { label: '未接入与未开放的能力' }, NOT_CONNECTED.map((item) => h(ui.Row, {
-        key: `missing-${item.title}`,
-        title: item.title,
-        meta: item.meta,
-        status: h(ui.Badge, { tone: 'neutral' }, item.badge),
-      })))),
-
-      h(ui.Diagnostic, {
-        key: 'diag',
-        title: '高级诊断',
-        hint: '运行库字段原文，只用于排查',
-      },
-      h(ui.KeyValue, {
-        items: [
-          { k: 'runtime.mode', v: runtime.mode || '—', mono: true },
-          {
-            k: 'runtime.pollIntervalMs',
-            v: runtime.pollIntervalMs === null || runtime.pollIntervalMs === undefined ? '—' : String(runtime.pollIntervalMs),
-            mono: true,
-          },
-          { k: 'sections.unavailable', v: unavailable.length ? unavailable.join('、') : '无', mono: true, breakable: true },
-        ],
-      }),
-      h(ui.Pre, { maxHeight: 260 }, JSON.stringify({
-        runtime, media, contact, unavailable,
-      }, null, 2))));
+          : null)));
   }
 
   P.registerPage({ id: 'connections', label: TITLE, order: 62, component: ConnectionsPage });

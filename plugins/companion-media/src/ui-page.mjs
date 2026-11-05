@@ -1,3 +1,4 @@
+import { GENERATION_FIELDS } from './generation-presets.mjs';
 /**
  * The 「工具 → 媒体能力」 page, as data.
  *
@@ -39,6 +40,9 @@ const FIELD_TYPES = {
   sampler: 'select',
   noiseSchedule: 'select',
   transport: 'select',
+  autoResolution: 'boolean',
+  aspect: 'select',
+  generationPresets: 'json',
   outputFormat: 'select',
   quality: 'select',
   background: 'select',
@@ -110,20 +114,24 @@ const FIELD_LABELS_DEFAULT = {
   mediaType: '媒体类型',
   promptLang: '参考音频语言',
   textLang: '合成文本语言',
-  transport: 'transport',
+  transport: '连接方式',
+  autoResolution: '自动分辨率',
+  aspect: '画面比例',
+  activePresetId: '当前预设',
+  generationPresets: '生成预设',
   sampler: '采样器',
   noiseSchedule: '噪声调度',
 };
 
 /** 下拉项的显示名。没列到的值直接用原值当显示名（不猜语义）。 */
 const OPTION_LABELS = {
-  transport: { official: 'official（官方直连）', 'openai-relay': 'openai-relay（中转站）' },
-  quality: { auto: 'auto（由服务端决定）', low: 'low', medium: 'medium', high: 'high', xhigh: 'xhigh', max: 'max' },
+  transport: { official: '官方', 'openai-relay': '非官方' },
+  quality: { auto: '自动', low: '低', medium: '中', high: '高', xhigh: '超高', max: '最高' },
   outputFormat: { png: 'png', jpeg: 'jpeg', webp: 'webp' },
-  background: { auto: 'auto', opaque: 'opaque', transparent: 'transparent' },
+  background: { auto: '自动', opaque: '不透明', transparent: '透明' },
   mediaType: { wav: 'wav（推荐）', ogg: 'ogg', aac: 'aac' },
   format: { wav: 'wav（推荐）', pcm: 'pcm（无采样率信息，会被拒）', mp3: 'mp3', opus: 'opus' },
-  latency: { normal: 'normal', balanced: 'balanced（更低延迟）' },
+  latency: { normal: '标准', balanced: '均衡' },
   promptLang: { auto: 'auto', zh: 'zh（中文）', en: 'en（英文）', ja: 'ja（日文）', ko: 'ko（韩语）', yue: 'yue（粤语）' },
   textLang: { auto: 'auto', zh: 'zh（中文）', en: 'en（英文）', ja: 'ja（日文）', ko: 'ko（韩语）', yue: 'yue（粤语）' },
 };
@@ -199,19 +207,25 @@ function providerSection({ kind, record, state, config }) {
   const push = name => {
     if (used.has(name)) return;
     used.add(name);
-    const label = record.fieldLabels?.[name] ?? FIELD_LABELS_DEFAULT[name] ?? name;
+    const cleanLabels = {baseUrl:'服务地址',apiKey:'密钥',model:'模型',transport:'连接方式',scale:'提示词引导（Classifier-Free Guidance）',steps:'步数',width:'宽度',height:'高度',background:'背景',outputFormat:'输出格式',quality:'画质',size:'画面尺寸',timeoutMs:'超时（毫秒，1000–600000）',negativePrompt:'反向提示词',seed:'随机种子',noiseSchedule:'噪声调度',sampler:'采样器'};
+    const label = cleanLabels[name] ?? FIELD_LABELS_DEFAULT[name] ?? record.fieldLabels?.[name] ?? name;
     const type = FIELD_TYPES[name] ?? 'text';
     const hint = name === 'apiKey' ? '只写：保存后只显示"已配置"；留空 = 保留原值；清除需显式动作' : '';
-    const options = record.fieldOptions?.[name] ? optionList(name, record.fieldOptions[name]) : null;
-    fields.push(field([...baseParts, name], label, config, { type, hint, options }));
+    let options = record.fieldOptions?.[name] ? optionList(name, record.fieldOptions[name]) : null;
+    let actualType = type;
+    if (record.id === 'nai' && name === 'model') { actualType = 'select'; options = ['nai-diffusion-5-full','nai-diffusion-5-curated','nai-diffusion-4-5-full','nai-diffusion-4-5-curated'].map(value=>({value,label:value.replace('nai-diffusion-','NAI ').replace('4-5','4.5').replace('-full',' · 完整版').replace('-curated',' · 精选版')})); const current=config.image?.nai?.model; if(current&&!options.some(o=>o.value===current))options.push({value:current,label:current}); }
+    if (name === 'aspect') options = [{value:'portrait',label:'竖图 2:3'},{value:'landscape',label:'横图 3:2'},{value:'square',label:'方图 1:1'}];
+    fields.push(field([...baseParts, name], label, config, { type: actualType, hint: '', options }));
   };
   for (const name of editableFieldNames(kind, record)) push(name);
+  if (record.id === 'nai') { push('generationPresets'); }
   // 生图没有"每 provider 开关"：启停由 `image.enabled` + `image.provider` 决定，
   // 所以这里不发 `enabled` 字段（发了也没有可写的目标键）。
   // TTS 的每个后端确实有独立开关 `tts.providers.<id>.enabled`，保留。
   if (kind === 'tts') fields.unshift(field([...baseParts, 'enabled'], `${record.label}：启用`, config, { type: 'boolean' }));
 
   return {
+    generationFields: record.id === 'nai' ? GENERATION_FIELDS : null,
     id: record.id,
     label: record.label,
     status: record.status,

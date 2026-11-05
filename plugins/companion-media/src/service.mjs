@@ -1,3 +1,4 @@
+import { resolveGenerationSection } from './generation-presets.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
 import { Code, MediaError, toFailure } from './errors.mjs';
@@ -308,7 +309,7 @@ export function createMediaService({
     if (!validation.ok) {
       return { ok: false, error: { code: validation.errors[0].code, message: validation.errors[0].message }, errors: validation.errors };
     }
-    const section = { ...imageSection(config, id) };
+    const section = id === 'nai' ? resolveGenerationSection(imageSection(config, id)) : { ...imageSection(config, id) };
     const record = recordOf('image', id);
 
     if (dryRun) {

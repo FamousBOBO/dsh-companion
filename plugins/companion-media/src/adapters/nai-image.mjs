@@ -1,3 +1,4 @@
+import { resolveGenerationSection } from '../generation-presets.mjs';
 import { Code, mediaError } from '../errors.mjs';
 import { assertSize, extensionFor, firstImageFromZip, parseNaiSse, sniffImage } from '../media-format.mjs';
 import { resolvePreset } from '../presets.mjs';
@@ -36,6 +37,7 @@ function pickTransport(section) {
 }
 
 export async function generate({ section, limits, key, net, prompt, negative = '', signal }) {
+  section = resolveGenerationSection(section);
   const text = String(prompt ?? '').trim();
   if (!text) throw mediaError(Code.BAD_INPUT, 'prompt 不能为空');
   if (text.length > limits.maxTextChars) {
