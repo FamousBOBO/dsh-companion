@@ -39,6 +39,11 @@ $PY sidecars/huawei-health-cn/test_protocol_contract.py # 有快照才跑快照�
 
 ## 1. 起
 
+> **先决条件**：本仓库不含上游实现（许可证，见 PROTOCOL-FREEZE §1.1）。先设
+> `HUAWEI_UPSTREAM_PKG=<你的>/custom_components/huawei_health` 与 `HUAWEI_SERVE_SCRIPT=<你的入口.py>`
+> （或放到 `python/serve.py`）。没设时启动器会 **exit 3** 并给出这两条路径，不会栈崩。
+> **BLE 心率通道不受影响。**
+
 ```bash
 # Linux / macOS（无 PowerShell、无 WMI）
 sidecars/huawei-health-cn/start-sidecar.sh
@@ -54,6 +59,8 @@ pwsh -File sidecars\huawei-health-cn\start-sidecar.ps1 -Port 8766 -OpenDashboard
 
 ```
   python      : /usr/bin/python3.12 (3.12)
+  serve       : <你的 serve 入口.py>
+  upstream    : <你的 upstream pkg>
   bind        : 127.0.0.1:8765 (loopback only)
   credential  : <dataRoot>/credentials/huawei_account.json — read by the sidecar process, never by this script
   logs        : <dataRoot>/logs/huawei-health-cn

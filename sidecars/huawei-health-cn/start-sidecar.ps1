@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     Start the frozen CN Huawei Health sidecar on http://127.0.0.1:8765 (loopback only).

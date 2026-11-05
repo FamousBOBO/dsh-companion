@@ -46,10 +46,7 @@ sidecars/huawei-health-cn/
   start-sidecar.ps1 / stop-sidecar.ps1     ← Windows
   start-sidecar.sh  / stop-sidecar.sh      ← Linux / macOS（无 PowerShell、无 WMI）
   python/
-    client.py                    ← 上游原件复制（+5 行来源注释）
-    const.py                     ← 上游原件复制（+5 行来源注释）
-    huawei_dashboard.py          ← 上游原件复制（+5 行来源注释）
-    huawei_login.py              ← 上游复制 + 两处适配（A1 路径解析 / A2 uid 打码）
+    README.md                    ← 这里放**你自己的**上游实现（本仓库不提供，见 PROTOCOL-FREEZE §1.1）
 ```
 
 **运行时文件都不在仓库里**（`.gitignore` 覆盖）：`snapshots/`、`logs/`、PID 文件、令牌文件
@@ -66,6 +63,19 @@ sidecars/huawei-health-cn/
 上游集成的研究性 checkout **不属于本仓库**：`verify_frozen_copy.py` 在没有
 `HUAWEI_UPSTREAM_PKG` 时会明确说「原件不在」并以 **3** 退出 —— 那表示"没有可对照的原件"，
 不是复制件坏了。
+
+## 2.5 先决条件：自备上游实现（本仓库不包含）
+
+上游集成（华为健康读取客户端）的许可证无法确认，所以**本仓库不分发它**，也不分发任何服务端实现
+（理由与上游仓库/提交见 [PROTOCOL-FREEZE.md](PROTOCOL-FREEZE.md) §1.1）。启用华为通道前，你需要：
+
+```bash
+export HUAWEI_UPSTREAM_PKG=/path/to/huawei_health/custom_components/huawei_health   # 含 client.py / const.py
+export HUAWEI_SERVE_SCRIPT=/path/to/your_serve.py    # 实现 GET /api/data?days=N；或放到 python/serve.py
+```
+
+没有这两样时：启动器 **exit 3** 并说明两条自备途径；`plugins/companion-health` 的华为通道显示
+**未配置 → 不可用**（不会显示"正常"）。**BLE 心率通道不受影响**，它自带实现、可独立离线验收。
 
 ## 3. 起停（跨平台）
 

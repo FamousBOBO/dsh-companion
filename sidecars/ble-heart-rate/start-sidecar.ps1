@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     启动 BLE 心率广播接收端（Pulse Bond sidecar），只绑 http://127.0.0.1:8151。

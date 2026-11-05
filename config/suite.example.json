@@ -21,15 +21,14 @@
   },
 
   "modules": {
-    "$comment": "可选模块默认全部关闭。先跑 `npm run doctor`，再逐项打开。",
+    "$comment": "可选模块默认全部关闭。先跑 `npm run doctor`，再逐项打开。本版没有 superInjector（未收录，原因见 docs/03 §1.2）。",
     "core": true,
     "memoryStudio": true,
     "qq": false,
     "bilibili": false,
     "health": false,
     "media": false,
-    "pasteSearch": false,
-    "superInjector": false
+    "pasteSearch": false
   },
 
   "services": {

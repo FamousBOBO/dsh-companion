@@ -28,7 +28,6 @@ export const MODULE_KEYS = [
   'health',
   'media',
   'pasteSearch',
-  'superInjector',
 ];
 
 /** Every optional module is disabled until the operator turns it on. */
@@ -51,7 +50,6 @@ export const SAFE_DEFAULTS = {
     health: false,
     media: false,
     pasteSearch: false,
-    superInjector: false,
   },
   services: {
     onebot: { url: '', accessToken: '', selfId: 0 },

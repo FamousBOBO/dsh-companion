@@ -302,7 +302,7 @@ function runStatic() {
         } catch {
           continue;
         }
-        if (allowedIn(text, name)) continue;
+        if (allowedIn(text, name, ext)) continue;
         const m = re.exec(text);
         if (m) {
           const line = text.slice(0, m.index).split('\n').length;

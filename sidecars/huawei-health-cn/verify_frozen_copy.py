@@ -14,10 +14,10 @@ this layout (path resolution, ``HUAWEI_ACCOUNT_JSON``, the ``os`` import, masked
 For those the script asserts the patch is *only* that: every upstream top-level name is still
 defined and the diff is printed for review.  Nothing else in the tree is allowed to drift.
 
-**The upstream checkout is not part of this repository** (it was a research copy; the frozen copies
-in ``python/`` are the deliverable).  Point ``HUAWEI_UPSTREAM_PKG`` at an upstream checkout to
-re-run the comparison; without it the script says so and exits **3** — that is "nothing to compare
-against", not a failure of the frozen copies.
+**This repository does not ship the upstream implementation** (its license is not ours to
+redistribute — see ``PROTOCOL-FREEZE.md`` §1.1). Point ``HUAWEI_UPSTREAM_PKG`` at your own checkout
+and this script compares it byte-for-byte with whatever you placed in ``python/``; without it the
+script says so and exits **3** — that is "nothing to compare against", not a broken checkout.
 
 Exit codes: ``0`` all good, ``1`` drift found, ``3`` upstream originals absent (nothing to compare).
 """
@@ -87,10 +87,10 @@ def top_level_names(source: str) -> set[str]:
 def main() -> int:
     if UPSTREAM_PKG is None or not UPSTREAM_PKG.is_dir():
         where = UPSTREAM_PKG if UPSTREAM_PKG is not None else "(not configured)"
-        print(f"originals gone: {where} — the frozen copies stand on their own.\n"
-              "The upstream checkout is NOT part of this repository. To re-run the comparison, "
-              "point HUAWEI_UPSTREAM_PKG at an upstream "
-              "'custom_components/huawei_health' directory and run this again.",
+        print(f"originals gone: {where} — nothing to compare against.\n"
+              "This repository does not ship the upstream implementation (license). To re-run the comparison, "
+              "point HUAWEI_UPSTREAM_PKG at your own "
+              "'custom_components/huawei_health' checkout and run this again.",
               file=sys.stderr)
         return 3
 

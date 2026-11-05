@@ -22,19 +22,26 @@
 | 复制件校验 | `python/client.py` `44398d75e6c6b227…`、`python/const.py` `0ee70e3cb95a793b…`、<br>`python/huawei_dashboard.py` `ca44f47d411f8597…`（= 原件 on-disk sha256，见 §9） |
 | 采样时刻 | 2026-11-03 21:15:38 +08:00（同夜 21:04:27 的第二次采集数值完全一致），窗口 7 天，7 次云调用 |
 
-### 1.1 来源与许可（第三方代码）
-
-`python/client.py` / `python/const.py` / `python/huawei_dashboard.py` 是上游项目的**逐字节复制**
-（只多一段 provenance 注释），`python/huawei_login.py` 是**带文档化适配**的复制。发布时必须如实登记：
+### 1.1 来源与许可：本仓库**不分发**上游实现
 
 | 项 | 值 |
 | --- | --- |
 | 上游仓库 | `https://github.com/and7ey/huawei_health`（Home Assistant 自定义集成） |
-| 固定的提交 | `1ec3e4120a6b9c4e8327ba08c3d12fe9994d63f7`（分支 `cn-hosts-default`） |
-| 改动 | 只加 provenance 注释块；`huawei_login.py` 另有两处适配（A1 路径解析 / A2 uid 打码），逐行 diff 由 `verify_frozen_copy.py` 打印 |
-| 许可证 | ⚠️ **待核实**：本项目在离线环境里冻结时**没有**取得上游 LICENSE 文本，因此这里不臆造许可证名。汇总 `THIRD-PARTY-NOTICES.md` 的人需要联网确认上游仓库的 LICENSE，并按实际结果填写（若是 MIT / Apache-2.0 等，附上完整文本与版权行；若无可用的开源许可，则这一份复制件不应随发布分发，需改为「运行前自备上游 checkout」的说明）。 |
+| 冻结时固定的提交 | `1ec3e4120a6b9c4e8327ba08c3d12fe9994d63f7`（分支 `cn-hosts-default`，集成 manifest `1.1.0`） |
+| 本仓库分发的内容 | **只有**契约、脱敏、快照工具、测试、启动器与文档（全部原创，MIT）。**不含**上游的 `client.py` / `const.py` / 服务端实现。 |
+| 上游实现怎么来 | 使用者自备：`export HUAWEI_UPSTREAM_PKG=<你的>/custom_components/huawei_health`，并提供自己的 serve 入口（`HUAWEI_SERVE_SCRIPT`，或放在 `python/serve.py`）。 |
 
-> 为什么先把话说死：许可不明 ≠ 可以默认当成 MIT。上面这段是发布前的**阻塞项**，不是备注。
+**为什么不分发**：冻结时在离线环境里**没有取得上游的 LICENSE 文本**，无法确认它的分发条款。
+「许可不明」不能当成「默认 MIT」——所以这一份复制件（连同照着上游适配出来的服务端 harness）
+已经从发布树里移除，由使用者按自己的合法性自行提供。
+
+**这对本层意味着什么**：`plugins/companion-health` 对华为通道的诊断结论会是
+**「未配置」→「不可用」**（sidecar 连不上，因为根本没有在跑），而不是「正常」。
+契约与字段口径（本文 §2–§8）不变，因为它们描述的是**协议**，不是那份代码。
+
+**复现冻结**：`verify_frozen_copy.py` 仍然保留为自检工具——设置 `HUAWEI_UPSTREAM_PKG` 后它会逐字节
+比对（并打印 diff）；没有设置时它明确说「原件不在」并以 **3** 退出。
+`test_protocol_contract.py` 里依赖上游模块的用例在没有上游时 **skip**（带原因），不报红。
 
 
 ## 2. 端点：只有一个

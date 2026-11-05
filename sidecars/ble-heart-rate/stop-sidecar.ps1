@@ -1,4 +1,4 @@
-#Requires -Version 5.1
+﻿#Requires -Version 5.1
 <#
 .SYNOPSIS
     停掉 start-sidecar.ps1 起的那个心率 sidecar —— 只停它，别的概不碰。
