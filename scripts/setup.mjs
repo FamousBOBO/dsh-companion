@@ -95,6 +95,28 @@ export const MODULE_SPECS = {
   },
 };
 
+/**
+ * First-run memory backend.
+ *
+ * The engine's own default is the legacy snapshot path, which leaves the memory API answering
+ * `db-unavailable` on a fresh install — and the settings endpoint that would let the user fix it
+ * needs the very database that is missing, so the UI cannot recover on its own. Seeding a local
+ * SQLite backend with every model-calling feature off gives a new deployment working memory
+ * without any external request.
+ */
+const MEMORY_FIRST_RUN_CONFIG = `${JSON.stringify(
+  {
+    schemaVersion: 1,
+    backend: 'sqlite',
+    database: 'home/memory/companion-memory.db',
+    extraction: { enabled: false },
+    embedding: { provider: 'off' },
+    rerank: { provider: 'off' },
+  },
+  null,
+  2,
+)}\n`;
+
 /* ────────────────────────── 参数与输出 ────────────────────────── */
 
 function parseArgs(argv) {
@@ -437,6 +459,29 @@ export async function runSetup(argv = process.argv.slice(2)) {
       id: 'persona', title: 'config/persona.md',
       status: opts.dryRun ? 'planned' : 'ok',
       detail: opts.dryRun ? '将从 config/persona.example.md 生成' : '已从 config/persona.example.md 生成，之后归你所有',
+    });
+  }
+
+  /* ── 3.5 记忆后端（新装即用，已存在则不动） ───────────────── */
+  reporter.heading('3.5 记忆后端（本地 SQLite）');
+  const memoryConfigFile = path.join(paths.home, 'companion', 'memory.config.json');
+  if (fs.existsSync(memoryConfigFile)) {
+    reportStep(reporter, {
+      id: 'memory-config', title: '记忆后端配置', status: 'skip',
+      detail: `已存在，保持原样：${memoryConfigFile}`,
+    });
+  } else {
+    planActions({ kind: 'write', target: memoryConfigFile });
+    if (!opts.dryRun) {
+      fs.mkdirSync(path.dirname(memoryConfigFile), { recursive: true });
+      fs.writeFileSync(memoryConfigFile, MEMORY_FIRST_RUN_CONFIG, 'utf8');
+    }
+    reportStep(reporter, {
+      id: 'memory-config', title: '记忆后端配置',
+      status: opts.dryRun ? 'planned' : 'ok',
+      detail: opts.dryRun
+        ? '将启用本地 SQLite 后端（提炼 / 向量 / 重排全部关闭）'
+        : '已启用本地 SQLite 后端；提炼、向量、重排全部关闭，不产生任何外部调用',
     });
   }
 

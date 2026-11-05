@@ -92,12 +92,17 @@ export function describeLauncher(host = {}, opts = {}) {
 }
 
 /** Environment for one host invocation. Explicit beats inherited. */
-export function dshEnv({ home, env = process.env } = {}) {
+export function dshEnv({ home, moduleRoot, env = process.env } = {}) {
   const out = { ...env, [ELECTRON_ENV]: '1' };
   if (home) out.DSH_HOME = home;
   // A nested DSH_HOME/profile override in the parent shell would silently point
   // the child at the wrong profile home; the caller's value wins.
   if (!home) delete out.DSH_HOME;
+  // Plugins that import the host's own packages (@deepseek-ai/dsh-tools and friends) need the
+  // module root spelled out. A fresh shell has no reason to know it, so the launcher that
+  // already resolved the host must pass it down; without this the companion preset fails to
+  // start even though the host itself boots.
+  if (moduleRoot) out.DSH_COMPANION_MODULE_ROOT = moduleRoot;
   return out;
 }
 
@@ -156,7 +161,7 @@ export function runDsh(args, { host, dshHome, timeoutMs = 120000, env, launcher 
       timeout: timeoutMs,
       maxBuffer: DEFAULT_MAX_BUFFER,
       windowsHide: true,
-      env: dshEnv({ home: dshHome, env }),
+      env: dshEnv({ home: dshHome, moduleRoot: host?.moduleRoot, env }),
       stdio: ['ignore', 'pipe', 'pipe'],
     });
     if (stdout.error) throw stdout.error;
@@ -187,7 +192,7 @@ export function spawnDsh(args, { host, dshHome, logFile, env, launcher, cwd } = 
   const fd = fs.openSync(logFile, 'a');
   try {
     const child = spawn(resolved.command, ['--expose-internals', resolved.cliPath, ...args], {
-      env: dshEnv({ home: dshHome, env }),
+      env: dshEnv({ home: dshHome, moduleRoot: host?.moduleRoot, env }),
       cwd: cwd && fs.existsSync(cwd) ? cwd : undefined,
       stdio: ['ignore', fd, fd],
       windowsHide: true,
@@ -306,14 +311,24 @@ export function dumpEntryIds(text) {
   return ids;
 }
 
-/** Every `file://` URL a composed tree points at (used to catch dead plugin paths). */
+/**
+ * Every `file://` URL a composed tree points at (used to catch dead plugin paths).
+ *
+ * Line-based on purpose: a URL is the rest of its YAML line, and an install directory may
+ * legitimately contain spaces (`…/DSH clean 20261105/plugins/…`). Matching `[^\s]+` silently
+ * truncated such URLs at the first space, which made doctor report a path that does not exist
+ * while the host loaded it fine.
+ */
 export function dumpFileUrls(text) {
   const urls = new Set();
-  // The composer may print the URL inline (`name: file:///…`) or as a folded
-  // scalar on the following line (`name: >-` + indented URL), so match the token
-  // anywhere in the document instead of anchoring on the key.
-  for (const match of String(text).matchAll(/file:\/\/[^\s'"]+/g)) {
-    urls.add(match[0].replace(/[),;]+$/, ''));
+  for (const rawLine of String(text).split(/\r?\n/)) {
+    const at = rawLine.indexOf('file://');
+    if (at === -1) continue;
+    let candidate = rawLine.slice(at).trim();
+    candidate = candidate.replace(/^['"]/, '').replace(/['"]$/, ''); // quoted scalar
+    candidate = candidate.replace(/\s+#.*$/, ''); // trailing YAML comment
+    candidate = candidate.replace(/[),;]+$/, ''); // list/flow punctuation
+    if (candidate.length > 'file://'.length) urls.add(candidate);
   }
   return [...urls];
 }

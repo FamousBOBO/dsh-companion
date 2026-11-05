@@ -17,6 +17,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { SUITE_ROOT, SUITE_PATHS } from '../tools/lib/paths.mjs';
 import { loadConfig, enabledModules } from '../tools/lib/config.mjs';
+import { dshEnv, dumpFileUrls } from '../tools/lib/dsh.mjs';
 
 const argv = process.argv.slice(2);
 const onlyArg = argv.find((a) => a.startsWith('--only='));
@@ -274,6 +275,26 @@ function runStatic() {
     }
     if (problems.length) record('static', `${label} (metadata)`, 'failed', problems.join('; '));
     else record('static', `${label} (metadata)`, 'ok');
+  }
+
+  // 1b. Regressions found by the 2026-11-05 new-environment validation. Both shipped broken and
+  //     both are pure functions, so they are asserted here instead of only being described: an
+  //     install path containing a space broke doctor's URL parsing, and the launcher not passing
+  //     the host module root left the companion preset unable to start at all.
+  {
+    const label = '含空格的 file URL 不被截断';
+    const sample = '      name: file://C:/Users/u/My Docs/DSH clean 20261105/plugins/x/index.mjs';
+    const urls = dumpFileUrls(sample);
+    const ok = urls.length === 1 && urls[0].includes('DSH clean 20261105') && urls[0].endsWith('index.mjs');
+    if (ok) record('static', label, 'ok');
+    else record('static', label, 'failed', `解析出 ${JSON.stringify(urls)}`);
+  }
+  {
+    const label = '宿主子进程拿到 DSH_COMPANION_MODULE_ROOT';
+    const env = dshEnv({ home: 'H', moduleRoot: 'M' });
+    const ok = env.DSH_COMPANION_MODULE_ROOT === 'M' && env.DSH_HOME === 'H';
+    if (ok) record('static', label, 'ok');
+    else record('static', label, 'failed', `env=${JSON.stringify({ moduleRoot: env.DSH_COMPANION_MODULE_ROOT ?? null, home: env.DSH_HOME ?? null })}`);
   }
 
   // 2. no build artifacts inside the tracked tree. Only real build outputs count:
