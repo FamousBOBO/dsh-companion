@@ -11,7 +11,8 @@
 
 | 路径 | 包 | 版本 | 上游 | 许可证 | 本地改动 |
 |---|---|---|---|---|---|
-| `plugins/dsh-channel-qq/vendor/types/cordis/` | `@deepseek-ai/cordis` | 4.0.5 | DeepSeek Harness（`vendor/cordis`） | MIT（`vendor/types/cordis/LICENSE` 随包保留） | 无改动，仅作 TypeScript 类型声明；仅在 `tsconfig.json` 的 `paths` 里解析，运行时不打包 |
+| `plugins/dsh-channel-qq/` | `@dsh-companion/channel-qq` | 套件 0.1.0（上游快照 2026-10-28） | [github.com/Aegink/dsh-channel-qq](https://github.com/Aegink/dsh-channel-qq) | **MIT**，`Copyright (c) 2026 dsh-channel-qq contributors`（该目录 `LICENSE` 随包保留） | 相对上游含 2 处 bug 补丁（`music/tools.ts` 删两处非法 `required: true`；`affection.ts` 加 `port <= 0` 守卫）＋套件侧发布化改造（构建输出统一、安全默认值、去个人化文案）。上游 tarball 快照无 commit id |
+| `plugins/dsh-channel-qq/vendor/types/cordis/` | `@deepseek-ai/cordis` | 4.0.5 | DeepSeek Harness（`vendor/cordis`） | MIT（`vendor/types/cordis/LICENSE` 随包保留） | 无改动，仅作 TypeScript 类型声明；仅在 `tsconfig.json` 的 `paths` 里解析，运行时不 import |
 | `plugins/dsh-channel-qq/vendor/types/dsh-llm/` | `@deepseek-ai/dsh-llm` | 0.2.1-rc.3 | DeepSeek Harness（`packages/llm/llm`） | MIT | 同上 |
 | `plugins/dsh-channel-qq/vendor/types/dsh-attachment/` | `@deepseek-ai/dsh-attachment` | 0.2.1-rc.3 | DeepSeek Harness（`packages/attachment/attachment`） | MIT | 同上 |
 | `plugins/dsh-super-injector/` | `@dsh-external/dsh-super-injector` | 0.3.6（本地版本） | 见该目录 `LICENSE` / `CHANGELOG.md` | **BSD-3-Clause**（随包保留） | 本地适配改动记录在该目录 `CHANGELOG.md`；本仓库不把它的许可证改为 MIT |
@@ -23,8 +24,9 @@
 
 | 位置 | 内容 | 性质 |
 |---|---|---|
-| `plugins/dsh-channel-qq/src/adapters/providers/tts/edge.ts` | Edge TTS 的 WebSocket 常量（业界公开的固定值，非账号凭据） | 调用微软公开 TTS 服务所需的协议常量，不是本项目的密钥；不随仓库分发任何账号凭据 |
+| `plugins/dsh-channel-qq/src/adapters/providers/tts/edge.ts` | `TRUSTED_CLIENT_TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4'` | Microsoft Edge「大声朗读」的**公开客户端常量**（`edge-tts` 等开源项目通用），用于 `Sec-MS-GEC` 计算与 WebSocket URL 参数。**不是账号凭据，也不是本项目的密钥**；删除后 Edge TTS 无法使用，故保留并在此声明来源性质 |
 | `plugins/companion-media/` | NovelAI 中转站专属参数的字段映射 | 仅参考 `woakato/astrbot_plugin_nai_image` 的**协议字段**做核实与映射；未复制其账号系统、图片归档或代理转售功能，未引入其代码 |
+| `plugins/dsh-channel-qq/assets/model-context.json` | 模型能力上下文快照 | 来源于公开的 models.dev 数据，不含个人信息 |
 
 ## 外部依赖（不随仓库分发，由用户自行安装或部署）
 

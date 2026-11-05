@@ -118,11 +118,41 @@ const LEAK_RULES = [
   ['legacy-persona-id', /\bmarch7\b/],
 ];
 
+// Secret-shaped strings legitimately appear in fixtures. These rules therefore skip
+// test trees; the leak rules above never do.
 const SECRET_RULES = [
   ['openai-key', /\bsk-[A-Za-z0-9_-]{20,}\b/],
   ['github-token', /\bgh[pousr]_[A-Za-z0-9]{20,}\b/],
   ['bearer', /Bearer\s+[A-Za-z0-9._-]{24,}/],
 ];
+
+/** Files whose own text is the rule table — scanning them is a guaranteed false positive. */
+const SCAN_SELF_EXCLUDE = new Set(['scripts/verify.mjs']);
+
+/**
+ * Local, generated, git-ignored files. They legitimately contain this machine's absolute
+ * paths (they are produced by substituting the real suite root), and they are never
+ * published, so scanning them would only produce noise.
+ */
+const LOCAL_ONLY = new Set([
+  'config/suite.json',
+  'config/persona.md',
+  'config/profile/companion.patch.yml',
+]);
+
+/**
+ * Audited exception mechanism. A file that must contain a forbidden literal can declare it:
+ *
+ *     // leak-scan-allow: persona-三月七  (regression guard: asserts the old name is gone)
+ *
+ * The marker is visible in review, and the exemption covers exactly one rule name in one file.
+ */
+function allowedIn(text, rule) {
+  return new RegExp(`leak-scan-allow:[^\\n]*${rule.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}`).test(text);
+}
+
+/** Test trees, where placeholder credentials are expected and required. */
+const TEST_TREE = /(^|\/)(test|tests|fixtures)(\/|$)|\.test\.(mjs|cjs|js|ts)$/;
 
 const SCAN_EXT = new Set([
   '.mjs', '.js', '.cjs', '.ts', '.tsx', '.json', '.jsonl', '.yml', '.yaml', '.md',
@@ -180,27 +210,36 @@ function runStatic() {
     artifacts.length ? `${artifacts.length} 个文件落在 build/lib/dist 下` : '',
   );
 
-  // 3. leak scan
-  for (const [name, re] of [...LEAK_RULES, ...SECRET_RULES]) {
-    const hits = [];
-    for (const f of files) {
-      const ext = path.extname(f).toLowerCase();
-      if (ext && !SCAN_EXT.has(ext)) continue;
-      let text;
-      try {
-        if (fs.statSync(f).size > 4 * 1024 * 1024) continue;
-        text = fs.readFileSync(f, 'utf8');
-      } catch {
-        continue;
+  // 3. leak scan — two passes, because fixtures may contain placeholder credentials
+  //    but must never contain a real author path or the old persona name.
+  const scanPass = (rules, { skipTests }) => {
+    for (const [name, re] of rules) {
+      const hits = [];
+      for (const f of files) {
+        const rel = path.relative(SUITE_ROOT, f).replace(/\\/g, '/');
+        if (SCAN_SELF_EXCLUDE.has(rel) || LOCAL_ONLY.has(rel)) continue;
+        if (skipTests && TEST_TREE.test(rel)) continue;
+        const ext = path.extname(f).toLowerCase();
+        if (ext && !SCAN_EXT.has(ext)) continue;
+        let text;
+        try {
+          if (fs.statSync(f).size > 4 * 1024 * 1024) continue;
+          text = fs.readFileSync(f, 'utf8');
+        } catch {
+          continue;
+        }
+        if (allowedIn(text, name)) continue;
+        const m = re.exec(text);
+        if (m) {
+          const line = text.slice(0, m.index).split('\n').length;
+          hits.push(`${rel}:${line}`);
+        }
       }
-      const m = re.exec(text);
-      if (m) {
-        const line = text.slice(0, m.index).split('\n').length;
-        hits.push(`${path.relative(SUITE_ROOT, f).replace(/\\/g, '/')}:${line}`);
-      }
+      record('static', name, hits.length ? 'failed' : 'ok', hits.slice(0, 8).join(' '));
     }
-    record('static', name, hits.length ? 'failed' : 'ok', hits.slice(0, 8).join(' '));
-  }
+  };
+  scanPass(LEAK_RULES, { skipTests: false });
+  scanPass(SECRET_RULES, { skipTests: true });
 
   // 4. suite config parses and core is on
   try {
