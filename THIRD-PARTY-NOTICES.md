@@ -15,20 +15,35 @@
 | `plugins/dsh-channel-qq/vendor/types/cordis/` | `@deepseek-ai/cordis` | 4.0.5 | DeepSeek Harness（`vendor/cordis`） | MIT（`vendor/types/cordis/LICENSE` 随包保留） | 无改动，仅作 TypeScript 类型声明；仅在 `tsconfig.json` 的 `paths` 里解析，运行时不 import |
 | `plugins/dsh-channel-qq/vendor/types/dsh-llm/` | `@deepseek-ai/dsh-llm` | 0.2.1-rc.3 | DeepSeek Harness（`packages/llm/llm`） | MIT | 同上 |
 | `plugins/dsh-channel-qq/vendor/types/dsh-attachment/` | `@deepseek-ai/dsh-attachment` | 0.2.1-rc.3 | DeepSeek Harness（`packages/attachment/attachment`） | MIT | 同上 |
+| `sidecars/huawei-health-cn/python/client.py`、`const.py`、`huawei_login.py` | 华为健康云端读取实现 | 派生自上游快照（原冻结提交 `1ec3e412…`，该分支现已不可访问） | [github.com/and7ey/huawei_health](https://github.com/and7ey/huawei_health)（Home Assistant 自定义集成） | **MIT**，`Copyright (c) 2026 and7ey`（许可全文见 `sidecars/huawei-health-cn/UPSTREAM-LICENSE.txt`） | 本地派生版本，含已文档化适配 A1（路径解析）、A2（凭据脱敏），见 `PROTOCOL-FREEZE.md` §1.1 |
+
+`sidecars/huawei-health-cn/python/huawei_dashboard.py` **不是第三方代码**：它由本项目自写（只读 HTTP 服务端，`GET /api/data`），按 MIT 分发；上游没有这个文件。
 
 > 说明：`vendor/types/*` 只提供 `.d.ts` 类型信息，用于在没有 DSH 源码树的机器上编译
 > QQ 通道插件。它们不参与运行时，也不重分发任何可执行代码。
+>
+> **华为健康那一行是怎么核实的（2026-11-05）**：GitHub API 返回该仓库
+> `license.spdx_id = "MIT"`，并取回许可全文随包保留。原冻结提交 `1ec3e412…` 与分支
+> `cn-hosts-default` 已 404，因此**无法再对那个提交做逐字节复核**；上游当前 `main` 只含
+> `client.py` / `const.py`（且与本地快照大小不同），说明本地是**派生版本**而非逐字节副本。
+> 按 MIT 条款，派生分发必须保留版权与许可全文——这正是本表与 `UPSTREAM-LICENSE.txt` 的作用。
 
 ## 未随仓库分发（以及原因）
 
-发布前审查发现两处**许可证无法满足**的第三方内容，因此**整份移除**而不是含糊带过：
-
 | 内容 | 上游 | 为什么不分发 |
 |---|---|---|
-| `dsh-super-injector`（超级注入器，BSD-3-Clause 声明） | `github.com/yjh051108/dsh-super-injector` | ① 仓库内**没有上游 `LICENSE` 文本**，BSD-3-Clause 要求随分发保留版权声明与许可全文；② 它的构建需要一份 **DSH 源码检出**（`DSH_CHECKOUT`），只有桌面版的环境无法构建，也就无法验证。缺任一条都不满足发布门槛，故不收录 |
-| `sidecars/huawei-health-cn/python/{client,const,huawei_dashboard,huawei_login}.py` | `github.com/and7ey/huawei_health`（分支 `cn-hosts-default`，提交 `1ec3e412…`） | **上游许可证未核实**。许可不明不能默认当成 MIT 分发。sidecar 只保留本项目自写的采集/脱敏/起停/测试代码，运行时由 `$HUAWEI_UPSTREAM_PKG` 指向使用者自己的上游检出 |
+| `dsh-super-injector`（超级注入器，`package.json` 里声明 BSD-3-Clause） | `github.com/yjh051108/dsh-super-injector` | ① 该仓库**没有任何 LICENSE 文件**，GitHub API 也返回 `license: null`（无法识别许可）；BSD-3-Clause 要求随分发保留版权声明与许可全文，而声明出自 `package.json`、正文与版权行都缺失，**无法满足署名条款**（没有许可文本时默认保留所有权利）；② 它的构建需要 `DSH_CHECKOUT` 指向 DSH 源码检出，只有桌面版的环境无法构建，也就无法验证。两条都不满足发布门槛，故不收录 |
+| Index-TTS 的模型与推理服务 | `github.com/index-tts/index-tts` | 该仓库的许可证是 **bilibili Model Use License Agreement**（自定义模型使用协议，非开源许可），且本套件**不分发模型权重**，只调用外部服务。它不是"某个开源 TTS 的 HTTP API"，因此这里登记的是「我们不做它的 adapter」的理由，见下 |
 
-如果将来取得上游许可并补齐 `LICENSE`，这两处都可以按本文件的表格补回。
+### Index-TTS 为什么标「尚未接入」（2026-11-05 核实）
+
+- 上游许可 = **bilibili Model Use License Agreement**（`LICENSE` 首行即为此协议，GitHub API
+  `license.spdx_id = "NOASSERTION"`）。它约束模型使用，**不是**可自由实现的协议规范。
+- 上游**没有**文档化的 HTTP JSON 合成接口：仓库里的可交互面只有 `webui.py`（Gradio，55 KB）、
+  Triton 后端 `backends/trt/serving/triton_server.py`，以及一个内部 `openvoice/api.py`。
+  没有可核实的「请求字段 / 响应格式 / 鉴权」契约。
+- 因此本套件不实现 Index-TTS adapter，也不猜它的 Gradio 内部协议——按项目纪律，
+  证据不足的 adapter 必须停在「尚未接入」，不允许用「预留」冒充完成。
 
 ## 协议常量与外部服务
 

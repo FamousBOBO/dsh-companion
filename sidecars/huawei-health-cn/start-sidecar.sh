@@ -22,13 +22,15 @@ set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 SIDECAR_ROOT="$HERE"
 SUITE_ROOT=$(cd "$HERE/../.." && pwd)
-# 服务端实现不由本仓库提供（许可证原因）：用户自备，或用 $HUAWEI_SERVE_SCRIPT 指定。
-DASHBOARD="${HUAWEI_SERVE_SCRIPT:-$HERE/python/serve.py}"
+# 服务端入口：默认用仓库内随包的派生实现（MIT，见 PROTOCOL-FREEZE §1.1）；
+# $HUAWEI_SERVE_SCRIPT 可指向你自己的实现（例如更新的上游 version）。
+DASHBOARD="${HUAWEI_SERVE_SCRIPT:-$HERE/python/huawei_dashboard.py}"
 
 PORT=8765
 LOG_DIR="${HUAWEI_LOG_DIR:-}"
 PYTHON_BIN="${PYTHON:-}"
 WAIT_SECONDS=30
+ALLOW_UNCONFIGURED=0
 
 while [ $# -gt 0 ]; do
     case "$1" in
@@ -36,6 +38,7 @@ while [ $# -gt 0 ]; do
         --port=*) PORT="${1#*=}"; shift ;;
         --log-dir) LOG_DIR="$2"; shift 2 ;;
         --log-dir=*) LOG_DIR="${1#*=}"; shift ;;
+        --allow-unconfigured) ALLOW_UNCONFIGURED=1; shift ;;
         --python) PYTHON_BIN="$2"; shift 2 ;;
         --python=*) PYTHON_BIN="${1#*=}"; shift ;;
         -h|--help)
@@ -59,24 +62,11 @@ say() { printf '  %s\n' "$1"; }
 echo "huawei-health-cn sidecar (posix)"
 
 if [ ! -f "$DASHBOARD" ]; then
-    cat >&2 <<'MSG'
-REFUSED: 找不到健康数据服务端实现。
-
-本仓库**不包含**上游实现（华为健康读取服务端）：上游许可证不归本项目分发，
-详见 sidecars/huawei-health-cn/PROTOCOL-FREEZE.md §1.1。
-
-两种用法：
-  1) 自备上游检出并指定服务端入口：
-       export HUAWEI_UPSTREAM_PKG=<你的>/custom_components/huawei_health
-       export HUAWEI_SERVE_SCRIPT=<你的 serve 入口.py>     # 需实现 GET /api/data?days=N
-       ./start-sidecar.sh
-  2) 也可以把自己的入口放到 sidecars/huawei-health-cn/python/serve.py（默认查找位置）。
-
-注意：**BLE 心率通道（sidecars/ble-heart-rate）不受影响**，它自成一体、可独立离线验收。
-MSG
-    exit 3
+    echo "找不到服务端入口: $DASHBOARD" >&2
+    echo "  随包入口应在 sidecars/huawei-health-cn/python/huawei_dashboard.py；" >&2
+    echo "  若你想用自己的实现，设 HUAWEI_SERVE_SCRIPT=<路径>（需实现 GET /api/data?days=N 并只绑回环）。" >&2
+    exit 1
 fi
-MSG_MARK=1
 mkdir -p "$LOG_DIR"
 
 # ── interpreter ───────────────────────────────────────────────────────────────────────────────
@@ -139,10 +129,18 @@ say "bind        : 127.0.0.1:$PORT (loopback only)"
 say "credential  : $CREDENTIAL — read by the sidecar process, never by this script"
 say "logs        : $LOG_DIR"
 if [ ! -f "$CREDENTIAL" ]; then
-    # 「未配置」不是一个错误页：sidecar 能起来，但它拿不到任何数据。先说清楚，
-    # 免得用户看到 30 秒超时去猜是不是端口/蓝牙的问题。
-    echo "  ↑ 账号未配置：这个文件还不存在。sidecar 会启动但读不到数据（接口会回落成空结果）。" >&2
-    echo "    先登录一次：$PYTHON_BIN $SIDECAR_ROOT/python/huawei_login.py url" >&2
+    # 「未配置」不是崩溃、也不是"连上了"：直接停下并把下一步说清楚，别让人等 30 秒超时。
+    echo "" >&2
+    echo "  未配置（AWAIT_LOGIN）：还没有华为账号的令牌对。" >&2
+    echo "    1) 登录一次：$PYTHON_BIN $SIDECAR_ROOT/python/huawei_login.py url" >&2
+    echo "                   然后 exchange 粘贴回调里的 code" >&2
+    echo "    2) 再跑本脚本。想用别的令牌文件：设 HUAWEI_ACCOUNT_JSON=<路径>" >&2
+    echo "    3) 只想先起进程（自定义入口能容忍无凭证）：加 --allow-unconfigured" >&2
+    if [ "$ALLOW_UNCONFIGURED" = "1" ]; then
+        echo "  --allow-unconfigured 已指定：继续启动（采集会如实回落成空结果）。" >&2
+    else
+        exit 2
+    fi
 fi
 
 cd "$HERE/python"

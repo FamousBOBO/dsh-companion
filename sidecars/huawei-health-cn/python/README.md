@@ -1,49 +1,60 @@
-# python/ —— 这里放你自己的上游实现（本仓库不提供）
+# python/ —— 华为健康读取实现（随包分发）
 
-这个目录**默认是空的**。原因写在 [`../PROTOCOL-FREEZE.md`](../PROTOCOL-FREEZE.md) §1.1：
-上游集成（`and7ey/huawei_health`）的许可证在冻结环境里无法确认，所以本仓库**不分发**它的代码。
+这个目录**不是空的**，也不需要使用者自备任何东西：华为通道开箱即可用，只差一次账号授权
+（没有授权时，通道会如实显示「未配置 / AWAIT_LOGIN」，而不是崩溃或假装在线）。
 
-## 你要做的
+## 里面有什么、从哪来、什么许可
 
-1. 自备一份上游检出（git clone），指向集成包目录：
+| 文件 | 是什么 | 来源 | 许可 |
+| --- | --- | --- | --- |
+| `client.py` | 云端读取客户端（`HuaweiHealthClient`、`Tokens`、`health_series` 等） | **派生副本**：上游 [`and7ey/huawei_health`](https://github.com/and7ey/huawei_health) | MIT，`Copyright (c) 2026 and7ey` |
+| `const.py` | 端点、主机、运动类型等常量表 | 同上（派生副本） | MIT（同上） |
+| `huawei_login.py` | 三步登录探针：`url` → `exchange` → `probe` | 由上游登录探针派生 + 两处适配（A1/A2） | MIT（同上）+ 本项目适配 |
+| `huawei_dashboard.py` | 只读 HTTP 服务端，提供 `GET /api/data?days=N` | **本项目自写**（上游没有这个文件） | MIT（本项目） |
 
-   ```bash
-   export HUAWEI_UPSTREAM_PKG=/path/to/huawei_health/custom_components/huawei_health
-   ```
+许可全文在 [`../UPSTREAM-LICENSE.txt`](../UPSTREAM-LICENSE.txt)，来源、提交与本地适配的完整说明在
+[`../PROTOCOL-FREEZE.md`](../PROTOCOL-FREEZE.md) §1.1。请连那条一起读：**这是派生分发，不是逐字节副本**
+（冻结时的上游提交已 404，上游当前 main 的大小与本地的不同）。
 
-   这个目录里应当有 `client.py` 与 `const.py`。
-   （`capture_snapshot.py`、`sleep-first-night-probe.py`、`test_protocol_contract.py`、
-   `verify_frozen_copy.py` 都从这里找上游；找不到时它们会明确说「未配置」并停下。）
+## 本地改了什么（逐条）
 
-2. 提供一个 serve 入口，实现本 sidecar 的唯一端点：
+| 编号 | 文件 | 内容 |
+| --- | --- | --- |
+| A1 | `client.py` / `const.py` / `huawei_login.py` | 路径解析：同级目录优先，其次 `$HUAWEI_UPSTREAM_PKG`；**不再**读任何 `tmp/` 路径 |
+| A2 | `huawei_login.py` | 控制台 uid 打码；令牌文件落 `<dataRoot>/credentials/huawei_account.json`（`$HUAWEI_ACCOUNT_JSON` 可改），不进仓库、不入日志 |
+| A3 | `huawei_dashboard.py` | 本项目自写：`127.0.0.1:8765`、15 s 缓存、`days` 只认 3/7/30、错误码原样透出 |
+| — | 协议 | **未改动**：端点、字段名、单位、时间口径与 `PROTOCOL-FREEZE.md` §2–§8 一致 |
 
-   ```
-   GET /api/data?days=<3|7|30>[&force=1]   -> 冻结的 payload（幂等、15 s 缓存）
-   ```
+## 怎么用
 
-   两种放法，任选其一：
-   - 直接写在这个目录：`python/serve.py`（启动器默认查找它）；
-   - 或者放在别处，用 `export HUAWEI_SERVE_SCRIPT=/path/to/your_serve.py` 指定。
+```bash
+# 1) 登录一次（令牌对 180 天有效，文件当密码看待）
+python sidecars/huawei-health-cn/python/huawei_login.py url          # 打开授权页
+python sidecars/huawei-health-cn/python/huawei_login.py exchange "<粘贴回调里的 code>"
+python sidecars/huawei-health-cn/python/huawei_login.py probe        # 只读验证
 
-   启动器只要求它接受 `--port <n> --host 127.0.0.1`，且只监听回环。
+# 2) 起 sidecar（Windows / Linux·macOS 各一套脚本）
+pwsh -File sidecars\huawei-health-cn\start-sidecar.ps1
+sidecars/huawei-health-cn/start-sidecar.sh
+```
 
-3. 令牌对放在 `<dataRoot>/credentials/huawei_account.json`
-   （`$HUAWEI_ACCOUNT_JSON` 可改；`<dataRoot>` 见 `sidecar_paths.py`）。它不进仓库、不会被打日志。
+没有令牌文件时启动器会**直接停下**并打印下一步（`exit 2`，中文说明），不会让你等 30 秒超时；
+想先起进程（自定义入口能容忍无凭证）加 `-AllowUnconfigured` / `--allow-unconfigured`。
 
-## 没有上游时会发生什么（都是明确失败，不是栈崩）
+## 想用更新的上游？
 
-| 动作 | 行为 |
+```bash
+export HUAWEI_UPSTREAM_PKG=/path/to/custom_components/huawei_health   # 含 client.py / const.py
+```
+
+`huawei_login.py` 会优先用它（`PACKAGE_DIR` 指向你的检出），`test_protocol_contract.py` 与
+`verify_frozen_copy.py` 也随之改用它做对照。你的检出**不必**改动任何东西，也不必拷进本目录。
+
+## 自检（都不联网）
+
+| 命令 | 检查什么 |
 | --- | --- |
-| `start-sidecar.sh` / `start-sidecar.ps1` | 打印「本仓库不包含上游实现」+ 两条自备途径，**exit 3** |
-| `capture_snapshot.py` | 需要**已在运行**的 sidecar；连不上时退出码 3，并说明"sidecar 没在跑" |
-| `sleep-first-night-probe.py` | 非 `--dry-run` 时 **exit 5** + 中文提示；`--dry-run` 不需要上游、照常工作 |
-| `test_protocol_contract.py` | 依赖上游的 6 条用例 **skip**（打印原因），其余照常 |
-| `test_redact.py` | 完全不受影响（纯标准库） |
-| `verify_frozen_copy.py` | **exit 3**：没有可对照的原件，不是说复制件坏了 |
-| `plugins/companion-health` | 华为通道显示 **未配置 → 不可用**（sidecar 不在），不会显示"正常" |
-| **BLE 心率通道** | **完全不受影响**，`sidecars/ble-heart-rate` 自带实现，可独立离线验收 |
-
-## 为什么这样更诚实
-
-"我们替你分发了别人的代码，但不确定能不能" 比 "请你自己准备上游" 危险得多：
-前者在发布物里埋了一个许可证问题，后者只要求使用者做一次显式选择。
+| `python verify_frozen_copy.py` | 4 个文件在、能解析、provenance 块完好、协议面（类/函数/常量）齐全 |
+| `HUAWEI_UPSTREAM_PKG=… python verify_frozen_copy.py` | 另外与上游逐文件 diff，把差异**如实打印**（派生副本有差异是预期） |
+| `python test_protocol_contract.py` | 快照契约 + 上游实现的纯函数行为（0/‑1 = 未测量等） |
+| `python ../test_redact.py` | 脱敏：token 不外流、uid 假名稳定、设备标识 sha16 |

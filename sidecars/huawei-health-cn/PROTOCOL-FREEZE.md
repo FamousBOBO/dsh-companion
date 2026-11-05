@@ -22,28 +22,39 @@
 | 复制件校验 | `python/client.py` `44398d75e6c6b227…`、`python/const.py` `0ee70e3cb95a793b…`、<br>`python/huawei_dashboard.py` `ca44f47d411f8597…`（= 原件 on-disk sha256，见 §9） |
 | 采样时刻 | 2026-11-03 21:15:38 +08:00（同夜 21:04:27 的第二次采集数值完全一致），窗口 7 天，7 次云调用 |
 
-### 1.1 来源与许可：本仓库**不分发**上游实现
+### 1.1 来源与许可：**派生分发**（MIT），不是原始副本
 
 | 项 | 值 |
 | --- | --- |
 | 上游仓库 | `https://github.com/and7ey/huawei_health`（Home Assistant 自定义集成） |
-| 冻结时固定的提交 | `1ec3e4120a6b9c4e8327ba08c3d12fe9994d63f7`（分支 `cn-hosts-default`，集成 manifest `1.1.0`） |
-| 本仓库分发的内容 | **只有**契约、脱敏、快照工具、测试、启动器与文档（全部原创，MIT）。**不含**上游的 `client.py` / `const.py` / 服务端实现。 |
-| 上游实现怎么来 | 使用者自备：`export HUAWEI_UPSTREAM_PKG=<你的>/custom_components/huawei_health`，并提供自己的 serve 入口（`HUAWEI_SERVE_SCRIPT`，或放在 `python/serve.py`）。 |
+| 上游许可 | **MIT**，`Copyright (c) 2026 and7ey`，全文见 [`UPSTREAM-LICENSE.txt`](UPSTREAM-LICENSE.txt)（1063 字节，随仓库分发） |
+| 冻结时记录的分支/提交 | `cn-hosts-default` / `1ec3e4120a6b9c4e8327ba08c3d12fe9994d63f7` —— ⚠️ **已 404，无法再逐字节复核**（2026-11-05 核实） |
+| 上游当次快照 | 集成版本 `1.1.0`；`client.py` 32833 B、`const.py` 4781 B（与本地大小不同，见下） |
+| 本仓库的 4 个文件 | `python/client.py` 33877 B / `const.py` 5415 B（**派生副本**）、`huawei_login.py` 8130 B（**派生副本 + A1/A2**）、`huawei_dashboard.py` 34446 B（**本项目自写的只读 HTTP harness，上游没有这个文件**） |
 
-**为什么不分发**：冻结时在离线环境里**没有取得上游的 LICENSE 文本**，无法确认它的分发条款。
-「许可不明」不能当成「默认 MIT」——所以这一份复制件（连同照着上游适配出来的服务端 harness）
-已经从发布树里移除，由使用者按自己的合法性自行提供。
+**必须如实说明的三件事**
 
-**这对本层意味着什么**：`plugins/companion-health` 对华为通道的诊断结论会是
-**「未配置」→「不可用」**（sidecar 连不上，因为根本没有在跑），而不是「正常」。
-契约与字段口径（本文 §2–§8）不变，因为它们描述的是**协议**，不是那份代码。
+1. **这是派生分发，不是逐字节副本。** 冻结提交已不可访问；上游当前 `main` 的 `client.py`/`const.py`
+   与我们的大小不同（32833/4781 vs 33877/5415），说明本地在冻结之后仍有适配。
+   因此任何「逐字节一致」的断言都是不成立的，`verify_frozen_copy.py` 也据此改写：
+   默认只做**自身一致性检查**，指定 `HUAWEI_UPSTREAM_PKG` 时才与上游做 diff，并把差异**如实打印**
+   （差异是预期内的，不是失败）。
+2. **`huawei_dashboard.py` 不是上游代码。** 它是本项目为了让上层能读到数据而写的只读服务端
+   （`GET /api/data`，15 s 缓存，只绑回环），版权属本项目，按 MIT 分发；上游没有对应文件。
+3. **MIT 的署名义务已履行**：版权声明与许可全文随仓库分发在 `UPSTREAM-LICENSE.txt`，
+   `THIRD-PARTY-NOTICES.md` 已登记，两个派生副本的文件头也各带 provenance 注释块。
 
-**复现冻结**：`verify_frozen_copy.py` 仍然保留为自检工具——设置 `HUAWEI_UPSTREAM_PKG` 后它会逐字节
-比对（并打印 diff）；没有设置时它明确说「原件不在」并以 **3** 退出。
-`test_protocol_contract.py` 里依赖上游模块的用例在没有上游时 **skip**（带原因），不报红。
+**本地适配（A 系列，逐条可查）**
 
+| 编号 | 文件 | 适配内容 |
+| --- | --- | --- |
+| A1 | `client.py` / `const.py` / `huawei_login.py` | 路径解析：上游假设文件躺在 checkout 里；这里改成「同级 `python/` 目录优先 → `$HUAWEI_UPSTREAM_PKG` 次之」，不读 `tmp/` |
+| A2 | `huawei_login.py` | 控制台输出里 uid 打码（`mask()`），凭据文件落 `<dataRoot>/credentials/huawei_account.json`，不进仓库、不入日志 |
+| A3 | `huawei_dashboard.py` | 本项目自写的只读服务端（见上，非上游） |
+| — | 协议行为 | **未改动**：端点、字段名、单位、时间口径与本文件 §2–§8 完全一致 |
 
+**想用更新版上游？** 设 `HUAWEI_UPSTREAM_PKG=<你的>/custom_components/huawei_health`，
+`huawei_login.py` 会优先用它（契约测试与 `verify_frozen_copy.py` 也随之改用它做对照）。
 ## 2. 端点：只有一个
 
 | 方法 | 路径 | 说明 |

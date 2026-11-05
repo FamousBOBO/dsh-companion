@@ -57,26 +57,32 @@ sidecars/huawei-health-cn/
 | 日志 + PID 文件 | `<dataRoot>/logs/huawei-health-cn/` | `$HUAWEI_LOG_DIR` / `--log-dir` / `-LogDir` |
 | 脱敏快照 | `<dataRoot>/snapshots/huawei-health-cn/` | `$HUAWEI_SNAPSHOT_DIR` |
 | 令牌对（密码级） | `<dataRoot>/credentials/huawei_account.json` | `$HUAWEI_ACCOUNT_JSON` |
+| 实现（默认随包） | `python/{client,const,huawei_login,huawei_dashboard}.py` | `$HUAWEI_UPSTREAM_PKG`（换更新的上游）/ `$HUAWEI_SERVE_SCRIPT`（换服务端入口） |
 
 `<dataRoot>` = 套件配置的 `dataDir` → `$DSH_COMPANION_DATA_DIR` → `<套件根>/data`。
 
 上游集成的研究性 checkout **不属于本仓库**：`verify_frozen_copy.py` 在没有
-`HUAWEI_UPSTREAM_PKG` 时会明确说「原件不在」并以 **3** 退出 —— 那表示"没有可对照的原件"，
+`HUAWEI_UPSTREAM_PKG` 时只做**自身一致性检查**（文件在、能解析、provenance 块完好、协议面齐全）；
+只有把 `HUAWEI_UPSTREAM_PKG` 指到一个**不存在**的路径时才以 **3** 退出 —— 那表示"没有可对照的原件"，
 不是复制件坏了。
 
-## 2.5 先决条件：自备上游实现（本仓库不包含）
+## 2.5 开箱可用，只差一次账号授权
 
-上游集成（华为健康读取客户端）的许可证无法确认，所以**本仓库不分发它**，也不分发任何服务端实现
-（理由与上游仓库/提交见 [PROTOCOL-FREEZE.md](PROTOCOL-FREEZE.md) §1.1）。启用华为通道前，你需要：
+华为通道的实现**随包分发**（`python/` 下 4 个文件，MIT；来源、上游提交、本地适配见
+[PROTOCOL-FREEZE.md](PROTOCOL-FREEZE.md) §1.1，许可全文 [UPSTREAM-LICENSE.txt](UPSTREAM-LICENSE.txt)）。
+你不需要自备上游检出，也不需要自己写服务端。启用的唯一前提是**一次账号授权**：
 
 ```bash
-export HUAWEI_UPSTREAM_PKG=/path/to/huawei_health/custom_components/huawei_health   # 含 client.py / const.py
-export HUAWEI_SERVE_SCRIPT=/path/to/your_serve.py    # 实现 GET /api/data?days=N；或放到 python/serve.py
+python sidecars/huawei-health-cn/python/huawei_login.py url          # 打开授权页
+python sidecars/huawei-health-cn/python/huawei_login.py exchange "<粘贴回调里的 code>"
+python sidecars/huawei-health-cn/python/huawei_login.py probe        # 只读验证一次
 ```
 
-没有这两样时：启动器 **exit 3** 并说明两条自备途径；`plugins/companion-health` 的华为通道显示
-**未配置 → 不可用**（不会显示"正常"）。**BLE 心率通道不受影响**，它自带实现、可独立离线验收。
-
+- 令牌对落 `<dataRoot>/credentials/huawei_account.json`（`$HUAWEI_ACCOUNT_JSON` 可改），**不进仓库、不入日志**。
+- **没有授权时**：启动器打印「未配置（AWAIT_LOGIN）」+ 登录命令并 `exit 2`；
+  `plugins/companion-health` 的华为通道显示 **未配置**，绝不会显示「正常」。
+- 想把实现换成更新的上游：`export HUAWEI_UPSTREAM_PKG=<你的>/custom_components/huawei_health`。
+- **BLE 心率通道与此无关**，它自带实现、可独立离线验收。
 ## 3. 起停（跨平台）
 
 **Windows**（PowerShell；WMI 分离启动 + `taskkill` 收尾，这是唯一用 WMI 的路径）：

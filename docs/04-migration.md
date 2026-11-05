@@ -310,7 +310,7 @@ npm run migrate -- help
 | `path` | profile 与工作区路径 | 重跑 `npm run setup`：它会按本机解析值重新生成 `cordis.patch.yml`（`file://` 插件路径、工作区路径） |
 | `auth` | 模型 provider 密钥 | 填 `config/suite.json` / `.env.local` / 系统环境；迁移包不含密钥 |
 | `auth` | QQ / B站 登录 | 重新扫码（NapCat WebUI、B站）；`bili_credential.json` 永不迁移 |
-| `auth` | 健康授权 | 到「陪伴空间 → 健康」重新确认；再 `companion_pulse action=start`。**华为云端通道还需要你自己指向上游检出**（`$HUAWEI_UPSTREAM_PKG`，见 `docs/03` §1.2）；BLE 心率不需要 |
+| `auth` | 健康授权 | 到「陪伴空间 → 健康」重新确认；再 `companion_pulse action=start`。华为健康读取实现随包分发（MIT），但**账号令牌不迁移**，需要在目标机器重新登录一次 |
 | `device` | BLE 心率设备 | 在设备上打开「心率广播」；`start` 是唯一扫描入口 |
 | `service` | 外部服务地址 | OneBot / 健康 sidecar / 媒体服务地址填进 `config/suite.json`；套件只连接、不安装 |
 

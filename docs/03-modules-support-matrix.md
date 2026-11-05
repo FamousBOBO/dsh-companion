@@ -21,8 +21,8 @@
 | `dsh-channel-qq` | `@dsh-companion/channel-qq` | Win（实机）／Linux·macOS 未验证 | **NapCat / OneBot v11 外部服务**；QQ 登录 | ❌ 否 |
 | `qq-idle-compaction` | （随通道） | 同通道 | 同上 | ❌ 否（`modules.qqIdleCompaction`） |
 | `companion-media` | `@dsh-companion/media` | Win（实机）／其余未验证 | TTS / 生图服务（可选，缺省即关闭）；识图可走云端模型 | ❌ 否 |
-| `companion-health` | `@dsh-companion/health` | Win（实机）／其余未验证 | `sidecars/huawei-health-cn`（**需自备上游协议实现**）与/或 `sidecars/ble-heart-rate`（BLE 设备） | ❌ 否 |
-| `sidecars/huawei-health-cn` | —（Python） | Win（实机）／其余未验证 | Python 3.9+；华为运动健康 CN 账号；**华为云端数据通道需要使用者自备上游检出（`$HUAWEI_UPSTREAM_PKG`）**——本仓库不含上游协议实现，见 §1.2 | ❌ 否 |
+| `companion-health` | `@dsh-companion/health` | Win（实机）／其余未验证 | `sidecars/huawei-health-cn`（**随包分发**，需华为账号授权）与/或 `sidecars/ble-heart-rate`（BLE 设备） | ❌ 否 |
+| `sidecars/huawei-health-cn` | —（Python） | Win（实机）／其余未验证 | Python 3.9+；华为运动健康 CN 账号。上游为 **MIT 且随包分发**（`python/` 下 3 个派生文件 + 1 个本项目自写的服务端，见 §1.2.1）；`$HUAWEI_UPSTREAM_PKG` 只是**可选覆盖** | ❌ 否 |
 | `sidecars/ble-heart-rate` | —（Python） | Win（实机，真机跑通）／macOS·Linux 未验证 | Python 3.12 + `bleak`；支持心率广播的 BLE 设备（**原创代码，不受上游许可影响**） | ❌ 否 |
 | `dsh-paste-search` | `@dsh-companion/paste-search` | Win / Linux / macOS | 无 | ❌ 否 |
 
@@ -42,13 +42,11 @@
 
 ### 1.2 本版**未收录**（已从发布树删除，不是暂缓）
 
-这两项不是「还没做完」，而是**这一版明确不发布**，原因都是许可证/可验证性，不是功能问题。
-
 #### `dsh-super-injector`（超级注入器）—— 整体移除
 
 | 阻塞 | 说明 |
 |---|---|
-| 许可证文本缺失 | 上游是 **BSD-3-Clause**，该许可证要求**随分发保留版权声明与许可全文**。仓库里没有这份 `LICENSE` 文本，因此不能分发。 |
+| 上游仓库**无任何 LICENSE 文件**（GitHub API 返回 `license: null`） | 它的 `package.json` 里写着 BSD-3-Clause，但**没有正文、没有版权行**支撑；BSD-3-Clause 的署名与许可全文条款**无法履行**，因此不能分发。 |
 | 无法验证 | 它的构建需要 `DSH_CHECKOUT` 指向一份 **DSH 源码检出**（`packages/`）。只装桌面版的环境**永远构建不出来**，也就无法进入任何一级验证。 |
 
 连带移除：`plugins/_selftest-hello`（它只是注入器的冒烟夹具，没有独立价值）。
@@ -60,24 +58,40 @@
 - 部署、配置、迁移、回滚文档里都**不再**出现注入器步骤；
 - 它也不在依赖图里。
 
-#### `sidecars/huawei-health-cn/python/` 的 4 个上游复制件 —— 移除
+### 1.2.1 华为健康上游：**MIT，已随包分发**（2026-11-05 核实）
 
-被移除的是 `client.py` / `const.py` / `huawei_dashboard.py` / `huawei_login.py`（来自上游 `and7ey/huawei_health`）。
+这一条曾经是「不分发」，现在改成「分发」，因为许可与来源都已经核实清楚：
 
-- **原因**：上游许可证**未能核实**。许可不明的内容不能当 MIT 分发。
-- **现在仓库里剩下什么**：本项目自写的采集调用、脱敏、快照、起停脚本、跨平台入口与测试。
-- **运行时怎么办**：用 `$HUAWEI_UPSTREAM_PKG` 指向**使用者自己的**上游检出；没有它就只是「未配置」，
-  不会静默失败（`verify_frozen_copy.py` 会明确报「原件不在」并以退出码 3 说明）。
-- **不受影响的部分**：`sidecars/ble-heart-rate`（BLE 心率广播）是原创代码，照常发布与使用。
+| 文件 | 是什么 | 来源 | 许可 |
+|---|---|---|---|
+| `python/client.py` | 云端读取客户端（`HuaweiHealthClient`、`Tokens`、`health_series`…） | **上游派生副本** + A1 适配 | MIT（and7ey） |
+| `python/const.py` | 端点 / 主机 / 运动类型常量表 | **上游派生副本** + A1 适配 | MIT（and7ey） |
+| `python/huawei_login.py` | 三步登录探针（`url` → `exchange` → `probe`） | **上游派生副本** + A1 / A2 适配 | MIT（and7ey）+ 本项目适配 |
+| `python/huawei_dashboard.py` | 只读 HTTP 服务端，提供 `GET /api/data?days=N` | **本项目自写**（上游**没有**这个文件，A3） | MIT（本项目） |
+
+| 事实 | 结论与依据 |
+|---|---|
+| 上游许可 | `and7ey/huawei_health` = **MIT**（GitHub API `license.spdx_id = "MIT"`，`Copyright (c) 2026 and7ey`）；许可全文随包放在 `sidecars/huawei-health-cn/UPSTREAM-LICENSE.txt`，派生文件头也各带 provenance 注释块 |
+| 我们是副本还是派生 | **派生分发，不是逐字节副本**：3 个派生文件含 A1（路径解析）/ A2（uid 打码与凭据落盘）两处适配；**协议行为未改动**（端点、字段名、单位、时间口径与 `PROTOCOL-FREEZE.md` §2–§8 一致）。原冻结提交 `1ec3e41…`（分支 `cn-hosts-default`）**已 404**，上游当前 main 只剩 `client.py`/`const.py` 且大小不同（32833/4781 vs 33877/5415），所以**无法再做逐字节复核** |
+| 哪些是第三方、哪些是我们自己的 | **3 个派生 + 1 个自写**：`client.py`/`const.py`/`huawei_login.py` 是第三方派生（受 MIT 署名义务约束）；`huawei_dashboard.py` 是**本项目原创**（MIT，本项目版权），**不计入**第三方清单。登记见 `THIRD-PARTY-NOTICES.md` 与 `python/README.md` 的逐文件表 |
+| 是否可以这样分发 | MIT 允许派生分发，前提是**保留版权声明与许可全文**（`UPSTREAM-LICENSE.txt` 已满足） |
+| 使用者要不要自备上游 | **不需要**：`start-sidecar.*` 默认入口就是随包的 `python/huawei_dashboard.py`，开箱只差一次账号授权。`$HUAWEI_UPSTREAM_PKG` 只是**可选覆盖**（追新 / 对照），设了才与上游做 diff |
 
 ```bash
-# 示例：指向你自己的上游检出（路径由你决定，仓库不提供）
-export HUAWEI_UPSTREAM_PKG="/path/to/your/huawei_health"
-# Windows PowerShell
-$env:HUAWEI_UPSTREAM_PKG = "D:\your\checkout\huawei_health"
+# 可选：只想覆盖成你自己的上游检出时才需要设
+export HUAWEI_UPSTREAM_PKG="/path/to/your/huawei_health/custom_components/huawei_health"
 ```
 
-> ⚠️ 只有**华为云端聚合数据**这条通道需要上游检出。**BLE 实时心率不需要**——它是本仓库自带实现。
+> **BLE 心率通道与本条完全无关**——`sidecars/ble-heart-rate` 是原创实现，不依赖华为账号、上游或 sidecar。
+
+### 1.3 明确**不实现**的外部协议（**已核实**，不是「证据不足」）
+
+| 协议 | 核实结论 | 处理 |
+|---|---|---|
+| Index-TTS | 上游 `index-tts/index-tts` 的 `LICENSE` 首行是 **bilibili Model Use License Agreement**（自定义模型使用协议，GitHub `license.spdx_id = NOASSERTION`，**非开源许可**）；文件树里**没有文档化的 HTTP JSON 接口**——可交互面只有 `webui.py`（Gradio）、Triton 后端、内部 `openvoice/api.py`，没有可核实的「请求字段 / 响应 / 鉴权」契约 | **不实现 adapter**，也不猜它的 Gradio 内部协议。这是**已核实**的结论（不是「我们还没排期」，也不是「证据不足」） |
+
+> 许可与来源的完整登记见 `THIRD-PARTY-NOTICES.md` 的「未随仓库分发（以及原因）」表与
+> 其下的「Index-TTS 为什么标『尚未接入』」小节；本节只做索引，不重复法务细节。
 
 ## 2. 模块依赖图
 
@@ -110,14 +124,14 @@ flowchart TD
     end
 
     subgraph sidecars["Python 侧车（独立进程，HTTP 回环）"]
-        HW["sidecars/huawei-health-cn :8765<br/>（上游协议实现不随仓库分发）"]
+        HW["sidecars/huawei-health-cn :8765<br/>（上游 MIT，随包分发为派生版）"]
         BLE[sidecars/ble-heart-rate :8151]
     end
 
     subgraph external["外部服务与外部模块（用户自备，本套件只连接）"]
         OB[NapCat / OneBot v11]
         MEDIA[TTS / 生图网关]
-        UP["上游 huawei_health 检出<br/>\$HUAWEI_UPSTREAM_PKG"]
+        UP["上游 huawei_health 检出<br/>\$HUAWEI_UPSTREAM_PKG（可选）"]
         BILI["dsh-bili-scroll 2.4.0<br/>外部模块，不在本仓库"]
     end
 
@@ -127,7 +141,7 @@ flowchart TD
     G --> MD
     H --> HW
     H --> BLE
-    HW -.->|需要| UP
+    HW -.->|可选覆盖| UP
     MD --> MEDIA
     BILI --> MD
     BILI --> Q
@@ -153,7 +167,8 @@ dsh-channel-qq
 
 companion-health
  ├─→ sidecars/huawei-health-cn（:8765，只读聚合数据）
- │    └─→ 需要使用者自备上游检出（$HUAWEI_UPSTREAM_PKG）：上游协议实现不随本仓库分发
+ │    └─→ 上游实现随包分发（MIT；python/ 下是含 A1/A2 适配的派生版本）
+ │         $HUAWEI_UPSTREAM_PKG 只是可选覆盖：设了用你自己的上游，不设用包内的
  └─→ sidecars/ble-heart-rate （:8151，HRS 0x180D/0x2A37 实时心跳；原创代码，无上游依赖）
 
 companion-media               独立（不 import 兄弟模块；外部 TTS/生图服务可选）
@@ -212,7 +227,7 @@ dsh-paste-search              独立（UI 入口）
 | `dsh-channel-qq` | **1208 / 1207 通过 / 0 失败 / 1 跳过** | 未验证（验收未启用通道） | 未验证 | **未验证** | — |
 | `companion-media` | 通过（计数未单独汇总） | 未验证（验收未启用该模块） | 未验证 | 未验证 | — |
 | `companion-health` | 通过（计数未单独汇总） | 未验证（验收未启用该模块） | 未验证 | — | 未验证 |
-| `sidecars/huawei-health-cn` | 见负责人交接报告（本仓库自写的采集/脱敏/起停/测试部分） | — | **不适用**：上游协议实现未随仓库分发，历史上的 `real-api` 证据只属于原作者环境 | — | — |
+| `sidecars/huawei-health-cn` | 见负责人交接报告（含 `test_protocol_contract.py` / `test_redact.py`） | — | **未验证**（需要真实华为账号；代码路径与 MIT 许可已就位） | — | — |
 | `sidecars/ble-heart-rate` | 见负责人交接报告（`--fixture` 可无硬件跑） | — | — | — | 未验证 |
 | `dsh-paste-search` | **无测试** | 未验证（验收未启用该模块） | — | — | — |
 | ~~`dsh-super-injector`~~ | **未收录**（原因见 §1.2），无证据也不应有 | — | — | — | — |
@@ -238,7 +253,7 @@ dsh-paste-search              独立（UI 入口）
 | 主动联系（contact） | 仅到 `host-load`/模拟 | 切 turn 模式后**没有**真实主动发送的证据 |
 | B站自动评论 | `real-send` | 曾有 2 条评论 rpid（外部模块，不在本仓库） |
 | BLE 心率 | `hardware` | 真机手环广播跑通，端到端出【心跳读数】行 |
-| 华为健康 | `real-api`（**原作者环境**） | 上游协议实现不随本仓库分发，这条证据**不适用**于本发布树；使用者需要自备上游检出 |
+| 华为健康 | `real-api`（**原作者环境**） | 上游为 MIT、代码随包分发，这条证据**不能直接算本发布树的**：本仓库需要一次真实账号授权才算 `real-api` |
 | 媒体生图 / Breeze TTS | `real-api` | 有真实作业与产物；**投递通道是 mock**，`confirmed` 被强制改写 `unknown` |
 | 实时语音（sidecar） | 隔离环境 | 延迟未达标，未接 QQ 通话 |
 
@@ -255,8 +270,7 @@ dsh-paste-search              独立（UI 入口）
 | 模块 | 已知缺口 | 影响 |
 |---|---|---|
 | `dsh-channel-qq` | 构建产物不入库，clone 后必须 `npm run build`；`main` 不得指向带日期目录（已列为发布硬规则） | 忘记构建 → `doctor` 报模块入口缺失 |
-| `sidecars/huawei-health-cn` | **上游协议实现（4 个复制件）因许可未核实已移除**；云端通道需要 `$HUAWEI_UPSTREAM_PKG` 指向使用者自己的检出。BLE 通道不受影响 | 没配上游 = 「未配置」，不是「坏了」 |
-| `companion-media` | 识图默认关闭；投递通道 mock | 「发出去了」不会被证明 |
+| `companion-media` | 识图默认关闭；投递通道 mock；**Index-TTS 明确不实现**（上游非开源许可 + 无文档化 HTTP 契约，见 §1.3） | 「发出去了」不会被证明 |
 | `companion-health` | 四个能力（上下文注入 / 习惯记忆 / 日程调整 / 主动关怀）本轮代码里没有读取分支 | 开关存在但无效，`docs/02` §3.6 已注明 |
 | `companion-group` | 无独立测试目录；群内媒体/自主接话在历史上无真实证据 | 群里发图/发语音属未验证 |
 | 实时语音 | 不在发布树（实验态 sidecar） | 不要承诺它可用 |

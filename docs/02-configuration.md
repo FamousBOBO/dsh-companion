@@ -61,7 +61,7 @@ profile 的 patch 里，见 §3.5。
 | `memoryStudio` | **`true`** | `companion-memory-studio`（陪伴空间 Web UI） | 依赖 core 成套安装 |
 | `qq` | `false` | `dsh-channel-qq` | 需要外部 NapCat/OneBot 服务地址+token |
 | `bilibili` | `false` | **外部模块** `dsh-bili-scroll`，不在本仓库（见 §3.7） | 需要自行安装第三方 tarball + Python 环境 |
-| `health` | `false` | `companion-health` + `sidecars/huawei-health-cn` + `sidecars/ble-heart-rate` | 需要华为健康 sidecar 与/或 BLE 设备；**云端通道还要自备上游检出**（§3.6） |
+| `health` | `false` | `companion-health` + `sidecars/huawei-health-cn` + `sidecars/ble-heart-rate` | 需要华为健康 sidecar 与/或 BLE 设备；华为云端实现**随包分发**（MIT），只需账号授权（§3.6） |
 | `media` | `false` | `companion-media` | 通常还需要外部 TTS / 生图服务 |
 | `pasteSearch` | `false` | `dsh-paste-search`（贴图搜索入口） | 无外部依赖，但属可选 UI |
 
@@ -227,17 +227,20 @@ profile 的 patch 里，见 §3.5。
 
 | sidecar | 端口 | 关键参数 | 依赖 |
 |---|---|---|---|
-| `sidecars/huawei-health-cn` | `127.0.0.1:8765` | 只监听回环；只读 HTTP；`--` 起停脚本分 `.ps1` 与 `.sh` 两套 | Python 3.9+（契约测试只用标准库）**+ 使用者自备上游检出**（见下） |
+| `sidecars/huawei-health-cn` | `127.0.0.1:8765` | 只监听回环；只读 HTTP；起停脚本分 `.ps1` 与 `.sh` 两套；`--port` / `--python` / `--log-dir` | Python 3.9+。**上游实现随包分发**（MIT，`python/` 下为含 A1/A2 适配的派生版本，许可全文 `UPSTREAM-LICENSE.txt`） |
 | `sidecars/ble-heart-rate` | `127.0.0.1:8151` | `--port` / `--fixture`（无硬件回放）/ `--auto`（启动即扫描）/ `--scan-timeout` / `--address` / `--connect-timeout` | `bleak`（`requirements.txt`）；**`--fixture` 不需要 bleak** |
 
 > BLE sidecar 默认是**懒**的：进程起来只监听 HTTP，不扫描、不自动连接；只有
 > `POST /api/connect`（或上层 `companion_pulse action=start`）才会扫。这是有意的省电与隐私设计。
 
-#### 3.6.1 health 相关的环境变量
+#### 3.6.1 health 相关的环境变量（全部**可选**）
 
-| 变量 | 谁读 | 作用 | 不设时 |
+| 变量 | 谁读 | 作用 | 不设时（默认行为） |
 |---|---|---|---|
-| `HUAWEI_UPSTREAM_PKG` | `sidecars/huawei-health-cn` 的自检脚本 | 指向**使用者自己的**上游 `huawei_health` 检出。上游协议实现（`client.py` 等 4 个复制件）**因许可未核实已从仓库移除**，不随本仓库分发 | 报「原件不在」并以退出码 3 结束——表示「没有可对照的原件」，**不是**坏了 |
+| `HUAWEI_UPSTREAM_PKG` | `sidecars/huawei-health-cn` 的采集 / 自检脚本 | 把「上游实现」**覆盖**为你自己的 `huawei_health` 检出（用于追新 / 对照） | **用包内的派生版本**（`python/client.py`、`const.py`、`huawei_login.py`）。不设**不影响**功能：`verify_frozen_copy.py` 默认只做**自身一致性检查**；设了才与上游做 diff，并把差异**如实打印**（差异是预期内的，不是失败） |
+| `HUAWEI_SERVE_SCRIPT` | 两个启动器 | **可选覆盖**：指定 `GET /api/data?days=N` 的 serve 入口 | 用随包的 `python/huawei_dashboard.py`（`serve --port <n> --host <host>`）。这一项**平时不需要设** |
+| `HUAWEI_ACCOUNT_JSON` | 启动器与 sidecar | 华为账号令牌文件路径 | `<dataRoot>/credentials/huawei_account.json`（**凭据，永不入库**，见 §5） |
+| `HUAWEI_LOG_DIR` | 启动器 | sidecar 日志与 pid 文件目录 | `<dataRoot>/logs/huawei-health-cn` |
 | `DSH_COMPANION_HEALTH_HOME` | `plugins/companion-health/lib/service.mjs` | 覆盖 health 的 home 目录（优先级：显式 `home` 参数 > 该变量 > `<dataRoot>/home`） | 用套件解析出的 home |
 | `DSH_COMPANION_HEALTH_SIDECAR_URL` | 同上 | 覆盖 `collector.baseUrl`（华为健康 sidecar 地址） | 用 `config.json` 里的值，默认 `http://127.0.0.1:8765` |
 | `DSH_COMPANION_PULSE_SIDECAR_URL` | 同上 | 覆盖 `pulse.baseUrl`（BLE 心率 sidecar 地址） | 用 `config.json` 里的值，默认 `http://127.0.0.1:8151` |

@@ -61,9 +61,10 @@
 | 症状 | 判断 | 处理 |
 |---|---|---|
 | 健康一直「不可用」 | sidecar 没起 / 未授权 | 起 sidecar（默认 `127.0.0.1:8765`）；到 Studio 确认授权（授权表才是权威，改 config 不生效） |
-| **华为健康「没有数据」，但 sidecar 起得来** | **最常见原因：你没有自备上游检出** | 上游协议实现（`client.py` 等 4 个复制件）**因许可未核实已从本仓库移除**。设 `HUAWEI_UPSTREAM_PKG` 指向你自己的上游 `huawei_health` 检出（`docs/03` §1.2）。没有它时自检脚本会以退出码 3 说明「原件不在」——这是「未配置」，不是「坏了」 |
-| 华为健康登录后仍无数据 | 账号授权过期 / 上游版本不匹配你的 App | 重新走一次人工登录；核对上游检出的版本（见 sidecar 的 `PROTOCOL-FREEZE.md`） |
-| BLE 心率完全没有数字 | 与华为云端通道是**两条独立链路** | BLE 不需要上游检出（原创实现）；按下面两条排查 |
+| **华为健康「没有数据」，但 sidecar 起得来** | 按顺序查三件事 | ① **账号没授权**：`<dataRoot>/credentials/huawei_account.json` 不存在或已过期 → 先登录一次（`python/huawei_login.py url`），再重采；② **sidecar 没在跑**：`curl http://127.0.0.1:8765/api/data?days=3` 应返回 JSON；③ **采集开关**：`home/health/config.json` 的 `enabled` + 授权表（`docs/02` §3.6） |
+| 启动器报「找不到健康数据服务端实现」 | 除非你手工把 `HUAWEI_SERVE_SCRIPT` 指到了不存在的文件，否则不应出现——默认入口就是随包的 `python/huawei_dashboard.py` | 清掉 `HUAWEI_SERVE_SCRIPT` 让它用默认值；再看 `<dataRoot>/logs/huawei-health-cn/` 的 out/err 日志 |
+| 华为健康登录后仍无数据 | 账号令牌过期 / sidecar 进程没起 / 采集被关 | 重新走一次人工登录；确认 `curl http://127.0.0.1:8765/api/data?days=3` 能返回 JSON；字段口径见 sidecar 的 `PROTOCOL-FREEZE.md` |
+| BLE 心率完全没有数字 | 与华为云端通道是**两条独立链路** | BLE 是原创实现、不依赖华为账号与 sidecar（`ble-heart-rate` 自带）；按下面两条排查 |
 | 扫不到心率设备 | **最常见原因：手环没开「心率广播」** | 先在设备上打开广播；「扫不到」不等于「设备不支持」 |
 | 有设备但没读数 | sidecar 是懒模式（不扫描、不自动连） | 必须显式触发：`companion_pulse action=start`（唯一的扫描入口） |
 | 读数一会儿就消失 | 会话跟随设备 | 关掉/走远广播约 30 秒后会话自己收口，这是设计 |

@@ -58,9 +58,15 @@
 | GPT-SoVITS | `POST {base}/tts`，JSON（`text,text_lang,ref_audio_path,prompt_text,prompt_lang,media_type,speed_factor,top_k,top_p,temperature,seed`） | 无 | `baseUrl`、`refAudioPath`（**服务端路径**）、`promptText`、`promptLang`、`textLang` | 音频流按签名嗅探；`media_type=raw` 本地拒绝 | **已接入** |
 | Fish Audio | `POST {base}/v1/tts`，header `model` | `Bearer` | `baseUrl`、`apiKey`、`referenceId` | 音频字节按签名嗅探；`pcm` 本地拒绝；JSON 错误信封判 `UPSTREAM` | **已接入** |
 | Drama3 | 同 Fish Audio，`model: drama-3` | `Bearer` | 同上 | 同上；`referenceId` 逗号分隔 → 数组（多说话人） | **已接入** |
-| Index-TTS | — | — | — | — | **尚未接入**（`PROVIDER_NOT_IMPLEMENTED`，附原因与证据来源） |
+| Index-TTS | —（无文档化 HTTP 契约） | — | — | — | **尚未接入**（`PROVIDER_NOT_IMPLEMENTED`，已核实：bilibili 模型使用协议 + 无文档化 HTTP 接口） |
 
-Index-TTS 的禁用原因（原文写进能力表）：官方仓库只提供 Python API（`indextts.infer_v2.IndexTTS2`）、Gradio WebUI 与 vLLM/Triton 部署 recipe，**没有官方 HTTP JSON 协议可供核实**；按规格「不能因项目都叫 TTS 就共用一套请求体」，不实现猜测的 adapter。启用条件写在 `src/schema.mjs` 的 `TTS_PROVIDERS['index-tts'].reason`。
+Index-TTS 的禁用原因（原文写进能力表 `TTS_PROVIDERS['index-tts'].reason`，UI 直接显示）：
+
+> **已核实（2026-11-05）**：上游 `index-tts/index-tts` 的许可为 **bilibili Model Use License Agreement**（自定义模型使用协议，非开源许可，GitHub API `license.spdx_id = "NOASSERTION"`），且仓库里**没有文档化的 HTTP JSON 合成接口**——可交互面只有 Gradio WebUI（`webui.py`，55,404 B）、Triton 后端（`backends/trt/serving/triton_server.py`，16,151 B）与内部 openvoice 模块（`api.py` 7,116 B / `openvoice_app.py` 11,624 B），没有请求字段/响应/鉴权契约可核实。按规格「不能因项目都叫 TTS 就共用一套请求体」与项目纪律，**不猜** Gradio 的内部 `/api/predict` 一类未文档化协议，因此不实现 adapter。
+
+因此 `MEDIA_PROVIDER_NOT_IMPLEMENTED` + UI「尚未接入」是**已核实**的结论，而不是证据不足。口径与 `THIRD-PARTY-NOTICES.md` 的「Index-TTS 为什么标尚未接入」一节一致（不另立一套说法）。
+
+启用条件（写给将来）：① 官方发布带字段/鉴权说明的 HTTP 契约；或 ② 对 bilibili 模型使用协议做单独评估并确认允许这种对接方式。
 
 ### 2.1 共用语音结果合同
 

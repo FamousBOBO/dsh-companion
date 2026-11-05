@@ -143,33 +143,38 @@ class UpstreamMissing(RuntimeError):
     """The upstream integration is not available — say so, do not traceback."""
 
 
-def _read_token_pair(store: Path):
-    """Load the token pair from the credential file and hand it to the upstream client.
-
-    The upstream ``Tokens`` class is the only accepted shape (the client expects attributes), so the
-    file is described here in the same JSON shape the upstream login flow writes.
-    """
-    raw = json.loads(store.read_text(encoding="utf-8"))
-    return _load_upstream()[1].Tokens(**raw)
-
-
 def _load_upstream():
-    """Import the **user's** upstream client/const (this repo ships none — see PROTOCOL-FREEZE §1.1)."""
+    """Resolve the client/const pair, preferring the copy that ships in this repository.
+
+    Order: in-repo ``python/huawei_login.py`` (which itself honours ``HUAWEI_UPSTREAM_PKG`` and would
+    use a newer checkout instead) → the raw upstream package via ``HUAWEI_UPSTREAM_PKG`` → error.
+    Only the last case raises: with no implementation at all we say so instead of tracing back.
+    """
+    if (PYTHON_DIR / "huawei_login.py").is_file():
+        sys.path.insert(0, str(PYTHON_DIR))
+        import huawei_login  # noqa: PLC0415 - deliberately lazy
+        return huawei_login.PACKAGE_DIR, huawei_login.CLIENT, huawei_login.CONST
     package_dir = sidecar_paths.upstream_pkg()
-    if package_dir is None or not (package_dir / "client.py").is_file():
-        raise UpstreamMissing(
-            "找不到上游实现（本仓库因许可证原因不包含它）。请自备一份上游检出，并设置 "
-            "HUAWEI_UPSTREAM_PKG=<你的>/custom_components/huawei_health；"
-            "只有 --dry-run 可以不需要它。")
-    sys.path.insert(0, str(package_dir.parent))
-    sys.path.insert(0, str(package_dir))
-    import client  # noqa: PLC0415 - deliberately lazy
-    import const  # noqa: PLC0415 - deliberately lazy
-    return package_dir, client, const
+    if package_dir is not None and (package_dir / "client.py").is_file():
+        sys.path.insert(0, str(package_dir.parent))
+        sys.path.insert(0, str(package_dir))
+        import client  # noqa: PLC0415 - deliberately lazy
+        import const  # noqa: PLC0415 - deliberately lazy
+        return package_dir, client, const
+    raise UpstreamMissing(
+        "找不到 client/const 实现：仓库内的 python/huawei_login.py 不在，"
+        "HUAWEI_UPSTREAM_PKG 也没指向可用的上游检出。"
+        "（--dry-run 不需要它，可以先用来检查路径与计划。）")
+
+
+def _read_token_pair(store: Path, client):
+    """Load the token pair (the JSON shape the login flow writes) into the client's ``Tokens``."""
+    raw = json.loads(store.read_text(encoding="utf-8"))
+    return client.Tokens(**raw)
 
 
 def probe_cloud(days: int = 7, timeout: int = 30) -> dict[str, Any]:
-    """One ``health_stat(type=9)`` call through the user's upstream client."""
+    """One ``health_stat(type=9)`` call through the client pair above."""
     package_dir, client, const = _load_upstream()
     store = sidecar_paths.credentials_file()
     today = date.today()
@@ -186,9 +191,10 @@ def probe_cloud(days: int = 7, timeout: int = 30) -> dict[str, Any]:
     if not Path(store).is_file():
         return {**result, "ok": False, "error": "credential store missing (never printed)"}
 
-    tokens = _read_token_pair(store)
+    tokens = _read_token_pair(store, client)
     api = client.HuaweiHealthClient(tokens, timeout=timeout)
     result["dataHost"] = api.host
+    result["implementation"] = str(package_dir)
     try:
         answer = api.health_stat(start_day, end_day, types=[9])
     except client.HuaweiAuthError:
@@ -288,13 +294,23 @@ def main(argv: list[str] | None = None) -> int:
     out = Path(args.out)
     if args.dry_run:
         store = sidecar_paths.credentials_file()
-        package_dir = sidecar_paths.upstream_pkg()
+        in_repo = PYTHON_DIR / "huawei_login.py"
+        override = sidecar_paths.upstream_pkg()
+        if in_repo.is_file():
+            try:
+                import importlib
+                sys.path.insert(0, str(PYTHON_DIR))
+                effective = importlib.import_module("huawei_login").PACKAGE_DIR
+            except Exception as err:                       # noqa: BLE001 - report, never traceback
+                effective = f"INVALID ({type(err).__name__}: {err})"
+        else:
+            effective = "(仓库内 python/huawei_login.py 不在)"
         print("dry run - nothing is sent")
         print(f"  sidecar      : {args.base_url}/api/data?days={args.days}"
               f" (loopback ok: {_is_loopback(args.base_url)})")
-        print(f"  upstream pkg : {package_dir or '(未配置 HUAWEI_UPSTREAM_PKG — 本仓库不含上游实现)'}")
-        print(f"  client copy  : "
-              f"{'present' if package_dir and (package_dir / 'client.py').is_file() else 'MISSING'}")
+        print(f"  in-repo impl : {in_repo} ({'present' if in_repo.is_file() else 'MISSING'})")
+        print(f"  effective    : {effective}")
+        print(f"  env override : {override or '(未设置 HUAWEI_UPSTREAM_PKG — 用随包的派生实现)'}")
         print(f"  credential   : {store} (exists: {store.is_file()}, contents never read here)")
         print(f"  planned      : 1 HTTP GET + 1 cloud call health_stat(type=9)")
         print(f"  would write  : {out}")

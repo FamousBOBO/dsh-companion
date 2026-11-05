@@ -107,7 +107,9 @@ test('能力表：只有协议已核实的 provider 是 connected', () => {
   for (const [id, record] of Object.entries(TTS_PROVIDERS)) {
     if (id === 'index-tts') {
       assert.equal(record.status, 'not-connected');
-      assert.match(record.reason, /没有官方 HTTP/);
+      assert.match(record.reason, /没有文档化的 HTTP/);
+      assert.match(record.license, /bilibili Model Use License Agreement/);
+      assert.match(record.evidence.sources.join(' '), /NOASSERTION/);
     } else {
       assert.equal(record.status, 'connected', `${id} 应为已接入`);
     }

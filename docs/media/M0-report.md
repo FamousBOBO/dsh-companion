@@ -9,7 +9,7 @@
   - **C 社区参考实现**：MIT 许可的第三方插件源码（交叉验证字段名，不作权威）。
   - **D 未核实**：没有拿到证据，或只有传闻。
 
-> 结论先行：**生图两条协议（OpenAI-compatible、NAI 官方/中转）可接入**；TTS 五个 provider 中 **Breeze TTS 2 / GPT-SoVITS / Fish Audio / Drama3 可接入**，**Index-TTS 官方只提供 Python API 与 WebUI，没有官方 HTTP 协议 → 标记「尚未接入」**（详见 §4.4）。
+> 结论先行：**生图两条协议（OpenAI-compatible、NAI 官方/中转）可接入**；TTS 五个 provider 中 **Breeze TTS 2 / GPT-SoVITS / Fish Audio / Drama3 可接入**，**Index-TTS 不接入**——不是「没查到」，而是**已核实**：上游许可是 bilibili Model Use License Agreement（非开源），且**没有文档化的 HTTP JSON 合成接口**（只有 Gradio WebUI / Triton 后端 / 内部模块），无契约可依、也不猜 Gradio 内部协议（详见 §3.5）。
 
 ---
 
@@ -181,17 +181,18 @@ companion-media
 | 版本 | 模型 `s1` / `s2-pro` / `s2.1-pro` / `s2.1-pro-free` / `drama-3`；免费档用 `s2.1-pro-free` | B |
 | 结论 | **可接入** | — |
 
-### 3.5 Index-TTS（结论：**尚未接入**）
+### 3.5 Index-TTS（结论：**尚未接入**，已核实，非「证据不足」）
 
 | 项 | 内容 | 证据 |
 |---|---|---|
-| 来源 | 官方仓库 | A — https://github.com/index-tts/index-tts （2026-11-05） |
-| 提供的接口 | ① Python API：`from indextts.infer_v2 import IndexTTS2`（README §Python API）；② Gradio WebUI：仓库根 `webui.py`；③ 部署 recipe：vLLM（`recipes.vllm.ai/IndexTeam/IndexTTS-2.5`）与 `backends/trt/serving/triton_server.py`（Triton） | A — 仓库根文件列表 + README |
-| 官方 HTTP JSON 协议 | **没有**。仓库里不存在面向用户的 `api.py` / FastAPI 服务（`indextts/s2mel/modules/openvoice/api.py` 是内部模块，不是对外服务） | A — 全仓 tree 检索 |
-| 音色查询 | 无（参考音频路径 + Python 调用） | A |
-| 许可 | **bilibili Model Use License Agreement**（非 OSI 标准许可，`LICENSE`/`LICENSE_ZH.txt`） | A — README §License |
-| 版本 | IndexTTS-2.5 / IndexTTS-2（README） | A |
-| 结论 | **尚未接入**。原因：没有可核实的官方 HTTP 协议，套件「只通过 API 调用远端服务」的前提不成立；Triton/vLLM recipe 需要用户自建服务且字段随后端变化，本轮拿不到权威字段表。**不写猜的 adapter**；UI 显示「尚未接入（缺官方 HTTP 协议）」，adapter 只返回带原因的 `MEDIA_PROVIDER_NOT_IMPLEMENTED`。启用条件：官方发布 HTTP API，或有可核实的 vLLM/Triton OpenAPI 规范 | — |
+| 上游仓库 | `index-tts/index-tts`，24,952 stars，默认分支 `main`，最近 push 2026-09-29 | **A** — https://api.github.com/repos/index-tts/index-tts （2026-11-05 抓取） |
+| 许可 | **bilibili Model Use License Agreement**（自定义**模型使用**协议，**非开源许可**）；GitHub API 返回 `license.spdx_id = "NOASSERTION"`、`license.name = "Other"` | **A** — `LICENSE`（10,554 B）首行即该协议名；`LICENSE_ZH.txt` 7,336 B 为中文版 — https://raw.githubusercontent.com/index-tts/index-tts/main/LICENSE |
+| 文件树 | 419 个条目（`truncated=false`） | **A** — https://api.github.com/repos/index-tts/index-tts/git/trees/main?recursive=1 |
+| HTTP 接口面 | **没有文档化的 HTTP JSON 合成接口**。可交互入口只有：`webui.py`（55,404 B，Gradio）、`backends/trt/serving/triton_server.py`（16,151 B，Triton 后端）、`indextts/s2mel/modules/openvoice/api.py`（7,116 B）与 `openvoice_app.py`（11,624 B，均为内部模块）。**不存在**可核实的「请求字段 / 响应格式 / 鉴权」契约；Gradio 的 `/api/predict` 一类调用属**未文档化、易变**的内部协议 | **A** — 同上文件树（逐个核对路径与字节数） |
+| 音色查询 | 无（参考音频由 Python 调用传入） | A |
+| 限流 | —（无服务契约可谈） | — |
+| 版本 | IndexTTS-2.5 / IndexTTS-2（README 命名） | A |
+| 结论 | **尚未接入**。两条理由都是**已核实**的：① **许可**层面——bilibili 模型使用协议不是可自由实现的协议规范，将来若要支持，必须先单独评估该协议是否允许这种用法（本仓库也**不随附模型权重**）；② **接口**层面——无文档化 HTTP 契约，按项目纪律不猜 Gradio 内部协议。因此 adapter 只返回 `MEDIA_PROVIDER_NOT_IMPLEMENTED`，UI 显示「尚未接入」。口径与 `THIRD-PARTY-NOTICES.md` 的「Index-TTS 为什么标尚未接入」一节一致 | — |
 
 ---
 
@@ -245,5 +246,5 @@ companion-media
 5. Fish Audio **Models 列表 API**（音色查询）页面两次抓取中断 → 未核实；`reference_id` 按不透明字符串处理。
 6. Fish Audio **限流数值**、免费档额度：未核实。
 7. OpenAI **具体限流额度**（RPM/TPM）：规范只给 429。
-8. Index-TTS 的 vLLM/Triton OpenAPI 字段：未核实（因此不接入）。
+8. Index-TTS：**许可与接口面已核实**（bilibili 模型使用协议、无文档化 HTTP 契约，见 §3.5）；仍未核实的是 vLLM/Triton 部署后各自的逐字段 OpenAPI（那取决于用户自建的服务，不是上游契约），因此本期不接入。
 9. 所有 provider 的**真实调用**：本轮**一次都没发起**（会产生费用）。全部为 mock/fake 测试与协议级核对。

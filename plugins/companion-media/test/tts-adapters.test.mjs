@@ -199,7 +199,7 @@ test('Index-TTS：五个适配器里唯一"尚未接入"，返回 PROVIDER_NOT_I
     const result = await service.synthesize({ text: 'x' });
     assert.equal(result.ok, false);
     assert.equal(result.error.code, Code.PROVIDER_NOT_IMPLEMENTED);
-    assert.match(result.error.message, /没有官方 HTTP/);
+    assert.match(result.error.message, /没有文档化的 HTTP/);
     assert.equal(calls.length, 0, '未接入的 provider 不得发请求');
     const state = service.status().states.tts.providers.find(item => item.id === 'index-tts');
     assert.equal(state.state, 'not-connected');

@@ -39,11 +39,10 @@ $PY sidecars/huawei-health-cn/test_protocol_contract.py # 有快照才跑快照�
 
 ## 1. 起
 
-> **先决条件**：本仓库不含上游实现（许可证，见 PROTOCOL-FREEZE §1.1）。先设
-> `HUAWEI_UPSTREAM_PKG=<你的>/custom_components/huawei_health` 与 `HUAWEI_SERVE_SCRIPT=<你的入口.py>`
-> （或放到 `python/serve.py`）。没设时启动器会 **exit 3** 并给出这两条路径，不会栈崩。
-> **BLE 心率通道不受影响。**
-
+> **前提只有一件事：账号授权。** 实现随包分发（MIT，见 PROTOCOL-FREEZE §1.1），不用自备。
+> 先跑一次 `python sidecars/huawei-health-cn/python/huawei_login.py url`（再 `exchange` 粘贴 code）。
+> 没授权时启动器会**直接停下**并打印登录命令（`exit 2`），不会让你等超时；想先起进程加
+> `-AllowUnconfigured` / `--allow-unconfigured`。**BLE 心率通道与此无关。**
 ```bash
 # Linux / macOS（无 PowerShell、无 WMI）
 sidecars/huawei-health-cn/start-sidecar.sh
