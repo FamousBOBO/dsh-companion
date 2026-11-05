@@ -17,7 +17,7 @@ function hostModuleRoot() {
     return fs.existsSync(path.join(explicit, '@deepseek-ai/dsh-tools/lib/index.js'))
       && fs.existsSync(path.join(explicit, '@deepseek-ai/dsh-llm/lib/index.js')) ? explicit : '';
   }
-  const builtin = 'C:\\Users\\bobo\\AppData\\Local\\Programs\\DeepSeek Harness\\resources\\app\\dsh\\node_modules';
+  const builtin = String(process.env.DSH_COMPANION_MODULE_ROOT ?? '').trim();
   return fs.existsSync(path.join(builtin, '@deepseek-ai/dsh-tools/lib/index.js')) ? builtin : '';
 }
 

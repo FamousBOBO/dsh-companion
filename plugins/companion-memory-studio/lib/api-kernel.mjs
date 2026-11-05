@@ -88,10 +88,14 @@ export function safePreview(value, maxChars = 140) {
   return truncate(text, maxChars);
 }
 
-/** 契约的隐私核心：avoid_unless_asked 的行默认不可见。 */
-export function isHiddenRecord(record) {
-  return String(record?.mentionPolicy ?? '') === 'avoid_unless_asked';
-}
+/**
+ * `mentionPolicy` 语义说明（曾有一个 `isHiddenRecord()` 在这里，已删除）：
+ *
+ * `avoid_unless_asked` 表达的是「**模型**不要主动提起这件事」，它约束模型发言，
+ * 不是「**主人**能不能在管理台看自己的记忆」。记忆库是用户本人的数据，管理台就是给
+ * 主人审核、修订自己数据的界面，所以视图层不按 `mentionPolicy` 抹正文（2026-10-31 决策）。
+ * 需要「看的时候也隐藏」的话，那是另一个独立的隐私模式，不要把它塞回这里。
+ */
 
 /** URL 解析容错：host 注入的 request.url 一定是绝对地址，测试里也允许相对路径。 */
 function searchParamsOf(request) {

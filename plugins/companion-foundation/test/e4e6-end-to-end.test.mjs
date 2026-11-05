@@ -24,8 +24,8 @@ function hostModuleRoot() {
     return fs.existsSync(path.join(explicit, '@deepseek-ai/dsh-tools/lib/index.js'))
       && fs.existsSync(path.join(explicit, '@deepseek-ai/dsh-llm/lib/index.js')) ? explicit : '';
   }
-  const builtin = 'C:\\Users\\bobo\\AppData\\Local\\Programs\\DeepSeek Harness\\resources\\app\\dsh\\node_modules';
-  return fs.existsSync(path.join(builtin, '@deepseek-ai/dsh-tools/lib/index.js')) ? builtin : '';
+  // No machine-specific fallback: without the env var these cases skip and say so.
+  return '';
 }
 
 const T0 = Date.UTC(2026, 10, 4, 3, 0, 0);

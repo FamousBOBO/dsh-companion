@@ -55,7 +55,7 @@ export function napcatVisibleRoots(): string[] {
   const raw = process.env.CHANNEL_QQ_NAPCAT_ROOTS ?? ''
   return raw
     // 逗号/分号/换行是主分隔符；冒号也支持（POSIX 习惯），但 **Windows 盘符**
-    // 的 `C:` 不能拆——`split(':')` 会把 `C:\Users\x` 切成两段（2026-10-21 测试踩到）。
+    // 的 `C:` 不能拆——`split(':')` 会把 `C:\data\x` 切成两段（2026-10-21 测试踩到）。
     .split(/[,;\n]+/)
     .flatMap((part) => part.split(/:(?![\\/])/))
     .map((s) => s.trim())
@@ -100,7 +100,7 @@ function underAnyRoot(abs: string, roots: string[]): boolean {
  * 为什么放在这一层：所有"把本地文件变成 OneBot 能用的东西"的调用都走
  * `napcatFileArg()`（8 处：私聊文件、群文件、语音、表情包、生图、点歌、链接封面）。
  * 在工作区边界只有 `policy.v2` 才管的时候（本 profile 没开），模型可以让
- * `qq_send_private_file(file="C:/Users/…/.ssh/id_rsa")` 把任意可读文件 base64 发出去。
+ * `qq_send_private_file(file="/home/user/.ssh/id_rsa")` 把任意可读文件 base64 发出去。
  * 这一层是**不依赖任何开关**的硬边界。
  *
  * 判据用**真实路径**（`realpath`）：`..` 逃逸、符号链接指到外面、绝对路径指到外面

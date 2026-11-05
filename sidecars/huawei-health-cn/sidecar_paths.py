@@ -51,6 +51,29 @@ def credentials_file() -> Path:
     return _env_path("HUAWEI_ACCOUNT_JSON") or (data_dir() / "credentials" / "huawei_account.json")
 
 
+def upstream_pkg() -> Path | None:
+    """The user's own upstream integration checkout (`custom_components/huawei_health`).
+
+    **This repository does not ship the upstream implementation** (its license is not ours to
+    redistribute — see PROTOCOL-FREEZE §1.1), so every code path that needs the real client asks
+    for it here. ``None`` means "not configured": callers must say so and stop, never guess.
+    """
+    return _env_path("HUAWEI_UPSTREAM_PKG")
+
+
+def serve_script() -> Path | None:
+    """The HTTP entry that answers ``GET /api/data``.
+
+    Resolution order: ``$HUAWEI_SERVE_SCRIPT`` → ``<sidecar>/python/serve.py`` (yours, if you drop
+    one in) → ``None``. The launchers refuse to start with a clear message when this is ``None``.
+    """
+    explicit = _env_path("HUAWEI_SERVE_SCRIPT")
+    if explicit:
+        return explicit
+    candidate = SIDECAR_ROOT / "python" / "serve.py"
+    return candidate if candidate.is_file() else None
+
+
 def pid_file(port: int) -> Path:
     """The only handle the stop scripts will ever act on (per port, so two instances cannot clash)."""
     name = "sidecar.pid" if int(port) == 8765 else f"sidecar-{int(port)}.pid"
@@ -60,4 +83,5 @@ def pid_file(port: int) -> Path:
 __all__ = [
     "HERE", "SIDECAR_ROOT", "SUITE_ROOT",
     "data_dir", "logs_dir", "snapshots_dir", "credentials_file", "pid_file",
+    "upstream_pkg", "serve_script",
 ]

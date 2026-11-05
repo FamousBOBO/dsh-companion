@@ -6,8 +6,9 @@
  *
  * 本文件只做三件事：**从宿主取事实**（平台连没连、房间有没有回合在跑）、**把四件东西
  * 互相接上**（store / sender / worker / service）、**注册诊断资源**。判定在 `gate.ts`、
- * 起草在 `model.ts`、发送在 `sender.ts`、节拍在 `worker.ts`、账本在 `store.ts`+`ledger.ts`、
- * 服务合同在 `service.ts`。
+ * 起草在 `model.ts`、发送在 `sender.ts`（合同类型在 `sender-contract.ts`）、节拍在
+ * `worker.ts`、账本在 `store.ts`+`ledger.ts`、服务合同在 `service.ts`、**取数与回调
+ * 工厂在 `wiring-facts.ts`**。
  *
  * 默认什么都不做：`enabled=false`、`dryRun=true`、`allowExternalSend=false`（配置默认值）。
  * 装上去之后账本可以记账、诊断可以看，但一条消息都不会真的发出去，也不会调用模型。
@@ -15,32 +16,28 @@
 
 import { createAdaptiveDecisionPort } from './adaptive-host.js'
 import { registerAdaptiveTools } from './adaptive-tools.js'
-import { hostname } from 'node:os'
-import * as path from 'node:path'
 import type { ContactConfig } from '../../config/sections/contact.js'
-import { splitRoom } from '../../core/room.js'
-import { parseEventBook } from '../../core/schedule/event-book.js'
-import { localDayKey } from '../../core/schedule/stamp.js'
 import { systemClock, systemRandom, type Clock } from '../../ports/clock.js'
 import { createHostDraftPort } from './draft-host.js'
 import { createHostDrafts } from './draft-wiring.js'
-import { dayKeyFor, proposeIdleFollowUp } from './followup.js'
-import { authorizedSleepText, proposeSleepSummary } from './sleep-summary.js'
-import { authorizeOutbound, evaluateGate } from './gate.js'
-import { ContactSender, type ContactIdentity, type ContactTransport } from './sender.js'
+import { authorizedSleepText } from './sleep-summary.js'
+import { ContactSender } from './sender.js'
 import { createContactService } from './service.js'
 import type { ContactService } from './types.js'
 import { buildStore, identityOf } from './assembly.js'
 import { PARALLEL_WARNING, parallelProactiveRisk } from './parallel-warning.js'
 import { sharePortFor } from './share-port.js'
 import { ContactStore } from './store.js'
-import { isRecord } from './ledger.js'
-import { ONEBOT_REJECTION } from '../../onebot.js'
 import { ContactWorker, type ContactRoomFacts } from './worker.js'
-import type { ContactGuardVerdict, ContactLiveFacts, ContactLiveSnapshot } from './sender.js'
-import type { ContactDelivery, ContactRuntimeFacts } from './types.js'
-import type { ContactLedger } from './ledger.js'
-import { storeOptions, type ServiceBag, type SubHost, type SubPlugin } from '../plugin-kit.js'
+import { storeOptions, type SubHost, type SubPlugin } from '../plugin-kit.js'
+import {
+  executionSnapshotOf,
+  roomFactsOf,
+  runtimeOf,
+  sleepEnqueueAllowedOf,
+  sourceCandidatesOf,
+  transportOf,
+} from './wiring-facts.js'
 
 // 日键与"空闲跟进"候选来源搬到了 `followup.ts`（业务规则，不是装配）；这里再导出一次，既有 import 点不必改。
 export { dayKeyFor, proposeIdleFollowUp } from './followup.js'
@@ -49,165 +46,6 @@ export { dayKeyFor, proposeIdleFollowUp } from './followup.js'
 const workers = new WeakMap<SubHost, ContactWorker>()
 /** host → store（卸载时还要用一次：释放租约、启动告警写诊断）。 */
 const stores = new WeakMap<SubHost, ContactStore>()
-
-/** 按配置时区算"今天"（空串 = 跟随宿主 TZ；时区名不认识就退回宿主 TZ，不抛）。 */
-
-/** 房间键是否自洽（`group-<号>` / `dm-<号>`，两种历史前缀都认）。 */
-function roomBound(room: string): boolean {
-  return splitRoom(room) !== null
-}
-
-/**
- * OneBot 明确拒绝（`retcode !== 0` / `status: 'failed'`）就抛出去。
- *
- * 为什么不能用返回值表达：`{ message_id }` 与 `{ retcode: 100 }` 在 sender 眼里都是
- * "一个对象"，前者是 confirmed、后者是 failed，而**只有后者值得重试**。抛错是唯一
- * 能让 `classifySendError` 看见它的方式（判据在那边按 `code`/`retcode` 认）。
- */
-function rejectIfRefused(result: unknown): void {
-  if (!isRecord(result)) return
-  const retcode = typeof result.retcode === 'number' ? result.retcode : 0
-  const status = typeof result.status === 'string' ? result.status : ''
-  // R5-2: only status:'failed' is a provable refusal. A bare nonzero retcode or
-  // status:'async' is ambiguous and must classify as unknown (no retry).
-  if (status === '' && retcode === 0) return
-  if (status === 'ok' && retcode === 0) return
-  const error = new Error(`平台回执不明确或拒绝（retcode=${String(retcode)} status=${status === '' ? '-' : status}）`)
-  Object.assign(error, { retcode: retcode === 0 ? -1 : retcode, status: status === '' ? 'failed' : status })
-  if (status === 'failed') {
-    Object.defineProperty(error, ONEBOT_REJECTION, { value: true, enumerable: false })
-  }
-  throw error
-}
-
-/** 一个房间的现取事实：**每次都读一遍**，绝不缓存（缓存等于把"复核"变回快照）。 */
-function roomFactsOf(host: SubHost): (room: string) => ContactRoomFacts {
-  return (room: string) => {
-    const parts = host.get('platform')
-    const record = host.get('inbound')?.registry.get(room)
-    return {
-      connected: parts?.platform.isConnected() ?? false,
-      roomBound: roomBound(room),
-      turnRunning: record?.tracker.running() ?? false,
-      // 房间最后一条事件的时间（消息事件，秒 → 毫秒）；会话还没物化就是 null。
-      lastUserMessageAt: record === undefined ? null : record.lastEvent.time * 1000,
-      // 第二个游标：秒级时间戳分辨不出"同一秒里又来了一条"，未成包行数可以（Codex P1/R5）。
-      // 判空是必须的：假件/老记录可能没有 `queue` 字段，缺了就是"看不到"，不是 0。
-      queueDepth: record === undefined ? null : (record.queue?.length ?? null),
-    }
-  }
-}
-
-/**
- * 运行时事实（门控与发送前复核共用一套；同源才不会一边说能发、一边说不能）。
- *
- * 这里**不再**有"提醒通道开着吗"这类事实：第三轮 Codex 审阅判定"按配置布尔接管提醒"
- * 无法保证互斥（runner 不读 `reminders.enabled`），用户已决定**取消接管**，
- * 到期提醒一律归 `features/reminders/runner.ts`（见 `gate.ts` 的 `reminders-owns`）。
- */
-function runtimeOf(
-  store: ContactStore,
-  roomFacts: (room: string) => ContactRoomFacts,
-  room: string,
-): ContactRuntimeFacts {
-  const facts = roomFacts(room)
-  return {
-    connected: facts.connected,
-    roomBound: facts.roomBound,
-    turnRunningByRoom: { [room]: facts.turnRunning },
-    toolRunning: false,
-    lastUserMessageAtByRoom: { [room]: facts.lastUserMessageAt },
-    queueDepthByRoom: { [room]: facts.queueDepth ?? null },
-    deliveredDedupeKeys: store.deliveredDedupeKeys(),
-  }
-}
-
-/**
- * 出站通道的窄面（惰性、现取）。
- *
- * 为什么单独一个函数：`sendTo` 这里有一件**必须**做的事——OneBot 的明确拒绝（`retcode
- * !== 0` / `status: 'failed'`）要当**错误**抛出去。它如果照常返回，sender 眼里就是
- * "成功但没 message_id" → 会被记成 `submitted`（等于把平台拒绝谎报成已提交，而且永远
- * 不重试）。这段判断和"取不取得到平台"混在一起读，很容易漏掉。
- */
-function transportOf(host: SubHost): () => ContactTransport | undefined {
-  return () => {
-    const parts = host.get('platform')
-    if (parts === undefined) return undefined
-    return {
-      connected: parts.platform.isConnected(),
-      out: { push: (task) => parts.out.push(task) },
-      api: {
-        sendTo: async (isGroup, target, message) => {
-          const result = await parts.api.sendTo(isGroup, target, message)
-          rejectIfRefused(result)
-          return result
-        },
-      },
-    }
-  }
-}
-
-/**
- * F2：执行点的**持久化**所有权校验。
- *
- * 快速判据 `leaseEpoch` 只读内存，租约过期/被别的进程接管时它看不出来；所以发送前一刻
- * 还要问一次盘：`assertLease` 读锁文件核对 hostId/pid/epoch/有效期，再把候选与投递行
- * 从**盘上快照**里重判一遍（内存里的"还活着"不算数）。
- */
-/**
- * F41：**一次读盘 + 最后断言租约**的执行点快照。
- *
- * 顺序是这个函数的全部意义（Codex 实测的洞就是顺序）：
- *   1. `snapshot()` 读盘（候选、投递行、计数、去重键都出自这一次读）；
- *   2. 用这份快照判"盘上还许不许发"（`verdict`）；
- *   3. **最后**才 `assertLease(epoch)`——它是这个函数里的**最后一个 await**。
- *
- * 反过来（先断言再读盘）会出现：断言通过 → 读盘期间租约到期/被接管 → 拿着"断言通过"
- * 的旧结论放行。返回 `undefined` 表示"读得到盘但所有权已经不在我手里"。
- */
-function executionSnapshotOf(
-  store: ContactStore,
-  roomFacts: (room: string) => ContactRoomFacts,
-  log: (line: string) => void,
-) {
-  return async (delivery: ContactDelivery): Promise<ContactLiveSnapshot | undefined> => {
-    const snapshot = await store.snapshot()
-    const facts: ContactLiveFacts = {
-      candidate: snapshot.candidates[delivery.candidateId],
-      counters: snapshot.counters,
-      deliveredDedupeKeys: Object.values(snapshot.outbox)
-        .filter((row) => row.state === 'submitted' || row.state === 'confirmed' || row.state === 'unknown')
-        .map((row) => row.dedupeKey),
-      runtime: runtimeOf(store, roomFacts, delivery.target.room),
-    }
-    const verdict = verdictFromDisk(snapshot, delivery)
-    // 最后一个 await：租约还是我的吗（读锁文件 + 比 hostId/pid/epoch + 查有效期）。
-    if (!(await store.assertLease(delivery.epoch))) {
-      log(`contact: 投递 ${delivery.id} 的租约已失效（epoch=${String(delivery.epoch)}），不发`)
-      return { verdict: { state: 'deferred', detail: 'lease-lost' }, facts }
-    }
-    return { verdict, facts }
-  }
-}
-
-/** 盘上状态判定（候选是否还活着、投递行是否还是**我领取的那一条**）。 */
-function verdictFromDisk(snapshot: ContactLedger, delivery: ContactDelivery): ContactGuardVerdict | null {
-  const candidate = snapshot.candidates[delivery.candidateId]
-  if (candidate === undefined) return { state: 'cancelled', detail: 'candidate:missing' }
-  if (candidate.state !== 'pending' && candidate.state !== 'deferred') {
-    return { state: 'cancelled', detail: `candidate:${candidate.state}` }
-  }
-  // 只判"存在且 running"不够：盘上那行可能已经被别人重领（epoch 变了）或换了主人
-  // （leaseOwner 变了）。三项一起比才对得上"我领取的那一条"。
-  const row = snapshot.outbox[delivery.id]
-  if (row === undefined) return { state: 'cancelled', detail: 'delivery:missing' }
-  if (row.id !== delivery.id) return { state: 'cancelled', detail: 'delivery:id-mismatch' }
-  if (row.state !== 'running') return { state: 'deferred', detail: `delivery:${row.state}` }
-  if (row.epoch !== delivery.epoch) return { state: 'deferred', detail: 'delivery:epoch-mismatch' }
-  if (row.leaseOwner !== delivery.leaseOwner) return { state: 'deferred', detail: 'delivery:owner-mismatch' }
-  return null
-}
 
 function buildSender(
   host: SubHost,
@@ -333,28 +171,10 @@ export const contactPlugin: SubPlugin = {
     const store = buildStore(host, clock, log)
     const sender = buildSender(host, store, roomFacts, clock, log)
     const serviceRef: { current: ContactService | null } = { current: null }
-    const worker = buildWorker(host, store, sender, roomFacts, clock, log, async () => {
-      if (serviceRef.current === null) return
-      const now = clock.now()
-      for (const candidate of Object.values(store.state.candidates)) {
-        if (candidate.source !== 'health-sleep' || !['pending', 'deferred'].includes(candidate.state)) continue
-        if (!authorizedSleepText(host, candidate, now)) {
-          await serviceRef.current.cancel(candidate.id, 'health:authorization-or-source-changed')
-        }
-      }
-      await proposeSleepSummary(host, serviceRef.current, now)
-      await proposeIdleFollowUp(host, serviceRef.current, clock.now())
-    })
+    const worker = buildWorker(host, store, sender, roomFacts, clock, log,
+      sourceCandidatesOf(host, store, serviceRef, clock))
     const service = createContactService({
-      sleepEnqueueAllowed(candidate, counters) {
-        const now = clock.now()
-        if (!authorizeOutbound(host.config.contact).allowed || !authorizedSleepText(host, candidate, now)) return false
-        return evaluateGate({
-          candidate, now, counters, config: host.config.contact,
-          runtime: runtimeOf(store, roomFacts, candidate.target.room),
-          deliveryDedupeKeys: store.deliveredDedupeKeys(),
-        }).verdict === 'send'
-      },
+      sleepEnqueueAllowed: sleepEnqueueAllowedOf(host, store, roomFacts, clock),
       store,
       worker,
       clock,

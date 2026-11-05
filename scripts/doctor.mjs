@@ -142,7 +142,10 @@ export function runDoctor(argv = process.argv.slice(2)) {
 
   const npm = npmVersion();
   if (!npm) {
-    add({ id: 'npm', title: 'npm', status: 'info', detail: '不是通过 npm 运行，版本未知（npm run doctor 会给出）' });
+    add({
+      id: 'npm', title: 'npm', status: 'info',
+      detail: '这次是直接跑 node，npm 版本未知；改用 npm run doctor 会一并检查 npm 版本（要求 >= 10）',
+    });
   } else {
     const npmOk = compareVersions(npm, MIN_NPM) >= 0;
     add({ id: 'npm', title: 'npm', status: npmOk ? 'ok' : 'warn', detail: npm });

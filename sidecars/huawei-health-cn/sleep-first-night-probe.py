@@ -139,12 +139,39 @@ def probe_api(base_url: str, days: int = 7, timeout: float = TIMEOUT_S) -> dict[
 
 
 # ── step 2: the one cloud call ─────────────────────────────────────────────
-def probe_cloud(days: int = 7, timeout: int = 30) -> dict[str, Any]:
-    """One ``health_stat(type=9)`` call through the frozen client copy."""
-    sys.path.insert(0, str(PYTHON_DIR))
-    import huawei_login  # noqa: PLC0415 - lazy: importing it is also the frozen-copy smoke test
+class UpstreamMissing(RuntimeError):
+    """The upstream integration is not available — say so, do not traceback."""
 
-    client, const = huawei_login.CLIENT, huawei_login.CONST
+
+def _read_token_pair(store: Path):
+    """Load the token pair from the credential file and hand it to the upstream client.
+
+    The upstream ``Tokens`` class is the only accepted shape (the client expects attributes), so the
+    file is described here in the same JSON shape the upstream login flow writes.
+    """
+    raw = json.loads(store.read_text(encoding="utf-8"))
+    return _load_upstream()[1].Tokens(**raw)
+
+
+def _load_upstream():
+    """Import the **user's** upstream client/const (this repo ships none — see PROTOCOL-FREEZE §1.1)."""
+    package_dir = sidecar_paths.upstream_pkg()
+    if package_dir is None or not (package_dir / "client.py").is_file():
+        raise UpstreamMissing(
+            "找不到上游实现（本仓库因许可证原因不包含它）。请自备一份上游检出，并设置 "
+            "HUAWEI_UPSTREAM_PKG=<你的>/custom_components/huawei_health；"
+            "只有 --dry-run 可以不需要它。")
+    sys.path.insert(0, str(package_dir.parent))
+    sys.path.insert(0, str(package_dir))
+    import client  # noqa: PLC0415 - deliberately lazy
+    import const  # noqa: PLC0415 - deliberately lazy
+    return package_dir, client, const
+
+
+def probe_cloud(days: int = 7, timeout: int = 30) -> dict[str, Any]:
+    """One ``health_stat(type=9)`` call through the user's upstream client."""
+    package_dir, client, const = _load_upstream()
+    store = sidecar_paths.credentials_file()
     today = date.today()
     start_day = int((today - timedelta(days=max(days, 1) - 1)).strftime("%Y%m%d"))
     end_day = int(today.strftime("%Y%m%d"))
@@ -154,19 +181,19 @@ def probe_cloud(days: int = 7, timeout: int = 30) -> dict[str, Any]:
         "types": [9],
         "window": {"startDay": start_day, "endDay": end_day, "days": max(days, 1)},
         "cloudCalls": 1,
-        "store": str(huawei_login.STORE),
+        "store": str(store),
     }
-    if not Path(huawei_login.STORE).is_file():
+    if not Path(store).is_file():
         return {**result, "ok": False, "error": "credential store missing (never printed)"}
 
-    tokens = huawei_login.load_tokens()
+    tokens = _read_token_pair(store)
     api = client.HuaweiHealthClient(tokens, timeout=timeout)
     result["dataHost"] = api.host
     try:
         answer = api.health_stat(start_day, end_day, types=[9])
     except client.HuaweiAuthError:
         return {**result, "ok": False,
-                "error": "HuaweiAuthError: the pair must be renewed (huawei_login.py url/exchange)"}
+                "error": "HuaweiAuthError: the pair must be renewed (re-run your upstream login flow)"}
     except client.HuaweiConnectionError as err:
         return {**result, "ok": False, "error": f"connection: {err}"}
     except client.HuaweiError as err:
@@ -241,7 +268,7 @@ def build_document(base_url: str, days: int, api_answer: dict[str, Any],
         "howToRead": {
             "sleep_present": "首夜已到云：S0–S2 可以开始对阶段/时长做验收",
             "awaiting_first_night": "首夜未到云：睡眠能力保持 awaiting_first_night，不算故障",
-            "blocked_auth": "令牌需要重新登录（huawei_login.py url / exchange）",
+            "blocked_auth": "令牌需要重新登录（用你自己的上游登录流程重新取一对）",
             "probe_incomplete": "至少一路失败：先修链路再谈睡眠",
         },
     }
@@ -260,23 +287,28 @@ def main(argv: list[str] | None = None) -> int:
 
     out = Path(args.out)
     if args.dry_run:
-        sys.path.insert(0, str(PYTHON_DIR))
-        import huawei_login  # noqa: PLC0415
-
-        store = Path(huawei_login.STORE)
+        store = sidecar_paths.credentials_file()
+        package_dir = sidecar_paths.upstream_pkg()
         print("dry run - nothing is sent")
         print(f"  sidecar      : {args.base_url}/api/data?days={args.days}"
               f" (loopback ok: {_is_loopback(args.base_url)})")
-        print(f"  frozen pkg   : {huawei_login.PACKAGE_DIR}")
-        print(f"  client copy  : {hasattr(huawei_login.CLIENT, 'HuaweiHealthClient')}")
+        print(f"  upstream pkg : {package_dir or '(未配置 HUAWEI_UPSTREAM_PKG — 本仓库不含上游实现)'}")
+        print(f"  client copy  : "
+              f"{'present' if package_dir and (package_dir / 'client.py').is_file() else 'MISSING'}")
         print(f"  credential   : {store} (exists: {store.is_file()}, contents never read here)")
         print(f"  planned      : 1 HTTP GET + 1 cloud call health_stat(type=9)")
         print(f"  would write  : {out}")
         print(f"  sleep family : {SLEEP_FAMILY} / block {SLEEP_BLOCK}")
         return 0
 
-    api_answer = probe_api(args.base_url, args.days, args.timeout)
-    cloud_answer = probe_cloud(args.days, timeout=int(args.timeout) + 5)
+    try:
+        api_answer = probe_api(args.base_url, args.days, args.timeout)
+        cloud_answer = probe_cloud(args.days, timeout=int(args.timeout) + 5)
+    except UpstreamMissing as err:
+        # 明确可操作的中文提示 + 非零退出码：不抛栈、不假装成功。
+        print(f"REFUSED: {err}", file=sys.stderr)
+        print("  （只想检查路径与计划：加 --dry-run，它不需要上游实现）", file=sys.stderr)
+        return 5
     document = redact.redact_payload(build_document(args.base_url, args.days, api_answer,
                                                     cloud_answer))
     document["finishedAt"] = datetime.now().astimezone().isoformat(timespec="seconds")

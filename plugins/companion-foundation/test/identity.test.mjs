@@ -9,17 +9,18 @@
  *   4. 未知会话不冒充主人：非法/非本人 identity 一律 fail closed，
  *      已经把会话判给别人的记录不会被改判成主人。
  *
- * 临时 root 一律建在 `<repo>/logs/test-runs/identity-*`（与 store/memory 测试同一约定），
- * 每个用例结束即删；不触碰真实 `home/`。
+ * 临时 root 一律建在系统临时目录（`<tmp>/dsh-companion-identity-tests/identity-*`），
+ * 每个用例结束即删；不触碰真实 `home/`，也不在仓库里留文件。
  */
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
 const pluginRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
-const testRoot = path.resolve(pluginRoot, '../../logs/test-runs');
+const testRoot = path.join(os.tmpdir(), 'dsh-companion-identity-tests');
 fs.mkdirSync(testRoot, { recursive: true });
 
 const { createIdentity } = await import('../identity.mjs');
@@ -185,4 +186,48 @@ test('未知会话不冒充主人：身份不合法 / 桌面用户不是主人 /
   fs.writeFileSync(file, `${JSON.stringify(changed, null, 2)}\n`, 'utf8');
   assert.throws(() => identity.owner(), /Local owner changed/);
   assert.throws(() => identity.resolve('dm-1'), /Local owner changed/);
+});
+
+test('首次运行：没有 identity.json 时按默认本地主人建档，不把「没配置」当错误', t => {
+  const root = fs.mkdtempSync(path.join(testRoot, 'identity-first-run-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const file = path.join(root, 'home/companion/identity.json');
+  assert.equal(fs.existsSync(file), false, '前置条件：目录里确实没有 identity.json');
+
+  // 构造阶段就必须活下来：profile 可能先挂 Studio，再有人写身份文件。
+  const identity = createIdentity(root, { onProvision: () => {} });
+  const owner = identity.owner();
+  assert.equal(fs.existsSync(file), true, '首次读取后文件必须存在');
+  const written = readJson(file);
+  assert.equal(written.schemaVersion, 1);
+  assert.equal(written.persona, 'bot');
+  assert.equal(written.owner.id, owner.id);
+  assert.equal(written.desktop.mode, 'local-owner');
+  assert.equal(written.desktop.userId, owner.id);
+  assert.deepEqual(written.sessions, {});
+  assert.equal(written.provisionedBy, 'companion-foundation/identity');
+  assert.ok(Number.isFinite(Date.parse(written.provisionedAt)));
+
+  // 幂等：用户改过之后，再构造一次不得覆盖。
+  written.owner.displayName = '我自己改的名字';
+  fs.writeFileSync(file, `${JSON.stringify(written, null, 2)}\n`, 'utf8');
+  const again = createIdentity(root, { onProvision: () => {} });
+  assert.equal(again.owner().displayName, '我自己改的名字');
+  assert.equal(again.owner().id, owner.id);
+});
+
+test('首次运行：可用显式 owner 建档；关掉自动建档时仍然 fail closed 且不写盘', t => {
+  const root = fs.mkdtempSync(path.join(testRoot, 'identity-first-run-owner-'));
+  t.after(() => fs.rmSync(root, { recursive: true, force: true }));
+  const identity = createIdentity(root, {
+    owner: { id: 'owner-from-setup', displayName: '设置页主人', platform: 'qq' },
+    onProvision: () => {},
+  });
+  assert.equal(identity.owner().id, 'owner-from-setup');
+  assert.equal(identity.resolve('dm-1').userId, 'owner-from-setup');
+
+  const bare = fs.mkdtempSync(path.join(testRoot, 'identity-no-provision-'));
+  t.after(() => fs.rmSync(bare, { recursive: true, force: true }));
+  assert.throws(() => createIdentity(bare, { provision: false }), /not configured/);
+  assert.equal(fs.existsSync(path.join(bare, 'home/companion/identity.json')), false, '关掉建档就不许写盘');
 });

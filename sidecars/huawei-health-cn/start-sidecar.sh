@@ -22,7 +22,8 @@ set -eu
 HERE=$(cd "$(dirname "$0")" && pwd)
 SIDECAR_ROOT="$HERE"
 SUITE_ROOT=$(cd "$HERE/../.." && pwd)
-DASHBOARD="$HERE/python/huawei_dashboard.py"
+# 服务端实现不由本仓库提供（许可证原因）：用户自备，或用 $HUAWEI_SERVE_SCRIPT 指定。
+DASHBOARD="${HUAWEI_SERVE_SCRIPT:-$HERE/python/serve.py}"
 
 PORT=8765
 LOG_DIR="${HUAWEI_LOG_DIR:-}"
@@ -57,7 +58,25 @@ say() { printf '  %s\n' "$1"; }
 
 echo "huawei-health-cn sidecar (posix)"
 
-[ -f "$DASHBOARD" ] || { echo "frozen dashboard copy missing: $DASHBOARD" >&2; exit 1; }
+if [ ! -f "$DASHBOARD" ]; then
+    cat >&2 <<'MSG'
+REFUSED: 找不到健康数据服务端实现。
+
+本仓库**不包含**上游实现（华为健康读取服务端）：上游许可证不归本项目分发，
+详见 sidecars/huawei-health-cn/PROTOCOL-FREEZE.md §1.1。
+
+两种用法：
+  1) 自备上游检出并指定服务端入口：
+       export HUAWEI_UPSTREAM_PKG=<你的>/custom_components/huawei_health
+       export HUAWEI_SERVE_SCRIPT=<你的 serve 入口.py>     # 需实现 GET /api/data?days=N
+       ./start-sidecar.sh
+  2) 也可以把自己的入口放到 sidecars/huawei-health-cn/python/serve.py（默认查找位置）。
+
+注意：**BLE 心率通道（sidecars/ble-heart-rate）不受影响**，它自成一体、可独立离线验收。
+MSG
+    exit 3
+fi
+MSG_MARK=1
 mkdir -p "$LOG_DIR"
 
 # ── interpreter ───────────────────────────────────────────────────────────────────────────────
@@ -70,7 +89,23 @@ if [ -z "$PYTHON_BIN" ]; then
     echo "python not found. Set PYTHON=/path/to/python3 (3.11+). This sidecar needs no third-party packages." >&2
     exit 1
 fi
-say "python      : $PYTHON_BIN ($("$PYTHON_BIN" --version 2>&1))"
+# A "python3" that cannot even print its version is a stub (Microsoft Store alias, broken shim…).
+# Say that plainly instead of dying inside a heredoc with a cryptic exit code.
+PY_CHECK=$("$PYTHON_BIN" -c 'import sys; print("%d.%d" % sys.version_info[:2])' 2>&1) || {
+    echo "interpreter unusable: $PYTHON_BIN ($PY_CHECK)" >&2
+    echo "point PYTHON at a real Python 3.11+ interpreter and retry." >&2
+    exit 1
+}
+case "$PY_CHECK" in
+    3.*) ;;
+    *) echo "需要 Python 3.11+，当前是 $PY_CHECK（$PYTHON_BIN）" >&2; exit 1 ;;
+esac
+say "python      : $PYTHON_BIN ($PY_CHECK)"
+if [ -n "${HUAWEI_UPSTREAM_PKG:-}" ]; then
+    say "upstream    : $HUAWEI_UPSTREAM_PKG"
+else
+    echo "  ↑ HUAWEI_UPSTREAM_PKG 未设置：如果这个 serve 入口需要上游 client/const，它会自己报错。" >&2
+fi
 
 # ── is something already listening? ───────────────────────────────────────────────────────────
 LISTENER=$("$PYTHON_BIN" - "$PORT" <<'PY'
@@ -99,9 +134,16 @@ if [ "$LISTENER" = "busy" ]; then
 fi
 
 # ── launch detached ───────────────────────────────────────────────────────────────────────────
+say "serve       : $DASHBOARD"
 say "bind        : 127.0.0.1:$PORT (loopback only)"
 say "credential  : $CREDENTIAL — read by the sidecar process, never by this script"
 say "logs        : $LOG_DIR"
+if [ ! -f "$CREDENTIAL" ]; then
+    # 「未配置」不是一个错误页：sidecar 能起来，但它拿不到任何数据。先说清楚，
+    # 免得用户看到 30 秒超时去猜是不是端口/蓝牙的问题。
+    echo "  ↑ 账号未配置：这个文件还不存在。sidecar 会启动但读不到数据（接口会回落成空结果）。" >&2
+    echo "    先登录一次：$PYTHON_BIN $SIDECAR_ROOT/python/huawei_login.py url" >&2
+fi
 
 cd "$HERE/python"
 if command -v setsid >/dev/null 2>&1; then
@@ -118,6 +160,9 @@ say "launched    : pid $WRAPPER_PID (detached, logs redirected)"
 LISTENER_PID=$("$PYTHON_BIN" - "$PORT" "$WRAPPER_PID" "$WAIT_SECONDS" <<'PY'
 import os, socket, sys, time
 port, wrapper, wait = int(sys.argv[1]), int(sys.argv[2]), float(sys.argv[3])
+# `$!` is only a real OS pid on a native shell. Under MSYS/Cygwin/Windows it is a shell-local id,
+# so `os.kill` means nothing there — on those we simply poll until the deadline.
+native = not (sys.platform.startswith("win") or sys.platform.startswith("msys") or sys.platform.startswith("cygwin"))
 deadline = time.time() + wait
 while time.time() < deadline:
     s = socket.socket()
@@ -125,10 +170,11 @@ while time.time() < deadline:
     try:
         s.connect(("127.0.0.1", port)); print(wrapper); break
     except OSError:
-        try:
-            os.kill(wrapper, 0)
-        except OSError:
-            print(0); break
+        if native:
+            try:
+                os.kill(wrapper, 0)
+            except OSError:
+                print(0); break
     finally:
         s.close()
     time.sleep(0.4)

@@ -198,42 +198,77 @@ async function tick(host: SubHost, seen: Set<string>): Promise<void> {
       await handleHungTurn(host, registry, room, record.tracker.runningSince(), config)
       continue
     }
-    let size
-    try {
-      size = await probe.measure(`qq-${room}`)
-    } catch (error) {
-      if (!seen.has(`__err-${room}`)) {
-        seen.add(`__err-${room}`)
-        host.log(`session-reset: 测量 ${room} 失败：${(error as Error).message}`)
-      }
-      continue
-    }
+    const size = await measureRoom(host, room, probe, seen)
     if (size === null) continue
-    void recordSize(host, room, size)
-    if (!seen.has(room)) {
-      seen.add(room)
-      host.log(`session-reset: 探测 ${room} = ${size.tokens}/${size.contextWindow ?? '?'} tokens（${size.provider}/${size.model}）`)
-    }
-    const ratio = strict.has(room) ? config.strictThresholdRatio : config.thresholdRatio
-    const expired = sessionExpired(state[room] ?? null, Date.now(), config.maxAgeDays)
-    // 本地补丁 COMPANION-QQ-PATCH-12（下半）：**换血冷却**。
-    // 2026-11-04 02:26 / 02:31 连续两次换血（token 估算都是 231945，来自宿主里还没清掉的
-    // 旧会话记录），第二次把第一次刚重建的空目录又搬走，于是每轮都 ENOENT。换血之后
-    // 半小时内不再对同一个房间动手：宁可多留一会儿旧上下文，也不要把会话目录反复搬空。
-    const RESET_COOLDOWN_MS = 30 * 60_000
-    const recentlyReset = typeof state[room] === 'number' && Date.now() - state[room] < RESET_COOLDOWN_MS
-    if (!expired && (recentlyReset || !shouldResetSession(size.tokens, size.contextWindow, ratio))) continue
-    if (recentlyReset) host.log(`session-reset: ${room} 刚换过血（<30 分钟），跳过重复换血`)
-    try {
-      await resetRoom(host, registry, room, size, config)
-      state[room] = Date.now()
-      stateDirty = true
-      if (expired) host.log(`session-reset: ${room} 到期（>${config.maxAgeDays} 天），定期换血`)
-    } catch (error) {
-      host.log(`session-reset: 处理 ${room} 失败：${(error as Error).message}`)
-    }
+    if (await decideAndReset(host, registry, room, size, config, strict, state)) stateDirty = true
   }
   if (stateDirty) await writeResetState(host, state)
+}
+
+/**
+ * 量一个房间的体积（纯搬移自 `tick` 的循环体）：测不到就记一次日志并返回 `null`。
+ *
+ * 失败只记一次（同一个房间的同类失败不刷屏），然后由调用方 `continue`——一个房间测不到
+ * 不该影响其它房间。
+ */
+async function measureRoom(
+  host: SubHost,
+  room: string,
+  probe: { measure(sessionId: string): Promise<SessionSize | null> },
+  seen: Set<string>,
+): Promise<SessionSize | null> {
+  let size: SessionSize | null
+  try {
+    size = await probe.measure(`qq-${room}`)
+  } catch (error) {
+    if (!seen.has(`__err-${room}`)) {
+      seen.add(`__err-${room}`)
+      host.log(`session-reset: 测量 ${room} 失败：${(error as Error).message}`)
+    }
+    return null
+  }
+  if (size === null) return null
+  void recordSize(host, room, size)
+  if (!seen.has(room)) {
+    seen.add(room)
+    host.log(`session-reset: 探测 ${room} = ${size.tokens}/${size.contextWindow ?? '?'} tokens（${size.provider}/${size.model}）`)
+  }
+  return size
+}
+
+/**
+ * 判该不该换血、该换就换（纯搬移自 `tick` 的循环体）。
+ *
+ * 返回 `true` 表示本房间的换血时刻写进了 `state`（调用方据此决定要不要落盘）。
+ */
+async function decideAndReset(
+  host: SubHost,
+  registry: ConversationRegistry,
+  room: string,
+  size: SessionSize,
+  config: SessionResetConfig,
+  strict: ReadonlySet<string>,
+  state: Record<string, number>,
+): Promise<boolean> {
+  const ratio = strict.has(room) ? config.strictThresholdRatio : config.thresholdRatio
+  const expired = sessionExpired(state[room] ?? null, Date.now(), config.maxAgeDays)
+  // 本地补丁 COMPANION-QQ-PATCH-12（下半）：**换血冷却**。
+  // 2026-11-04 02:26 / 02:31 连续两次换血（token 估算都是 231945，来自宿主里还没清掉的
+  // 旧会话记录），第二次把第一次刚重建的空目录又搬走，于是每轮都 ENOENT。换血之后
+  // 半小时内不再对同一个房间动手：宁可多留一会儿旧上下文，也不要把会话目录反复搬空。
+  const RESET_COOLDOWN_MS = 30 * 60_000
+  const recentlyReset = typeof state[room] === 'number' && Date.now() - state[room] < RESET_COOLDOWN_MS
+  if (!expired && (recentlyReset || !shouldResetSession(size.tokens, size.contextWindow, ratio))) return false
+  if (recentlyReset) host.log(`session-reset: ${room} 刚换过血（<30 分钟），跳过重复换血`)
+  try {
+    await resetRoom(host, registry, room, size, config)
+    state[room] = Date.now()
+    if (expired) host.log(`session-reset: ${room} 到期（>${config.maxAgeDays} 天），定期换血`)
+    return true
+  } catch (error) {
+    host.log(`session-reset: 处理 ${room} 失败：${(error as Error).message}`)
+    return false
+  }
 }
 
 /** 后台「指标」页读它画体积曲线：最近 500 行，按房间分组。 */

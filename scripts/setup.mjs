@@ -186,6 +186,12 @@ export function renderPatchTemplate(templateText, { placeholders, activeBlocks }
   return text;
 }
 
+/**
+ * 文件头结束的哨兵。`npm run setup` 靠它把「每次都会变的文件头」和「真正的补丁正文」
+ * 分开，这样第二次运行才能判断出「内容没变，不必重写」。
+ */
+const HEADER_END = '#@@end-generated-header';
+
 /** 生成物开头的那段说明（让用户一眼看出这是生成物、怎么重生成）。 */
 function generatedHeader({ profile, blocks, modules }) {
   const active = blocks.length ? blocks.join(', ') : '（无）';
@@ -197,13 +203,22 @@ function generatedHeader({ profile, blocks, modules }) {
     '# =============================================================================',
     '# ⚠️ 这个文件是生成物，不是模板：',
     '#     模板 = config/profile/companion.patch.template.yml（入库，可提 PR）',
-    '#     生成 = 由 `npm run setup` 渲染；内容有变化时旧文件备份为 .yml.bak-<时间戳>',
+    '#     生成 = 由 `npm run setup` 渲染；内容有变化时旧版本备份到 <dataDir>/backups/',
     `#     生成时间 ${new Date().toISOString()}`,
     `#     profile = ${profile}；启用的可选块 = ${active}`,
     `#     模块开关（config/suite.json）：${switches}`,
     '# =============================================================================',
+    HEADER_END,
     '',
   ].join('\n');
+}
+
+/** 去掉生成物前言，只留补丁正文（没有哨兵的文件原样返回）。 */
+function patchBody(text) {
+  const normalized = normalizeNewlines(String(text ?? ''));
+  const index = normalized.indexOf(HEADER_END);
+  const body = index === -1 ? normalized : normalized.slice(index + HEADER_END.length);
+  return body.replace(/^\n+/, '').trimEnd();
 }
 
 /* ────────────────────────── 小工具 ────────────────────────── */
@@ -548,6 +563,8 @@ export async function runSetup(argv = process.argv.slice(2)) {
       moduleResults.push({ key, status: 'fail', reason: 'plugin-add' });
       continue;
     }
+    // 宿主 `dsh plugin add` 自己会把包登记进 dsh.profile.bundles；registerBundle 只是
+    // 兜底（万一某个宿主版本只写 dependencies 不写 bundles），已经登记时不会重复。
     const registered = registerBundle(path.join(profileDir(dshHome, profileName), 'package.json'), manifest.name);
     if (!registered.ok) {
       reportStep(reporter, { id: `module:${key}`, title: spec.title, status: 'fail', detail: registered.error });
@@ -555,11 +572,17 @@ export async function runSetup(argv = process.argv.slice(2)) {
       continue;
     }
     for (const block of spec.patchBlocks || []) activeBlocks.add(block);
+    // pnpm 的 WARN 不是失败（例如「store 不能硬链接，改用另一个 store」），但用户排查磁盘/链接
+    // 问题时需要看到它，所以在成功的行里附一句。
+    const warnNote = (installed.stderr || installed.stdout || '')
+      .split(/\r?\n/)
+      .find((line) => /^\s*\[?WARN\]?/i.test(line));
     reportStep(reporter, {
       id: `module:${key}`, title: spec.title,
       status: entry.exists ? 'ok' : 'warn',
-      detail: `已安装 ${manifest.name}${registered.changed ? '，已登记到 dsh.profile.bundles' : '（bundle 已登记）'}`
-        + (entry.exists ? '' : `；但入口 ${entry.declared || '(未声明)'} 不存在 —— 先跑 npm run build`),
+      detail: `已安装 ${manifest.name}${registered.changed ? '，已登记到 dsh.profile.bundles' : '（bundle 由宿主登记）'}`
+        + (entry.exists ? '' : `；但入口 ${entry.declared || '(未声明)'} 不存在 —— 先跑 npm run build`)
+        + (warnNote ? `；pnpm 提示（非失败）：${warnNote.replace(/^\s*\[?WARN\]?\s*/i, '').slice(0, 160)}` : ''),
     });
     moduleResults.push({ key, status: entry.exists ? 'ok' : 'warn' });
   }
@@ -575,11 +598,11 @@ export async function runSetup(argv = process.argv.slice(2)) {
   }
 
   const placeholderMap = buildPlaceholders({ config, paths, profileName });
-  const rendered = generatedHeader({ profile: profileName, blocks: [...activeBlocks], modules })
-    + renderPatchTemplate(fs.readFileSync(PATCH_TEMPLATE, 'utf8'), { placeholders: placeholderMap, activeBlocks });
+  const rendered = renderPatchTemplate(fs.readFileSync(PATCH_TEMPLATE, 'utf8'), { placeholders: placeholderMap, activeBlocks });
 
   const previous = fs.existsSync(PATCH_GENERATED) ? fs.readFileSync(PATCH_GENERATED, 'utf8') : '';
-  const changed = normalizeNewlines(previous) !== normalizeNewlines(rendered);
+  // 只比较正文：文件头的「生成时间」每次都会变，否则每次 setup 都会重写一遍。
+  const changed = patchBody(previous) !== patchBody(rendered);
 
   if (!changed && !opts.force) {
     reportStep(reporter, { id: 'patch', title: 'companion.patch.yml', status: 'skip', detail: '内容无变化，未改动' });
@@ -594,13 +617,16 @@ export async function runSetup(argv = process.argv.slice(2)) {
     fs.mkdirSync(path.dirname(PATCH_GENERATED), { recursive: true });
     let backup = '';
     if (previous && changed) {
-      backup = `${PATCH_GENERATED}.bak-${new Date().toISOString().replace(/[:.]/g, '-')}`;
+      // 备份放数据目录下的 backups/：config/profile 只留「模板 + 生成物」，别让 .bak 混进仓库。
+      fs.mkdirSync(paths.backups, { recursive: true });
+      backup = path.join(paths.backups, `companion.patch.yml.${new Date().toISOString().replace(/[:.]/g, '-')}.bak`);
       fs.writeFileSync(backup, previous, 'utf8');
     }
-    fs.writeFileSync(PATCH_GENERATED, rendered, 'utf8');
+    fs.writeFileSync(PATCH_GENERATED, generatedHeader({ profile: profileName, blocks: [...activeBlocks], modules }) + rendered, 'utf8');
     reportStep(reporter, {
       id: 'patch', title: 'companion.patch.yml',
-      status: 'ok', detail: `已渲染 ${path.relative(SUITE_ROOT, PATCH_GENERATED)}${backup ? `（旧版本备份到 ${path.basename(backup)}）` : ''}`,
+      status: 'ok',
+      detail: `已渲染 ${path.relative(SUITE_ROOT, PATCH_GENERATED)}${backup ? `（旧版本备份到 ${backup}）` : ''}`,
     });
     patchResult = { written: true, path: PATCH_GENERATED, changed, backup };
   }

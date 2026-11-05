@@ -48,6 +48,7 @@ test('提示词以bot第一人称、中性人格基线，但不许"命中词就�
   assert.match(prompt, /你是用户的 AI 陪伴助手/)
   assert.match(prompt, /显示名「bot」/)
   // 人格去角色化：不得出现具体作品/角色设定（身份由 config/persona.md 决定）
+  // leak-scan-allow: persona-三月七  (regression guard: asserts the old name is gone)
   assert.doesNotMatch(prompt, /星穹列车|三月七|开朗直率|喜欢摄影/)
   // 关键口径：兴趣词只是判断依据，不是触发器
   assert.match(prompt, /不等于\*\*你该说话|不等于.*该说话/)

@@ -15,6 +15,11 @@
   "dataDir": "",
   "$dataDirComment": "留空 = <套件根>/data。可写绝对路径或相对套件根的路径；不得指向源码目录内部。",
 
+  "persona": {
+    "$comment": "人格 id 用于记忆作用域（scope key）。改名等于换一套作用域，历史记忆不会被自动迁移。",
+    "id": "bot"
+  },
+
   "modules": {
     "$comment": "可选模块默认全部关闭。先跑 `npm run doctor`，再逐项打开。",
     "core": true,
@@ -53,5 +58,8 @@
     "backgroundModelTasks": false,
     "healthCollection": false,
     "billingApis": false
-  }
+  },
+
+  "qqIdleCompaction": false,
+  "$qqIdleCompactionComment": "QQ 会话空闲压缩：会调用模型（计费），默认关闭；关着时不注册任何定时器。环境变量 QQ_IDLE_COMPACTION=0/1 可强制覆盖本项。"
 }

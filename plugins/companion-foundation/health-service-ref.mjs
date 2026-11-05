@@ -22,6 +22,7 @@ import fs from 'node:fs';
 import path from 'node:path';
 
 import { createServiceBridge } from './service-bridge.mjs';
+import { resolveDataRoot } from './suite-paths.mjs';
 
 export const HEALTH_SERVICE_NAME = 'companionHealth';
 export const HEALTH_PORT_SYMBOL = Symbol.for('dsh.companion.ports.v1');
@@ -37,8 +38,19 @@ function portRegistry() {
   return holder[HEALTH_PORT_SYMBOL];
 }
 
+function diagBase(root) {
+  const explicit = String(root ?? '').trim();
+  if (explicit) return explicit;
+  // No root means "the suite's own data root" (D2). Never `process.cwd()`: running
+  // a test or a doctor command from the repository root must not create `home/`.
+  if (!diagnosticsRoot) diagnosticsRoot = resolveDataRoot({ moduleUrl: import.meta.url }).dataRoot;
+  return diagnosticsRoot;
+}
+
+let diagnosticsRoot = null;
+
 function diagPath(root, name) {
-  return path.join(String(root ?? ''), 'home', 'health', name);
+  return path.join(diagBase(root), 'home', 'health', name);
 }
 
 function writeDiag(root, name, payload) {

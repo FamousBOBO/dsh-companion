@@ -15,11 +15,13 @@ Thumbs.db
 *.log
 
 # ── 说明：以下**故意入库** ────────────────────────────────────────────
-# lib/                 编译产物。本项目的部署方式是"推送预编译 lib/"，入库
-#                      可保证 clone 出来的目录直接可部署。
-# src/admin-html.ts    由 src/admin-ui.html 生成（scripts/build-admin-html.mjs），
-#                      入库是为了 tsc 单独跑也能通过；改它没有意义，改 HTML。
+# src/admin-html.ts    由 src/admin/ui/** 生成（scripts/build-admin-html.mjs），
+#                      入库是为了 tsc 单独跑也能通过；改它没有意义，改 ui/ 源文件。
 # cordis.patch.yml     插件的 bundle 默认值（不含任何部署凭据）。
+# vendor/types/**      宿主 peer 包的 .d.ts（类型解析用，运行时不 import）。
+#
+# 编译产物**不入库**（见下）：`main` 指向的 build/lib/index.js 由
+# `npm run build` 生成，clone 之后必须构建一次。
 
 # ── 临时：NapCat 登录扫码页 ───────────────────────────────────────────
 # 容器重建后需要重新扫码时由脚本生成（内嵌当次二维码的 base64），一次性用完即弃，

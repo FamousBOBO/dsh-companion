@@ -12,11 +12,14 @@ import { companionDashboard } from './lib/companion-dashboard.mjs';
 // The health service is owned by a sibling plugin row; `resolveHealthService` is the one place that
 // knows how to reach it (ctx → process registry → service bridge).
 import { resolveHealthService } from '../companion-foundation/health-service-ref.mjs';
-import path from 'node:path';
-import { fileURLToPath } from 'node:url';
+import { resolveSuitePaths } from '../companion-foundation/suite-paths.mjs';
 
-/** `plugins/companion-memory-studio` → the companion root (three levels up from this file). */
-export const STUDIO_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..', '..');
+/**
+ * The companion **data** root (D2), not the checkout root: the health bridge keys its
+ * registry and diagnostics by this path, so using the source directory here would
+ * split the key (two services for one home) and write `home/health/` into the repo.
+ */
+export const STUDIO_ROOT = resolveSuitePaths({ moduleUrl: import.meta.url }).dataRoot;
 
 export const API_PREFIX = '/api/companion-memory';
 /** 健康接口的独立前缀（契约 §13）；meta.source 也跟着换成 `companion-health`。 */

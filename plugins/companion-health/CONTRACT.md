@@ -110,6 +110,11 @@ idle ──initialize()──► ready ──start()──► (running, interval
 > `<套件根>/data/home`。**没有一处指向作者机器或源码目录**；套件配置的 `dataDir` 一改，
 > 健康数据就跟着搬。
 
+> **dataRoot 口径（团队约定 D2）**：本文所有 `<dataRoot>` 都按套件解析顺序落到同一个目录 ——
+> 显式 `dataDir` → `$DSH_COMPANION_DATA_DIR` → `<套件根>/data`。健康模块因此把运行时文件写在
+> `<dataRoot>/home/health/` 下（配置、`health.db`、备份、诊断文件），**绝不写 cwd、绝不写仓库**。
+> 上面 `home` 的第三个候选 `$DSH_COMPANION_DATA_DIR/home` 就是 `<dataRoot>/home`。
+
 - **首次**加载时原子写默认值（临时文件 → `fsync` → `rename`），返回 `created: true`。
 - 之后**永不静默重写**：运维改过的、`health-stop.mjs` 关掉的，都原样尊重。
 - 非法值一律回落默认并在 `warnings[]` 里说明（中文），不抛、不阻止启动。
@@ -458,7 +463,7 @@ node plugins/companion-health/scripts/check-health.mjs --exit-zero   # 强制 0 
 或者用包内 npm 脚本：`npm --workspace @dsh-companion/health run check`（等价）。
 
 - 直接 `import` `plugins/companion-health/lib/service.mjs`，建**只读实例**（`readOnly:true`）：
-  不 `start()`、不 `syncNow()`、不创建 `home/health/`、不迁移。路径全部由 `import.meta.url`
+  不 `start()`、不 `syncNow()`、不创建 `<dataRoot>/home/health/`、不迁移。路径全部由 `import.meta.url`
   相对定位，没有硬编码盘符；`home` 走 §3 那套解析顺序。
 - 输出内容：三通道状态（采集/账号/心率，见 §3.0.1）、健康源状态、最近样本时间与新鲜度、
   DB integrity（含校验时刻）、sleep availability、服务心跳、鉴权状态 + 剩余分钟、故障摘要；
@@ -571,7 +576,7 @@ HTTP 200   7 次云调用   冷 1.68 s / 命中 sidecar 缓存 32 ms
 以上与 `design/health/INTERFACES.md` 开头记录的基线真值**逐项一致**（步数 1112、心率 95/112/58/79、
 压力 65/69/61、血氧 97.11/99/95、训练 2 条 `sport_type:2`、设备 9 台、睡眠 0 行）。
 
-### 15.3 真实 `home/`（尚未初始化）
+### 15.3 真实 `<dataRoot>/home/`（尚未初始化）
 
 ```
 node plugins/companion-health/scripts/check-health.mjs --json
@@ -605,9 +610,9 @@ node --test test/*.test.mjs
 
 本轮**没有**执行、也**没有**写代码的事：
 
-1. **真实桌面宿主挂载**（`home/profiles/desktop/cordis.patch.yml` 接线属 lead）。
+1. **真实桌面宿主挂载**（`<dataRoot>/home/profiles/desktop/cordis.patch.yml` 接线属 lead）。
    本地只验了 `apply()` 在假 ctx 下连调两次；没有在真实宿主里跑过 reload。
-2. **真实 `home/health/health.db` 的首次生成与长期轮询**：只在临时 home 里跑过真实链路同步。
+2. **真实 `<dataRoot>/home/health/health.db` 的首次生成与长期轮询**：只在临时 home 里跑过真实链路同步。
 3. **Studio HTTP 路由 / UI 面板**（studio-api、studio-ui 的活）：本层只提供服务门面。
 4. **Foundation 工具接线**（`health-tools.mjs` 属 foundation-tools）：本层只保证
    `ctx.provide('companionHealth')` 与服务名。
@@ -751,7 +756,7 @@ sidecars/ble-heart-rate/start-sidecar.sh --fixture                  # sidecar �
    再桥）。回归：`health-service-ref.test.mjs`。
    **第一版（只加模块级 bridge）仍然失败**：不同插件行的模块实例可能不是同一个。最终把端口存到
    **`process` 上的 symbol 注册表**（`Symbol.for('dsh.companion.ports.v1')`），并让发布/未命中各写
-   一个诊断文件 `home/health/bridge-publish.json` / `bridge-miss.json`（只有 pid、时间、原因码）——
+   一个诊断文件 `<dataRoot>/home/health/bridge-publish.json` / `bridge-miss.json`（只有 pid、时间、原因码）——
    重启后直接读文件就能判断"谁发布、谁没找到、为什么"，不用再猜。
    **2026-11-04 01:03 活体验收通过**：工具返回真读数（bpm=83 / HUAWEI Band HR-002）、Studio 路由
    `ok:true`、会话开启时注入出现 `companion-pulse`、`stop` 后下一轮注入只剩 identity+memory、

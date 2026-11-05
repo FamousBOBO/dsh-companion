@@ -19,7 +19,7 @@
 | 重建检索索引 / Wiki | 调用 `companion_memory_rebuild` | 工具 |
 | **回滚到旧记忆（legacy）** | 改 `backend` → 重启桌面 → 验 `companion_status` | 见 §7（三步） |
 | 查某轮为什么没注入记忆 | 看召回日志的 `explain`（只有计数与原因，无正文） | `logs/memory-recall.jsonl` |
-| 用图形界面查/改记忆 | 侧栏「记忆档案」图标 → 7 页工作台（总览 / 记忆库 / 显微镜 / Wiki / 时间线 / 审核 / 设置） | 插件 `@local/dsh-companion-memory-studio`（已装进 desktop profile） |
+| 用图形界面查/改记忆 | 侧栏「记忆档案」图标 → 7 页工作台（总览 / 记忆库 / 显微镜 / Wiki / 时间线 / 审核 / 设置） | 插件 `@dsh-companion/memory-studio`（已装进 desktop profile） |
 
 ---
 
@@ -166,7 +166,7 @@
 ### 3.2 命令
 
 ```powershell
-cd C:\Users\bobo\Documents\Bot\dsh-companion\plugins\companion-memory
+cd <套件根>/plugins/companion-memory
 
 # 1) 演练：只读、只映射、不写库不写报告（会打印摘要；--json 可拿完整报告）
 node scripts/migrate-memory.mjs --dry-run --json
@@ -570,7 +570,7 @@ P2 已修：无变化更新不再升修订号、正文变更后向量失效、�
 
 ## 11. 管理界面与宿主 API（companion-memory-studio）
 
-图形化入口在**侧栏「记忆档案」图标**（插件 `@local/dsh-companion-memory-studio`，已装进 `desktop` profile，可在 设置 → 插件 里单独禁用）。
+图形化入口在**侧栏「记忆档案」图标**（插件 `@dsh-companion/memory-studio`，已装进 `desktop` profile，可在 设置 → 插件 里单独禁用）。
 
 ### 11.1 运行形态
 

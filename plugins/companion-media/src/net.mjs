@@ -20,6 +20,9 @@ import { redactText } from './secrets.mjs';
 
 const DEFAULT_MAX_BYTES = 16 * 1024 * 1024;
 const DEFAULT_MAX_REDIRECTS = 2;
+/** Defaults are exported so tests and the docs can prove the numbers instead of quoting them. */
+export { DEFAULT_MAX_BYTES, DEFAULT_MAX_REDIRECTS };
+export const DEFAULT_TIMEOUT_MS = 60_000;
 
 export class NetError extends Error {
   constructor(code, message) {
@@ -82,7 +85,7 @@ export function createNet({ fetchImpl = globalThis.fetch, now = () => Date.now()
       method = 'GET',
       headers = {},
       body = undefined,
-      timeoutMs = 60_000,
+      timeoutMs = DEFAULT_TIMEOUT_MS,
       maxBytes = defaultMaxBytes,
       maxRedirects = DEFAULT_MAX_REDIRECTS,
       provider = 'provider',

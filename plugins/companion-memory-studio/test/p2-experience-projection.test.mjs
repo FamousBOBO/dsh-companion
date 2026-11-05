@@ -100,14 +100,20 @@ test('E7-6 投影与整个 dashboard 读取过程：一条写语句都没有，�
     fs.mkdirSync(path.dirname(file), { recursive: true });
     // 建库与塞行用可写连接（这是测试自己的准备工作，不是被测代码做的）。
     const writer = new DatabaseSync(file);
+    // 这张表要跟 `companion-runtime/lib/schema.sql` 的 `p2_activities` 对齐：dashboard 的
+    // 查询会读 `checkpoint`（B 站进度在 json_extract 里），少一列整条查询会被跳过、
+    // 面板静默变空。这里按真实列名插入，schema 再变时测试会当场红。
     writer.exec(`CREATE TABLE p2_activities (scope TEXT, activity_id TEXT, plan_slot_id TEXT, kind TEXT, adapter TEXT,
       capability TEXT, reality TEXT, status TEXT, target TEXT, consumed_prefix INTEGER, total_units INTEGER,
-      artifact_version INTEGER, source_hash TEXT, started_at INTEGER, paused_at INTEGER, ended_at INTEGER, updated_at INTEGER)`);
+      artifact_version INTEGER, source_hash TEXT, checkpoint TEXT NOT NULL DEFAULT '{}', started_at INTEGER, paused_at INTEGER, ended_at INTEGER, updated_at INTEGER)`);
     writer.exec('CREATE TABLE p2_activity_receipts (scope TEXT, activity_id TEXT, operation TEXT, ok INTEGER, code TEXT, at INTEGER)');
-    const insertActivity = writer.prepare('INSERT INTO p2_activities VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)');
-    insertActivity.run(scope, 'a-done', null, 'read', 'file-read', null, 'actual_tool_activity', 'done', 'sources/a.md', 10, 10, 0, 'h', NOW - 5000, null, NOW - 1000, NOW - 1000);
-    insertActivity.run(scope, 'a-fail', null, 'write', 'file-write', null, 'actual_tool_activity', 'failed', 'notes/b.md', 3, 10, 0, 'h', NOW - 4000, null, NOW - 2000, NOW - 2000);
-    insertActivity.run(scope, 'a-review', null, 'read', 'file-read', null, 'actual_tool_activity', 'paused', 'c.md', 5, 10, 0, 'h', NOW - 3000, NOW - 2500, 0, NOW - 2500);
+    const insertActivity = writer.prepare(`INSERT INTO p2_activities
+      (scope, activity_id, plan_slot_id, kind, adapter, capability, reality, status, target, consumed_prefix,
+       total_units, artifact_version, source_hash, checkpoint, started_at, paused_at, ended_at, updated_at)
+      VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)`);
+    insertActivity.run(scope, 'a-done', null, 'read', 'file-read', null, 'actual_tool_activity', 'done', 'sources/a.md', 10, 10, 0, 'h', '{}', NOW - 5000, null, NOW - 1000, NOW - 1000);
+    insertActivity.run(scope, 'a-fail', null, 'write', 'file-write', null, 'actual_tool_activity', 'failed', 'notes/b.md', 3, 10, 0, 'h', '{}', NOW - 4000, null, NOW - 2000, NOW - 2000);
+    insertActivity.run(scope, 'a-review', null, 'read', 'file-read', null, 'actual_tool_activity', 'paused', 'c.md', 5, 10, 0, 'h', '{}', NOW - 3000, NOW - 2500, 0, NOW - 2500);
     writer.prepare('INSERT INTO p2_activity_receipts VALUES (?,?,?,?,?,?)').run(scope, 'a-done', 'finish', 1, null, NOW - 1000);
     writer.close();
 

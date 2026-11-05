@@ -9,7 +9,7 @@ const bound={userId:'owner',persona:'bot'};
 const target='https://example.com/article';
 const start=Date.UTC(2026,10,1,1);
 function fixture(t) {
-  const root=fs.mkdtempSync(path.join(process.cwd(),'continuous-reading-'));
+  const root=fs.mkdtempSync(path.join(os.tmpdir(),'continuous-reading-'));
   let at=start, fetches=0;
   fs.mkdirSync(path.join(root,'home/companion'),{recursive:true});
   fs.writeFileSync(path.join(root,'home/companion/runtime.config.json'),JSON.stringify({schemaVersion:1,leaseTtlMs:172800000,enabled:true,mode:'active',timeZone:'Asia/Shanghai',p2:{planning:{enabled:true},activities:{enabled:true,readFullSource:true,artifactRoot:'home/companion/works',chunkUnits:100,maxUnitsPerStep:100},autonomy:{allowedSources:['*']}}}));

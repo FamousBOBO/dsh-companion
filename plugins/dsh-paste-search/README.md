@@ -3,6 +3,21 @@
 左侧栏的「搜图」入口。**插件本身不做搜图**：它只负责入口与工具，
 真正的搜图实现交给一个新工作区里的**独立会话**，每次搜索一个会话。
 
+- 包名 `@dsh-companion/paste-search`，版本 `0.2.1`（模块自身版本同样记在 `localVersion`）
+- 许可证 MIT；无构建步骤（`index.js` / `client.js` 都是手写产物，直接可加载）
+- 依赖 Node `>= 24`（套件统一口径）
+
+## 自检（离线，不需要模型、不联网）
+
+```bash
+node plugins/dsh-paste-search/scripts/selftest-host.mjs            # 用内置 1×1 JPEG
+node plugins/dsh-paste-search/scripts/selftest-host.mjs <图片路径>  # 或 PASTE_SEARCH_SAMPLE_IMAGE=…
+```
+
+它用一个假 ctx 跑真实代码：注册路由 → `POST /search` → 断言工作区落盘、附件写入、
+`ctx.agents.create()` 起了会话、回合结束后会话被重命名 → `GET /search` 读回结果。
+所有临时文件都在 `os.tmpdir()` 下，**不写仓库**。
+
 ## 面板
 
 ```

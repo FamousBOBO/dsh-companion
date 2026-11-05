@@ -1,0 +1,15 @@
+# huawei-health-cn sidecar — Python dependencies.
+#
+# There are **none**. This sidecar is standard library only (urllib / http.server / json / ssl),
+# on purpose: the frozen copies in `python/` must be readable and runnable on any interpreter
+# without a supply chain. The file exists so that documentation, CI and "pip install -r" all agree
+# that nothing has to be installed:
+#
+#   python -m py_compile python/*.py redact.py capture_snapshot.py   # proves it imports
+#   python test_redact.py                                            # 15 offline tests
+#   python test_protocol_contract.py                                 # offline protocol cases
+#
+# Python >= 3.11 (the frozen copies use `X | None` annotations). `start-sidecar.sh` /
+# `start-sidecar.ps1` take the interpreter from $PYTHON / -PythonPath / $HUAWEI_PYTHON.
+#
+# Do not add packages here without updating PROTOCOL-FREEZE.md and re-running the freeze check.

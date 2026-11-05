@@ -1,12 +1,14 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 import { createStore } from './store.mjs';
 import { createMemory } from './memory.mjs';
 
-const testRoot = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '../../logs/test-runs');
+// Tests never write inside the repository: the release tree must stay clean after a run.
+const testRoot = path.join(os.tmpdir(), 'dsh-companion-memory-tests');
 fs.mkdirSync(testRoot, { recursive: true });
 
 function fixture(t) {

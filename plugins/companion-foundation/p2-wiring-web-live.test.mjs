@@ -9,7 +9,7 @@ import { createWebPort } from './autonomy-web.mjs';
 // must be readable as "not verified", never as "passed". The offline suite
 // `p2-wiring-web.test.mjs` covers every behaviour deterministically.
 //
-// Observed on this machine (2026-10-30, D:\Bot\dsh-companion):
+// Observed on the reference machine (2026-10-30, suite root):
 //   Wikipedia query API  HTTP 200 ~1.34 s
 //   Wikipedia opensearch HTTP 200 ~1.46 s
 //   DuckDuckGo HTML      HTTP 200 ~2.72 s (redirect-wrapped hrefs)

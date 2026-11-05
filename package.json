@@ -6,7 +6,7 @@
   "description": "DSH Companion：在 DeepSeek Harness 上运行的陪伴套件（人格与长期记忆、认知运行时、日程、陪伴空间 UI，可选 QQ/B站/健康/媒体扩展）。",
   "license": "MIT",
   "engines": {
-    "node": ">=20.11.0",
+    "node": ">=24.0.0",
     "npm": ">=10.0.0"
   },
   "workspaces": [

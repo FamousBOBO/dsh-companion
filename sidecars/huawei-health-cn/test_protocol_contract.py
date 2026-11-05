@@ -9,9 +9,12 @@
 
 1. redacted snapshots (default `<data>/snapshots/huawei-health-cn/`, override with
    ``HUAWEI_SNAPSHOT`` / ``HUAWEI_SNAPSHOT_DIR``) — the real payload the sidecar answered, and
-2. the frozen copies in ``python/`` — importing them proves the copies still load, and
-   ``health_series()`` is a pure function, so the "0 / -1 means not measured" rule can be
+2. **your own** upstream checkout (``HUAWEI_UPSTREAM_PKG``) — importing it proves it still loads,
+   and ``health_series()`` is a pure function, so the "0 / -1 means not measured" rule can be
    exercised on a synthetic cloud answer without a single request.
+
+This repository does **not** ship the upstream implementation (see ``PROTOCOL-FREEZE.md`` §1.1),
+so case group 2 **skips** with that reason until you point ``HUAWEI_UPSTREAM_PKG`` at a checkout.
 
 Snapshots are personal data, so they are **not** in the repository; without one, the
 snapshot-dependent cases `skip` (they do not fail) and the rule-level cases still run.
@@ -61,14 +64,27 @@ _frozen: dict[str, object] = {}
 
 
 def frozen() -> dict[str, object]:
-    """Import the frozen copies once (no network, no token file touched)."""
-    if not _frozen:
-        sys.path.insert(0, str(PYTHON_DIR))
-        import huawei_login  # noqa: PLC0415 - deliberately lazy
+    """Import the **user's** upstream copies once (no network, no token file touched).
 
-        _frozen["login"] = huawei_login
-        _frozen["const"] = huawei_login.CONST
-        _frozen["client"] = huawei_login.CLIENT
+    This repository deliberately does **not** ship the upstream implementation (its license is not
+    ours to distribute — see PROTOCOL-FREEZE §1.1). Point ``HUAWEI_UPSTREAM_PKG`` at your own
+    checkout and the copy-level cases run; without it they **skip** with this reason instead of
+    failing, and the snapshot/redaction cases still run.
+    """
+    if not _frozen:
+        package_dir = sidecar_paths.upstream_pkg()
+        if package_dir is None:
+            raise unittest.SkipTest(
+                "no upstream checkout: set HUAWEI_UPSTREAM_PKG to your own "
+                "custom_components/huawei_health directory (this repository does not ship it)")
+        sys.path.insert(0, str(package_dir.parent))
+        sys.path.insert(0, str(package_dir))
+        # The upstream package's own module names: `client.py` / `const.py`.
+        import client as upstream_client  # noqa: PLC0415 - deliberately lazy
+        import const as upstream_const  # noqa: PLC0415 - deliberately lazy
+
+        _frozen["client"] = upstream_client
+        _frozen["const"] = upstream_const
     return _frozen
 
 
@@ -89,7 +105,7 @@ def load_snapshot() -> tuple[Path, str, dict]:
 
 
 class TestFrozenCopiesLoad(unittest.TestCase):
-    """The copies in ``python/`` are the frozen protocol: they must import and behave."""
+    """The upstream client/const must import and behave (skipped when no checkout is configured)."""
 
     def test_copies_import_without_network(self) -> None:
         modules = frozen()

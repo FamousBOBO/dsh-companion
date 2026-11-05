@@ -1,6 +1,5 @@
 import fs from 'node:fs';
 import path from 'node:path';
-import { fileURLToPath } from 'node:url';
 import { createIdentity } from '../companion-foundation/identity.mjs?v=0.4.0';
 import { createHostLlmAdapter } from '../companion-foundation/host-llm.mjs?v=0.4.0';
 import { resolveSuitePaths } from '../companion-foundation/suite-paths.mjs';

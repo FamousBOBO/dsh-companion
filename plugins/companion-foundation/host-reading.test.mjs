@@ -11,7 +11,7 @@ import { buildPlanningPrompt } from '../companion-runtime/lib/planner.mjs';
 
 const at = Date.UTC(2026,10,1,4);
 function fixture(t) {
-  const root = fs.mkdtempSync(path.join(process.cwd(),'host-reading-'));
+  const root = fs.mkdtempSync(path.join(os.tmpdir(),'host-reading-'));
   t.after(()=>fs.rmSync(root,{recursive:true,force:true}));
   const calls = [];
   const web = {

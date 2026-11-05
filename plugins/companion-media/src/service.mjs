@@ -3,7 +3,7 @@ import path from 'node:path';
 import { Code, MediaError, toFailure } from './errors.mjs';
 import { createNet } from './net.mjs';
 import { createConfigStore, writeFileAtomic } from './config-store.mjs';
-import { createLedger, digestOf, writeArtifact } from './ledger.mjs';
+import { createLedger, digestOf, resolveArtifactRoot, writeArtifact } from './ledger.mjs';
 import { IMAGE_PROVIDERS, TTS_PROVIDERS, normalizeConfig, validateConfig } from './schema.mjs';
 import { presetFamilyFor, resolvePreset } from './presets.mjs';
 import { previewResolution } from './resolution.mjs';
@@ -82,6 +82,26 @@ export function createMediaService({
   };
 
   const keyFor = scope => store.secret(scope);
+
+  /**
+   * Where deliverables land, and the boundary the channel enforces.
+   *
+   * Media writes only inside its own artifact root (default
+   * `<dataDir>/workspace/media`); the chat channel reads only inside
+   * `<dataRoot>/workspace` or `<dshHome>/channel-qq`. Keeping the asymmetry —
+   * media writes one directory, channel reads a boundary — is deliberate: the
+   * plugin never gains the right to name an arbitrary path.
+   */
+  function artifactLocation(config) {
+    const resolved = resolveArtifactRoot(dataDir, config);
+    return {
+      artifactRoot: resolved.root,
+      artifactRootSource: resolved.source,
+      channelBoundary: [path.join(dataDir, 'workspace'), '<dshHome>/channel-qq'],
+      channelBoundaryNote:
+        '交付给通道的文件必须位于 <dataRoot>/workspace 或 <dshHome>/channel-qq 之内；越界会被通道拒绝（outside-boundary）',
+    };
+  }
 
   function sectionOf(config, kind, id) {
     return kind === 'image' ? config.image?.[id] ?? {} : config.tts?.providers?.[id] ?? {};
@@ -167,6 +187,7 @@ export function createMediaService({
         },
       },
       limits: config.limits,
+      paths: artifactLocation(config),
       catalog: adapterCatalog(),
       validation: loaded.validation,
       ledger: ledger.summary(),
@@ -187,6 +208,7 @@ export function createMediaService({
       exists: loaded.exists,
       config: loaded.masked,
       validation: loaded.validation,
+      paths: artifactLocation(loaded.config),
       states: status().states,
       warnings: loaded.warnings ?? [],
       dropped: loaded.dropped ?? [],
@@ -296,7 +318,7 @@ export function createMediaService({
         negative,
         signal: null,
       });
-      const artifact = writeArtifact({ dataDir, kind: 'image', bytes: result.bytes, extension: result.extension });
+      const artifact = writeArtifact({ root: artifactLocation(config).artifactRoot, kind: 'image', bytes: result.bytes, extension: result.extension });
       const meta = {
         artifactId: artifact.artifactId,
         kind: 'image',
@@ -322,9 +344,13 @@ export function createMediaService({
           tool: 'qq_sticker',
           action: 'send',
           file: artifact.absolutePath,
+          mime: result.mime,
+          bytes: artifact.bytes,
+          provider: id,
+          model: result.meta?.model ?? section.model ?? '',
           ready: true,
           delivered: false,
-          mustSend: `调用 ${'qq_sticker'} action=send 并传 file=${artifact.absolutePath}`,
+          mustSend: `调用 qq_sticker action=send 并传 file=${artifact.absolutePath}`,
         },
         meta: result.meta ?? {},
       };
@@ -367,7 +393,7 @@ export function createMediaService({
         text,
         signal: null,
       });
-      const artifact = writeArtifact({ dataDir, kind: 'speech', bytes: result.bytes, extension: result.extension });
+      const artifact = writeArtifact({ root: artifactLocation(config).artifactRoot, kind: 'speech', bytes: result.bytes, extension: result.extension });
       const meta = {
         artifactId: artifact.artifactId,
         kind: 'speech',
@@ -392,6 +418,12 @@ export function createMediaService({
           tool: 'qq_voice',
           action: 'send_file',
           file: artifact.absolutePath,
+          mime: result.mime,
+          bytes: artifact.bytes,
+          durationSeconds: result.durationSeconds ?? null,
+          provider: id,
+          model: result.meta?.model ?? section.model ?? '',
+          voice: result.meta?.voice ?? result.meta?.referenceId ?? '',
           ready: true,
           delivered: false,
           mustSend: `调用 qq_voice action=send_file 并传 file=${artifact.absolutePath}`,

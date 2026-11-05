@@ -18,9 +18,24 @@
 | 上游分支 | `cn-hosts-default` |
 | 上游提交 | `1ec3e4120a6b9c4e8327ba08c3d12fe9994d63f7`（`Read the account nickname on the CN contour`） |
 | 集成版本 | `custom_components/huawei_health/manifest.json` → `1.1.0` |
-| 运行时 | `tmp/hwvenv`，Python **3.13.11**（`client.py`/`const.py` 只用标准库） |
+| 运行时 | 任意 Python **3.11+**，**标准库 only**（`client.py`/`const.py` 不 import 任何第三方包） |
 | 复制件校验 | `python/client.py` `44398d75e6c6b227…`、`python/const.py` `0ee70e3cb95a793b…`、<br>`python/huawei_dashboard.py` `ca44f47d411f8597…`（= 原件 on-disk sha256，见 §9） |
 | 采样时刻 | 2026-11-03 21:15:38 +08:00（同夜 21:04:27 的第二次采集数值完全一致），窗口 7 天，7 次云调用 |
+
+### 1.1 来源与许可（第三方代码）
+
+`python/client.py` / `python/const.py` / `python/huawei_dashboard.py` 是上游项目的**逐字节复制**
+（只多一段 provenance 注释），`python/huawei_login.py` 是**带文档化适配**的复制。发布时必须如实登记：
+
+| 项 | 值 |
+| --- | --- |
+| 上游仓库 | `https://github.com/and7ey/huawei_health`（Home Assistant 自定义集成） |
+| 固定的提交 | `1ec3e4120a6b9c4e8327ba08c3d12fe9994d63f7`（分支 `cn-hosts-default`） |
+| 改动 | 只加 provenance 注释块；`huawei_login.py` 另有两处适配（A1 路径解析 / A2 uid 打码），逐行 diff 由 `verify_frozen_copy.py` 打印 |
+| 许可证 | ⚠️ **待核实**：本项目在离线环境里冻结时**没有**取得上游 LICENSE 文本，因此这里不臆造许可证名。汇总 `THIRD-PARTY-NOTICES.md` 的人需要联网确认上游仓库的 LICENSE，并按实际结果填写（若是 MIT / Apache-2.0 等，附上完整文本与版权行；若无可用的开源许可，则这一份复制件不应随发布分发，需改为「运行前自备上游 checkout」的说明）。 |
+
+> 为什么先把话说死：许可不明 ≠ 可以默认当成 MIT。上面这段是发布前的**阻塞项**，不是备注。
+
 
 ## 2. 端点：只有一个
 
@@ -30,7 +45,7 @@
 | `GET` | `/api/data?days=7&force=1` | 绕过 15 s 缓存，真的打云端 |
 | `GET` | `/` | HTML 面板（人看的，机器不要依赖） |
 
-口径与限制（实测，见 `tmp/huawei_health_test_report.md`）：
+口径与限制（冻结当时实测；测量脚本属于开发期产物，不在发布树里）：
 
 - **只监听 `127.0.0.1`**。任何非 loopback 调用一律不该存在；`cn-adapter.mjs` 里非 loopback
   必须直接返回 `non-loopback-refused` 而**不发请求**。
@@ -204,7 +219,7 @@ session_host  data_host  expires_at_text  expires_in_min  refresh_dies_text  rot
 > 刻意**不**把隐私 grep 的正则写进 `_capture`：那会让快照自己命中自己的回归检查
 > （`accesstoken` / `x-huid` 变成文件里的字符串）。正则只存在于 `redact.py` 和 README §4。
 
-## 7. 与 `tmp/HUAWEI_HEALTH_README.md` 的字段对照（给上层做映射）
+## 7. 与上游 README 的字段对照（给上层做映射）
 
 冻结的是**当前 payload 的名字**（snake_case）；`design/health/INTERFACES.md` §6 的
 `normalizeWindow()` 输出是 camelCase。映射表（上层照这个写即可，不要"猜"）：
@@ -255,13 +270,16 @@ session_host  data_host  expires_at_text  expires_in_min  refresh_dies_text  rot
 
 ## 9. 再冻结 / 升级流程
 
-1. 确认 `tmp/` 原件是你要的新版本；`tmp/huawei_health` 的 git 提交写进 §1。
+1. 准备一份上游 checkout（git clone），确认它是你要的新版本；把它的 git 提交写进 §1。\n   **上游 checkout 不属于本仓库**，也不要把它放进发布树。
 2. 重新复制 + 只加来源注释：
 
-   ```powershell
-   Copy-Item tmp\huawei_health\custom_components\huawei_health\client.py sidecars\huawei-health-cn\python\ -Force
-   Copy-Item tmp\huawei_health\custom_components\huawei_health\const.py  sidecars\huawei-health-cn\python\ -Force
-   # 然后手工把 5 行 provenance 注释块补回去，并更新里面的 upstream-sha256
+   ```bash
+   UPSTREAM=custom_components/huawei_health      # 你 clone 下来的上游路径
+   cp "$UPSTREAM/client.py" sidecars/huawei-health-cn/python/client.py
+   cp "$UPSTREAM/const.py"  sidecars/huawei-health-cn/python/const.py
+   # 然后手工把 5 行 provenance 注释块补回去，并更新里面的 upstream-sha256：
+   #   HUAWEI_UPSTREAM_PKG=<你的>/custom_components/huawei_health \
+   #     python sidecars/huawei-health-cn/verify_frozen_copy.py
    ```
 
 3. `verify_frozen_copy.py` 必须全绿；`huawei_login.py` 的适配只允许 A1/A2 两处。

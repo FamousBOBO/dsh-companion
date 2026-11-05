@@ -88,13 +88,37 @@ export function createLedger({ dataDir, now = () => new Date(), keepArtifacts = 
 }
 
 /**
- * Write one produced artefact under `<dataDir>/media/artifacts/<kind>/`.
+ * Default directory for artefacts that will be handed to a channel.
+ *
+ * It must live inside the **workspace** (`<dataDir>/workspace`), because that is
+ * the only place the chat channel can read a local file from: `dsh-channel-qq`
+ * accepts local files only under `config.workspacePath` or `<dshHome>/channel-qq`
+ * (`local-file.ts:napcatFileArg`), and refuses anything else as
+ * `outside-boundary`. Writing deliverable media into `tmp/` would therefore
+ * produce files that can never be sent.
+ */
+export function defaultArtifactRoot(dataDir) {
+  return path.join(dataDir, 'workspace', 'media');
+}
+
+/** Resolve the configured artefact root (config → dataDir default). */
+export function resolveArtifactRoot(dataDir, config) {
+  const configured = typeof config?.paths?.artifactsDir === 'string' ? config.paths.artifactsDir.trim() : '';
+  if (!configured) return { root: defaultArtifactRoot(dataDir), source: 'default' };
+  return {
+    root: path.isAbsolute(configured) ? configured : path.resolve(dataDir, configured),
+    source: 'config',
+  };
+}
+
+/**
+ * Write one produced artefact under `<artifactRoot>/<kind>/`.
  * The filename is the content digest, so a private original filename never
  * reaches the ledger, the log or a downstream message.
  */
-export function writeArtifact({ dataDir, kind, bytes, extension }) {
+export function writeArtifact({ root, kind, bytes, extension }) {
   const digest = crypto.createHash('sha256').update(bytes).digest('hex');
-  const dir = path.join(dataDir, 'media', 'artifacts', kind);
+  const dir = path.join(root, kind);
   fs.mkdirSync(dir, { recursive: true });
   const absolute = path.join(dir, `${digest.slice(0, 32)}.${extension}`);
   fs.writeFileSync(absolute, bytes, { mode: 0o600 });

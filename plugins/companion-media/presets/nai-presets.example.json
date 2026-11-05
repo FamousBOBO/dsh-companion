@@ -1,0 +1,28 @@
+{
+  "_comment": "NovelAI 预设模板（可提交，全部为空占位）。复制到 <dataDir>/media/config.json 的 image.nai.presets 下使用。V5 与 4.5 分开存放，插件绝不会把一族的预设套到另一族。",
+  "_why-empty": "官方 Quality Tags / Undesired Content 的逐字文本属于 NovelAI 账号与界面内容，本仓库不复制、不猜测；请在表单里粘贴你自己账号看到的文本。画师串（artist string）也属于个人偏好，请自填。",
+  "image": {
+    "nai": {
+      "model": "nai-diffusion-4-5-full",
+      "presets": {
+        "5": {
+          "applyDefaults": false,
+          "positive": "",
+          "negative": ""
+        },
+        "4.5": {
+          "applyDefaults": false,
+          "positive": "",
+          "negative": ""
+        }
+      },
+      "negativePrompt": ""
+    }
+  },
+  "_rules": {
+    "applyDefaults": "true = 把该族的 positive/negative 拼进请求；false = 只用请求自身的提示词（清空也是合法状态）",
+    "positive": "该族的正向预设（含画师串）。与请求的 prompt 用逗号连接，预设在前。",
+    "negative": "该族的反向预设。与 image.nai.negativePrompt、请求的 negative 按顺序连接。",
+    "family": "由模型 ID 决定：nai-diffusion-5-* → '5'；nai-diffusion-4-5-* 与 nai-diffusion-4-* → '4.5'；其他 → 'other'（不套任何族预设，并给出警告）"
+  }
+}

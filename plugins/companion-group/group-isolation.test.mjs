@@ -83,7 +83,7 @@ test('voice sending: only qq_voice action=send_file of a media-layer file inside
     { action: 'tts_send' }, { action: 'ai_send' }, { action: 'tts_save' },
     { target: 999 }, { isGroup: false },
     { file: path.join(MEDIA_ROOT, '..', 'home', 'channel-qq', 'x.mp3') },
-    { file: 'C:/Users/bobo/secret.mp3' },
+    { file: 'C:/synthetic/media/secret.mp3' },
     { file: 'speech/abc.mp3' },
     { voice: 'bot_B' },
   ]) {

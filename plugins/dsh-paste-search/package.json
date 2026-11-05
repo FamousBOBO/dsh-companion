@@ -1,9 +1,12 @@
 {
-  "name": "@local/dsh-paste-search",
+  "name": "@dsh-companion/paste-search",
   "version": "0.2.1",
+  "localVersion": "0.2.1",
   "private": true,
   "type": "module",
   "description": "左侧栏搜图入口：贴一张图就开一个独立会话去查原始出处，面板只负责展示它写出来的结果。",
+  "license": "MIT",
+  "main": "./index.js",
   "exports": {
     ".": "./index.js",
     "./client": "./client.js",
@@ -19,6 +22,12 @@
     "README.md",
     "task-template.md"
   ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "selftest": "node scripts/selftest-host.mjs"
+  },
   "dsh": {
     "bundle": {
       "patch": "./cordis.patch.yml"

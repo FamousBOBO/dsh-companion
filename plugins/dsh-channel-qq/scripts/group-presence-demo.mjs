@@ -15,8 +15,8 @@
 import { mkdirSync, writeFileSync } from 'node:fs'
 import * as path from 'node:path'
 
-// 默认跑**实际生效**的那份产物；`PRESENCE_BUILD=build/lib` 可以改跑默认输出目录。
-const BUILD = process.env.PRESENCE_BUILD ?? 'build/lib-group-20261101'
+// 默认跑 `npm run build` 的唯一产物 `build/lib`；要跑别的布局用 `PRESENCE_BUILD=…`。
+const BUILD = process.env.PRESENCE_BUILD ?? 'build/lib'
 
 const { InboundPipeline } = await import(`../${BUILD}/app/inbound/pipeline.js`)
 const { AmbientStore } = await import(`../${BUILD}/app/inbound/ambient-store.js`)

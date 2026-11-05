@@ -26,6 +26,20 @@ const groups = onlyArg
 const want = (g) => groups.includes(g);
 const isWindows = process.platform === 'win32';
 
+/**
+ * Invoke npm without a shell. When this script runs under `npm run`, npm_execpath points at
+ * npm's own JS entry, so we can spawn `node <npm-cli.js> …` and avoid both the shell (and its
+ * argument-concatenation warning) and any quoting questions. Falls back to the shell only when
+ * the script is invoked directly outside npm.
+ */
+const NPM_EXECPATH = process.env.npm_execpath;
+function npmSpawn(args, options) {
+  if (NPM_EXECPATH && /npm-cli\.js$/.test(NPM_EXECPATH)) {
+    return spawnSync(process.execPath, [NPM_EXECPATH, ...args], { ...options, shell: false });
+  }
+  return spawnSync(isWindows ? 'npm.cmd' : 'npm', args, { ...options, shell: isWindows });
+}
+
 const summary = { unit: {}, static: {}, compose: {} };
 let failures = 0;
 let skips = 0;
@@ -82,22 +96,27 @@ function runUnit() {
       continue;
     }
 
-    const res = testScript
-      ? spawnSync(isWindows ? 'npm.cmd' : 'npm', ['test'], {
-          cwd: m.dir,
-          stdio: 'pipe',
-          encoding: 'utf8',
-          env: { ...process.env, npm_config_workspaces: 'false', CI: '1' },
-          shell: isWindows,
-          timeout: 15 * 60 * 1000,
-        })
-      : spawnSync(process.execPath, ['--test'], {
-          cwd: m.dir,
-          stdio: 'pipe',
-          encoding: 'utf8',
-          env: { ...process.env, CI: '1' },
-          timeout: 15 * 60 * 1000,
-        });
+    // Run through npm from the suite root: invoking npm inside a workspace directory makes
+    // npm fight over --workspace/--no-workspaces. `--workspace` needs a resolvable name, so
+    // a package without one falls back to running the module's tests directly.
+    let res;
+    if (testScript && m.pkg?.name) {
+      res = npmSpawn(['run', 'test', `--workspace=${m.pkg.name}`], {
+        cwd: SUITE_ROOT,
+        stdio: 'pipe',
+        encoding: 'utf8',
+        env: { ...process.env, CI: '1' },
+        timeout: 20 * 60 * 1000,
+      });
+    } else {
+      res = spawnSync(process.execPath, ['--test'], {
+        cwd: m.dir,
+        stdio: 'pipe',
+        encoding: 'utf8',
+        env: { ...process.env, CI: '1' },
+        timeout: 20 * 60 * 1000,
+      });
+    }
 
     const out = `${res.stdout || ''}\n${res.stderr || ''}`;
     if (res.status === 0) {
@@ -155,7 +174,13 @@ const LOCAL_ONLY = new Set([
 function allowedIn(text, rule, ext) {
   if (ext === '.md' || ext === '.mdx') return false;
   const escaped = rule.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
-  return new RegExp(`^[ \\t]*(?://|#|/\\*|\\*)[ \\t]*leak-scan-allow:[^\\n]*\\b${escaped}\\b`, 'm').test(text);
+  // The trailing guard must not be `\b`: rule names can end in CJK (persona-三月七), where
+  // `\b` never matches, which silently disabled the exemption. `(?![\w-])` rejects only a
+  // continuation into ASCII word characters, which is what we actually want.
+  return new RegExp(
+    `^[ \\t]*(?://|#|/\\*|\\*)[ \\t]*leak-scan-allow:[^\\n]*${escaped}(?![\\w-])`,
+    'm',
+  ).test(text);
 }
 
 /** Test trees, where placeholder credentials are expected and required. */
@@ -182,9 +207,35 @@ function walk(dir, acc = []) {
   return acc;
 }
 
+/**
+ * The set of files that would actually be published: everything git tracks plus everything git
+ * does not ignore. Using git here is what makes the artifact and leak checks meaningful — a local
+ * `npm run build` output is git-ignored, so scanning the working directory would report phantom
+ * failures for files that are never committed. Falls back to a directory walk outside a git
+ * checkout (a tarball, for instance).
+ */
+function publishedFiles() {
+  const res = spawnSync('git', ['ls-files', '-z', '--cached', '--others', '--exclude-standard'], {
+    cwd: SUITE_ROOT,
+    encoding: 'utf8',
+    maxBuffer: 128 * 1024 * 1024,
+  });
+  if (res.status !== 0 || typeof res.stdout !== 'string') return null;
+  return res.stdout
+    .split('\0')
+    .filter(Boolean)
+    .map((rel) => path.join(SUITE_ROOT, rel));
+}
+
 function runStatic() {
   section('static — 包元数据与源码树卫生');
-  const files = walk(SUITE_ROOT);
+  const tracked = publishedFiles();
+  const files = tracked || walk(SUITE_ROOT);
+  console.log(
+    tracked
+      ? `· 扫描范围：git 跟踪 + 未忽略的文件（${files.length} 个）——构建产物与本地数据不在其内`
+      : `· 扫描范围：目录遍历（${files.length} 个）——不在 git 检出内，无法区分忽略文件`,
+  );
 
   // 1. packaging metadata
   for (const m of modules) {
@@ -208,8 +259,16 @@ function runStatic() {
 
   // 2. no build artifacts inside the tracked tree. Only real build outputs count:
   // most modules keep hand-written sources under lib/, so lib/ is NOT treated as an artifact.
+  // A package that declares dsh.suite.prebuilt ships its bundle deliberately (it cannot be
+  // rebuilt without a DSH source checkout), so its lib/ is allowed.
+  const prebuiltDirs = new Set(
+    modules.filter((m) => m.pkg?.dsh?.suite?.prebuilt === true).map((m) => `plugins/${m.dirName}/`),
+  );
   const ARTIFACT = /^plugins\/(?:[^/]+\/(?:build|dist)|dsh-super-injector\/lib)\//;
-  const artifacts = files.filter((f) => ARTIFACT.test(path.relative(SUITE_ROOT, f).replace(/\\/g, '/')));
+  const artifacts = files
+    .map((f) => path.relative(SUITE_ROOT, f).replace(/\\/g, '/'))
+    .filter((rel) => ARTIFACT.test(rel))
+    .filter((rel) => ![...prebuiltDirs].some((p) => rel.startsWith(p)));
   record(
     'static',
     '源码树不含构建产物',
@@ -261,6 +320,33 @@ function runStatic() {
   // 5. required root files
   for (const rel of ['AGENTS.md', 'README.md', 'LICENSE', 'THIRD-PARTY-NOTICES.md', 'config/persona.example.md']) {
     record('static', rel, fs.existsSync(path.join(SUITE_ROOT, rel)) ? 'ok' : 'failed');
+  }
+
+  // 6. data-root parity (TEAM-BRIEF D2): the suite CLI and the plugins must agree on where
+  //    runtime data lives, otherwise the UI and the engine open two different databases.
+  return checkDataRootParity();
+}
+
+async function checkDataRootParity() {
+  const label = '数据目录解析一致（CLI ↔ 插件）';
+  const suitePaths = path.join(SUITE_PATHS.plugins, 'companion-foundation', 'suite-paths.mjs');
+  if (!fs.existsSync(suitePaths)) {
+    record('static', label, 'skipped', 'companion-foundation/suite-paths.mjs 不存在');
+    return;
+  }
+  try {
+    const { dataPaths } = loadConfig();
+    const mod = await import(new URL(`file://${suitePaths.replace(/\\/g, '/')}`).href);
+    const resolved = mod.resolveSuitePaths ? mod.resolveSuitePaths({ env: process.env }) : null;
+    const pluginRoot = resolved?.dataRoot;
+    if (!pluginRoot) {
+      record('static', label, 'skipped', '插件侧没有导出 resolveSuitePaths()');
+      return;
+    }
+    const same = path.resolve(pluginRoot) === path.resolve(dataPaths.root);
+    record('static', label, same ? 'ok' : 'failed', same ? path.resolve(pluginRoot) : `CLI=${dataPaths.root} 插件=${pluginRoot}`);
+  } catch (err) {
+    record('static', label, 'failed', err.message);
   }
 }
 

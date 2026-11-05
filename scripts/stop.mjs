@@ -156,6 +156,13 @@ export async function runStop(argv = process.argv.slice(2)) {
     lines.push(`  注意：镜像名对不上（记录 ${expected} / 实际 ${actual}），按 --force 继续。`);
   }
 
+  // 先把自己的意图写进记录：start 的前台循环靠这个字段判断「是被人正常停掉」而不是崩了。
+  try {
+    fs.writeFileSync(pidFile, `${JSON.stringify({ ...record, status: 'stopping' }, null, 2)}\n`, 'utf8');
+  } catch {
+    /* 写不进去也不影响停止，只是 start 那边会看到旧状态 */
+  }
+
   const killed = killTree(pid);
   if (!killed.ok) {
     emit({ ok: false, stopped: false, reason: 'kill-failed', pid, error: killed.error }, [...lines, `  停止失败：${killed.error}`]);

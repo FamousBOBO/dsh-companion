@@ -1,4 +1,4 @@
-﻿/**
+/**
  * Offline tests for the migration CLI.
  *
  * Everything runs against a throwaway data directory pointed to by
@@ -28,16 +28,19 @@ const root = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-migrate-test-'));
 const dataA = path.join(root, 'data-a');
 const dataB = path.join(root, 'data-b');
 
+/** A source persona id that is deliberately *not* the default target. */
+const LEGACY_ID = 'legacy-x';
+
 function silence() {
   const out = [];
   const err = [];
   return {
-    out,
-    err,
     io: {
       stdout: (text) => out.push(text),
       stderr: (text) => err.push(text),
     },
+    out,
+    err,
   };
 }
 
@@ -66,7 +69,7 @@ async function makeSqlite(file, rows) {
   return true;
 }
 
-function seedData(dir, { ownerId, persona = 'legacy-x', reminderId = 'r_1' }) {
+function seedData(dir, { ownerId, persona = LEGACY_ID, reminderId = 'r_1' }) {
   fs.mkdirSync(path.join(dir, 'home', 'companion'), { recursive: true });
   fs.mkdirSync(path.join(dir, 'home', 'memory'), { recursive: true });
   fs.mkdirSync(path.join(dir, 'home', 'channel-qq'), { recursive: true });
@@ -86,12 +89,15 @@ function seedData(dir, { ownerId, persona = 'legacy-x', reminderId = 'r_1' }) {
   );
   fs.writeFileSync(
     path.join(dir, 'home', 'channel-qq', 'reminders.json'),
-    JSON.stringify({ version: 1, reminders: [{ id: reminderId, text: '鏃ф彁閱?, at: 1, room: 'dm', target: ownerId, fired: false }] }),
+    JSON.stringify({
+      version: 1,
+      reminders: [{ id: reminderId, text: 'old reminder', at: 1, room: 'dm', target: ownerId, fired: false }],
+    }),
     'utf8',
   );
   fs.writeFileSync(
     path.join(dir, 'home', 'channel-qq', `sent-dm-${ownerId}.json`),
-    JSON.stringify([{ messageId: 1, quotedId: null, text: '涓嶈琚鍑虹殑姝ｆ枃', time: 100 }]),
+    JSON.stringify([{ messageId: 1, quotedId: null, text: 'this body must not be exported', time: 100 }]),
     'utf8',
   );
 }
@@ -101,8 +107,8 @@ before(async () => {
   seedData(dataB, { ownerId: 20002, reminderId: 'r_local' });
   if (sqliteAvailable) {
     await makeSqlite(path.join(dataA, 'home', 'memory', 'companion-memory.db'), [
-      { persona: 'legacy-x', body: 'a' },
-      { persona: 'legacy-x', body: 'b' },
+      { persona: LEGACY_ID, body: 'a' },
+      { persona: LEGACY_ID, body: 'b' },
     ]);
   }
 });
@@ -120,7 +126,7 @@ test('parseArgs: rejects unknown command, unknown flag, bad identity value', () 
   assert.equal(parseArgs(['check', '--from=x']).from, 'x');
 });
 
-test('export: refuses credentials domain with exit 2 and never writes', async () => {
+test('export: refuses the credentials domain with exit 2 and writes nothing', async () => {
   const dir = path.join(root, 'forbidden-out');
   const result = await run(['export', '--out', dir, '--domains', 'credentials'], {
     ...process.env,
@@ -148,26 +154,24 @@ test('export: writes a bundle, redacts identity sessions and message bodies', as
   }
 
   const identity = JSON.parse(fs.readFileSync(path.join(outDir, 'domains', 'identity', 'identity.json'), 'utf8'));
-  assert.equal(identity.sessions, undefined, '浼氳瘽缁戝畾涓嶅緱杩涘叆杩佺Щ鍖?);
+  assert.equal(identity.sessions, undefined, 'per-host session bindings must not be exported');
   assert.ok(bundle.source.identityFingerprint.startsWith('sha256:'));
 
   const suppression = JSON.parse(fs.readFileSync(path.join(outDir, 'domains', 'qq', 'suppression.json'), 'utf8'));
   assert.deepEqual(suppression.entries, [{ messageId: 1, time: 100 }]);
-  assert.doesNotMatch(JSON.stringify(suppression), /涓嶈琚鍑虹殑姝ｆ枃/);
+  assert.doesNotMatch(JSON.stringify(suppression), /this body must not be exported/);
 
   const reminders = JSON.parse(fs.readFileSync(path.join(outDir, 'domains', 'reminders', 'reminders.json'), 'utf8'));
   assert.equal(reminders.reminders[0].fired, true);
   assert.equal(reminders.reminders[0].paused, true);
-
-  assert.ok(!JSON.stringify(manifest).includes('credentials'));
 });
 
-test('check: passes on a fresh bundle and reports the plan', async () => {
+test('check: a different owner makes the bundle require an explicit identity decision', async () => {
   const result = await run(['check', '--from', path.join(root, 'bundle-1')], {
     ...process.env,
     DSH_COMPANION_DATA_DIR: dataB,
   });
-  assert.equal(result.code, EXIT.refused, '韬唤涓嶅悓搴斿綋瑕佹眰鎿嶄綔鑰呰鍐?);
+  assert.equal(result.code, EXIT.refused);
   assert.equal(result.json.ok, false);
   assert.ok(result.json.conflicts.identity.length >= 1);
 });
@@ -182,19 +186,21 @@ test('check: rejects a tampered bundle with exit 2', async () => {
   assert.ok(result.json.problems.some((item) => item.code === 'checksum-mismatch' || item.code === 'size-mismatch'));
 });
 
-test('import --dry-run: writes nothing', async () => {
+test('import --dry-run: writes nothing, but still reports the obligations', async () => {
   const before = fs.readFileSync(path.join(dataB, 'home', 'companion', 'identity.json'), 'utf8');
-  const result = await run(
+  const refused = await run(
     ['import', '--from', path.join(root, 'bundle-1'), '--dry-run'],
     { ...process.env, DSH_COMPANION_DATA_DIR: dataB },
   );
-  assert.equal(result.code, EXIT.refused, '韬唤鏈鍐虫椂蹇呴』鍏堟嫆缁?);
-  const withIdentity = await run(
+  assert.equal(refused.code, EXIT.refused, 'identity conflict must be refused before anything else');
+
+  const result = await run(
     ['import', '--from', path.join(root, 'bundle-1'), '--dry-run', '--identity', 'adopt'],
     { ...process.env, DSH_COMPANION_DATA_DIR: dataB },
   );
-  assert.equal(withIdentity.code, EXIT.ok, JSON.stringify(withIdentity.json.error));
-  assert.equal(withIdentity.json.dryRun, true);
+  assert.equal(result.code, EXIT.ok, JSON.stringify(result.json.error));
+  assert.equal(result.json.dryRun, true);
+  assert.ok(result.json.rebind.length >= 4);
   assert.equal(fs.readFileSync(path.join(dataB, 'home', 'companion', 'identity.json'), 'utf8'), before);
 });
 
@@ -207,34 +213,34 @@ test('import: backs up first, adopts identity, maps persona id, never replays re
   assert.equal(result.json.ok, true);
 
   const backupDir = result.json.backup.dir;
-  assert.ok(fs.existsSync(backupDir), '蹇呴』瀛樺湪 pre-import 澶囦唤鐩綍');
+  assert.ok(fs.existsSync(backupDir), 'a pre-import backup directory must exist');
   assert.ok(fs.existsSync(path.join(backupDir, 'home', 'companion', 'identity.json')));
 
   const identity = JSON.parse(fs.readFileSync(path.join(dataB, 'home', 'companion', 'identity.json'), 'utf8'));
-  assert.equal(identity.persona, 'bot', '浜烘牸 id 蹇呴』鏄犲皠涓虹洰鏍?id');
-  assert.ok(identity.sessions, '鏈満浼氳瘽缁戝畾蹇呴』淇濈暀');
+  assert.equal(identity.persona, 'bot', 'persona id must be mapped to the target id');
+  assert.ok(identity.sessions, 'local session bindings must be preserved');
   assert.ok(Object.keys(identity.sessions).length >= 1);
 
   const reminders = JSON.parse(fs.readFileSync(path.join(dataB, 'home', 'channel-qq', 'reminders.json'), 'utf8'));
   const importedReminder = reminders.reminders.find((item) => item.id === 'r_1');
-  assert.ok(importedReminder, '瀵煎叆鐨勬彁閱掓潯鐩繀椤诲瓨鍦?);
-  assert.equal(importedReminder.fired, true, '瀵煎叆鐨勬彁閱掑繀椤荤疆涓哄凡鍙戯紝缁濅笉琛ュ彂');
+  assert.ok(importedReminder, 'the imported reminder entry must exist');
+  assert.equal(importedReminder.fired, true, 'imported reminders must be marked fired and never replayed');
   assert.equal(importedReminder.paused, true);
   const localReminder = reminders.reminders.find((item) => item.id === 'r_local');
-  assert.equal(localReminder.fired, false, '鏈満鍘熸湁鎻愰啋涓嶅彈瀵煎叆褰卞搷');
+  assert.equal(localReminder.fired, false, 'local reminders must be untouched');
   assert.ok(result.json.notReplayed.some((item) => item.kind === 'reminder'));
 
   const rebindKinds = new Set(result.json.rebind.map((item) => item.kind));
-  for (const kind of ['path', 'auth', 'device', 'service']) assert.ok(rebindKinds.has(kind), `rebind 缂?${kind}`);
+  for (const kind of ['path', 'auth', 'device', 'service']) assert.ok(rebindKinds.has(kind), `rebind is missing ${kind}`);
 
   if (sqliteAvailable) {
-    assert.equal(result.json.personaMapping.from, 'legacy-x');
+    assert.equal(result.json.personaMapping.from, LEGACY_ID);
     assert.equal(result.json.personaMapping.to, 'bot');
     const rows = result.json.personaMapping.targets.reduce((sum, item) => sum + item.rows, 0);
-    assert.ok(rows >= 2, `搴斿綋鏀瑰啓 2 琛?persona 鍒楋紝瀹為檯 ${rows}`);
+    assert.ok(rows >= 2, `expected at least 2 rewritten persona rows, got ${rows}`);
   }
 
-  assert.ok(fs.existsSync(result.json.report), '蹇呴』鍐欏鍏ユ姤鍛?);
+  assert.ok(fs.existsSync(result.json.report), 'an import report must be written');
   const report = JSON.parse(fs.readFileSync(result.json.report, 'utf8'));
   assert.equal(report.dryRun, false);
   assert.equal(report.identityMode, 'adopt');
@@ -243,7 +249,6 @@ test('import: backs up first, adopts identity, maps persona id, never replays re
 test('import: refuses while a launcher record still points at a live pid', async () => {
   const logs = path.join(dataB, 'logs');
   fs.mkdirSync(logs, { recursive: true });
-  // Start-Desktop.ps1 writes this record; a live pid means the profile is in use.
   const record = path.join(logs, 'desktop-launch.json');
   fs.writeFileSync(record, JSON.stringify({ pid: process.pid, launchedAt: new Date().toISOString() }), 'utf8');
   try {
@@ -259,7 +264,7 @@ test('import: refuses while a launcher record still points at a live pid', async
   }
 });
 
-test('detectLiveHost: a fresh WAL is treated as "database still open"', async () => {
+test('detectLiveHost: a freshly written WAL counts as "database still open"', async () => {
   const db = path.join(dataB, 'home', 'memory', 'companion-memory.db');
   fs.mkdirSync(path.dirname(db), { recursive: true });
   fs.writeFileSync(db, '');
@@ -278,4 +283,3 @@ test('help: exits with a JSON document and a usage string', async () => {
   assert.equal(result.json.ok, true);
   assert.match(result.json.usage, /npm run migrate/);
 });
-

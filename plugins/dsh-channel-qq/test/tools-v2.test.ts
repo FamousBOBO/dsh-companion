@@ -186,6 +186,7 @@ test('tools.v2 打开：宿主上正好 17 个合并工具，描述人格中立'
       assert.ok(description.includes('动作（'), `${String(def.name)} 的描述应带动作清单`)
       // 人格中立：描述里不许出现具体人设的称呼/自称（「主人」是本插件的域内称呼，
       // 指配置里的 admins[0]，不是人格设定，所以不在禁列）。
+      // leak-scan-allow: persona-三月七  (regression guard: asserts the old name is gone)
       for (const banned of ['学弟', '诺诺', '三月七', '咱']) {
         assert.equal(description.includes(banned), false, `${String(def.name)} 的描述含人格称呼「${banned}」`)
       }

@@ -112,9 +112,9 @@ node eval/run.mjs --json                    # 机读输出（stdout 纯 JSON）
 
 ## 校准与同步（改动前先读这段）
 
-- **可调参数都在数据里**：`dm-short` 的 15 字与"不用句号"来自线上提示词字面量
-  （`src/features/proactive/events.ts`、docs/deployment.md §11.2）；群聊 40 字、复述阈值
-  6 字、撒娇词表是**一版校准值**，调它们只改 JSON/预设。
+- **可调参数都在数据里**：`dm-short` 的 15 字与"不用句号"是**默认人格基线**（一个人的口径，
+  不是硬规则；用户的 `config/persona.md` 可以另定，届时同步改 `eval/lib/rules.mjs` 与预设即可）；
+  群聊 40 字、复述阈值 6 字、撒娇词表同属**一版校准值**，调它们只改 JSON/预设。
 - **为什么有一份拷贝**：`eval/` 必须能在没有任何构建产物的机器上 `node eval/run.mjs`
   直接跑（服务器上也是同一份），所以两处算法是**手抄镜像**，改了 src 要同步改 eval：
   - `src/core/guards/monologue.ts` → `eval/lib/rules.mjs` 的 `innerMonologueLeak`

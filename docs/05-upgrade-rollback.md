@@ -109,7 +109,7 @@ npm run doctor && npm run start
 | 群聊接话 | 通道配置 `presence.enabled = false`（回到「只回 @」） |
 | 提醒 | 通道配置 `reminders.enabled = false`，或 `dryRun = true` |
 | B站（外部模块） | 该模块的 `enabled = false`，或从 profile 移除 |
-| 注入器 | 从 profile 移除 `dsh-super-injector`（它本来就不在陪伴桌面） |
+| QQ 会话空闲压缩 | `config/suite.json` 的 `modules.qqIdleCompaction = false`（默认就是关） |
 
 ### 5.4 回滚**不能**做到的事
 

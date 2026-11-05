@@ -127,8 +127,14 @@ Windows / Linux / macOS 同一套命令。
 | `reminders.dryRun` | `true` | 提醒照常到点、不真发 |
 | `admin.password` | `""` | 空口令无法登录（fail-closed），且只监听本机 |
 
-`plugins/qq-idle-compaction.mjs`（套件级可选插件，空闲压缩会走到模型）同样**默认关**：
-只有 `QQ_IDLE_COMPACTION=1` 才安装 60 秒轮询。
+`plugins/qq-idle-compaction.mjs`（套件级可选插件，空闲压缩会走到模型）同样**默认关**，
+关着时**不注册任何定时器**。打开它的方式（二选一，环境变量优先）：
+
+- `<套件根>/config/suite.json` 里写 `"qqIdleCompaction": true`（推荐：用户不必学环境变量）；
+- 环境变量 `QQ_IDLE_COMPACTION=1`；显式写 `QQ_IDLE_COMPACTION=0` 会压掉套件配置。
+
+两种读法的判定顺序与"关着不注册定时器"都由
+`test/safe-defaults.test.ts` 的最后一条用例钉住。
 
 ---
 

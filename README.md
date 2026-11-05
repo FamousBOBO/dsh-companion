@@ -34,7 +34,15 @@
 | `companion-health` + `sidecars/` | 华为健康 / BLE 心率采集与只读查询 | 关 |
 | `companion-media` | 生图（OpenAI-compatible / NovelAI）、五种 TTS、识图合同 | 关 |
 | `dsh-paste-search` | 左侧栏搜图入口 | 关 |
-| `dsh-super-injector` | 运行时注入本地插件包（第三方，BSD-3-Clause） | 关 |
+
+### 本版**未收录**的模块（以及原因）
+
+| 模块 | 为什么没有 | 你能做什么 |
+|---|---|---|
+| `dsh-super-injector`（超级注入器） | 两个硬阻塞：① 它的构建需要一份 **DSH 源码检出**（`DSH_CHECKOUT`），只装桌面版的环境永远构建不出来；② 仓库里**没有上游的 `LICENSE` 文本**，而它是 BSD-3-Clause，该许可证要求随分发保留版权声明与许可全文。缺任一条都不该发 | 从上游仓库自行获取并按其许可证使用 |
+| `sidecars/huawei-health-cn` 的上游协议实现 | 该 sidecar 依赖一份来自上游项目 `and7ey/huawei_health` 的代码，**上游许可证未能核实**；许可不明不等于可以当成 MIT 分发 | sidecar 只带本项目自写的采集/脱敏/起停/测试代码，运行时用 `$HUAWEI_UPSTREAM_PKG` 指向你自己的上游检出 |
+
+> 健康模块的 **BLE 心率**通道不受影响（全部是原创代码）；受影响的只有华为健康的云端数据通道。
 
 各模块当前**真到什么程度**，看 [`docs/03-modules-support-matrix.md`](docs/03-modules-support-matrix.md)
 与 [`docs/07-verification-status.md`](docs/07-verification-status.md)。那份表区分「离线测试通过」
@@ -99,8 +107,10 @@ data/
 ## 关于本仓库的诚实说明
 
 - 首版**不包含** MC 联动、实时语音通话，以及尚未打通的实验入口。
-- 媒体能力里，只有协议核实完成并可验证的 adapter 才允许从「预留」变为「可启用」；其余在 UI
-  上标记「尚未接入」。识图保留合同但默认关闭。
+- 首版**不包含** `dsh-super-injector`（需要 DSH 源码检出 + 缺上游 LICENSE 文本）与华为健康 sidecar 的上游协议实现（上游许可证未核实）。原因与替代做法见上表。
+- 媒体能力里，只有协议核实完成并可验证的 adapter 才允许从「预留」变为「可启用」；其余在 UI 上标记「尚未接入」。识图保留合同但默认关闭。
 - Windows 是实机验收平台；Linux/macOS 只有 CI 的构建与离线测试证据，**不等于**桌面或硬件
   实测。
 - 外部服务（NapCat、健康 sidecar、TTS/生图服务）需要你自己部署，本套件只负责连接。
+- 具体每一项能力验证到了哪一级（离线测试 / 宿主加载 / 真实 API / 真实平台发送 / 真机硬件），
+  见 [`docs/07-verification-status.md`](docs/07-verification-status.md)。**没到就是没到。**

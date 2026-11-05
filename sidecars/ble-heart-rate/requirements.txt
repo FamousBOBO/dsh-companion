@@ -1,1 +1,13 @@
-bleak==0.22.*
+# BLE heart-rate sidecar — Python dependencies.
+#
+#   python -m venv .venv
+#   . .venv/bin/activate            # Windows: .venv\Scripts\activate
+#   python -m pip install -r requirements.txt
+#
+# Only **real-hardware** mode needs this. `--fixture` (synthetic replay) and `--selftest` (frame
+# parsing) run on a bare interpreter with no third-party packages at all — `bleak` is imported
+# lazily, so a machine without Bluetooth can still verify the whole HTTP/parse path.
+#
+# bleak talks to BlueZ on Linux, CoreBluetooth on macOS and WinRT on Windows; no extra system
+# package is needed on the Python side. On Linux, a working D-Bus + BlueZ (>= 5.43) is required.
+bleak>=0.22,<0.23

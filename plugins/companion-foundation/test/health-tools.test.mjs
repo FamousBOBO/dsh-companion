@@ -301,7 +301,7 @@ test('授权闸：拿不准就拒绝（{} / null / 非对象 / 键缺失 / 非�
 
 test('服务方法缺失或抛错时也是固定 code，不把 exception message 交给模型', async () => {
   const broken = stubService({
-    today: () => { throw new Error('SQLITE_BUSY at C:\\Users\\bobo\\home\\health\\health.db'); },
+    today: () => { throw new Error('SQLITE_BUSY at <dataRoot>/home/health/health.db'); },
     trend: undefined,
   });
   const { call } = harness({ service: broken });

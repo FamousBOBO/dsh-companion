@@ -1,10 +1,17 @@
 // 用假 ctx 单测 Host 半：路由注册、图片/附件落盘、任务书、工作区挂载、回合结束后的重命名。
+//
+// 用法：node plugins/dsh-paste-search/scripts/selftest-host.mjs [样本图片路径]
+// 样本图默认用内置的 1×1 JPEG（不需要任何本机文件）；想用真图片就传路径或设
+// PASTE_SEARCH_SAMPLE_IMAGE。全部临时文件都在 os.tmpdir() 下，不碰仓库。
 import { readFile, readdir } from 'node:fs/promises';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
+import { fileURLToPath, pathToFileURL } from 'node:url';
 
-const mod = await import('file:///D:/Bot/dsh-companion/plugins/dsh-paste-search/index.js');
+const HERE = path.dirname(fileURLToPath(import.meta.url));
+const PLUGIN_ROOT = path.resolve(HERE, '..');
+const mod = await import(pathToFileURL(path.join(PLUGIN_ROOT, 'index.js')).href);
 
 const ROOT = path.join(os.tmpdir(), 'ps-selftest', 'paste-search-sessions');
 const calls = { attach: [], rename: [], created: [], followup: [], select: [] };
@@ -79,7 +86,14 @@ async function call(pathname, init) {
   return { status: response.status, json: await response.json() };
 }
 
-const image = await readFile('D:/Bot/dsh-companion/tmp/probe/sample.jpg');
+// A 1×1 JPEG, so the self-test never depends on a file that happens to exist on somebody's disk.
+const TINY_JPEG_BASE64 =
+  '/9j/4AAQSkZJRgABAQEAYABgAAD/2wBDAAgGBgcGBQgHBwcJCQgKDBQNDAsLDBkSEw8UHRofHh0a'
+  + 'HBwgJC4nICIsIxwcKDcpLDAxNDQ0Hyc5PTgyPC4zNDL/wAALCAABAAEBAREA/8QAFAABAAAAAAAA'
+  + 'AAAAAAAAAAAACf/EABQQAQAAAAAAAAAAAAAAAAAAAAD/2gAIAQEAAD8AKp//2Q==';
+
+const samplePath = process.argv[2] ?? process.env.PASTE_SEARCH_SAMPLE_IMAGE ?? null;
+const image = samplePath ? await readFile(samplePath) : Buffer.from(TINY_JPEG_BASE64, 'base64');
 const dataUrl = `data:image/jpeg;base64,${image.toString('base64')}`;
 
 const start = await call('/api/dsh-paste-search/search', {

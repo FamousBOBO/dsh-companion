@@ -15,7 +15,7 @@
  * 两种运行方式：
  *   默认（前台）—— 打印 URL 后继续留在前台，把宿主输出转给终端，直到宿主退出；
  *                   Ctrl+C 或另一个终端里的 `npm run stop` 都能停掉它。这是最可靠的默认值：
- *                   宿主进程存活与否不再取决于启动它的终端是否被回收。
+ *                   宿主能否存活不再取决于启动它的终端是否被父进程回收。
  *   --detach    —— 拿到 URL 后立即返回，宿主留在后台；此时能否存活取决于父进程/作业对象，
  *                   停它仍然用 `npm run stop`（按 PID 记录，且会先确认 PID 没被复用）。
  *
@@ -46,10 +46,11 @@ const PATCH_GENERATED = path.join(SUITE_PATHS.profileTemplateDir, 'companion.pat
 const PID_FILE = 'companion-start.json';
 
 function parseArgs(argv) {
-  const opts = { desktop: false, json: false, timeoutMs: 0, port: 0, help: false };
+  const opts = { desktop: false, detach: false, json: false, timeoutMs: 0, port: 0, help: false };
   for (let i = 0; i < argv.length; i += 1) {
     const arg = argv[i];
     if (arg === '--desktop') opts.desktop = true;
+    else if (arg === '--detach') opts.detach = true;
     else if (arg === '--json') opts.json = true;
     else if (arg === '--timeout') {
       opts.timeoutMs = Number(argv[++i]);
@@ -58,7 +59,7 @@ function parseArgs(argv) {
       opts.port = Number(argv[++i]);
       if (!Number.isInteger(opts.port) || opts.port < 0) throw new Error('--port 需要一个非负整数');
     } else if (arg === '--help' || arg === '-h') opts.help = true;
-    else throw new Error(`未知参数：${arg}（可用：--desktop --json --timeout <ms> --port <port> --help）`);
+    else throw new Error(`未知参数：${arg}（可用：--desktop --detach --json --timeout <ms> --port <port> --help）`);
   }
   return opts;
 }
@@ -69,7 +70,7 @@ function stamp() {
   return `${now.getFullYear()}${pad(now.getMonth() + 1)}${pad(now.getDate())}-${pad(now.getHours())}${pad(now.getMinutes())}${pad(now.getSeconds())}`;
 }
 
-/** Grow-only reader for the log file the child writes to. */
+/** 只增不减地读取子进程正在写的日志文件。 */
 function makeLogTailer(logFile) {
   let offset = 0;
   let buffer = '';
@@ -84,15 +85,24 @@ function makeLogTailer(logFile) {
       if (stat.size <= offset) return buffer;
       const length = stat.size - offset;
       const fd = fs.openSync(logFile, 'r');
+      let chunk = '';
       try {
-        const chunk = Buffer.alloc(length);
-        fs.readSync(fd, chunk, 0, length, offset);
+        const buf = Buffer.alloc(length);
+        fs.readSync(fd, buf, 0, length, offset);
         offset = stat.size;
-        buffer += chunk.toString('utf8');
+        chunk = buf.toString('utf8');
+        buffer += chunk;
       } finally {
         fs.closeSync(fd);
       }
       return buffer;
+    },
+    /** 只返回自上次调用以来新增的部分。 */
+    drain() {
+      const before = buffer.length;
+      this.read();
+      const added = buffer.slice(before);
+      return added;
     },
     get text() {
       return buffer;
@@ -104,43 +114,8 @@ function tailLines(text, count) {
   return String(text || '').split(/\r?\n/).filter(Boolean).slice(-count);
 }
 
-function isAlive(pid) {
-  if (!Number.isInteger(pid) || pid <= 0) return false;
-  try {
-    process.kill(pid, 0);
-    return true;
-  } catch (err) {
-    return err.code === 'EPERM';
-  }
-}
-
-async function waitForUrl({ child, logFile, timeoutMs }) {
-  const tailer = makeLogTailer(logFile);
-  const startedAt = Date.now();
-  let exited = null;
-  child.on('exit', (code, signal) => { exited = { code, signal }; });
-
-  for (;;) {
-    const text = tailer.read();
-    const url = parseWebUrl(text);
-    if (url) return { ok: true, url, text, waitedMs: Date.now() - startedAt };
-    if (exited) {
-      return {
-        ok: false, url: '', text: tailer.read(), waitedMs: Date.now() - startedAt,
-        error: `宿主在打印 web 地址之前就退出了（退出码 ${exited.code ?? 'null'}${exited.signal ? `，信号 ${exited.signal}` : ''}）`,
-      };
-    }
-    if (Date.now() - startedAt > timeoutMs) {
-      return {
-        ok: false, url: '', text: tailer.read(), waitedMs: Date.now() - startedAt,
-        error: `等待 web 地址超时（${timeoutMs} ms）`,
-      };
-    }
-    await new Promise((resolve) => setTimeout(resolve, 120));
-  }
-}
-
 function killTree(pid) {
+  if (!Number.isInteger(pid) || pid <= 0) return { ok: false, error: '没有可停止的 PID' };
   if (process.platform === 'win32') {
     try {
       execFileSync('taskkill', ['/PID', String(pid), '/T', '/F'], { stdio: 'ignore', timeout: 20000 });
@@ -162,24 +137,49 @@ function killTree(pid) {
   }
 }
 
+async function waitForUrl({ child, logFile, timeoutMs }) {
+  const tailer = makeLogTailer(logFile);
+  const startedAt = Date.now();
+  let exited = null;
+  child.on('exit', (code, signal) => { exited = { code, signal }; });
+
+  for (;;) {
+    const text = tailer.read();
+    const url = parseWebUrl(text);
+    if (url) return { ok: true, url, text, waitedMs: Date.now() - startedAt, tailer };
+    if (exited) {
+      return {
+        ok: false, url: '', text: tailer.read(), waitedMs: Date.now() - startedAt, tailer,
+        error: `宿主在打印 web 地址之前就退出了（退出码 ${exited.code ?? 'null'}${exited.signal ? `，信号 ${exited.signal}` : ''}）`,
+      };
+    }
+    if (Date.now() - startedAt > timeoutMs) {
+      return {
+        ok: false, url: '', text: tailer.read(), waitedMs: Date.now() - startedAt, tailer,
+        error: `等待 web 地址超时（${timeoutMs} ms）`,
+      };
+    }
+    await new Promise((resolve) => setTimeout(resolve, 120));
+  }
+}
+
 export async function runStart(argv = process.argv.slice(2)) {
   const opts = parseArgs(argv);
   const started = Date.now();
 
   if (opts.help) {
-    process.stderr.write('用法：node scripts/start.mjs [--desktop] [--json] [--timeout <ms>] [--port <port>]\n');
+    process.stderr.write('用法：node scripts/start.mjs [--desktop] [--detach] [--json] [--timeout <ms>] [--port <port>]\n');
     return 0;
   }
 
   const lines = [];
   const say = (line = '') => { lines.push(line); };
-  const fail = (message, extra = {}) => {
+  const fail = (message) => {
     if (opts.json) {
       process.stdout.write(`${JSON.stringify({
-        command: 'start', ok: false, error: message, ...extra, durationMs: Date.now() - started,
+        command: 'start', ok: false, error: message, durationMs: Date.now() - started,
       }, null, 2)}\n`);
     } else {
-      say('');
       process.stderr.write(`${lines.join('\n')}\n`);
       process.stderr.write(`\n启动失败：${message}\n`);
     }
@@ -236,6 +236,7 @@ export async function runStart(argv = process.argv.slice(2)) {
   }
 
   const { child } = spawned;
+  const pidFile = path.join(paths.temp, PID_FILE);
   const record = {
     pid: child.pid,
     executable: launcher.command,
@@ -248,7 +249,6 @@ export async function runStart(argv = process.argv.slice(2)) {
     startedAt: new Date().toISOString(),
     startedAtMs: Date.now(),
   };
-  const pidFile = path.join(paths.temp, PID_FILE);
   const writeRecord = (patch) => {
     const merged = { ...record, ...patch };
     const tmp = `${pidFile}.tmp-${process.pid}`;
@@ -269,7 +269,6 @@ export async function runStart(argv = process.argv.slice(2)) {
         durationMs: Date.now() - started,
       }, null, 2)}\n`);
     } else {
-      say('');
       if (tailText) say(`  日志最后几行：\n    ${tailText}`);
       process.stderr.write(`${lines.join('\n')}\n`);
       process.stderr.write(`\n启动失败：${result.error}\n  完整日志：${logFile}\n`);
@@ -309,15 +308,8 @@ export async function runStart(argv = process.argv.slice(2)) {
 
   /* ── 前台模式：继续把宿主输出转给终端，直到它退出 ──────────────── */
 
-  const tailer = makeLogTailer(logFile);
-  tailer.read(); // 把已经打印过的部分吞掉
+  const tailer = result.tailer;
   let stopped = false;
-
-  const forward = () => {
-    const text = tailer.read();
-    if (opts.json || !text) return;
-    process.stderr.write(text);
-  };
 
   const shutdown = () => {
     if (stopped) return;
@@ -328,31 +320,44 @@ export async function runStart(argv = process.argv.slice(2)) {
   process.on('SIGTERM', shutdown);
   process.on('SIGHUP', shutdown);
 
-  const exitCode = await new Promise((resolve) => {
-    let timer = null;
-    const tick = () => { forward(); };
-    timer = setInterval(tick, 200);
+  const exit = await new Promise((resolve) => {
+    const timer = setInterval(() => {
+      const added = tailer.drain();
+      if (added && !opts.json) process.stderr.write(added);
+    }, 200);
     child.on('exit', (code, signal) => {
       clearInterval(timer);
-      forward();
+      const added = tailer.drain();
+      if (added && !opts.json) process.stderr.write(added);
       resolve({ code, signal });
     });
   });
 
-  forward();
+  // 前台模式结束：区分「被 npm run stop 正常停掉」和「宿主自己崩了」。
+  // stop.mjs 动手前会把记录里的 status 改成 stopping，停成功后再删除记录；
+  // 两种情况都算正常被停，不算失败。
+  let externallyStopped = false;
+  try {
+    const latest = JSON.parse(fs.readFileSync(pidFile, 'utf8'));
+    externallyStopped = latest.status === 'stopping' || latest.status === 'stopped';
+  } catch {
+    externallyStopped = !fs.existsSync(pidFile); // 记录已删除 = stop 已经收尾
+  }
   fs.rmSync(pidFile, { force: true });
-  const byStop = stopped || exitCode.code === 0;
+  const clean = stopped || externallyStopped || exit.code === 0;
   if (opts.json) {
     process.stdout.write(`${JSON.stringify({
-      command: 'start', ok: byStop, url, pid: child.pid, logFile,
-      exitCode: exitCode.code, signal: exitCode.signal, stoppedByUser: stopped,
+      command: 'start', ok: clean, url, pid: child.pid, logFile,
+      exitCode: exit.code, signal: exit.signal, stoppedByUser: stopped || externallyStopped,
     }, null, 2)}\n`);
+  } else if (stopped) {
+    process.stderr.write('\n已停止（本地收到退出信号）。\n');
+  } else if (externallyStopped) {
+    process.stderr.write('\n已被 npm run stop 停止（PID 记录已清除）。\n');
   } else {
-    process.stderr.write(stopped
-      ? '\n已停止（本地收到退出信号）。\n'
-      : `\n宿主进程已退出（退出码 ${exitCode.code ?? 'null'}${exitCode.signal ? `，信号 ${exitCode.signal}` : ''}）。日志：${logFile}\n`);
+    process.stderr.write(`\n宿主进程自己退出了（退出码 ${exit.code ?? 'null'}${exit.signal ? `，信号 ${exit.signal}` : ''}）。日志：${logFile}\n`);
   }
-  return byStop ? 0 : 1;
+  return clean ? 0 : 1;
 }
 
 /* ────────────────────────── 入口 ────────────────────────── */

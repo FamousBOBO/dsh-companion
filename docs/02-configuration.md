@@ -59,12 +59,15 @@ profile 的 patch 里，见 §3.5。
 |---|---|---|---|
 | `core` | **`true`** | `companion-foundation` + `companion-memory` + `companion-runtime` + `companion-group` | 恒为真（强制），关不掉；没有它套件没有意义 |
 | `memoryStudio` | **`true`** | `companion-memory-studio`（陪伴空间 Web UI） | 依赖 core 成套安装 |
-| `qq` | `false` | `dsh-channel-qq`（+ `qq-idle-compaction`） | 需要外部 NapCat/OneBot 服务地址+token |
+| `qq` | `false` | `dsh-channel-qq` | 需要外部 NapCat/OneBot 服务地址+token |
+| `qqIdleCompaction` | `false` | `qq-idle-compaction`（QQ 会话空闲压缩，**会调用模型**） | 独立于 `modules.qq`；建议同时有 `safety.backgroundModelTasks` 的明确授权 |
 | `bilibili` | `false` | **外部模块** `dsh-bili-scroll`，不在本仓库（见 §3.7） | 需要自行安装第三方 tarball + Python 环境 |
-| `health` | `false` | `companion-health` + `sidecars/huawei-health-cn` + `sidecars/ble-heart-rate` | 需要华为健康 sidecar 与/或 BLE 设备 |
+| `health` | `false` | `companion-health` + `sidecars/huawei-health-cn` + `sidecars/ble-heart-rate` | 需要华为健康 sidecar 与/或 BLE 设备；**云端通道还要自备上游检出**（§3.6） |
 | `media` | `false` | `companion-media` | 通常还需要外部 TTS / 生图服务 |
 | `pasteSearch` | `false` | `dsh-paste-search`（贴图搜索入口） | 无外部依赖，但属可选 UI |
-| `superInjector` | `false` | `dsh-super-injector`（运行时插件注入器） | 只在 web profile 有意义，不在陪伴桌面加载 |
+
+> **本版没有 `modules.superInjector`**：`dsh-super-injector` 因许可证文本缺失与无法验证，已整体
+> 移出发布范围（原因见 `docs/03` §1.2）。它的能力需要用户自行从上游获取。
 
 > **核心模块成套安装**：foundation / memory / memory-studio / runtime / group 之间是**兄弟相对
 > import**，必须成套安装（本仓库的 npm workspaces 已保证）。不要单独取用某一个包。
@@ -216,11 +219,22 @@ profile 的 patch 里，见 §3.5。
 
 | sidecar | 端口 | 关键参数 | 依赖 |
 |---|---|---|---|
-| `sidecars/huawei-health-cn` | `127.0.0.1:8765` | 只监听回环；只读 HTTP | Python 3.9+（契约测试只用标准库） |
+| `sidecars/huawei-health-cn` | `127.0.0.1:8765` | 只监听回环；只读 HTTP；`--` 起停脚本分 `.ps1` 与 `.sh` 两套 | Python 3.9+（契约测试只用标准库）**+ 使用者自备上游检出**（见下） |
 | `sidecars/ble-heart-rate` | `127.0.0.1:8151` | `--port` / `--fixture`（无硬件回放）/ `--auto`（启动即扫描）/ `--scan-timeout` / `--address` / `--connect-timeout` | `bleak`（`requirements.txt`）；**`--fixture` 不需要 bleak** |
 
 > BLE sidecar 默认是**懒**的：进程起来只监听 HTTP，不扫描、不自动连接；只有
 > `POST /api/connect`（或上层 `companion_pulse action=start`）才会扫。这是有意的省电与隐私设计。
+
+#### 3.6.1 health 相关的环境变量
+
+| 变量 | 谁读 | 作用 | 不设时 |
+|---|---|---|---|
+| `HUAWEI_UPSTREAM_PKG` | `sidecars/huawei-health-cn` 的自检脚本 | 指向**使用者自己的**上游 `huawei_health` 检出。上游协议实现（`client.py` 等 4 个复制件）**因许可未核实已从仓库移除**，不随本仓库分发 | 报「原件不在」并以退出码 3 结束——表示「没有可对照的原件」，**不是**坏了 |
+| `DSH_COMPANION_HEALTH_HOME` | `plugins/companion-health/lib/service.mjs` | 覆盖 health 的 home 目录（优先级：显式 `home` 参数 > 该变量 > `<dataRoot>/home`） | 用套件解析出的 home |
+| `DSH_COMPANION_HEALTH_SIDECAR_URL` | 同上 | 覆盖 `collector.baseUrl`（华为健康 sidecar 地址） | 用 `config.json` 里的值，默认 `http://127.0.0.1:8765` |
+| `DSH_COMPANION_PULSE_SIDECAR_URL` | 同上 | 覆盖 `pulse.baseUrl`（BLE 心率 sidecar 地址） | 用 `config.json` 里的值，默认 `http://127.0.0.1:8151` |
+
+> 两个 sidecar URL 的覆盖仍然是**回环校验**：指到非回环地址会被拒绝并回落，不会静默生效。
 
 ### 3.7 `dsh-bili-scroll`（B站）——**外部模块，不在本仓库**
 
@@ -240,9 +254,9 @@ profile 的 patch 里，见 §3.5。
 | 模块 | 配置位置 | 说明 |
 |---|---|---|
 | `dsh-paste-search` | profile patch 里的插件行 + 自己家目录 | 贴图搜索入口；无外部依赖 |
-| `dsh-super-injector` | profile patch（通常 `web` profile） | 运行时注入本地插件；不在陪伴桌面加载 |
-| `qq-idle-compaction` | profile patch | 群聊空闲压缩；跟随通道 |
-| `_selftest-hello` | 无 | 注入器的自测夹具，不属发布功能 |
+| `qq-idle-compaction` | profile patch + `modules.qqIdleCompaction` | 会话空闲压缩；**会调用模型**，默认关 |
+| ~~`dsh-super-injector`~~ | — | **本版未收录**（许可证文本缺失 + 无法验证）。需要的人自行从上游获取，见 `docs/03` §1.2 |
+| ~~`_selftest-hello`~~ | — | 注入器的冒烟夹具，随注入器一起移出 |
 
 ---
 

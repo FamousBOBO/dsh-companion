@@ -224,9 +224,12 @@ test('summary 返回计数、通道、完整性与脱敏后的最近记录', asy
   assert.equal(data.config.topK, 8);
 
   assert.ok(data.recent.length > 0 && data.recent.length <= 8);
-  const hiddenRecent = data.recent.find(item => item.hidden === true);
-  assert.ok(hiddenRecent, '最近记录里必须有隐藏行');
-  assert.equal(hiddenRecent.preview, '');
+  // 视图策略回归守卫（A 决策）：`mentionPolicy=avoid_unless_asked` 只约束模型是否主动提及，
+  // 不约束主人能不能在管理台看自己的记忆。最近记录里这条必须可见，且 `hidden` 恒为 false。
+  const policyRecent = data.recent.find(item => item.id === state.ids.hidden.id);
+  assert.ok(policyRecent, '最近记录里必须包含带 mentionPolicy 的那条');
+  assert.equal(policyRecent.hidden, false, 'mentionPolicy 不是管理台的视图过滤器');
+  assert.ok(policyRecent.preview.length > 0, '主人能在管理台看到正文预览');
 });
 
 // ---------------------------------------------------------------------------
@@ -278,13 +281,14 @@ test('memories 的 query 走 FTS，无关查询返回空', async () => {
   assert.equal(miss.json.data.total, 0);
 });
 
-test('memories 中隐藏策略行的预览恒为空', async () => {
+test('列表：mentionPolicy=avoid_unless_asked 的行照样可见（视图策略不随提及策略改变）', async () => {
   const { json } = await call('GET /api/companion-memory/memories', { search: `?query=${encodeURIComponent('旧伤')}` });
   assert.equal(json.ok, true);
   const item = json.data.items.find(entry => entry.id === state.ids.hidden.id);
-  assert.ok(item, '隐藏行应当出现在管理列表里');
-  assert.equal(item.hidden, true);
-  assert.equal(item.preview, '');
+  assert.ok(item, '带提及策略的行应当出现在管理列表里');
+  // A 决策：模型不许主动提，不等于主人不许看。
+  assert.equal(item.hidden, false);
+  assert.ok(item.preview.length > 0, '列表预览必须给出正文');
   assert.equal(item.policy, 'avoid_unless_asked');
 });
 
@@ -292,18 +296,18 @@ test('memories 中隐藏策略行的预览恒为空', async () => {
 // 详情与 reveal
 // ---------------------------------------------------------------------------
 
-test('memory 详情默认隐藏正文与证据摘录', async () => {
+test('memory 详情：mentionPolicy 不影响正文与证据摘录的可见性', async () => {
   const { response, json } = await call('GET /api/companion-memory/memory', {
     search: `?id=${state.ids.hidden.id}`,
   });
   assert.equal(response.status, 200);
   assert.equal(json.ok, true);
-  assert.equal(json.data.hidden, true);
-  assert.equal(json.data.revealable, true);
-  assert.equal(json.data.value, '');
-  assert.equal(json.meta.revealed, undefined);
+  // A 决策：管理台给主人看自己的数据，正文与证据摘录都返回。
+  assert.equal(json.data.hidden, false);
+  assert.equal(json.data.revealable, false, '没有“可揭露”这回事：一直可见');
+  assert.equal(json.data.value, '用户有一段不愿提起的旧伤');
   assert.equal(json.data.evidence.length, 1);
-  assert.equal(json.data.evidence[0].excerpt, '');
+  assert.ok(json.data.evidence[0].excerpt.length > 0);
   assert.equal(json.data.evidence[0].role, 'user');
   assert.equal(json.data.evidence[0].sessionId, 'studio-session');
   assert.equal(json.data.evidence[0].seq, 1);
@@ -311,13 +315,12 @@ test('memory 详情默认隐藏正文与证据摘录', async () => {
   assert.ok(Array.isArray(json.data.related));
 });
 
-test('memory 详情 reveal=1 才返回正文并带 meta.revealed', async () => {
+test('memory 详情：旧的 reveal=1 参数仍被接受，但不再改变任何可见性', async () => {
   const { json } = await call('GET /api/companion-memory/memory', {
     search: `?id=${state.ids.hidden.id}&reveal=1`,
   });
   assert.equal(json.ok, true);
-  assert.equal(json.meta.revealed, true);
-  assert.equal(json.data.hidden, true);
+  assert.equal(json.data.hidden, false);
   assert.equal(json.data.value, '用户有一段不愿提起的旧伤');
   assert.ok(json.data.evidence[0].excerpt.length > 0);
 
@@ -366,20 +369,22 @@ test('preview 返回真实渲染文本、预算与 explain', async () => {
   assert.ok(typeof entry.reason === 'string' && entry.reason.length > 0);
   assert.ok(data.explain && typeof data.explain === 'object');
 
-  // 隐藏行即便被检索到，预览与注入文本里都不能出现正文。
-  const hidden = await call('GET /api/companion-memory/preview', { search: q('旧伤') });
-  assert.equal(hidden.json.ok, true);
-  const hiddenEntry = hidden.json.data.entries.find(item => item.id === state.ids.hidden.id);
-  assert.ok(hiddenEntry, '隐藏行应当出现在检索诊断里');
-  assert.equal(hiddenEntry.preview, '');
-  assert.equal(hidden.json.data.rendered.includes('旧伤'), false);
+  // A 决策的分界线：**诊断/管理**看得到（主人要能审核），**注给模型**的文本仍然受
+  // mentionPolicy 约束（模型不许主动提起）。两个面各按各的规则，不是同一个开关。
+  const policyEntry = await call('GET /api/companion-memory/preview', { search: q('旧伤') });
+  assert.equal(policyEntry.json.ok, true);
+  const policyRow = policyEntry.json.data.entries.find(item => item.id === state.ids.hidden.id);
+  assert.ok(policyRow, '带提及策略的行应当出现在检索诊断里');
+  assert.ok(policyRow.preview.length > 0, '诊断里给出正文，主人才审得动');
+  assert.equal(policyEntry.json.data.rendered.includes('旧伤'), false,
+    '注入文本仍按 mentionPolicy 隐藏正文（约束的是模型，不是主人）');
 });
 
 // ---------------------------------------------------------------------------
 // 审核
 // ---------------------------------------------------------------------------
 
-test('reviews 返回 pending 与失败作业，隐藏行正文为空', async () => {
+test('reviews 返回 pending 与失败作业；提及策略不影响审核时看到正文', async () => {
   const { json } = await call('GET /api/companion-memory/reviews');
   assert.equal(json.ok, true);
   const pending = json.data.pending;
@@ -389,11 +394,12 @@ test('reviews 返回 pending 与失败作业，隐藏行正文为空', async () 
   assert.equal(visible.value, '用户可能喜欢摄影');
   assert.deepEqual(visible.reasons, ['low-confidence']);
 
-  const hidden = pending.find(item => item.id === state.ids.hiddenPending.id);
-  assert.ok(hidden);
-  assert.equal(hidden.hidden, true);
-  assert.equal(hidden.value, '');
-  assert.deepEqual(hidden.reasons, ['gate-policy']);
+  const policyRow = pending.find(item => item.id === state.ids.hiddenPending.id);
+  assert.ok(policyRow);
+  // A 决策：审核页要看懂“为什么需要审”，所以正文必须可见；hidden 恒 false。
+  assert.equal(policyRow.hidden, false);
+  assert.ok(policyRow.value.length > 0, '审核时能看到待审正文');
+  assert.deepEqual(policyRow.reasons, ['gate-policy']);
 
   const job = json.data.failedJobs.find(item => item.id === state.jobId);
   assert.ok(job, '失败作业必须出现在审核列表');

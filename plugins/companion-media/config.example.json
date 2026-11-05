@@ -4,6 +4,9 @@
   "schemaVersion": 2,
   "enabled": true,
   "personaId": "",
+  "paths": {
+    "artifactsDir": ""
+  },
   "limits": {
     "requestBudgetMs": 240000,
     "connectTimeoutMs": 10000,

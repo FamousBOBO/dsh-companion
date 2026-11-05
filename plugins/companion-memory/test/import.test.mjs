@@ -603,7 +603,7 @@ test('archive rows from another owner or persona are skipped, never coerced', ()
 
 test('state facts become explicit user facts with stable keys', () => {
   const fact = {
-    key: '称呼', value: '用户希望被叫作凡博', updatedAt: '2026-10-25T09:00:00.000Z', userId: USER_ID, persona: PERSONA_ID,
+    key: '称呼', value: '用户希望被叫作小林', updatedAt: '2026-10-25T09:00:00.000Z', userId: USER_ID, persona: PERSONA_ID,
   };
   const draft = mapStateFact(fact, { userId: USER_ID, personaId: PERSONA_ID, now: CLOCK });
   assert.equal(draft.scope, 'user_global');

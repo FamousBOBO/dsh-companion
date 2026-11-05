@@ -25,10 +25,10 @@ const IMPORT_ARCHIVE = {
       value: '他作息偏晚，爱深夜来找我', evidence: '核心记忆块', persona: 'bot', owner: '10001', bot: 'bot',
       importance: 0.9, confidence: 1, occurredAt: '2026-10-24T13:44:02+00:00', updatedAt: '2026-10-24T13:44:02+00:00', tags: ['core_memory'] },
     { id: 'astrbot:pref1', sourceId: 'pref1', key: 'user_preference', memoryType: 'user_preference', realityLevel: 'real_user_fact',
-      value: '凡博喜欢撒娇，希望Bot多给他发消息', evidence: '让我平时多给他发消息', persona: 'bot', owner: '10001', bot: 'bot',
+      value: '小林喜欢撒娇，希望Bot多给他发消息', evidence: '让我平时多给他发消息', persona: 'bot', owner: '10001', bot: 'bot',
       importance: 0.9, confidence: 0.9, occurredAt: '2026-08-21T05:23:48+00:00', updatedAt: '2026-08-21T05:23:48+00:00', tags: ['user_preference'] },
     { id: 'astrbot:pro1', sourceId: 'pro1', key: 'proactive_message', memoryType: 'proactive_message', realityLevel: 'bot_action',
-      value: 'Bot 主动向 凡博 发送：夜深了，还有点闷。', evidence: 'Bot 主动发送', persona: 'bot', owner: '10001', bot: 'bot',
+      value: 'Bot 主动向 小林 发送：夜深了，还有点闷。', evidence: 'Bot 主动发送', persona: 'bot', owner: '10001', bot: 'bot',
       importance: 0.566, confidence: 0.92, occurredAt: '2026-07-13T22:22:31+08:00', updatedAt: '2026-08-19T04:18:11+00:00', tags: ['proactive'] },
   ],
 };

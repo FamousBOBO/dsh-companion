@@ -136,6 +136,18 @@ test('交互提示：协议动作失败只写日志，不抛、不影响后续',
   interaction.begin('dm-22', privateEvent)
   interaction.end('dm-22')
   await new Promise((resolve) => setTimeout(resolve, 0))
-  assert.equal(logs.length, 2)
-  assert.match(logs[0] ?? '', /input status on failed for dm-22: boom/)
+  // 一轮里的协议动作是**四个**、不是两个：本地补丁 PATCH-11 起私聊也贴"已读"表情
+  // （`setMessageEmojiLike` 对私聊可用，2026-11-03 直连探测 retcode 0），所以
+  // begin 排「输入开 + 贴表情」、end 排「输入关 + 撤表情」。四行日志是四个**不同**
+  // 动作各失败一次，不是重复记日志——因此这里按顺序钉死，而不是把断言放宽到 >= 2。
+  assert.deepEqual(
+    logs.map((line) => line.replace(/ for dm-22: .*$/, '')),
+    [
+      'interaction input status on failed',
+      'interaction reaction on failed',
+      'interaction input status off failed',
+      'interaction reaction off failed',
+    ],
+  )
+  for (const line of logs) assert.match(line, / for dm-22: boom$/)
 })

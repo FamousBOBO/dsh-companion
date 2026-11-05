@@ -16,13 +16,18 @@ const args = new Set(process.argv.slice(2));
 const only = [...args].find((a) => a.startsWith('--only='))?.slice('--only='.length);
 const isWindows = process.platform === 'win32';
 
-function runNpm(script, cwd) {
-  return spawnSync(isWindows ? 'npm.cmd' : 'npm', ['run', script], {
-    cwd,
-    stdio: 'inherit',
-    env: { ...process.env, npm_config_workspaces: 'false' },
-    shell: isWindows, // .cmd shims need the shell; arguments are literals, never user input
-  });
+/** npm without a shell: npm_execpath lets us spawn `node <npm-cli.js> …` when run under npm. */
+const NPM_EXECPATH = process.env.npm_execpath;
+
+function runNpmBuild(pkgName) {
+  // From the suite root with --workspace: running npm inside a workspace directory makes
+  // npm reject the combination of workspace flags it infers.
+  const args = ['run', 'build', `--workspace=${pkgName}`];
+  const options = { cwd: SUITE_PATHS.root, stdio: 'inherit', env: { ...process.env } };
+  if (NPM_EXECPATH && /npm-cli\.js$/.test(NPM_EXECPATH)) {
+    return spawnSync(process.execPath, [NPM_EXECPATH, ...args], { ...options, shell: false });
+  }
+  return spawnSync(isWindows ? 'npm.cmd' : 'npm', args, { ...options, shell: isWindows });
 }
 
 function listModules() {
@@ -49,6 +54,7 @@ const modules = listModules().filter((m) => !only || m.name.includes(only));
 const buildable = [];
 const skipped = [];
 const broken = [];
+const prebuilt = [];
 
 for (const m of modules) {
   if (m.parseError) {
@@ -57,6 +63,12 @@ for (const m of modules) {
   }
   if (!m.pkg) {
     skipped.push(`${m.name}: 没有 package.json（不是发布包）`);
+    continue;
+  }
+  // A prebuilt package ships its bundle because it cannot be rebuilt without a DSH source
+  // checkout. Verify the shipped entry still loads instead of pretending to build it.
+  if (m.pkg.dsh?.suite?.prebuilt === true) {
+    prebuilt.push(m);
     continue;
   }
   const script = m.pkg.scripts?.build;
@@ -72,22 +84,33 @@ console.log(`模块总数 ${modules.length}，需要构建 ${buildable.length}\n
 let failed = 0;
 const results = [];
 for (const m of buildable) {
-  process.stdout.write(`▶ ${m.name} → npm run build\n`);
+  const label = m.pkg.name || m.name;
+  process.stdout.write(`▶ ${label} → npm run build\n`);
   const started = Date.now();
-  const res = runNpm('build', m.dir);
+  const res = runNpmBuild(label);
   const ms = Date.now() - started;
   if (res.status === 0) {
-    results.push({ module: m.name, status: 'ok', ms });
+    results.push({ module: label, status: 'ok', ms });
   } else {
     failed += 1;
-    results.push({ module: m.name, status: 'failed', ms, code: res.status, signal: res.signal });
-    console.error(`✗ ${m.name} 构建失败 (code ${res.status ?? res.signal})`);
+    results.push({ module: label, status: 'failed', ms, code: res.status, signal: res.signal });
+    console.error(`✗ ${label} 构建失败 (code ${res.status ?? res.signal})`);
   }
 }
 
 console.log('\n——— 构建结果 ———');
 for (const r of results) {
   console.log(`${r.status === 'ok' ? '✓' : '✗'} ${r.module.padEnd(28)} ${r.status}${r.ms ? ` (${r.ms} ms)` : ''}`);
+}
+for (const m of prebuilt) {
+  const label = m.pkg.name || m.name;
+  const entry = path.resolve(m.dir, m.pkg.main || './lib/index.js');
+  const ok = fs.existsSync(entry);
+  console.log(`${ok ? '✓' : '✗'} ${label.padEnd(28)} 预构建（未重建）${ok ? '' : ' — 缺少 ' + path.relative(m.dir, entry)}`);
+  if (!ok) {
+    failed += 1;
+    broken.push(`${label}: 预构建入口缺失 ${path.relative(m.dir, entry)}`);
+  }
 }
 if (skipped.length) {
   console.log('\n——— 跳过 ———');

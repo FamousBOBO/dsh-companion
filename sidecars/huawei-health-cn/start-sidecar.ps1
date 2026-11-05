@@ -47,7 +47,8 @@ Set-StrictMode -Version Latest
 $SidecarRoot = $PSScriptRoot
 $SuiteRoot = Split-Path -Parent (Split-Path -Parent $SidecarRoot)
 $PythonDir = Join-Path $SidecarRoot 'python'
-$Dashboard = Join-Path $PythonDir 'huawei_dashboard.py'
+# 服务端实现不由本仓库提供（许可证原因）：用户自备，或用 $env:HUAWEI_SERVE_SCRIPT 指定。
+$Dashboard = if ($env:HUAWEI_SERVE_SCRIPT) { $env:HUAWEI_SERVE_SCRIPT } else { Join-Path $PythonDir 'serve.py' }
 
 # ── paths: everything runtime lives under the suite data directory ─────────────────────────────
 function Resolve-DataDir {
@@ -82,7 +83,16 @@ Write-Host "huawei-health-cn sidecar" -ForegroundColor Cyan
 
 # ── 1. preconditions ───────────────────────────────────────────────────────────────────────────
 if (-not (Test-Path -LiteralPath $Dashboard)) {
-    throw "frozen dashboard copy missing: $Dashboard"
+    Write-Host "REFUSED: 找不到健康数据服务端实现。" -ForegroundColor Red
+    Write-Host "  本仓库**不包含**上游实现（华为健康读取服务端）：上游许可证不归本项目分发，"
+    Write-Host "  详见 sidecars/huawei-health-cn/PROTOCOL-FREEZE.md §1.1。"
+    Write-Host "  两种用法："
+    Write-Host "    1) 自备上游检出并指定入口："
+    Write-Host '         $env:HUAWEI_UPSTREAM_PKG = "<你的>\custom_components\huawei_health"'
+    Write-Host '         $env:HUAWEI_SERVE_SCRIPT = "<你的 serve 入口.py>"   # 需实现 GET /api/data?days=N'
+    Write-Host '    2) 或者把你的入口放到 sidecars\huawei-health-cn\python\serve.py（默认查找位置）'
+    Write-Host "  注意：BLE 心率通道（sidecars/ble-heart-rate）不受影响，可独立离线验收。"
+    exit 3
 }
 if (-not (Test-Path -LiteralPath $LogDir)) {
     New-Item -ItemType Directory -Path $LogDir -Force | Out-Null
@@ -131,9 +141,20 @@ if ($existingPid -gt 0) {
 }
 
 # ── 3. launch detached ─────────────────────────────────────────────────────────────────────────
+$CredentialPath = if ($env:HUAWEI_ACCOUNT_JSON) { $env:HUAWEI_ACCOUNT_JSON }
+    else { Join-Path (Resolve-DataDir) 'credentials\huawei_account.json' }
 Write-Step "bind        : ${BindHost}:$Port (loopback only)"
-Write-Step "credential  : $(if ($env:HUAWEI_ACCOUNT_JSON) { $env:HUAWEI_ACCOUNT_JSON } else { Join-Path (Resolve-DataDir) 'credentials\huawei_account.json' }) — read by the sidecar process, never by this script"
+Write-Step "credential  : $CredentialPath — read by the sidecar process, never by this script"
+Write-Step "serve       : $Dashboard"
 Write-Step "logs        : $LogDir"
+if (-not $env:HUAWEI_UPSTREAM_PKG) {
+    Write-Host "  ↑ HUAWEI_UPSTREAM_PKG 未设置：如果这个入口需要上游 client/const，它会自己报错。" -ForegroundColor DarkYellow
+}
+if (-not (Test-Path -LiteralPath $CredentialPath)) {
+    # 「未配置」不是错误页：sidecar 能起来，但拿不到任何数据。先说清楚，别让用户去猜端口/蓝牙。
+    Write-Host "  账号未配置：$CredentialPath 还不存在。sidecar 会启动但读不到数据。" -ForegroundColor DarkYellow
+    Write-Host "  先登录一次：& '$python' '$PythonDir\huawei_login.py' url" -ForegroundColor DarkYellow
+}
 
 $inner = '"{0}" "{1}" serve --port {2} --host {3} > "{4}" 2> "{5}"' -f `
     $python, $Dashboard, $Port, $BindHost, $OutLog, $ErrLog

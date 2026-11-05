@@ -60,10 +60,10 @@
 | `dsh-channel-qq` | 待汇总 | 未验证 | 未验证 | **未验证** | — |
 | `companion-media` | 待汇总 | 未验证 | 未验证 | 未验证 | — |
 | `companion-health` | 待汇总 | 未验证 | 未验证 | — | 未验证 |
-| `sidecars/huawei-health-cn` | 待汇总 | — | 未验证 | — | — |
+| `sidecars/huawei-health-cn` | 待汇总（本仓库自写部分） | — | **不适用** | — | — |
 | `sidecars/ble-heart-rate` | 待汇总 | — | — | — | 未验证 |
 | `dsh-paste-search` | 待汇总 | 未验证 | — | — | — |
-| `dsh-super-injector` | 待汇总 | 未验证 | — | — | — |
+| ~~`dsh-super-injector`~~ | **未收录**（原因见 `docs/03` §1.2） | — | — | — | — |
 
 「待汇总」= 负责人报告里的数字还没并进本文；**不要当成「已通过」**。
 
@@ -89,7 +89,7 @@
 
 **宿主与链路**
 
-- `host-load`：本仓库的 12 个模块**没有任何一个**有「被真实 DSH 宿主装载成功」的公开证据。
+- `host-load`：本仓库的 9 个插件模块 + 2 个 sidecar **没有任何一个**有「被真实 DSH 宿主装载成功」的公开证据。
 - `npm run start` 端到端（本仓库 profile 合成 + 插件装载 + 会话可用）。
 - 三平台：Linux / macOS 只到「CI 构建与离线测试」，桌面启动、侧车、宿主探测均未实测。
 

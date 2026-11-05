@@ -29,11 +29,13 @@ config/profile/*.local.yml
 
 # ---- 依赖与构建产物 ----
 # 只有真正的构建输出被忽略。多数模块的 lib/ 是手写源码，不能忽略。
+# 例外：dsh-super-injector 是第三方包，它的构建需要一份 DSH 源码检出（DSH_CHECKOUT），
+# 用户机器上不可能有，所以随仓库分发预构建产物（见该目录 PROVENANCE.md）。
 node_modules/
 pnpm-lock.yaml
 plugins/**/build/**
 plugins/**/dist/**
-plugins/dsh-super-injector/lib/**
+plugins/dsh-super-injector/lib/**/*.map
 plugins/*/node_modules/
 .plugin-manager/
 

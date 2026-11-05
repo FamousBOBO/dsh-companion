@@ -11,22 +11,35 @@
 - 本目录只做"把心跳读出来"这件事。档位 / 基线 / 趋势 / RMSSD / 会话，全部在 Node 侧算。
 - 端口 **8151**。`8765` 是华为健康 sidecar，`8139` 是 GPU 网关，别串。
 
-### 启动参数（`heart_rate.py` / `start-sidecar.ps1`）
+### 起停（跨平台）
+
+| 平台 | 起 | 停 |
+| --- | --- | --- |
+| Windows | `pwsh -File sidecars\ble-heart-rate\start-sidecar.ps1` | `pwsh -File sidecars\ble-heart-rate\stop-sidecar.ps1` |
+| Linux / macOS | `sidecars/ble-heart-rate/start-sidecar.sh` | `sidecars/ble-heart-rate/stop-sidecar.sh` |
+
+POSIX 脚本**不含任何 PowerShell / WMI 分支**（只用 POSIX sh + Python）。两个平台的脚本承诺一致：
+只绑 `127.0.0.1`；端口被别人占用就退出（`exit 2`）绝不抢占；日志与 PID 文件写在
+`<dataRoot>/logs/ble-heart-rate/`（`--log-dir` / `$BLE_HEART_RATE_LOG_DIR` 可改，**不写仓库**）；
+起完扫一遍日志确认没有蓝牙地址明文。
+`<dataRoot>` = 套件配置 `dataDir` → `$DSH_COMPANION_DATA_DIR` → `<套件根>/data`。
+
+### 启动参数（`heart_rate.py` / `start-sidecar.ps1` / `start-sidecar.sh`）
 
 | 参数 | 默认 | 说明 |
 |---|---|---|
-| `--port` / `-Port` | 8151 | 契约端口；被占用则**退出码 2**，绝不抢占 |
-| `--fixture` / `-Fixture` | 无 | 回放合成序列（不需要蓝牙硬件） |
+| `--port` / `-Port` / `--port` | 8151 | 契约端口；被占用则**退出码 2**，绝不抢占 |
+| `--fixture` / `-Fixture` / `--fixture [名称]` | 无 | 回放合成序列（不需要蓝牙硬件） |
 | `--auto` / `-Auto` | **关** | 旧行为：启动就扫、自动连接、断线后台退避重连。默认是懒模式 |
 | `--connect-timeout` | **12** | `POST /api/connect` 的总预算（扫描 + 连接 + 首帧） |
 | `--scan-timeout` | 8 | 单次扫描窗口上限；按需连接命中即提前结束 |
-| `--address` / `-Address` | 无 | 设备地址或 `addressHash` 前缀（日志/响应里从不出现明文） |
-| `--name-hint` / `-NameHint` | 无 | 设备名子串，如 `HR` / `Band` |
+| `--address` / `-Address` / `--address` | 无 | 设备地址或 `addressHash` 前缀（日志/响应里从不出现明文） |
+| `--name-hint` / `-NameHint` / `--name-hint` | 无 | 设备名子串，如 `HR` / `Band` |
 | `--allow-address-display` | 关 | 只在 `/api/devices` 里带 `address`，仅本地排障 |
 | `--verbose` / `-Verbose2` | 关 | 把 HTTP 访问日志也写出来（默认关，1 Hz 轮询不刷屏） |
 | `--selftest` | — | 只跑 `0x2A37` 解析 + 脱敏自检后退出 |
 
-`start-sidecar.ps1` 另有 `-PythonPath`（指定解释器）、`-WaitSeconds`（等监听）、`-OpenApi`。
+两个启动脚本另有：解释器参数（`-PythonPath` / `--python`）、监听等待（`-WaitSeconds` / `$WAIT_SECONDS`）、日志目录（`-LogDir` / `--log-dir`）；Windows 还有 `-OpenApi` 起完直接开浏览器。
 
 ### 默认是「懒」的（2026-11-04 起，主人要求）
 
@@ -45,62 +58,57 @@
 
 ---
 
-## 1. 环境（已经建好，照抄即可）
+## 1. 环境（跨平台；**只有真机模式需要装东西**）
 
-本机实际使用的解释器：
+| 模式 | 需要什么 |
+| --- | --- |
+| `--selftest`（解析器自检） | 任意 Python 3.11+，**零第三方依赖** |
+| `--fixture`（回放合成序列） | 同上，零依赖（`bleak` 是惰性导入的，回放根本不触发） |
+| 真机（读真手环） | Python 3.11+ **+ `bleak`**（`requirements.txt` 里只有这一行） |
 
-```
-D:\Bot\dsh-companion\tmp\blevenv\Scripts\python.exe
-```
+安装依赖（推荐单独 venv，别污染系统 python）：
 
-- CPython **3.12.0**，`bleak` **0.22.3**（含 `winrt-*` 依赖）。
-- 为什么不用默认的 `python`：这台机器的默认 `python` 是 3.14，没有 bleak，也不该被这个
-  sidecar 污染。所以单独建了 venv，和华为那个 `tmp/hwvenv` 一个思路。
-
-重建（换机 / venv 坏掉时）：
-
-```powershell
-cd D:\Bot\dsh-companion
-py -3.12 -m venv tmp\blevenv
-tmp\blevenv\Scripts\python.exe -m pip install -r sidecars\ble-heart-rate\requirements.txt
-tmp\blevenv\Scripts\python.exe sidecars\ble-heart-rate\heart_rate.py --selftest
+```bash
+cd sidecars/ble-heart-rate
+python -m venv .venv
+. .venv/bin/activate                 # Windows: .venv\Scripts\activate
+python -m pip install -r requirements.txt
+python heart_rate.py --selftest      # 13 项断言，全 PASS 才算环境没问题
 ```
 
-3.12 装不上 bleak 时（少见），退到 uv 的 CPython 3.11 再建一次：
+启动脚本找解释器的顺序（两个平台一致；所以 **venv 放哪都行，别写死路径**）：
 
-```powershell
-& "C:\Users\bobo\AppData\Roaming\uv\python\cpython-3.11.15-windows-x86_64-none\python.exe" -m venv tmp\blevenv
-tmp\blevenv\Scripts\python.exe -m pip install -r sidecars\ble-heart-rate\requirements.txt
-```
+1. `--python` / `-PythonPath`
+2. `$PYTHON` / `$env:BLE_HEART_RATE_PYTHON`
+3. `<sidecar>/.venv`（上面那套）
+4. `<dataRoot>/venv`
+5. PATH 上的 `python3` / `python`
 
-> 备注：`--fixture` 回放模式**不需要 bleak**（bleak 是惰性导入的），所以只有 fixture 的机器
-> 也能跑完整验收；真机模式才需要上面这套依赖。
+平台细节：`bleak` 在 Linux 走 BlueZ（需要 D-Bus + BlueZ ≥ 5.43）、macOS 走 CoreBluetooth、
+Windows 走 WinRT —— Python 侧不用额外装系统包。
 
 ---
 
 ## 2. 没硬件也能验收（先看这个）
 
-```powershell
-# 整套离线断言（自己拉起 fixture sidecar，跑完自己收摊）
-# 默认就跑「懒模式」那条新协议：静默 60 s 0 扫描 → connect 才连 → 端到端秒数 → 断线不重连
-node scripts\check-pulse.mjs --fixture
+```bash
+# 1) 解析器自检：不开端口、不联网、不需要蓝牙
+python sidecars/ble-heart-rate/heart_rate.py --selftest
 
-# 想快一点：把静默观察窗口从 60 s 缩到 10 s（断言口径不变，只是观察时间短）
-node scripts\check-pulse.mjs --fixture --idle-window 10
-
-# 旧行为（--auto：启动就扫就连、断线后台重连）的回归
-node scripts\check-pulse.mjs --fixture --auto
-
-# 只跑解析器自检（不联网、不开端口）
-tmp\blevenv\Scripts\python.exe sidecars\ble-heart-rate\heart_rate.py --selftest
-
-# 手工回放：平静→升温→峰值→回落，1 秒一帧（懒模式，起来后要 POST /api/connect 才开始）
-pwsh -File sidecars\ble-heart-rate\start-sidecar.ps1 -Fixture
-curl.exe -s http://127.0.0.1:8151/api/state          # connected=false，还没连（正常）
-curl.exe -s -X POST http://127.0.0.1:8151/api/connect
-curl.exe -s http://127.0.0.1:8151/api/state          # 现在有 bpm 了
-pwsh -File sidecars\ble-heart-rate\stop-sidecar.ps1
+# 2) 用回放序列手工跑一遍（懒模式：起来后要 POST /api/connect 才开始出数）
+sidecars/ble-heart-rate/start-sidecar.sh --fixture          # Windows: pwsh -File sidecars\ble-heart-rate\start-sidecar.ps1 -Fixture
+curl -s http://127.0.0.1:8151/api/state                      # connected=false，还没连（正常）
+curl -s -X POST http://127.0.0.1:8151/api/connect
+curl -s http://127.0.0.1:8151/api/state                      # 现在有 bpm 了
+sidecars/ble-heart-rate/stop-sidecar.sh                      # Windows: stop-sidecar.ps1
 ```
+
+`--fixture` 下 `/api/state` 的 `sampleAt` 跟着**真实时钟**前进，所以 `sampleAgeMs` 一直很小
+（几十到几百毫秒）——上层"这是实时读数"的判断可以按真机一样验。回放默认是**待命**的
+（`fixture replay armed but paused`）：不调 `/api/connect` 就不会有读数，这正是懒模式的形状。
+
+> 发布树里**不带** `scripts/check-pulse.mjs`（那是开发期的压测脚手架）。离线验收用上面两条
+> 命令就够：`--selftest` 覆盖帧解析与脱敏，`--fixture` 覆盖 HTTP + 懒模式协议。
 
 `--fixture` 下 `/api/state` 的 `sampleAt` 跟着**真实时钟**前进，所以 `sampleAgeMs` 一直很小
 （几十到几百毫秒）——上层"这是实时读数"的判断可以按真机一样验。回放默认是**待命**的
@@ -129,7 +137,7 @@ pwsh -File sidecars\ble-heart-rate\stop-sidecar.ps1
 所以顺序永远是：
 
 1. **在手表/手环上打开「心率广播」**（各品牌路径见 §3.1/§3.2/§3.3；找不到就在 App 里翻"广播"二字）。
-2. **再扫**：`node scripts\check-pulse.mjs --scan`（sidecar 只认广播里的 service UUID `0x180D`；
+2. **再扫**：`node scripts/check-pulse.mjs  # 开发期脚手架，未随包发布  # 开发期脚手架，未随包发布 --scan`（sidecar 只认广播里的 service UUID `0x180D`；
    厂商 App 里"能看心率"**不等于**它在广播）。
 3. 只在扫到 `hasHrs:true` 之后再谈配对、`-NameHint`、`-Address`。
 
@@ -238,10 +246,10 @@ pwsh -File sidecars\ble-heart-rate\start-sidecar.ps1 -Auto
 4. 看设备清单 / 盯读数：
 
 ```powershell
-node scripts\check-pulse.mjs --scan        # 触发一次扫描并列设备（hasHrs 是关键）
-node scripts\check-pulse.mjs --watch 30    # 先按需连一次，再盯 30 秒看读数在不在动
-node scripts\check-pulse.mjs --once        # 只读一次现有状态（不扫描、不改状态）
-node scripts\check-pulse.mjs --drop-probe  # 真机：量"关广播→断线""重开→再调 connect 恢复"
+node scripts/check-pulse.mjs  # 开发期脚手架，未随包发布  # 开发期脚手架，未随包发布 --scan        # 触发一次扫描并列设备（hasHrs 是关键）
+node scripts/check-pulse.mjs  # 开发期脚手架，未随包发布  # 开发期脚手架，未随包发布 --watch 30    # 先按需连一次，再盯 30 秒看读数在不在动
+node scripts/check-pulse.mjs  # 开发期脚手架，未随包发布  # 开发期脚手架，未随包发布 --once        # 只读一次现有状态（不扫描、不改状态）
+node scripts/check-pulse.mjs  # 开发期脚手架，未随包发布  # 开发期脚手架，未随包发布 --drop-probe  # 真机：量"关广播→断线""重开→再调 connect 恢复"
 ```
 
 > **"连哪台设备"只有这一个权威入口：`start-sidecar.ps1 -NameHint / -Address`**
@@ -374,7 +382,7 @@ RR）当成 energy 帧、一条 RR 都读不到。**2026-11-03 Lead 裁决：按
 | 起了十几秒还没读数 | 第一轮扫描 8 s，扫不到还要再兜一轮全量 8 s | 正常现象，等 20 s 左右 |
 | 脚本报一堆"缺少 `}`""意外的标记" | **`.ps1` 丢了 UTF-8 BOM**：Windows PowerShell 5.1 会按 GBK 解析中文并乱码 | 两个脚本必须保存成 **UTF-8 with BOM**（见下） |
 | 用 `-Port 8165` 起第二个实例，结果把 8151 的杀了 | 老版本两个实例共用 `logs/sidecar.pid` | 已修：PID/日志按端口隔离；`stop-sidecar.ps1 -Port <n>` |
-| `--fixture` 都失败 | venv / 解释器问题 | `tmp\blevenv\Scripts\python.exe --version`；`--selftest` |
+| `--fixture` 都失败 | venv / 解释器问题 | `python --version`；`--selftest` |
 
 日志限流：退避重连只记前 3 次和每 10 次一行，同类内部错误 30 s 最多一行 —— **不会刷屏**。
 HTTP 访问日志默认关（Node 侧 1 Hz 轮询），要看得加 `--verbose`。
@@ -423,7 +431,7 @@ $errors.Count   # 必须是 0
 | `stop-sidecar.ps1` | 只按 PID 文件停；命令行对不上就拒绝动手 |
 | `logs/sidecar.pid` | `{port, wrapperPid, listenerPid, startedAt, …}`（唯一句柄）。**按端口隔离**：8151 用 `sidecar.pid`，其它端口用 `sidecar-<port>.pid` |
 | `logs/sidecar.out.log` / `sidecar.err.log` | 日志（UTF-8）。同样按端口隔离：`sidecar-<port>.out.log` |
-| `../../scripts/check-pulse.mjs` | 验收脚本：`--fixture`（懒/按需模式，默认）/ `--scan` / `--watch <秒>` / `--drop-probe` / `--once`，另有 `--auto`（旧行为回归）、`--idle-window <秒>`；PASS/FAIL 表，有 FAIL 就 exit 1 |
+| `../../scripts/check-pulse.mjs`（**开发期脚手架，未随包发布**） | 验收脚本：`--fixture`（懒/按需模式，默认）/ `--scan` / `--watch <秒>` / `--drop-probe` / `--once`，另有 `--auto`（旧行为回归）、`--idle-window <秒>`；PASS/FAIL 表，有 FAIL 就 exit 1 |
 
 `check-pulse.mjs` 默认模式是 `--fixture`，**没有硬件、没有任何真机设备也能全绿**
 （32 项，含懒模式专项：启动静默 / 60 s 0 扫描 / `?scan=1` 才扫 / 端到端 < 15 s /
@@ -439,19 +447,24 @@ $errors.Count   # 必须是 0
 
 ### 10.1 环境是隔离的
 
-`tmp/blevenv` 是**独立 venv**，只给这个 sidecar 用：
+**独立 venv，只给这个 sidecar 用**（发布树里不带 venv；任何人自己建一份即可）：
 
-- 实际解释器：`D:\Bot\dsh-companion\tmp\blevenv\Scripts\python.exe`（CPython 3.12.0 + bleak 0.22.3）。
-- **没有动系统默认 python**（这台机器默认是 3.14，仍然没有、也不需要装 bleak）。
-- 删掉 `tmp/blevenv` 不影响任何其它模块：`--fixture` 甚至连 bleak 都不需要（惰性导入）。
+```bash
+cd sidecars/ble-heart-rate && python -m venv .venv && . .venv/bin/activate
+python -m pip install -r requirements.txt
+```
+
+- 当时实测的解释器是 CPython 3.12 + bleak 0.22.3；`requirements.txt` 现在写成 `bleak>=0.22,<0.23`。
+- **不要动系统默认 python**：这个 venv 存在的唯一理由就是别把 bleak 装进全局。
+- 删掉 venv 不影响任何其它模块：`--fixture` 和 `--selftest` 连 bleak 都不需要（惰性导入）。
 
 ### 10.2 无硬件（fixture）—— 已全绿
 
 ```
-node scripts\check-pulse.mjs --fixture              → 总结: PASS 32 / WARN 0 / FAIL 0（exit 0）
-node scripts\check-pulse.mjs --fixture --auto       → 总结: PASS 26 / WARN 1 / FAIL 0（旧行为回归）
-node scripts\check-pulse.mjs --watch 5 --fixture    → PASS 7 / FAIL 0
-tmp\blevenv\Scripts\python.exe sidecars\ble-heart-rate\heart_rate.py --selftest → 13 项全 PASS（10 个帧用例+脱敏+hash 形状+bpm=0）
+node scripts/check-pulse.mjs  # 开发期脚手架，未随包发布  # 开发期脚手架，未随包发布 --fixture              → 总结: PASS 32 / WARN 0 / FAIL 0（exit 0）
+node scripts/check-pulse.mjs  # 开发期脚手架，未随包发布  # 开发期脚手架，未随包发布 --fixture --auto       → 总结: PASS 26 / WARN 1 / FAIL 0（旧行为回归）
+node scripts/check-pulse.mjs  # 开发期脚手架，未随包发布  # 开发期脚手架，未随包发布 --watch 5 --fixture    → PASS 7 / FAIL 0
+python sidecars/ble-heart-rate/heart_rate.py --selftest → 13 项全 PASS（10 个帧用例+脱敏+hash 形状+bpm=0）
 ```
 
 **懒 / 按需模式的关键实测（2026-11-04，默认配置，60 s 静默窗口）**：
@@ -542,7 +555,7 @@ POST /api/connect → 7403ms → {"ok":false,"code":"device-not-found","elapsedM
 一条命令能同时量到它们（主人手上有开关时跑，90 s 出数）：
 
 ```powershell
-node scripts\check-pulse.mjs --drop-probe
+node scripts/check-pulse.mjs  # 开发期脚手架，未随包发布  # 开发期脚手架，未随包发布 --drop-probe
 ```
 
 > 📌 **TODO（已知空白，不是漏做）**：上面两个数字还没有人跑过带开关的动作。

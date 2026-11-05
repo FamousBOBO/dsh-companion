@@ -20,6 +20,11 @@ export const DEFAULTS = Object.freeze({
   schemaVersion: SCHEMA_VERSION,
   enabled: true,
   personaId: '',
+  paths: {
+    // 交付给通道的产物必须落在「用户可见、通道可读」的共同地带。默认
+    // `<dataDir>/workspace/media`；留空即默认值，填相对路径按 dataDir 解析。
+    artifactsDir: '',
+  },
   limits: {
     requestBudgetMs: 240_000,
     connectTimeoutMs: 10_000,
@@ -410,6 +415,13 @@ export function validateConfig(config) {
 
   if (config.vision?.enabled === true) {
     add('vision.enabled', Code.VISION_LOCKED, '识图本期只保留合同，enabled 必须为 false，且不能通过任何界面或工具打开');
+  }
+  if (typeof config.paths?.artifactsDir === 'string' && config.paths.artifactsDir.trim() && !/^[A-Za-z]:[\\/]|^\//.test(config.paths.artifactsDir.trim())) {
+    // 相对路径是允许的（按 dataDir 解析），但空字符串以外的非字符串必须拒绝
+    warnings.push(`paths.artifactsDir 是相对路径，将按 dataDir 解析为 <dataDir>/${config.paths.artifactsDir.trim()}`);
+  }
+  if (config.paths?.artifactsDir !== undefined && config.paths?.artifactsDir !== null && typeof config.paths.artifactsDir !== 'string') {
+    add('paths.artifactsDir', Code.CONFIG_INVALID, 'paths.artifactsDir 必须是字符串（留空 = <dataDir>/workspace/media）');
   }
   for (const [key, label] of [
     ['requestBudgetMs', 'requestBudgetMs'],

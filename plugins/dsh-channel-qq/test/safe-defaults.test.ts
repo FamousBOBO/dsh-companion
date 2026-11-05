@@ -17,7 +17,8 @@
 
 import assert from 'node:assert/strict'
 import test from 'node:test'
-import { existsSync } from 'node:fs'
+import { existsSync, mkdirSync, mkdtempSync, rmSync, writeFileSync } from 'node:fs'
+import { tmpdir } from 'node:os'
 import * as path from 'node:path'
 import { pathToFileURL } from 'node:url'
 import { OneBotClient } from '../src/onebot.js'
@@ -160,19 +161,40 @@ test('出厂配置：自动外发与后台模型任务默认全部关闭', () =>
 
 // ── 4. 附带的空闲压缩插件：默认不安装定时器 ──────────────────────────────────
 
-test('qq-idle-compaction：没有 QQ_IDLE_COMPACTION 时不注册定时器', async (t) => {
+test('qq-idle-compaction：默认关（没有套件配置、没有环境变量），一个定时器都不注册', async (t) => {
   const file = path.resolve(process.cwd(), '..', 'qq-idle-compaction.mjs')
   if (!existsSync(file)) {
     t.skip('套件布局下才有 plugins/qq-idle-compaction.mjs（单独装本包时跳过）')
     return
   }
   const mod = (await import(pathToFileURL(file).href)) as {
-    enabled: (env?: Record<string, string | undefined>) => boolean
+    decide: (env?: Record<string, string | undefined>, suiteRoot?: string | null) => { enabled: boolean; source: string }
+    enabled: (env?: Record<string, string | undefined>, suiteRoot?: string | null) => boolean
+    findSuiteRoot: (env?: Record<string, string | undefined>, from?: string) => string | null
     apply: (ctx: unknown) => void
   }
-  assert.equal(mod.enabled({}), false, '默认必须是关')
-  assert.equal(mod.enabled({ QQ_IDLE_COMPACTION: '0' }), false)
-  assert.equal(mod.enabled({ QQ_IDLE_COMPACTION: '1' }), true)
+  // ① 判定顺序：环境变量（显式）→ config/suite.json → 默认关。
+  assert.deepEqual(mod.decide({}, null), { enabled: false, source: 'default' })
+  assert.equal(mod.enabled({}, null), false, '两层都没表态 = 关')
+  // ② 环境变量两种显式值都认（`0` 用来压掉配置）。
+  assert.equal(mod.enabled({ QQ_IDLE_COMPACTION: '1' }, null), true)
+  assert.equal(mod.enabled({ QQ_IDLE_COMPACTION: '0' }, null), false)
+  // ③ 套件配置真的能打开它（用户不必学环境变量），且非法值不当真。
+  const home = mkdtempSync(path.join(tmpdir(), 'qq-idle-compaction-'))
+  try {
+    writeFileSync(path.join(home, 'package.json'), JSON.stringify({ name: 'dsh-companion-suite' }), 'utf8')
+    mkdirSync(path.join(home, 'config'), { recursive: true })
+    const suiteJson = path.join(home, 'config', 'suite.json')
+    writeFileSync(suiteJson, JSON.stringify({ qqIdleCompaction: true }), 'utf8')
+    assert.equal(mod.findSuiteRoot({ DSH_COMPANION_SUITE_ROOT: home }, '/'), home)
+    assert.equal(mod.enabled({}, home), true, 'config/suite.json 的 qqIdleCompaction=true 必须能打开')
+    assert.equal(mod.enabled({ QQ_IDLE_COMPACTION: '0' }, home), false, '环境变量显式 0 要压掉配置')
+    writeFileSync(suiteJson, JSON.stringify({ qqIdleCompaction: 'yes' }), 'utf8')
+    assert.equal(mod.enabled({}, home), false, '不是布尔值就当没写（默认关）')
+  } finally {
+    rmSync(home, { recursive: true, force: true })
+  }
+  // ④ 关着时一个定时器都不注册；开着才注册（同一条断言模式，见上面 Scheduler 那条）。
   const ctx = {
     agents: { roots: () => [] },
     llm: { resolveModelInfo: async () => ({}) },
@@ -180,6 +202,16 @@ test('qq-idle-compaction：没有 QQ_IDLE_COMPACTION 时不注册定时器', asy
     compaction: { compactNow: async () => null },
     on: () => {},
   }
-  const timers = countTimers(() => { mod.apply(ctx) })
-  assert.deepEqual(timers, { timeouts: 0, intervals: 0 }, '默认关时不许起 60 秒轮询')
+  const before = process.env.QQ_IDLE_COMPACTION
+  try {
+    delete process.env.QQ_IDLE_COMPACTION
+    const off = countTimers(() => { mod.apply(ctx) })
+    assert.deepEqual(off, { timeouts: 0, intervals: 0 }, '默认关时不许起 60 秒轮询')
+    process.env.QQ_IDLE_COMPACTION = '1'
+    const on = countTimers(() => { mod.apply(ctx) })
+    assert.equal(on.intervals, 1, '显式打开时才装那一个 60 秒定时器（对照组）')
+  } finally {
+    if (before === undefined) delete process.env.QQ_IDLE_COMPACTION
+    else process.env.QQ_IDLE_COMPACTION = before
+  }
 })

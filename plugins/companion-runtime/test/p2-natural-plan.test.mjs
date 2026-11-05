@@ -15,10 +15,18 @@ import { mountRuntime } from '../index.mjs';
 // be able to produce a plan the validator accepts. These tests do not "make the plan valid" — they
 // pin that the prompt and the validator say the same thing, and that a compliant plan commits.
 
-// Resolved from this file, not from the cwd: the canonical command runs from the plugin folder
-// while the real persona lives at the repository root.
-const personaPath = fileURLToPath(new URL('../../../workspace/PERSONA.md', import.meta.url));
-const hasPersona = fs.existsSync(personaPath);
+// Resolved from this file, not from the cwd. The persona document follows the
+// suite layout (D2): config/persona.md → config/persona.example.md → the legacy
+// workspace copy. A clean checkout only has the template, which is enough.
+const SUITE_ROOT = fileURLToPath(new URL('../../../', import.meta.url));
+const PERSONA_CANDIDATES = [
+  process.env.DSH_COMPANION_PERSONA_FILE,
+  path.join(SUITE_ROOT, 'config', 'persona.md'),
+  path.join(SUITE_ROOT, 'config', 'persona.example.md'),
+  path.join(SUITE_ROOT, 'workspace', 'PERSONA.md'),
+].filter(Boolean);
+const personaPath = PERSONA_CANDIDATES.find(file => fs.existsSync(file)) ?? '';
+const hasPersona = personaPath !== '';
 const personaText = hasPersona ? fs.readFileSync(personaPath, 'utf8') : '';
 
 const T0 = Date.UTC(2026, 10, 6, 6, 0, 0); // 14:00 Asia/Shanghai

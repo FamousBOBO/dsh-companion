@@ -68,17 +68,13 @@
 ### 想立刻有料（不等夜间任务）
 
 `memory.chunks`（03:50）与 `memory.reindex`（06:30）都是幂等的，但首次要把整个工作区的
-md 切块并全部嵌入，等一晚上太慢。**在 dsh 停止时**跑一次一次性引导（两个写者同时动
+md 切块并全部嵌入，等一晚上太慢。**在宿主停止时**跑一次性的切块/嵌入（两个写者同时动
 `records.jsonl` 会互相覆盖，所以必须先停服务）：
 
-```bash
-systemctl stop dsh
-/opt/node22/bin/node /root/dsh-ops/memory-bootstrap.mjs   # 导入旧库 → 切块 → 嵌向量
-systemctl start dsh
+```text
+# 宿主停止后跑一次切块 + 嵌入，再启动宿主。
+# 本机向量服务的起法见 deploy/embed-server/（install.sh / README）。
 ```
-
-脚本内容见 [deployment.md §13.4](deployment.md)。实测（2026-10-19，1.9M 日记）：
-旧库 104 条 + **1421 块**，共 1525 条向量，**31 秒**嵌完、0 失败。
 
 **回滚**：把 `memory.v2` 关掉即可——新库文件保留，旧库一直没动。
 

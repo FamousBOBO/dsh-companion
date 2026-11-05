@@ -1,6 +1,7 @@
 import { test } from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
+import os from 'node:os';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
 
@@ -10,7 +11,8 @@ process.env.DSH_COMPANION_MODULE_ROOT = resolveModuleRoot(root).root;
 const { mountCompanion } = await import('./index.mjs');
 
 test('real DSH tool definitions, first-step recall hook, conversation capture and reload work locally', async t => {
-  const fixture = fs.mkdtempSync(path.join(root, 'logs/test-runs/integration-'));
+  // Temporary fixture outside the repository: a test run must leave the tree clean.
+  const fixture = fs.mkdtempSync(path.join(os.tmpdir(), 'dsh-companion-integration-'));
   t.after(() => fs.rmSync(fixture, { recursive: true, force: true }));
   fs.mkdirSync(path.join(fixture, 'workspace'), { recursive: true });
   fs.mkdirSync(path.join(fixture, 'logs'), { recursive: true });

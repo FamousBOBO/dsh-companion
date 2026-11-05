@@ -67,10 +67,10 @@ test('掩码回传不清空已保存的密钥', () => {
 test('环境变量兜底：配置文件没写 key 时从 DSH_MEDIA_<SCOPE>_API_KEY 取', () => {
   const { dir, cleanup } = tempDataDir();
   try {
-    const env = { [keyEnvName('nai')]: 'pst-from-env-000000000000' };
+    const env = { [keyEnvName('nai')]: 'placeholder-value-not-a-real-key' };
     const store = createConfigStore({ dataDir: dir, env });
     const secret = store.secret('nai');
-    assert.equal(secret.value, 'pst-from-env-000000000000');
+    assert.equal(secret.value, 'placeholder-value-not-a-real-key');
     assert.equal(secret.source, 'env');
     // 掩码视图应提示"将尝试读取该环境变量"
     assert.equal(store.read().masked.image.nai.apiKey.envVar, 'DSH_MEDIA_NAI_API_KEY');

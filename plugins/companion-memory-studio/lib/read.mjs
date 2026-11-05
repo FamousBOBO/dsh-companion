@@ -3,10 +3,12 @@
 // 所有函数签名统一为 (request, kernel) -> Response，由 server.mjs 的 guard
 // 统一兜底。这里只做查询与脱敏，不写库、不写文件。
 //
-// 隐私规则（契约 §4.3 / 任务要求）：
-//   mentionPolicy=avoid_unless_asked 只是"模型主动提及"的策略，不再影响管理界面可见性：
-//   列表、预览、审核、时间线、详情一律返回可读正文（2026-10-31 用户明确要求全可见）。
-//   旧的 reveal=1 参数仍然接受，但没有任何作用；meta.revealed 恒为 false。
+// 可见性规则（2026-10-31 决策，A 口径）：
+//   `mention_policy=avoid_unless_asked` 只约束**模型是否主动提起**，不是管理台的视图过滤器。
+//   列表、预览、审核、时间线、详情一律返回可读正文：这是主人看自己数据的界面，看不到就没法审核和修订。
+//   旧的 `reveal=1` 参数仍然被接受（不报错），但它不再改变可见性；
+//   `hidden` 恒为 `false`、`revealable` 恒为 `false`。
+//   管理台是明文展示，屏幕共享/截图时请自行注意（README §4 有提醒）。
 
 import path from 'node:path';
 
@@ -16,7 +18,7 @@ import {
 import { KINDS, SCOPES, STATUSES } from '../../companion-memory/lib/policy.mjs';
 import { formatMoment } from '../../companion-memory/lib/text.mjs';
 import {
-  ApiError, clampInt, correctionEvidence, isHiddenRecord, pickEnum, safePreview, textValue,
+  ApiError, clampInt, correctionEvidence, pickEnum, safePreview, textValue,
 } from './api-kernel.mjs';
 
 const RELATED_SORT = Object.freeze(['recent', 'importance', 'confidence']);
@@ -487,7 +489,10 @@ export async function memoryDetail(request, kernel) {
     revisions,
     related,
   };
-  return kernel.ok(data, reveal ? { revealed: true } : null);
+  // `reveal` is still accepted (an old client may send it) but it changes nothing:
+  // there is no second visibility mode, so there is no `meta.revealed` to report.
+  void reveal;
+  return kernel.ok(data);
 }
 
 // ---------------------------------------------------------------------------

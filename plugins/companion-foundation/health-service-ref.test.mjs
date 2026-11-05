@@ -23,10 +23,11 @@ function tempRoot(t) {
   return dir;
 }
 
-test('companionHealth is an allowed bridge port', () => {
+test('companionHealth is an allowed bridge port', t => {
   assert.equal(HEALTH_SERVICE_NAME, 'companionHealth');
   // The allow-list is what makes `resolve` answer anything at all; an unknown name is always null.
-  assert.equal(createServiceBridge(process.cwd()).resolve('somethingElse'), null);
+  // The root is a temporary directory: a test must never write under the repository (or the cwd).
+  assert.equal(createServiceBridge(tempRoot(t)).resolve('somethingElse'), null);
 });
 
 test('a published service is resolvable from another plugin and gone after release', t => {

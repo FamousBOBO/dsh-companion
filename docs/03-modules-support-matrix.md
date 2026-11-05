@@ -19,14 +19,14 @@
 | `companion-runtime` | `@dsh-companion/runtime` | Win / Linux / macOS | 同上；联网探索需 `dsh` 搜索 | ✅ 是 |
 | `companion-group` | `@dsh-companion/group` | Win / Linux / macOS | 需 QQ 通道才有群会话 | ✅ 是（装了但没有通道就不生效） |
 | `dsh-channel-qq` | `@dsh-companion/channel-qq` | Win（实机）／Linux·macOS 未验证 | **NapCat / OneBot v11 外部服务**；QQ 登录 | ❌ 否 |
-| `qq-idle-compaction` | （随通道） | 同通道 | 同上 | ❌ 否 |
+| `qq-idle-compaction` | （随通道） | 同通道 | 同上 | ❌ 否（`modules.qqIdleCompaction`） |
 | `companion-media` | `@dsh-companion/media` | Win（实机）／其余未验证 | TTS / 生图服务（可选，缺省即关闭）；识图可走云端模型 | ❌ 否 |
-| `companion-health` | `@dsh-companion/health` | Win（实机）／其余未验证 | `sidecars/huawei-health-cn`（华为账号授权）与/或 `sidecars/ble-heart-rate`（BLE 设备） | ❌ 否 |
-| `sidecars/huawei-health-cn` | —（Python） | Win（实机）／其余未验证 | Python 3.9+；华为运动健康 CN 账号 | ❌ 否 |
-| `sidecars/ble-heart-rate` | —（Python） | Win（实机，真机跑通）／macOS·Linux 未验证 | Python 3.12 + `bleak`；支持心率广播的 BLE 设备 | ❌ 否 |
+| `companion-health` | `@dsh-companion/health` | Win（实机）／其余未验证 | `sidecars/huawei-health-cn`（**需自备上游协议实现**）与/或 `sidecars/ble-heart-rate`（BLE 设备） | ❌ 否 |
+| `sidecars/huawei-health-cn` | —（Python） | Win（实机）／其余未验证 | Python 3.9+；华为运动健康 CN 账号；**华为云端数据通道需要使用者自备上游检出（`$HUAWEI_UPSTREAM_PKG`）**——本仓库不含上游协议实现，见 §1.2 | ❌ 否 |
+| `sidecars/ble-heart-rate` | —（Python） | Win（实机，真机跑通）／macOS·Linux 未验证 | Python 3.12 + `bleak`；支持心率广播的 BLE 设备（**原创代码，不受上游许可影响**） | ❌ 否 |
 | `dsh-paste-search` | `@dsh-companion/paste-search` | Win / Linux / macOS | 无 | ❌ 否 |
-| `dsh-super-injector` | `@dsh-companion/super-injector` | Win / Linux / macOS | 宿主 `web` profile（不在陪伴桌面加载） | ❌ 否 |
-| `_selftest-hello` | `@dsh-companion/selftest-hello` | — | 无（注入器夹具，非发布功能） | ❌ 否 |
+
+发布树规模：**9 个插件模块 + 2 个 sidecar**（另有 `qq-idle-compaction.mjs` 作为通道随附模块）。
 
 ### 1.1 外部可选模块（**不在本仓库**）
 
@@ -39,6 +39,45 @@
 - 默认关闭：`modules.bilibili=false`；「自动评论 / 自动投递」必须**单独**开启，且受 `safety.autoComment` 总闸
 - 它的许可证与来源需用户自行核实
 - 迁移时它的 `bili_credential.json` 属于**永不导出**的凭据（`docs/04` §4）
+
+### 1.2 本版**未收录**（已从发布树删除，不是暂缓）
+
+这两项不是「还没做完」，而是**这一版明确不发布**，原因都是许可证/可验证性，不是功能问题。
+
+#### `dsh-super-injector`（超级注入器）—— 整体移除
+
+| 阻塞 | 说明 |
+|---|---|
+| 许可证文本缺失 | 上游是 **BSD-3-Clause**，该许可证要求**随分发保留版权声明与许可全文**。仓库里没有这份 `LICENSE` 文本，因此不能分发。 |
+| 无法验证 | 它的构建需要 `DSH_CHECKOUT` 指向一份 **DSH 源码检出**（`packages/`）。只装桌面版的环境**永远构建不出来**，也就无法进入任何一级验证。 |
+
+连带移除：`plugins/_selftest-hello`（它只是注入器的冒烟夹具，没有独立价值）。
+
+**替代做法**：需要运行时插件注入能力的人，自行从上游获取源码与许可证、自备 DSH 源码检出后构建。
+本套件既不打包、也不代管、也不为其许可与行为背书。因此：
+
+- `config/suite.json` 里**没有** `modules.superInjector` 这一项；
+- 部署、配置、迁移、回滚文档里都**不再**出现注入器步骤；
+- 它也不在依赖图里。
+
+#### `sidecars/huawei-health-cn/python/` 的 4 个上游复制件 —— 移除
+
+被移除的是 `client.py` / `const.py` / `huawei_dashboard.py` / `huawei_login.py`（来自上游 `and7ey/huawei_health`）。
+
+- **原因**：上游许可证**未能核实**。许可不明的内容不能当 MIT 分发。
+- **现在仓库里剩下什么**：本项目自写的采集调用、脱敏、快照、起停脚本、跨平台入口与测试。
+- **运行时怎么办**：用 `$HUAWEI_UPSTREAM_PKG` 指向**使用者自己的**上游检出；没有它就只是「未配置」，
+  不会静默失败（`verify_frozen_copy.py` 会明确报「原件不在」并以退出码 3 说明）。
+- **不受影响的部分**：`sidecars/ble-heart-rate`（BLE 心率广播）是原创代码，照常发布与使用。
+
+```bash
+# 示例：指向你自己的上游检出（路径由你决定，仓库不提供）
+export HUAWEI_UPSTREAM_PKG="/path/to/your/huawei_health"
+# Windows PowerShell
+$env:HUAWEI_UPSTREAM_PKG = "D:\your\checkout\huawei_health"
+```
+
+> ⚠️ 只有**华为云端聚合数据**这条通道需要上游检出。**BLE 实时心率不需要**——它是本仓库自带实现。
 
 ## 2. 模块依赖图
 
@@ -68,18 +107,18 @@ flowchart TD
         MD[companion-media<br/>识图 / TTS / 生图]
         H[companion-health<br/>健康 + 心跳]
         PS[dsh-paste-search]
-        SI[dsh-super-injector<br/>仅 web profile]
     end
 
     subgraph sidecars["Python 侧车（独立进程，HTTP 回环）"]
-        HW[sidecars/huawei-health-cn :8765]
+        HW["sidecars/huawei-health-cn :8765<br/>（上游协议实现不随仓库分发）"]
         BLE[sidecars/ble-heart-rate :8151]
     end
 
     subgraph external["外部服务与外部模块（用户自备，本套件只连接）"]
         OB[NapCat / OneBot v11]
         MEDIA[TTS / 生图网关]
-        BILI[dsh-bili-scroll 2.4.0<br/>外部模块，不在本仓库]
+        UP["上游 huawei_health 检出<br/>\$HUAWEI_UPSTREAM_PKG"]
+        BILI["dsh-bili-scroll 2.4.0<br/>外部模块，不在本仓库"]
     end
 
     Q --> OB
@@ -88,10 +127,13 @@ flowchart TD
     G --> MD
     H --> HW
     H --> BLE
+    HW -.->|需要| UP
     MD --> MEDIA
     BILI --> MD
     BILI --> Q
 ```
+
+> 图里**没有** `dsh-super-injector`：这一版不收录它（原因见 §1.2）。
 
 ### 2.2 文字版（便于 grep / 复制）
 
@@ -111,12 +153,14 @@ dsh-channel-qq
 
 companion-health
  ├─→ sidecars/huawei-health-cn（:8765，只读聚合数据）
- └─→ sidecars/ble-heart-rate （:8151，HRS 0x180D/0x2A37 实时心跳）
+ │    └─→ 需要使用者自备上游检出（$HUAWEI_UPSTREAM_PKG）：上游协议实现不随本仓库分发
+ └─→ sidecars/ble-heart-rate （:8151，HRS 0x180D/0x2A37 实时心跳；原创代码，无上游依赖）
 
 companion-media               独立（不 import 兄弟模块；外部 TTS/生图服务可选）
 
 dsh-paste-search              独立（UI 入口）
-dsh-super-injector            独立（web profile，运行时注入本地插件）
+
+（dsh-super-injector 不在本版发布范围，见 §1.2）
 ```
 
 **为什么「必须成套安装」**：核心四件之间是**兄弟相对 import**（`../companion-memory/...`），
@@ -166,10 +210,10 @@ dsh-super-injector            独立（web profile，运行时注入本地插件
 | `dsh-channel-qq` | 见负责人交接报告 | 未验证 | 未验证 | **未验证** | — |
 | `companion-media` | 见负责人交接报告（M4） | 未验证 | 未验证 | 未验证 | — |
 | `companion-health` | 见负责人交接报告 | 未验证 | 未验证 | — | 未验证 |
-| `sidecars/huawei-health-cn` | 见负责人交接报告 | — | 未验证 | — | — |
+| `sidecars/huawei-health-cn` | 见负责人交接报告（本仓库自写的采集/脱敏/起停/测试部分） | — | **不适用**：上游协议实现未随仓库分发，历史上的 `real-api` 证据只属于原作者环境 | — | — |
 | `sidecars/ble-heart-rate` | 见负责人交接报告（`--fixture` 可无硬件跑） | — | — | — | 未验证 |
 | `dsh-paste-search` | 见负责人交接报告 | 未验证 | — | — | — |
-| `dsh-super-injector` | 见负责人交接报告 | 未验证 | — | — | — |
+| ~~`dsh-super-injector`~~ | **未收录**（原因见 §1.2），无证据也不应有 | — | — | — | — |
 | `tools/migrate`（迁移 CLI） | **10 项离线测试通过**（2026-11-05，`node --test tools/migrate/test/migrate.test.mjs`）；并在**真实数据副本**上跑通 `export`（976 条记忆，VACUUM INTO 快照）/ `check` / `import --dry-run` | — | — | — | — |
 
 > 「见负责人交接报告」= 该模块负责人给出的计数尚未汇总进本文；不要把它当成「已通过」，
@@ -189,7 +233,7 @@ dsh-super-injector            独立（web profile，运行时注入本地插件
 | 主动联系（contact） | 仅到 `host-load`/模拟 | 切 turn 模式后**没有**真实主动发送的证据 |
 | B站自动评论 | `real-send` | 曾有 2 条评论 rpid（外部模块，不在本仓库） |
 | BLE 心率 | `hardware` | 真机手环广播跑通，端到端出【心跳读数】行 |
-| 华为健康 | `real-api` | sidecar 有真实数据（账号授权） |
+| 华为健康 | `real-api`（**原作者环境**） | 上游协议实现不随本仓库分发，这条证据**不适用**于本发布树；使用者需要自备上游检出 |
 | 媒体生图 / Breeze TTS | `real-api` | 有真实作业与产物；**投递通道是 mock**，`confirmed` 被强制改写 `unknown` |
 | 实时语音（sidecar） | 隔离环境 | 延迟未达标，未接 QQ 通话 |
 
@@ -204,7 +248,7 @@ dsh-super-injector            独立（web profile，运行时注入本地插件
 | 模块 | 已知缺口 | 影响 |
 |---|---|---|
 | `dsh-channel-qq` | 构建产物不入库，clone 后必须 `npm run build`；`main` 不得指向带日期目录（已列为发布硬规则） | 忘记构建 → `doctor` 报模块入口缺失 |
-| `dsh-super-injector` | 构建脚本需跨平台（不能依赖 `bash`）；`lib/` 的处理以根 `.gitignore` 为准 | 忘记构建 → 入口缺失 |
+| `sidecars/huawei-health-cn` | **上游协议实现（4 个复制件）因许可未核实已移除**；云端通道需要 `$HUAWEI_UPSTREAM_PKG` 指向使用者自己的检出。BLE 通道不受影响 | 没配上游 = 「未配置」，不是「坏了」 |
 | `companion-media` | 识图默认关闭；投递通道 mock | 「发出去了」不会被证明 |
 | `companion-health` | 四个能力（上下文注入 / 习惯记忆 / 日程调整 / 主动关怀）本轮代码里没有读取分支 | 开关存在但无效，`docs/02` §3.6 已注明 |
 | `companion-group` | 无独立测试目录；群内媒体/自主接话在历史上无真实证据 | 群里发图/发语音属未验证 |

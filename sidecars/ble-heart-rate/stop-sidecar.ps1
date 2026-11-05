@@ -1,10 +1,11 @@
-﻿#Requires -Version 5.1
+#Requires -Version 5.1
 <#
 .SYNOPSIS
     停掉 start-sidecar.ps1 起的那个心率 sidecar —— 只停它，别的概不碰。
 
 .DESCRIPTION
-    ``logs/sidecar.pid`` 是唯一事实来源。校验分三步，任何一步对不上就**不动手**、只报告：
+    PID 文件（``<data>\logs\ble-heart-rate\sidecar.pid``；``-LogDir`` / ``$env:BLE_HEART_RATE_LOG_DIR``
+    可覆盖）是唯一事实来源。校验分三步，任何一步对不上就**不动手**、只报告：
 
       1. PID 文件里记的 port/listenerPid/wrapperPid 还在；
       2. 当前占着那个端口的进程，命令行里仍然含 ``heart_rate.py``，且目录是本 sidecar；
@@ -12,6 +13,8 @@
 
     然后 ``taskkill /T /F`` 杀整棵树，等端口真的空出来，最后删 PID 文件。端口还被别人占着
     就报错退出，不做任何"反正先 kill 一下"的猜测。
+
+    Linux / macOS 用 ``stop-sidecar.sh``；这个文件是 Windows 那条路（WMI/taskkill）。
 
 .EXAMPLE
     pwsh -File sidecars\ble-heart-rate\stop-sidecar.ps1
@@ -22,8 +25,9 @@
 [CmdletBinding()]
 param(
     [switch]$DryRun,
-    # 要停哪个端口的实例：契约端口 8151 用 logs/sidecar.pid，其它端口用 logs/sidecar-<port>.pid
+    # 要停哪个端口的实例：契约端口 8151 用 sidecar.pid，其它端口用 sidecar-<port>.pid
     [int]$Port = 8151,
+    [string]$LogDir = "",
     [int]$WaitSeconds = 15
 )
 
@@ -31,7 +35,12 @@ $ErrorActionPreference = 'Stop'
 Set-StrictMode -Version Latest
 
 $SidecarRoot = $PSScriptRoot
-$LogDir = Join-Path $SidecarRoot 'logs'
+$SuiteRoot = Split-Path -Parent (Split-Path -Parent $SidecarRoot)
+if (-not $LogDir) {
+    if ($env:BLE_HEART_RATE_LOG_DIR) { $LogDir = $env:BLE_HEART_RATE_LOG_DIR }
+    elseif ($env:DSH_COMPANION_DATA_DIR) { $LogDir = Join-Path $env:DSH_COMPANION_DATA_DIR 'logs\ble-heart-rate' }
+    else { $LogDir = Join-Path $SuiteRoot 'data\logs\ble-heart-rate' }
+}
 $PidFile = if ($Port -eq 8151) { Join-Path $LogDir 'sidecar.pid' } else { Join-Path $LogDir "sidecar-$Port.pid" }
 
 function Write-Step([string]$Message) { Write-Host "  $Message" }
