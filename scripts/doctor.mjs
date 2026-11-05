@@ -66,7 +66,6 @@ const MODULE_CHECKS = {
   health: { kind: 'file', directory: 'plugins/companion-health', entry: 'index.mjs', title: '健康数据（含华为健康 sidecar）' },
   media: { kind: 'file', directory: 'plugins/companion-media', entry: 'index.mjs', title: '媒体层（生图/TTS/识图）' },
   pasteSearch: { kind: 'bundle', directory: 'plugins/dsh-paste-search', title: '搜图入口' },
-  superInjector: { kind: 'bundle', directory: 'plugins/dsh-super-injector', title: '超级注入器' },
 };
 
 const STATUS_ORDER = { fail: 0, warn: 1, pending: 2, skipped: 3, ok: 4, info: 5 };

@@ -93,11 +93,6 @@ export const MODULE_SPECS = {
     directory: 'plugins/dsh-paste-search',
     title: '搜图入口（dsh-paste-search）',
   },
-  superInjector: {
-    kind: 'bundle',
-    directory: 'plugins/dsh-super-injector',
-    title: '超级注入器（dsh-super-injector）',
-  },
 };
 
 /* ────────────────────────── 参数与输出 ────────────────────────── */
