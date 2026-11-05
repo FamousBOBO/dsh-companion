@@ -96,7 +96,7 @@ async function main() {
     );
     record('npm install（无依赖包，离线可完成）', run('npm', ['install', '--no-audit', '--no-fund', '--ignore-scripts'], root));
     record('npm run build', run('npm', ['run', 'build', '--silent'], target));
-    record('node --test（93 个断言）', run('node', ['--test', 'test/*.test.mjs'], target));
+    record('node --test（全部用例通过，数量见下方输出）', run('node', ['--test', 'test/*.test.mjs'], target));
 
     // 从模板初始化：模板必须能直接当配置用
     const example = JSON.parse(fs.readFileSync(path.join(target, 'config.example.json'), 'utf8'));
@@ -120,7 +120,9 @@ async function main() {
       provide: () => {},
       effect: runner => runner(),
     };
-    const service = plugin.apply(ctx, { dataDir, fetchImpl: mock.fetchImpl });
+    // 插件入口的 apply 现在是 async（它要在 apply 期间等 connection 服务就绪，
+    // 否则注册会落在已失效的 context 上）。所以这里必须 await。
+    const service = await plugin.apply(ctx, { dataDir, fetchImpl: mock.fetchImpl, connectionWaitMs: 300 });
     record('插件在无配置/无 Connection 的宿主里加载', Boolean(service) && !service.error, `tools=[${tools.join(',')}]`);
     record('只注册 4 个工具且无识图/预热入口', tools.length === 4 && !tools.some(name => /inspect|warm|vision/i.test(name)));
 

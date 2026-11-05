@@ -539,6 +539,23 @@ export function validateConfig(config) {
   }
 
   const image = config.image ?? {};
+  // 页面把超时标成「1000–600000 毫秒」，所以这里必须真的按这个范围校验——
+  // 标签上写的约束不能只是装饰。
+  const TIMEOUT_RANGE = { min: 1_000, max: 600_000 };
+  const checkTimeout = (path, section) => {
+    if (section?.timeoutMs === undefined) return;
+    const value = section.timeoutMs;
+    if (!Number.isInteger(value) || value < TIMEOUT_RANGE.min || value > TIMEOUT_RANGE.max) {
+      add(path, Code.PARAM_OUT_OF_RANGE, `timeoutMs 必须是 ${TIMEOUT_RANGE.min}–${TIMEOUT_RANGE.max} 的整数（毫秒）`);
+    }
+  };
+  checkTimeout('vision.timeoutMs', config.vision);
+  for (const [id, section] of Object.entries(image)) {
+    if (section && typeof section === 'object') checkTimeout(`image.${id}.timeoutMs`, section);
+  }
+  for (const [id, section] of Object.entries(config.tts?.providers ?? {})) {
+    checkTimeout(`tts.providers.${id}.timeoutMs`, section);
+  }
   if (!['none', 'openai-compatible', 'nai'].includes(image.provider)) {
     add('image.provider', Code.PROVIDER_UNKNOWN, `未知生图 provider：${image.provider}`);
   }

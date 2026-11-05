@@ -15,6 +15,8 @@
  * default backend; provider-specific options are grouped under that provider.
  */
 
+import { DEFAULTS } from './schema.mjs';
+
 const FIELD_TYPES = {
   baseUrl: 'url',
   apiKey: 'secret',
@@ -28,6 +30,7 @@ const FIELD_TYPES = {
   refAudioPath: 'text',
   refText: 'text',
   promptText: 'text',
+  speedFactor: 'number',
   promptLang: 'select',
   textLang: 'select',
   mediaType: 'select',
@@ -59,6 +62,59 @@ const FIELD_TYPES = {
 
 const SECRET_FIELDS = new Set(['apiKey']);
 
+/**
+ * Per-field default labels.
+ *
+ * The capability records carry `fieldLabels` for the fields they document, but a
+ * field that exists in the schema must still be renderable even when nobody
+ * wrote a label for it — a missing label used to mean a missing *input* (the
+ * OpenAI card had no timeout box at all). Anything without an entry here falls
+ * back to its raw name, so a new schema field can never be silently invisible.
+ */
+const FIELD_LABELS_DEFAULT = {
+  timeoutMs: '超时（毫秒，1000–600000）',
+  baseUrl: '服务地址（Base URL）',
+  apiKey: 'API Key',
+  model: '模型',
+  seed: '随机种子（-1 = 每次随机）',
+  ucPreset: 'UC 预设编号（0 / 1 / 2 / 3）',
+  qualityToggle: '质量增强（qualityToggle）',
+  sm: 'SMEA（sm）',
+  smDyn: 'SMEA+DYN（smDyn）',
+  negativePrompt: '反向提示词（全局，手动追加）',
+  artistString: '画师串（写进正向提示词最前面）',
+  width: '宽（64 的倍数）',
+  height: '高（64 的倍数）',
+  steps: '步数（1–50，默认 28）',
+  scale: '提示词引导（scale，0–20）',
+  cfgScale: 'CFG 强度',
+  temperature: 'temperature',
+  topP: 'top_p',
+  topK: 'top_k',
+  speedFactor: '语速倍率',
+  quality: '质量档（quality）',
+  outputFormat: '输出格式（outputFormat）',
+  background: '背景（background）',
+  size: '画面尺寸（auto / WxH）',
+  instruction: '风格指令（instruction）',
+  refAudioPath: '参考音频路径（服务端路径）',
+  refText: '参考音频逐字稿',
+  promptText: '参考音频文本（prompt_text）',
+  referenceId: '音色 ID（reference_id）',
+  enabled: '启用',
+  positive: '正向预设',
+  negative: '反向预设',
+  applyDefaults: '应用这一族的预设',
+  format: '返回格式',
+  latency: '延迟模式',
+  mediaType: '媒体类型',
+  promptLang: '参考音频语言',
+  textLang: '合成文本语言',
+  transport: 'transport',
+  sampler: '采样器',
+  noiseSchedule: '噪声调度',
+};
+
 /** 下拉项的显示名。没列到的值直接用原值当显示名（不猜语义）。 */
 const OPTION_LABELS = {
   transport: { official: 'official（官方直连）', 'openai-relay': 'openai-relay（中转站）' },
@@ -71,6 +127,14 @@ const OPTION_LABELS = {
   promptLang: { auto: 'auto', zh: 'zh（中文）', en: 'en（英文）', ja: 'ja（日文）', ko: 'ko（韩语）', yue: 'yue（粤语）' },
   textLang: { auto: 'auto', zh: 'zh（中文）', en: 'en（英文）', ja: 'ja（日文）', ko: 'ko（韩语）', yue: 'yue（粤语）' },
 };
+
+/** 渲染用的两族（`5` / `4.5`）；`other` 不是可编辑的预设族，故不列出。 */
+const PRESET_FAMILIES = Object.freeze([
+  { family: '5', label: 'V5' },
+  { family: '4.5', label: '4.5' },
+]);
+
+const presetFamilies = () => PRESET_FAMILIES.map(item => ({ ...item }));
 
 const optionList = (name, values) => values.map(value => ({ value, label: OPTION_LABELS[name]?.[value] ?? value }));
 
@@ -96,6 +160,37 @@ function field(pathParts, label, config, { type = 'text', writable = true, hint 
   return { ...base, type, value, ...(options && options.length ? { options } : {}), ...(hint ? { hint } : {}) };
 }
 
+/**
+ * Every editable field for one provider, derived from the schema defaults.
+ *
+ * Labels alone used to drive this list, which silently hid fields that exist in
+ * the schema but had no label (the OpenAI card had no timeout input). The
+ * defaults are the source of truth now: a new scalar config key shows up in the
+ * page automatically. Non-scalar keys are skipped here — `presets` is rendered by
+ * the dedicated presets block (three fields per family), `enabled` is handled by
+ * the caller.
+ */
+function editableFieldNames(kind, record) {
+  const defaults = kind === 'image'
+    ? DEFAULTS.image?.[record.id]
+    : DEFAULTS.tts?.providers?.[record.id];
+  const names = [];
+  const add = name => {
+    if (!name || names.includes(name)) return;
+    // `enabled` 由调用方处理；`presets` 与 `artistString` 由预设块（每族三字段 + 画师串）
+    // 单独渲染，避免同一个配置键出现两个输入框。
+    if (name === 'enabled' || name === 'presets' || name === 'artistString') return;
+    names.push(name);
+  };
+  for (const name of record.requiredFields ?? []) add(name);
+  for (const name of Object.keys(record.fieldLabels ?? {})) add(name);
+  for (const [name, value] of Object.entries(defaults ?? {})) {
+    if (value !== null && typeof value === 'object') continue; // 非标量不直接编辑
+    add(name);
+  }
+  return names;
+}
+
 function providerSection({ kind, record, state, config }) {
   const configKey = record.id;
   const baseParts = kind === 'image' ? ['image', configKey] : ['tts', 'providers', configKey];
@@ -104,14 +199,13 @@ function providerSection({ kind, record, state, config }) {
   const push = name => {
     if (used.has(name)) return;
     used.add(name);
-    const label = record.fieldLabels?.[name] ?? name;
+    const label = record.fieldLabels?.[name] ?? FIELD_LABELS_DEFAULT[name] ?? name;
     const type = FIELD_TYPES[name] ?? 'text';
     const hint = name === 'apiKey' ? '只写：保存后只显示"已配置"；留空 = 保留原值；清除需显式动作' : '';
     const options = record.fieldOptions?.[name] ? optionList(name, record.fieldOptions[name]) : null;
     fields.push(field([...baseParts, name], label, config, { type, hint, options }));
   };
-  for (const name of record.requiredFields ?? []) push(name);
-  for (const name of Object.keys(record.fieldLabels ?? {})) push(name);
+  for (const name of editableFieldNames(kind, record)) push(name);
   // 生图没有"每 provider 开关"：启停由 `image.enabled` + `image.provider` 决定，
   // 所以这里不发 `enabled` 字段（发了也没有可写的目标键）。
   // TTS 的每个后端确实有独立开关 `tts.providers.<id>.enabled`，保留。
@@ -221,11 +315,18 @@ export function mediaPageDescriptor(status) {
         presets: {
           path: 'image.nai.presets',
           pathParts: ['image', 'nai', 'presets'],
-          note: 'V5 与 4.5 的预设分开存储；切换模型不会把一族的预设套到另一族。applyDefaults=false 表示暂时不用预设。',
-          families: [
-            { family: '5', label: 'V5', field: field(['image', 'nai', 'presets', '5', 'positive'], 'V5 正向预设', config, { type: 'textarea' }) },
-            { family: '4.5', label: '4.5', field: field(['image', 'nai', 'presets', '4.5', 'positive'], '4.5 正向预设', config, { type: 'textarea' }) },
-          ],
+          note: 'V5 与 4.5 的预设分开存储；切换模型不会把一族的预设套到另一族。每一族有自己的正向、反向与应用开关；官方正/反向文本没有权威来源，默认留空，不代填。',
+          // 每族三个真实配置键：positive / negative / applyDefaults。
+          // 少发任何一个，UI 就配不齐（此前只有 positive，导致负向预设与启用开关都无处可填）。
+          families: presetFamilies().map(({ family, label }) => ({
+            family,
+            label,
+            fields: [
+              field(['image', 'nai', 'presets', family, 'positive'], `${label}：正向预设`, config, { type: 'textarea' }),
+              field(['image', 'nai', 'presets', family, 'negative'], `${label}：反向预设`, config, { type: 'textarea' }),
+              field(['image', 'nai', 'presets', family, 'applyDefaults'], `${label}：应用这一族的预设`, config, { type: 'boolean' }),
+            ],
+          })),
           artistString: field(['image', 'nai', 'artistString'], '画师串', config, { type: 'textarea', hint: '写进正向提示词最前面；与预设独立保存' }),
         },
       },

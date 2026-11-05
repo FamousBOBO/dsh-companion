@@ -52,6 +52,17 @@ function hooksOf(key) {
   return instances.get(key);
 }
 
+// 真实浏览器里"切页"会卸载组件、丢掉组件状态；这个最小运行时按路径缓存实例，
+// 切走再回来会复用同一份 hooks——那样就测不出"草稿只在组件状态里"的缺陷。
+// 需要模拟真实卸载时显式调用它（P2：切页回来草稿不丢）。
+function resetHooks() {
+  for (const [key, cleanup] of cleanups) {
+    try { cleanup(); } catch { /* 忽略 */ }
+    cleanups.delete(key);
+  }
+  instances.clear();
+}
+
 function useState(initial) {
   const instance = currentInstance;
   const index = instance.cursor++;
@@ -711,7 +722,9 @@ for (const label of ['陪伴首页', '生活与日程', '连接与工具', '工�
           if (String(stepsInput.props.value) !== '28') failures.push(`媒体页：NAI 步数默认值不是 28（实际 ${stepsInput.props.value}）`);
           stepsInput.props.onChange({ target: { value: '30' } });
           await reload();
-          const save = buttonIn(cardByText('NovelAI'), '保存这个 provider');
+          // 改动后卡片会被重建成"未选中=收起"（最小 React 运行时按路径重建实例），先展开再点
+          const expanded = await expandCard('NovelAI');
+          const save = expanded ? buttonIn(expanded, '保存这个 provider') : null;
           if (!save || save.props.disabled) failures.push('媒体页：NAI 的「保存这个 provider」不可用（改了字段应该可保存）');
           else {
             save.props.onClick();
@@ -811,6 +824,90 @@ for (const label of ['陪伴首页', '生活与日程', '连接与工具', '工�
         }
         if (!text(tree).includes('测试通过')) failures.push('媒体页：/test 通过后没有显示「测试通过」');
       }
+    }
+
+    // (6b) 2026-11-06 审核 P1：测试结果只对"已保存配置"有效。
+    //      改连接字段 → 旧「测试通过」必须消失、测试按钮必须禁用并提示「先保存再测试」。
+    {
+      const card = await expandCard('OpenAI-compatible');
+      const baseUrlInput = card ? findAll(card, (node) => node.tag === 'input'
+        && node.props && node.props.id === 'media-image.openai-compatible.baseUrl')[0] : null;
+      if (!card) failures.push('媒体页：P1 检查找不到 OpenAI-compatible 卡');
+      else if (!baseUrlInput) failures.push('媒体页：P1 检查找不到 Base URL 输入框（id 关联可能没生效）');
+      else {
+        if (!textOf(card).includes('测试通过')) failures.push('媒体页：P1 检查前没有可用的「测试通过」结果（上一步应已测过）');
+        baseUrlInput.props.onChange({ target: { value: 'https://edited.example.test/v2' } });
+        await reload();
+        const edited = await expandCard('OpenAI-compatible');
+        if (!edited) failures.push('媒体页：P1 编辑后找不到 OpenAI-compatible 卡');
+        else {
+          if (textOf(edited).includes('测试通过')) failures.push('媒体页：P1 编辑连接字段后旧的「测试通过」仍然挂着');
+          if (/测试失败/.test(textOf(edited))) failures.push('媒体页：P1 编辑后把过期结果改写成「测试失败」（应当直接消失）');
+          const testButton = buttonIn(edited, '测试连接');
+          if (!testButton) failures.push('媒体页：P1 编辑后找不到测试按钮');
+          else {
+            if (!testButton.props.disabled) failures.push('媒体页：P1 有未保存修改时「测试连接」没有被禁用');
+            const note = String(testButton.props.title || '') + textOf(edited);
+            if (!note.includes('先保存再测试')) failures.push('媒体页：P1 没有提示「先保存再测试」');
+          }
+          const beforeTests = mediaRequests.filter((item) => item.sub === 'test').length;
+          if (testButton && !testButton.props.disabled) testButton.props.onClick();
+          await reload();
+          const afterTests = mediaRequests.filter((item) => item.sub === 'test').length;
+          if (afterTests !== beforeTests) failures.push('媒体页：P1 未保存时点测试仍然发出了 /test（应被禁用拦住）');
+        }
+      }
+    }
+
+    // (6c) 2026-11-06 审核 P2：切到别的页面再回来，未保存的草稿不能丢。
+    {
+      const draftUrl = 'https://edited.example.test/v2';
+      if (!clickRail('陪伴首页')) failures.push('找不到导航：陪伴首页');
+      else {
+        await reload();
+        // 模拟真实浏览器的卸载（组件状态全丢），只剩模块级草稿缓存能救回来。
+        resetHooks();
+        await reload(); // 重新挂载：导航状态回到默认页
+        if (!clickRail('媒体能力')) failures.push('找不到导航：媒体能力');
+        else {
+          await reload();
+          const card = await expandCard('OpenAI-compatible');
+          const baseUrlInput = card ? findAll(card, (node) => node.tag === 'input'
+            && node.props && node.props.id === 'media-image.openai-compatible.baseUrl')[0] : null;
+          if (!baseUrlInput) failures.push('媒体页：P2 切页回来后找不到 Base URL 输入框');
+          else if (String(baseUrlInput.props.value) !== draftUrl) {
+            failures.push(`媒体页：P2 切页回来后草稿丢了（Base URL=${baseUrlInput.props.value}）`);
+          }
+          if (!text(tree).includes('有未保存的修改')) failures.push('媒体页：P2 切页回来后没有标出「有未保存的修改」');
+          if (!text(tree).includes('放弃未保存的改动')) failures.push('媒体页：P2 有草稿时没有提供「放弃未保存的改动」');
+        }
+      }
+    }
+
+    // (6d) 2026-11-06 审核 P3：label 的 for 必须落到真正的控件 id 上（input / select / textarea 都查）。
+    {
+      const labels = findAll(tree, (node) => node.tag === 'label' && classOf(node).includes('cpx-field-label'));
+      if (labels.length < 3) failures.push(`媒体页：P3 字段 label 太少（${labels.length} 个），可能没有渲染`);
+      let matched = 0;
+      let testedSelect = 0;
+      let testedTextarea = 0;
+      for (const label of labels) {
+        const target = String((label.props && label.props.htmlFor) || '');
+        if (!target) { failures.push(`媒体页：P3 label「${textOf(label)}」没有 for`); continue; }
+        const control = findAll(tree, (node) => ['input', 'select', 'textarea'].includes(node.tag)
+          && node.props && node.props.id === target)[0];
+        if (!control) failures.push(`媒体页：P3 label「${textOf(label)}」的 for=${target} 找不到对应控件`);
+        else {
+          matched += 1;
+          if (control.tag === 'select') testedSelect += 1;
+          if (control.tag === 'textarea') testedTextarea += 1;
+        }
+      }
+      if (matched < 3) failures.push(`媒体页：P3 只验到 ${matched} 个 label→控件关联`);
+      if (testedSelect === 0) failures.push('媒体页：P3 没有验到 select 的 label 关联');
+      const protocolSelect = findAll(tree, (node) => node.tag === 'select' && node.props && node.props.id === 'media-image.provider')[0];
+      if (!protocolSelect) failures.push('媒体页：P3「协议」select 没有 id（label 关联不到）');
+      void testedTextarea;
     }
 
     // (7) 分辨率预览：点了才发 /preview

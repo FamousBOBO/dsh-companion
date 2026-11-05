@@ -329,6 +329,94 @@ test('保存 patch：密钥只写——输入过才发，掩码对象永不回�
   );
 });
 
+// ---------------------------------------------------------------------------
+// 2026-11-06 UI 审核回归：测试结果只对"已保存配置"有效、草稿指纹、label 关联
+// ---------------------------------------------------------------------------
+
+test('providerDirty：任何未保存的改动都算（含密钥/清除），只改别的 provider 不算', () => {
+  const view = build();
+  const image = view.sections.find(section => section.id === 'image');
+  const nai = image.providers.find(provider => provider.id === 'nai');
+  const openai = image.providers.find(provider => provider.id === 'openai-compatible');
+  const draft = page.draftFrom(view);
+
+  assert.equal(page.providerDirty(nai, draft, {}, {}), false, '刚渲染时不该有未保存改动');
+
+  // 编辑本 provider 的连接字段 → dirty
+  assert.equal(page.providerDirty(nai, { ...draft, 'image.nai.baseUrl': 'https://draft.test' }, {}, {}), true);
+  // 只改了另一个 provider → 本 provider 仍然不是 dirty（测试按钮不该被它连累）
+  assert.equal(page.providerDirty(nai, { ...draft, 'image.openai-compatible.baseUrl': 'https://x.test' }, {}, {}), false);
+  assert.equal(page.providerDirty(openai, { ...draft, 'image.openai-compatible.baseUrl': 'https://x.test' }, {}, {}), true);
+
+  // 输入框回传同样的字符串/数字不算改动
+  assert.equal(page.providerDirty(nai, { ...draft, 'image.nai.steps': '28' }, {}, {}), false);
+
+  // 只写了密钥（还没保存）也算 dirty
+  assert.equal(page.providerDirty(openai, draft, { 'image.openai-compatible.apiKey': 'sk-typed' }, {}), true);
+  // 标了清除也算 dirty
+  assert.equal(page.providerDirty(openai, draft, {}, { 'image.openai-compatible.apiKey': true }), true);
+  // 空白密钥输入不算（留空 = 保留）
+  assert.equal(page.providerDirty(openai, draft, { 'image.openai-compatible.apiKey': '   ' }, {}), false);
+});
+
+test('providerDirty：tts provider 的启用开关也算它的改动', () => {
+  const view = build();
+  const tts = view.sections.find(section => section.id === 'tts');
+  const breeze = tts.providers.find(provider => provider.id === 'breeze-tts2');
+  const draft = page.draftFrom(view);
+  assert.equal(page.providerDirty(breeze, draft, {}, {}), false);
+  // descriptor 带了 enabled 字段（真实形状），它就在 fields 里
+  assert.equal(page.providerDirty(breeze, { ...draft, 'tts.providers.breeze-tts2.enabled': false }, {}, {}), true);
+});
+
+test('signatureOf：只由服务器当前值决定，跟草稿无关；值变了指纹就变', () => {  const view = build();
+  const same = build();
+  assert.equal(page.signatureOf(view), page.signatureOf(same), '同样的配置必须给同样的指纹');
+  assert.equal(page.signatureOf(null), '');
+
+  const changed = build();
+  changed.sections.find(section => section.id === 'image').providers
+    .find(provider => provider.id === 'nai').fields
+    .find(field => field.path === 'image.nai.steps').original = 30;
+  assert.notEqual(page.signatureOf(changed), page.signatureOf(view), '服务器值变了，指纹必须变');
+
+  // 草稿不进指纹：拿同一份 view 配不同草稿，指纹一致
+  assert.equal(page.signatureOf(view), page.signatureOf(view));
+});
+
+test('切换 provider 时"先关能力"的那一步不会被当成用户自己的改动', () => {
+  const view = build();
+  const draft = page.draftFrom(view);
+  // 模拟页面在切到未配置协议时自动写 enabled=false
+  const withAutoDisable = { ...draft, 'image.provider': 'nai', 'image.enabled': false };
+  assert.deepEqual(page.patchFrom(view, withAutoDisable, {}, {}), { image: { enabled: false, provider: 'nai' } });
+});
+
+test('清除密钥 = 先关能力：forced 路径会覆盖草稿里的"刚打开"', () => {
+  const view = build();
+  const draft = page.draftFrom(view);
+  // 草稿里 image.enabled 仍是 true（原值），清密钥时必须强制写 false
+  const patch = page.patchFrom(view, draft, {}, { 'image.openai-compatible.apiKey': true }, undefined, ['image.enabled']);
+  assert.equal(patch.image.enabled, false);
+  assert.deepEqual(patch.image['openai-compatible'].apiKey, { clear: true });
+});
+
+test('seedDecision：刷新不覆盖草稿、保存后以服务器为准、切页回来恢复缓存', () => {
+  const base = { sig: 'S1', seenSig: 'S1', hasLocalEdits: false, reseedPending: false, cacheMatches: false };
+  // 服务器数据没变（点刷新）：草稿保持，什么都不做
+  assert.equal(page.seedDecision({ ...base, hasLocalEdits: true }), 'keep');
+  // 首次加载：跟服务器走
+  assert.equal(page.seedDecision({ ...base, seenSig: '' }), 'seed-server');
+  // 保存成功后的重读：即使有草稿也要以服务器为准
+  assert.equal(page.seedDecision({ ...base, sig: 'S2', hasLocalEdits: true, reseedPending: true }), 'seed-server');
+  // 服务器变了、本地有未保存改动：保留草稿并提示（绝不覆盖）
+  assert.equal(page.seedDecision({ ...base, sig: 'S2', hasLocalEdits: true }), 'keep-and-warn');
+  // 切页回来（组件重建）：指纹一致且缓存里有草稿 → 恢复
+  assert.equal(page.seedDecision({ ...base, seenSig: '', cacheMatches: true }), 'restore-cache');
+  // 服务器变了、本地没改动、缓存对不上：跟服务器走
+  assert.equal(page.seedDecision({ ...base, sig: 'S2' }), 'seed-server');
+});
+
 test('切换 provider：只发 provider 一项，另一个 provider 的配置不进 patch', () => {
   const view = build();
   const draft = page.draftFrom(view);
@@ -372,6 +460,53 @@ test('预设渲染：两族各自带 label，族之间不共享字段对象', ()
   assert.equal(presets.families[1].fields[0].path, 'image.nai.presets.4.5.positive');
   assert.notEqual(presets.families[0].fields[0], presets.families[1].fields[0]);
   assert.equal(presets.artist.path, 'image.nai.artistString');
+});
+
+test('预设渲染：descriptor 用 families[].fields[]（每族多字段）也照单渲染', () => {
+  // companion-media 2026-11-06 起每族发三个字段（正向/反向/applyDefaults），
+  // 页面不能假设每族只有一个 field；也不能因为形状变了就悄悄少一个字段。
+  const descriptor = descriptorFixture();
+  const image = descriptor.sections.find(section => section.id === 'image');
+  image.presets = {
+    path: 'image.nai.presets',
+    note: '两族分开',
+    families: [
+      {
+        family: '5',
+        label: 'V5',
+        fields: [
+          field(['image', 'nai', 'presets', '5', 'positive'], 'V5：正向预设', { type: 'textarea', value: 'P5' }),
+          field(['image', 'nai', 'presets', '5', 'negative'], 'V5：反向预设', { type: 'textarea', value: 'N5' }),
+          field(['image', 'nai', 'presets', '5', 'applyDefaults'], 'V5：应用这一族的预设', { type: 'boolean', value: false }),
+        ],
+      },
+      {
+        family: '4.5',
+        label: '4.5',
+        fields: [
+          field(['image', 'nai', 'presets', '4.5', 'positive'], '4.5：正向预设', { type: 'textarea', value: 'P45' }),
+          field(['image', 'nai', 'presets', '4.5', 'negative'], '4.5：反向预设', { type: 'textarea', value: 'N45' }),
+          field(['image', 'nai', 'presets', '4.5', 'applyDefaults'], '4.5：应用这一族的预设', { type: 'boolean', value: true }),
+        ],
+      },
+    ],
+    artistString: field(['image', 'nai', 'artistString'], '画师串', { type: 'textarea', value: '' }),
+  };
+  const view = page.buildView(descriptor, configFixture());
+  const presets = view.sections.find(section => section.id === 'image').presets;
+  assert.deepEqual(presets.families.map(family => family.family), ['5', '4.5']);
+  assert.deepEqual(presets.families[0].fields.map(field => field.path), [
+    'image.nai.presets.5.positive',
+    'image.nai.presets.5.negative',
+    'image.nai.presets.5.applyDefaults',
+  ]);
+  assert.equal(presets.families[0].fields[2].type, 'boolean');
+  assert.equal(presets.families[1].fields[0].value, 'P45');
+
+  // 每族的 applyDefaults 是独立路径：改一族不会串到另一族
+  const draft = page.draftFrom(view);
+  const patch = page.patchFrom(view, { ...draft, 'image.nai.presets.4.5.applyDefaults': false }, {}, {});
+  assert.deepEqual(patch, { image: { nai: { presets: { 4.5: { applyDefaults: false } } } } });
 });
 
 test('错误路径映射：直接落到对应字段，没有 path 的归到 $', () => {

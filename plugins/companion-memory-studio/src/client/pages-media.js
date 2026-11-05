@@ -48,6 +48,10 @@
     '}',
   ].join('\n');
 
+  // 切页会重建组件实例（组件状态丢失），草稿按「服务器配置指纹」缓存在模块级：
+  // 重新挂载时指纹一致就恢复，避免静默丢掉用户正在编辑的内容（2026-11-06 UI 审核 P2）。
+  const draftCache = { sig: '', draft: {}, secrets: {}, clears: {}, hasEdits: false };
+
   P.css(`
     .cpxp-media-sec { border:1px solid var(--dsw-alias-border-subtle,rgba(127,127,127,.18)); border-radius:10px; padding:var(--cpx-s3,12px); margin:0 0 var(--cpx-s4,16px); }
     .cpxp-media-sec-head { display:flex; align-items:flex-start; justify-content:space-between; gap:var(--cpx-s3,12px); flex-wrap:wrap; }
@@ -220,22 +224,35 @@
   function presetView(section, config) {
     const spec = section && section.presets;
     if (!spec) return null;
-    // 新形状：descriptor 直接给两族字段 + 独立的画师串字段；渲染以它为准。
+    // descriptor 形状以 media 为准，三种都认（不复制业务逻辑，只做形状适配）：
+    //   families[].fields[]（每族多个字段：positive/negative/applyDefaults）
+    //   families[].field（每族一个字段）
+    //   只有 path（兜底：按配置里的真实结构展开）
     if (Array.isArray(spec.families) && spec.families.length) {
-      const families = spec.families.filter(family => family && family.field).map(family => ({
-        family: String(family.family ?? ''),
-        label: family.label || String(family.family ?? '预设'),
-        path: family.field.path,
-        fields: [fieldView(family.field, config)],
-      }));
-      return {
-        path: spec.path || '',
-        note: spec.note || '',
-        families,
-        artist: spec.artistString ? fieldView(spec.artistString, config) : null,
-      };
+      const families = spec.families.map((family) => {
+        if (!family) return null;
+        const raw = Array.isArray(family.fields)
+          ? family.fields
+          : (family.field ? [family.field] : []);
+        const fields = raw.filter(Boolean).map(item => fieldView(item, config));
+        if (!fields.length) return null;
+        return {
+          family: String(family.family ?? ''),
+          label: family.label || String(family.family ?? '预设'),
+          path: family.path || fields[0].path,
+          fields,
+        };
+      }).filter(Boolean);
+      if (families.length) {
+        return {
+          path: spec.path || '',
+          note: spec.note || '',
+          families,
+          artist: spec.artistString ? fieldView(spec.artistString, config) : null,
+        };
+      }
     }
-    // 旧形状兜底：按配置里的真实结构逐族展开（不把"预设"写死成两份代码）。
+    // 兜底：按配置里的真实结构逐族展开。
     const bag = configAt(config, spec.path);
     if (!bag || typeof bag !== 'object') return null;
     const families = Object.keys(bag).map((family) => {
@@ -389,9 +406,75 @@
   }
 
   /**
+   * 服务器配置的指纹：只由 descriptor 给出的当前值/已配置状态组成，跟草稿无关。
+   * 用途有两个：判断"重新挂载时草稿是否还属于这份配置"，以及"重载回来的数据是不是新数据"。
+   */
+  function signatureOf(view) {
+    if (!view) return '';
+    const parts = [];
+    (view.sections || []).forEach((section) => {
+      if (section.toggle) parts.push(`${section.toggle.path}=${section.toggle.value}`);
+      if (section.selector) parts.push(`${section.selector.path}=${section.selector.value}`);
+      const pushField = (field) => {
+        if (!field || !field.path) return;
+        parts.push(field.secret ? `${field.path}=${field.configured}` : `${field.path}=${String(field.original)}`);
+      };
+      (section.fields || []).forEach(pushField);
+      (section.providers || []).forEach((provider) => {
+        (provider.fields || []).forEach(pushField);
+        if (provider.enablePath && !provider.enableField) parts.push(`${provider.enablePath}=${provider.enabled}`);
+      });
+      const presets = section.presets;
+      (presets ? presets.families : []).forEach(family => family.fields.forEach(pushField));
+      if (presets && presets.artist) pushField(presets.artist);
+    });
+    return parts.join('|');
+  }
+
+  /** 这个 provider 有没有未保存的改动（含它的启用开关、密钥、清除动作）。 */
+  function providerDirty(provider, draft, secrets, clears) {
+    if (!provider) return false;
+    const within = path => String(path) === provider.prefix || String(path).startsWith(`${provider.prefix}.`);
+    const hasSecrets = Object.keys(secrets || {}).some(path => within(path) && String(secrets[path] ?? '').trim() !== '');
+    const hasClears = Object.keys(clears || {}).some(path => within(path) && clears[path]);
+    if (hasSecrets || hasClears) return true;
+    const changed = (provider.fields || []).some((field) => {
+      if (field.secret || field.locked) return false;
+      const value = draft ? draft[field.path] : undefined;
+      if (value === undefined) return false;
+      const type = field.type === 'boolean' ? 'boolean' : (field.type === 'number' ? 'number' : 'text');
+      return !sameValue(coerce(type, value), field.original);
+    });
+    if (changed) return true;
+    if (provider.enablePath && !provider.enableField) {
+      const value = draft ? draft[provider.enablePath] : undefined;
+      return value !== undefined && (value === true) !== (provider.enabled === true);
+    }
+    return false;
+  }
+
+  /**
+   * 服务器数据换了指纹时，表单该怎么做（单测覆盖五种分支，见 test/media-page.test.mjs）：
+   *   keep            —— 服务器数据没变：草稿原样保留（刷新不会覆盖未保存改动）；
+   *   seed-server     —— 跟服务器走：首次加载、保存成功后的重读；
+   *   keep-and-warn   —— 服务器变了但本地有未保存改动：保留草稿，只提示，绝不覆盖；
+   *   restore-cache   —— 切页回来（组件重建）且指纹一致：从模块级草稿缓存恢复。
+   */
+  function seedDecision({ sig, seenSig, hasLocalEdits, reseedPending, cacheMatches }) {
+    if (sig === seenSig) return 'keep';
+    if (reseedPending) return 'seed-server';
+    if (hasLocalEdits && seenSig !== '') return 'keep-and-warn';
+    if (cacheMatches) return 'restore-cache';
+    return 'seed-server';
+  }
+
+  /**
    * `POST /config` 的 patch：只带真正改动的字段；密钥只在用户输入过时出现；
    * 清除走 `{clear:true}`。prefix 用于"只保存某个 provider / 某一块"。
    * 后端是稀疏深合并：没发的 provider 段原样保留，所以这里绝不能把整份配置塞回去。
+   *
+   * `include` 是"强制关掉"的路径（清密钥时必须先关能力）：它们既越过 prefix 过滤，
+   * 又无条件写 false——后端不允许在启用态清空必填密钥。
    */
   function patchFrom(view, draft, secrets, clears, prefix, include) {
     const index = fieldIndex(view);
@@ -418,6 +501,7 @@
       const meta = index[path];
       setParts(patch, partsOf(path, meta && meta.parts), { clear: true });
     });
+    extra.forEach((path) => setParts(patch, partsOf(path), false));
     return patch;
   }
 
@@ -526,15 +610,17 @@
   // -------------------------------------------------------------------------
 
   function SecretField({ entry, value, configured, mask, disabled, fromEnv, envVar, error, onChange }) {
+    const controlId = `media-${entry.path}`;
     const status = fromEnv
       ? h(ui.StateLine, { state: 'idle', text: `来自环境变量${envVar ? `（${envVar}）` : ''}` })
       : h(ui.StateLine, { state: configured ? 'ok' : 'idle', text: configured ? (mask || '已配置') : '未配置' });
     const hint = fromEnv
       ? '这个 provider 的密钥来自环境变量：在这里改不会生效，请改环境变量本身'
       : (entry.hint || '只写：保存后只显示「已配置」；留空表示不修改');
-    return h(ui.Field, { label: entry.label, hint, id: `media-${entry.path}` },
+    return h(ui.Field, { label: entry.label, hint, id: controlId },
       h('div', { className: 'cpxp-media-secret' },
         h(ui.Input, {
+          id: controlId,
           type: 'password',
           value: value || '',
           placeholder: fromEnv ? '由环境变量提供' : (configured ? '已配置（留空 = 不修改）' : '尚未配置'),
@@ -547,18 +633,20 @@
   }
 
   function FieldControl({ entry, value, disabled, error, onChange }) {
+    const controlId = `media-${entry.path}`;
     if (entry.type === 'boolean') {
       return h('div', null,
-        h(ui.Toggle, { checked: value === true, disabled, label: entry.label, hint: entry.hint, onChange: next => onChange(next) }),
+        h(ui.Toggle, { id: controlId, checked: value === true, disabled, label: entry.label, hint: entry.hint, onChange: next => onChange(next) }),
         error ? h('p', { className: 'cpxp-media-error' }, error) : null);
     }
     let control;
     if (entry.type === 'textarea') {
-      control = h(ui.TextArea, { value: value ?? '', disabled, rows: 3, ariaLabel: entry.label, onChange: text => onChange(text) });
+      control = h(ui.TextArea, { id: controlId, value: value ?? '', disabled, rows: 3, ariaLabel: entry.label, onChange: text => onChange(text) });
     } else if (entry.options && entry.options.length) {
-      control = h(ui.Select, { value: value ?? '', disabled, ariaLabel: entry.label, options: entry.options, onChange: text => onChange(text) });
+      control = h(ui.Select, { id: controlId, value: value ?? '', disabled, ariaLabel: entry.label, options: entry.options, onChange: text => onChange(text) });
     } else {
       control = h(ui.Input, {
+        id: controlId,
         type: entry.type === 'number' ? 'number' : 'text',
         value: value ?? '',
         disabled,
@@ -566,7 +654,7 @@
         onChange: text => onChange(text),
       });
     }
-    return h(ui.Field, { label: entry.label, hint: entry.hint, id: `media-${entry.path}` },
+    return h(ui.Field, { label: entry.label, hint: entry.hint, id: controlId },
       control,
       error ? h('p', { className: 'cpxp-media-error' }, error) : null);
   }
@@ -576,14 +664,14 @@
     // Follow protocol changes while retaining manual expand/collapse between selections.
     P.useEffect(() => setOpen(selected), [selected]);
     const status = testing[provider.id] || null;
-    const dirty = provider.fields.some(field => (
-      (field.secret ? Boolean(secrets[field.path]) : String(draft[field.path] ?? '') !== String(field.original ?? ''))
-      || Boolean(clears[field.path])
-    ));
+    // 未保存的改动 = 表单和"已保存配置"不一致：这时测试按钮必须禁用，
+    // 因为 /test 读的永远是已保存配置（2026-11-06 UI 审核 P1）。
+    const dirty = providerDirty(provider, draft, secrets, clears);
     const badge = h('div', { className: 'cpxp-media-badge-row' },
       h(ui.Badge, { tone: stateTone(provider.state) }, stateLabel(states, provider.state)),
       provider.notConnected ? h(ui.Badge, { tone: 'neutral' }, '尚未接入') : null,
-      provider.enabled === true ? h(ui.Badge, { tone: 'ok' }, '已启用') : null);
+      provider.enabled === true ? h(ui.Badge, { tone: 'ok' }, '已启用') : null,
+      dirty ? h(ui.Badge, { tone: 'warn' }, '有未保存的修改') : null);
     const header = h('div', { className: 'cpxp-media-card-head' },
       h('div', null, h('h4', { className: 'cpxp-media-card-title' }, provider.label), badge),
       h(ui.Button, {
@@ -596,7 +684,7 @@
       return h('div', { key: `provider-${provider.id}`, className: 'cpxp-media-card' },
         header,
         h('p', { className: 'cpxp-media-note' }, provider.stateNote || ''),
-        status ? testResultLine(status) : null);
+        !dirty && status ? testResultLine(status) : null);
     }
     const fieldNodes = provider.fields.map((field) => {
       const error = errors[field.path];
@@ -651,11 +739,16 @@
         variant: 'ghost',
         size: 'sm',
         loading: busy === `test:${provider.id}`,
-        disabled: !provider.canTest || Boolean(busy),
-        onClick: () => onTest(provider.id, provider.kind, !provider.canTest),
-        title: provider.canTest ? '由你点一下才发起一次轻量探测（不会生成图片/语音）' : '尚未接入，无法测试',
+        disabled: !provider.canTest || Boolean(busy) || dirty,
+        onClick: () => onTest(provider.id, provider.kind, !provider.canTest || dirty),
+        title: !provider.canTest
+          ? '尚未接入，无法测试'
+          : (dirty ? '有未保存的修改：先保存再测试（测试用的是已保存的配置）' : '由你点一下才发起一次轻量探测（不会生成图片/语音）'),
       }, '测试连接'),
-      status ? testResultLine(status) : null);
+      !dirty && status ? testResultLine(status) : null);
+    const dirtyNote = dirty
+      ? h('p', { className: 'cpxp-media-note' }, '有未保存的修改：先点「保存这个 provider」，再测试——测试读的是已保存的配置。')
+      : null;
     const evidence = h(ui.Diagnostic, { title: '协议与证据（只读）', hint: provider.label },
       h(ui.KeyValue, {
         items: [
@@ -673,7 +766,8 @@
       h('p', { className: 'cpxp-media-note' }, provider.stateNote || ''),
       h('div', { className: 'cpxp-media-fields' }, fieldNodes),
       actions,
-      status && status.detail ? h('p', { className: 'cpxp-media-note' }, status.detail) : null,
+      dirtyNote,
+      status && !dirty && status.detail ? h('p', { className: 'cpxp-media-note' }, status.detail) : null,
       evidence);
   }
 
@@ -795,6 +889,7 @@
       ? h('div', { className: 'cpxp-media-actions' },
         h(ui.Field, { label: section.selector.label, id: `media-${section.selector.path}` },
           h(ui.Select, {
+            id: `media-${section.selector.path}`,
             value: selectedProvider,
             disabled: section.selector.disabled,
             ariaLabel: section.selector.label,
@@ -904,19 +999,102 @@
       [descriptor, config],
     );
 
+    const validation = configBundle && configBundle.validation ? configBundle.validation : null;
+    const seenSig = P.useRef('');
+    const reseedPending = P.useRef(false);
+
+    // 有未保存改动 = patch 非空。用它决定"重载能不能覆盖草稿"。
+    const unsaved = view ? Object.keys(patchFrom(view, draft, secrets, clears)).length > 0 : false;
+
+    /**
+     * 服务器数据换了指纹时怎么处理草稿（2026-11-06 UI 审核 P2）：
+     *   - 本地没有未保存改动 → 跟服务器走（首次加载、保存后重读）；
+     *   - 有未保存改动 → **保留草稿**，只提示「服务器上的配置变了」，绝不静默覆盖；
+     *   - 重新挂载（切页回来）且指纹一致 → 从模块级草稿缓存恢复。
+     */
     P.useEffect(() => {
       if (!view) return;
-      setDraft(draftFrom(view));
-      setSecrets({});
-      setClears({});
+      const sig = signatureOf(view);
+      const hasLocalEdits = Object.keys(patchFrom(view, draft, secrets, clears)).length > 0;
+      const cacheMatches = draftCache.sig === sig && draftCache.hasEdits === true;
+      const decision = seedDecision({
+        sig,
+        seenSig: seenSig.current,
+        hasLocalEdits,
+        reseedPending: reseedPending.current,
+        cacheMatches,
+      });
+      if (decision === 'keep') return;
+      if (decision === 'keep-and-warn') {
+        setFlash({
+          tone: 'warn',
+          title: '服务器上的配置变了，但你的草稿还在',
+          text: '没有覆盖你正在编辑的内容。要放弃改动、以服务器为准，点「放弃未保存的改动」。',
+        });
+        return;
+      }
+      seenSig.current = sig;
+      if (reseedPending.current) reseedPending.current = false;
+      const restored = decision === 'restore-cache' ? draftCache : null;
+      const nextDraft = restored ? restored.draft : draftFrom(view);
+      const nextSecrets = restored ? restored.secrets : {};
+      const nextClears = restored ? restored.clears : {};
+      setDraft(nextDraft);
+      setSecrets(nextSecrets);
+      setClears(nextClears);
       setErrors({});
+      draftCache.sig = sig;
+      draftCache.draft = nextDraft;
+      draftCache.secrets = nextSecrets;
+      draftCache.clears = nextClears;
+      draftCache.hasEdits = Boolean(restored);
     }, [view]);
 
-    const validation = configBundle && configBundle.validation ? configBundle.validation : null;
-    const setSecret = (path, value) => setSecrets(previous => ({ ...previous, [path]: value }));
+    // 每次改动都镜像到模块级缓存：这样"切到别的页面再回来"能原样恢复。
+    P.useEffect(() => {
+      if (!view) return;
+      draftCache.sig = signatureOf(view);
+      draftCache.draft = draft;
+      draftCache.secrets = secrets;
+      draftCache.clears = clears;
+      draftCache.hasEdits = Object.keys(patchFrom(view, draft, secrets, clears)).length > 0;
+    }, [view, draft, secrets, clears]);
+
+    /** 某个路径属于哪些 provider（改字段要让对应的测试结果失效）。 */
+    const providerIdsFor = (path) => {
+      const ids = [];
+      if (!view) return ids;
+      for (const section of view.sections) {
+        if ((section.selector && section.selector.path === path) || (section.toggle && section.toggle.path === path)) {
+          section.providers.forEach(provider => ids.push(provider.id));
+          continue;
+        }
+        for (const provider of section.providers) {
+          if (path === provider.prefix || String(path).startsWith(`${provider.prefix}.`)) ids.push(provider.id);
+        }
+      }
+      return ids;
+    };
+
+    // P1：测试针对的是"已保存配置"。任何编辑都让旧结果失效，绝不留一个过期「测试通过」。
+    const forgetTests = (ids) => {
+      if (!ids || !ids.length) return;
+      setTesting((previous) => {
+        const next = { ...previous };
+        let changed = false;
+        ids.forEach((id) => { if (id in next) { delete next[id]; changed = true; } });
+        return changed ? next : previous;
+      });
+    };
+
+    const setSecret = (path, value) => {
+      forgetTests(providerIdsFor(path));
+      setSecrets(previous => ({ ...previous, [path]: value }));
+    };
 
     /** 切换默认协议时，如果新协议还没配好，先把能力关掉——否则后端会以 400 拒绝整次保存。 */
     const setField = (path, value) => {
+      forgetTests(providerIdsFor(path));
       setDraft(previous => ({ ...previous, [path]: value }));
       if (!view) return;
       const section = view.sections.find(item => item.selector && item.selector.path === path);
@@ -930,7 +1108,10 @@
         text: `新选的协议还没配置完整（缺 ${provider.missing.join('、')}）。启用态下保存会被后端拒绝，所以先把开关关掉；补齐后再打开。`,
       });
     };
-    const setFieldDirect = (path, value) => setDraft(previous => ({ ...previous, [path]: value }));
+    const setFieldDirect = (path, value) => {
+      forgetTests(providerIdsFor(path));
+      setDraft(previous => ({ ...previous, [path]: value }));
+    };
 
     const setClear = (path, provider) => {
       const needsDisable = Boolean(provider && provider.enabled && provider.disablePath);
@@ -942,7 +1123,26 @@
       }
       // 两步引导：启用态下清密钥 = 同一个 patch 里先把开关关掉，避免撞后端 400。
       if (needsDisable) setFieldDirect(provider.disablePath, false);
+      forgetTests(providerIdsFor(path));
       setClears(previous => ({ ...previous, [path]: !previous[path] }));
+    };
+
+    /** 放弃未保存的改动：回到服务器当前这一份（显式动作，不静默发生）。 */
+    const discardDraft = () => {
+      if (!view) return;
+      const sig = signatureOf(view);
+      const nextDraft = draftFrom(view);
+      seenSig.current = sig;
+      setDraft(nextDraft);
+      setSecrets({});
+      setClears({});
+      setErrors({});
+      setFlash({ tone: 'info', title: '已放弃未保存的改动', text: '表单回到已保存的那一份配置。' });
+      draftCache.sig = sig;
+      draftCache.draft = nextDraft;
+      draftCache.secrets = {};
+      draftCache.clears = {};
+      draftCache.hasEdits = false;
     };
 
     /** 这个密钥字段属于哪个 provider（清除时要连带关掉它的能力开关）。 */
@@ -965,11 +1165,6 @@
         .filter(provider => provider && provider.enabled && provider.disablePath)
         .map(provider => provider.disablePath);
       const patch = patchFrom(view, draft, secrets, clears, prefix, forced);
-      // 兜底：即使草稿里没留下关开关这一步，也要把它写进 patch（后端不许启用态清密钥）。
-      forced.forEach((path) => {
-        const parts = partsOf(path);
-        if (configAtParts(patch, parts) === undefined) setParts(patch, parts, false);
-      });
       if (!Object.keys(patch).length) {
         setFlash({ tone: 'info', title: '没有需要保存的修改', text: '只有改过的字段才会被提交。' });
         return;
@@ -992,6 +1187,8 @@
         });
         setSecrets({});
         setClears({});
+        // 保存之后旧的测试结果一律作废（它们描述的是保存前的配置）。
+        setTesting({});
         if (stillConfigured.length) {
           setFlash({
             tone: 'warn',
@@ -1002,6 +1199,8 @@
           setFlash({ tone: 'ok', title: `已保存 ${savedCount} 项`, text: '已写入媒体配置文件；页面会重新读一遍同一份数据，可对照回读。' });
           if (typeof P.notice === 'function') P.notice('媒体配置已保存', 'ok');
         }
+        // 这次重读以服务器为准（允许覆盖草稿），因为改动刚刚落盘。
+        reseedPending.current = true;
         state.reload();
       }, () => {
         setBusy('');
@@ -1051,13 +1250,24 @@
       key: 'media-settings',
       title: '媒体能力',
       hint: '配置直接来自媒体插件；保存只走它自己的接口',
-      actions: [state.data ? h(ui.Button, {
-        key: 'reload',
-        variant: 'ghost',
-        size: 'sm',
-        onClick: state.reload,
-        title: '重新读一遍页面描述与配置（不会发起任何测试或生成）',
-      }, '刷新') : null],
+      actions: [
+        unsaved
+          ? h(ui.Button, {
+            key: 'discard',
+            variant: 'ghost',
+            size: 'sm',
+            onClick: discardDraft,
+            title: '丢掉未保存的改动，回到已保存的那一份配置',
+          }, '放弃未保存的改动')
+          : null,
+        state.data ? h(ui.Button, {
+          key: 'reload',
+          variant: 'ghost',
+          size: 'sm',
+          onClick: state.reload,
+          title: '重新读一遍页面描述与配置（不会发起任何测试或生成；未保存的改动不会被覆盖）',
+        }, '刷新') : null,
+      ].filter(Boolean),
     };
 
     if (state.loading && !bundle) {
@@ -1115,7 +1325,11 @@
           h('ul', { className: 'cpxp-media-note' }, (validation.errors || []).slice(0, 6).map(item => h('li', { key: String(item.path || item.message) }, `${item.path || '$'}：${item.message || item.code || ''}`))))
         : null,
       h('p', { key: 'test-hint', className: 'cpxp-media-note-inline' },
-        '测试与预览只在你点按钮时发起：打开这一页只读 page 与 config，不会生成图片、不会调用模型、不会向外发送消息。'),
+        '测试与预览只在你点按钮时发起；测试针对的是**已保存**的配置——有未保存的修改时按钮会禁用，先保存再测试。'),
+      unsaved
+        ? h(ui.Callout, { key: 'unsaved', tone: 'info', title: '有未保存的修改' },
+          h('span', null, '这些改动还没写入媒体配置：离开本页不会丢（草稿会留到下次回来），但要生效必须点「保存」。'))
+        : null,
       h('div', { key: 'sections' }, sectionNodes),
       runtimeFlagList(media),
       h(ui.Diagnostic, { key: 'raw', title: '原始页面描述与配置（只读）', hint: '排查用；密钥已脱敏' },
@@ -1153,6 +1367,9 @@
     secretInfo,
     configAt,
     apiPath,
+    signatureOf,
+    providerDirty,
+    seedDecision,
     STATE_LABELS,
     STATE_TONES,
     MEDIA_BASE,

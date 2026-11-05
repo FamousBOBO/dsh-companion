@@ -549,8 +549,11 @@ function Stat({ label, value, hint, tone, onClick }) {
   hint ? h('span', { className: 'cmx-stat-hint' }, hint) : null);
 }
 
-function Input({ value, onChange, placeholder, onEnter, type, disabled, width, ariaLabel }) {
+// `id` 必须落到真正的控件上：`ui.Field` 只负责 `<label htmlFor>`，点标签能不能聚焦
+// 取决于控件自己的 id（2026-11-06 UI 审核：label.for 有值、控件 id 为空 → 点了没反应）。
+function Input({ value, onChange, placeholder, onEnter, type, disabled, width, ariaLabel, id }) {
   return h('input', {
+    id,
     type: type || 'text',
     value: value ?? '',
     placeholder,
@@ -577,8 +580,9 @@ function Search({ value, onChange, onEnter, placeholder, label }) {
     }));
 }
 
-function TextArea({ value, onChange, rows, placeholder, monospace, disabled, ariaLabel }) {
+function TextArea({ value, onChange, rows, placeholder, monospace, disabled, ariaLabel, id }) {
   return h('textarea', {
+    id,
     value: value ?? '',
     rows: rows || 4,
     placeholder,
@@ -589,8 +593,9 @@ function TextArea({ value, onChange, rows, placeholder, monospace, disabled, ari
   });
 }
 
-function Select({ value, onChange, options, width, disabled, ariaLabel }) {
+function Select({ value, onChange, options, width, disabled, ariaLabel, id }) {
   return h('select', {
+    id,
     value: value ?? '',
     disabled: Boolean(disabled),
     'aria-label': ariaLabel,
@@ -600,9 +605,10 @@ function Select({ value, onChange, options, width, disabled, ariaLabel }) {
   }, (options || []).map((option) => h('option', { key: option.value, value: option.value }, option.label)));
 }
 
-function Toggle({ checked, onChange, label, hint, disabled }) {
+function Toggle({ checked, onChange, label, hint, disabled, id }) {
   return h('label', { className: 'cmx-toggle' },
     h('input', {
+      id,
       type: 'checkbox',
       checked: Boolean(checked),
       disabled: Boolean(disabled),

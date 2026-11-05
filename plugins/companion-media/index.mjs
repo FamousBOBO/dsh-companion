@@ -232,7 +232,7 @@ function mountApiOnConnection(ctx, service, log) {
 }
 
 
-async function registerApiWhenReady(ctx, service, log) {
+async function registerApiWhenReady(ctx, service, log, { connectionWaitMs = null } = {}) {
   const record = (result, how) => {
     const registered = result?.registered ?? 0;
     const state = service.noteHttpState({
@@ -267,11 +267,11 @@ async function registerApiWhenReady(ctx, service, log) {
       return state;
     }
 
-    // Hold apply open until the service shows up, then register on the still-active context.
-    const appeared = await waitForConnection(ctx);
+    const waitMs = connectionWaitMs ?? Number(process.env.DSH_MEDIA_CONNECTION_WAIT_MS || 5000);
+    const appeared = await waitForConnection(ctx, waitMs);
     if (!appeared) {
       const how = mountApiOnConnection(ctx, service, log);
-      const message = `等了 5 s 仍没有 connection 服务；已改用 ${how} 兜底`;
+      const message = `等了 ${waitMs} ms 仍没有 connection 服务；已改用 ${how} 兜底`;
       service.noteHttpState({ skipped: 'connection-timeout', lastError: message });
       log({ event: 'http-api-unavailable', how, message, registered: 0 });
       return state;
@@ -317,7 +317,7 @@ export async function apply(ctx, options = {}) {
     // saw `no-connection`, no retry ever arrived, and every /api/companion-media route stayed
     // 404 on a real host even though the module was enabled. The studio awaits its equivalent
     // (`const api = await mountApi(...)`), which is why only this plugin lost its routes.
-    await registerApiWhenReady(ctx, service, log);
+    await registerApiWhenReady(ctx, service, log, { connectionWaitMs: options?.connectionWaitMs ?? null });
     const config = service.store.load().config;
     log({
       event: 'mounted',

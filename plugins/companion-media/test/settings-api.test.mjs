@@ -544,9 +544,9 @@ test('é¡µé¢æè¿°ç¬¦å¸¦å½“å‰å€¼ï¼ˆå¯†é’¥åªæœ‰æ©ç ï¼‰ã€ç«¯ç‚¹å’Œ canTest/ca
   }
 });
 
-// ©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤ ÃèÊö·û¿ÉäÖÈ¾ĞÔ£¨Studio ·´À¡µÄÁ½¸öÈ±¿Ú£© ©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤©¤
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ æè¿°ç¬¦å¯æ¸²æŸ“æ€§ï¼ˆStudio åé¦ˆçš„ä¸¤ä¸ªç¼ºå£ï¼‰ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
 
-test('ÉúÍ¼ provider ²»·¢ enabled ×Ö¶Î£¨ÆôÍ£×ß×Ü¿ª¹Ø + selector£©£»TTS Ã¿¸öºó¶Ë±£Áô¶ÀÁ¢¿ª¹Ø', async () => {
+test('ç”Ÿå›¾ provider ä¸å‘ enabled å­—æ®µï¼ˆå¯åœèµ°æ€»å¼€å…³ + selectorï¼‰ï¼›TTS æ¯ä¸ªåç«¯ä¿ç•™ç‹¬ç«‹å¼€å…³', async () => {
   const { dir, cleanup } = tempDataDir();
   try {
     const { service } = setup(dir, { config: imageConfig() });
@@ -554,16 +554,14 @@ test('ÉúÍ¼ provider ²»·¢ enabled ×Ö¶Î£¨ÆôÍ£×ß×Ü¿ª¹Ø + selector£©£»TTS Ã¿¸öºó¶Ë±£
     const image = descriptor.sections.find(item => item.id === 'image');
     for (const provider of image.providers) {
       const enabledField = provider.fields.find(field => field.pathParts.at(-1) === 'enabled');
-      assert.equal(enabledField, undefined, `ÉúÍ¼ provider ${provider.id} ²»Ó¦ÓĞ enabled ×Ö¶Î£¨Ã»ÓĞ¿ÉĞ´¼ü£©`);
-      // ÆôÍ£È·ÊµÓÉÕâÁ½´¦±í´ï
-      assert.equal(typeof image.toggle.path, 'string');
+      assert.equal(enabledField, undefined, `ç”Ÿå›¾ provider ${provider.id} ä¸åº”æœ‰ enabled å­—æ®µï¼ˆæ²¡æœ‰å¯å†™é”®ï¼‰`);
       assert.equal(image.toggle.path, 'image.enabled');
       assert.equal(image.selector.path, 'image.provider');
     }
     const tts = descriptor.sections.find(item => item.id === 'tts');
     for (const provider of tts.providers) {
       const enabledField = provider.fields.find(field => field.pathParts.at(-1) === 'enabled');
-      assert.ok(enabledField, `TTS provider ${provider.id} ±ØĞëÓĞ¶ÀÁ¢¿ª¹Ø`);
+      assert.ok(enabledField, `TTS provider ${provider.id} å¿…é¡»æœ‰ç‹¬ç«‹å¼€å…³`);
       assert.deepEqual(enabledField.pathParts, ['tts', 'providers', provider.id, 'enabled']);
       assert.equal(enabledField.type, 'boolean');
     }
@@ -572,7 +570,7 @@ test('ÉúÍ¼ provider ²»·¢ enabled ×Ö¶Î£¨ÆôÍ£×ß×Ü¿ª¹Ø + selector£©£»TTS Ã¿¸öºó¶Ë±£
   }
 });
 
-test('Ã¿¸ö select ×Ö¶Î¶¼´ø options£¨{value,label} ·Ç¿Õ£©£¬²»´æÔÚÎŞÑ¡ÏîµÄÏÂÀ­', async () => {
+test('æ¯ä¸ª select å­—æ®µéƒ½å¸¦ optionsï¼ˆ{value,label} éç©ºï¼‰ï¼Œä¸å­˜åœ¨æ— é€‰é¡¹çš„ä¸‹æ‹‰', async () => {
   const { dir, cleanup } = tempDataDir();
   try {
     const { service } = setup(dir, {
@@ -601,26 +599,170 @@ test('Ã¿¸ö select ×Ö¶Î¶¼´ø options£¨{value,label} ·Ç¿Õ£©£¬²»´æÔÚÎŞÑ¡ÏîµÄÏÂÀ­', a
       ...(section.providers ?? []).flatMap(provider => provider.fields ?? []),
     ]);
     const selects = allFields.filter(field => field.type === 'select');
-    assert.ok(selects.length >= 6, `select ×Ö¶ÎÌ«ÉÙ£º${selects.length}`);
+    assert.ok(selects.length >= 6, `select å­—æ®µå¤ªå°‘ï¼š${selects.length}`);
     for (const field of selects) {
-      assert.ok(Array.isArray(field.options) && field.options.length > 0, `${field.path} ÊÇ select µ«Ã»ÓĞ options`);
+      assert.ok(Array.isArray(field.options) && field.options.length > 0, `${field.path} æ˜¯ select ä½†æ²¡æœ‰ options`);
       for (const option of field.options) {
         assert.equal(typeof option.value, 'string');
         assert.equal(typeof option.label, 'string');
         assert.ok(option.label.length > 0);
       }
     }
-    // ³é²éÁ½¸öÕæÊµÃ¶¾Ù£ºNAI transport¡¢Fish format
     const nai = descriptor.sections.find(item => item.id === 'image').providers.find(item => item.id === 'nai');
     const transport = nai.fields.find(field => field.pathParts.at(-1) === 'transport');
     assert.deepEqual(transport.options.map(item => item.value), ['official', 'openai-relay']);
     const fish = descriptor.sections.find(item => item.id === 'tts').providers.find(item => item.id === 'fish-audio');
     const format = fish.fields.find(field => field.pathParts.at(-1) === 'format');
     assert.deepEqual(format.options.map(item => item.value), ['wav', 'pcm', 'mp3', 'opus']);
-    // Ã»ÓĞ"ÉùÃ÷³É select È´½µ¼¶³É text"µÄ²ĞÁô£º½µ¼¶ºó type ±ØĞëÊÇ text
-    for (const field of allFields) {
-      if (field.type === 'select') assert.ok(field.options?.length > 0);
+  } finally {
+    cleanup();
+  }
+});
+
+// â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€ æè¿°ç¬¦å­—æ®µå®Œæ•´æ€§ï¼ˆUI å®¡æ ¸åé¦ˆï¼‰ â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€â”€
+
+/** æŒ‰ pathParts å†™å€¼ï¼Œæ¨¡æ‹Ÿå®¢æˆ·ç«¯"å¡«è¡¨ â†’ ä¿å­˜"ã€‚ */
+function patchFromPathParts(pathParts, value) {
+  const root = {};
+  let cursor = root;
+  for (let i = 0; i < pathParts.length - 1; i += 1) {
+    cursor[pathParts[i]] = {};
+    cursor = cursor[pathParts[i]];
+  }
+  cursor[pathParts[pathParts.length - 1]] = value;
+  return root;
+}
+
+function mergeDeep(target, source) {
+  for (const [key, value] of Object.entries(source ?? {})) {
+    if (value && typeof value === 'object' && !Array.isArray(value)) {
+      target[key] = mergeDeep(target[key] && typeof target[key] === 'object' ? target[key] : {}, value);
+    } else {
+      target[key] = value;
     }
+  }
+  return target;
+}
+
+test('NAI ä¸¤æ—é¢„è®¾å„å‘ä¸‰ä¸ªå­—æ®µï¼ˆpositive/negative/applyDefaultsï¼‰ï¼Œä¸” pathParts èƒ½æ‹¼å‡ºçœŸå®é”®', async () => {
+  const { dir, cleanup } = tempDataDir();
+  try {
+    const { service, handlers } = setup(dir, { config: { schemaVersion: 2, limits: BASE_LIMITS } });
+    const descriptor = mediaPageDescriptor(service.status());
+    const image = descriptor.sections.find(item => item.id === 'image');
+
+    assert.deepEqual(image.presets.families.map(item => item.family), ['5', '4.5']);
+    for (const family of image.presets.families) {
+      const byName = Object.fromEntries(family.fields.map(item => [item.pathParts.at(-1), item]));
+      assert.deepEqual(Object.keys(byName).sort(), ['applyDefaults', 'negative', 'positive'], `${family.family} å­—æ®µä¸å…¨`);
+      assert.deepEqual(byName.positive.pathParts, ['image', 'nai', 'presets', family.family, 'positive']);
+      assert.deepEqual(byName.negative.pathParts, ['image', 'nai', 'presets', family.family, 'negative']);
+      assert.deepEqual(byName.applyDefaults.pathParts, ['image', 'nai', 'presets', family.family, 'applyDefaults']);
+      assert.equal(byName.positive.type, 'textarea');
+      assert.equal(byName.negative.type, 'textarea', 'åå‘é¢„è®¾å¿…é¡»æ˜¯å¤šè¡Œè¾“å…¥');
+      assert.equal(byName.applyDefaults.type, 'boolean', 'å¯ç”¨æ•´æ—é¢„è®¾éœ€è¦å¼€å…³');
+      assert.match(byName.applyDefaults.label, /åº”ç”¨è¿™ä¸€æ—çš„é¢„è®¾/);
+      // é»˜è®¤ç•™ç©ºã€é»˜è®¤ä¸å¯ç”¨ï¼ˆä¸ç¼–é€ å®˜æ–¹æ–‡æœ¬ï¼‰
+      assert.equal(byName.positive.value, '');
+      assert.equal(byName.negative.value, '');
+      assert.equal(byName.applyDefaults.value, false);
+    }
+
+    // ç”¨ pathParts æ‹¼ patch ä¿å­˜ â†’ çœŸçš„å†™è¿›å„è‡ªçš„æ—ï¼Œäº’ä¸ä¸²ç”¨
+    const families = image.presets.families;
+    const build = (family, text, apply) => family.fields.reduce((acc, item) => {
+      const name = item.pathParts.at(-1);
+      return mergeDeep(acc, patchFromPathParts(item.pathParts, name === 'applyDefaults' ? apply : text));
+    }, {});
+    const saved = await handlers[`POST ${API_PREFIX}/config`](jsonRequest(`${API_PREFIX}/config`, {
+      method: 'POST',
+      body: { patch: mergeDeep(build(families[0], 'v5-text', true), build(families[1], 'v45-text', false)) },
+    }));
+    assert.equal(saved.status, 200, JSON.stringify((await saved.clone().json()).errors ?? []));
+
+    const config = service.store.load().config;
+    assert.deepEqual(config.image.nai.presets['5'], { applyDefaults: true, positive: 'v5-text', negative: 'v5-text' });
+    assert.deepEqual(config.image.nai.presets['4.5'], { applyDefaults: false, positive: 'v45-text', negative: 'v45-text' });
+
+    // åªæ”¹ä¸€æ—ä¸å½±å“å¦ä¸€æ—
+    await handlers[`POST ${API_PREFIX}/config`](jsonRequest(`${API_PREFIX}/config`, {
+      method: 'POST',
+      body: { patch: { image: { nai: { presets: { '5': { positive: 'only-v5' } } } } } },
+    }));
+    const after = service.store.load().config;
+    assert.equal(after.image.nai.presets['5'].positive, 'only-v5');
+    assert.equal(after.image.nai.presets['4.5'].positive, 'v45-text', 'æ”¹ V5 ä¸å¾—åŠ¨ 4.5');
+  } finally {
+    cleanup();
+  }
+});
+
+test('timeoutMs å‡ºç°åœ¨æ¯ä¸ªå¯é…ç½® provider çš„å­—æ®µé‡Œï¼ˆOpenAI-compatible ä¸å†ç¼ºè¶…æ—¶ï¼‰', async () => {
+  const { dir, cleanup } = tempDataDir();
+  try {
+    const { service } = setup(dir, { config: { schemaVersion: 2, limits: BASE_LIMITS } });
+    const descriptor = mediaPageDescriptor(service.status());
+
+    const image = descriptor.sections.find(item => item.id === 'image');
+    const tts = descriptor.sections.find(item => item.id === 'tts');
+    const vision = descriptor.sections.find(item => item.id === 'vision');
+
+    const targets = [
+      ...image.providers.map(provider => ({ kind: 'image', provider })),
+      ...tts.providers.map(provider => ({ kind: 'tts', provider })),
+    ];
+    for (const { kind, provider } of targets) {
+      const timeout = provider.fields.find(item => item.pathParts.at(-1) === 'timeoutMs');
+      assert.ok(timeout, `${kind}/${provider.id} ç¼ºå°‘ timeoutMs å­—æ®µ`);
+      assert.equal(timeout.type, 'number');
+      assert.match(timeout.label, /æ¯«ç§’/);
+      assert.match(timeout.label, /1000â€“600000/);
+      assert.equal(typeof timeout.value, 'number');
+      const expected = kind === 'image'
+        ? ['image', provider.id, 'timeoutMs']
+        : ['tts', 'providers', provider.id, 'timeoutMs'];
+      assert.deepEqual(timeout.pathParts, expected);
+    }
+
+    const visionTimeout = vision.fields.find(item => item.pathParts.at(-1) === 'timeoutMs');
+    assert.ok(visionTimeout, 'è¯†å›¾åŒºä¹Ÿè¦èƒ½ç¼–è¾‘ timeoutMsï¼ˆè™½ç„¶ä¸å¯å¯ç”¨ï¼‰');
+    assert.deepEqual(visionTimeout.pathParts, ['vision', 'timeoutMs']);
+
+    // è‡ªæŸ¥ï¼šschema é‡Œæœ‰ã€æè¿°ç¬¦ä»¥å‰æ²¡å‘çš„å­—æ®µï¼Œç°åœ¨éƒ½åœ¨
+    const openai = image.providers.find(provider => provider.id === 'openai-compatible');
+    for (const name of ['baseUrl', 'apiKey', 'model', 'size', 'quality', 'outputFormat', 'background', 'timeoutMs']) {
+      assert.ok(openai.fields.some(item => item.pathParts.at(-1) === name), `OpenAI ç¼ºå°‘ ${name}`);
+    }
+    const nai = image.providers.find(provider => provider.id === 'nai');
+    for (const name of ['transport', 'width', 'height', 'steps', 'scale', 'sampler', 'noiseSchedule', 'seed', 'ucPreset', 'negativePrompt', 'timeoutMs']) {
+      assert.ok(nai.fields.some(item => item.pathParts.at(-1) === name), `NAI ç¼ºå°‘ ${name}`);
+    }
+    // ç”»å¸ˆä¸²åªåœ¨é¢„è®¾å—å‡ºç°ä¸€æ¬¡ï¼ˆä¸èƒ½æœ‰ä¸¤ä¸ªè¾“å…¥æ¡†å†™åŒä¸€ä¸ªé”®ï¼‰
+    assert.equal(nai.fields.some(item => item.pathParts.at(-1) === 'artistString'), false);
+    assert.equal(image.presets.artistString.pathParts.at(-1), 'artistString');
+  } finally {
+    cleanup();
+  }
+});
+
+test('timeoutMs çš„æ ‡ç­¾çº¦æŸæ˜¯çœŸçš„ï¼šè¶Šç•Œä¿å­˜è¢« 400 æ‹’ç»', async () => {
+  const { dir, cleanup } = tempDataDir();
+  try {
+    const { handlers } = setup(dir, { config: imageConfig() });
+    for (const bad of [0, 999, 600001]) {
+      const response = await handlers[`POST ${API_PREFIX}/config`](jsonRequest(`${API_PREFIX}/config`, {
+        method: 'POST',
+        body: { patch: { image: { 'openai-compatible': { timeoutMs: bad } } } },
+      }));
+      assert.equal(response.status, 400, `timeoutMs=${bad} åº”è¢«æ‹’`);
+      const payload = await response.json();
+      assert.ok(payload.errors.some(item => item.path === 'image.openai-compatible.timeoutMs'), `timeoutMs=${bad} é”™è¯¯è·¯å¾„ä¸å¯¹`);
+    }
+    const ok = await handlers[`POST ${API_PREFIX}/config`](jsonRequest(`${API_PREFIX}/config`, {
+      method: 'POST',
+      body: { patch: { image: { 'openai-compatible': { timeoutMs: 1000 } } } },
+    }));
+    assert.equal(ok.status, 200);
   } finally {
     cleanup();
   }
