@@ -671,6 +671,11 @@ for (const label of ['陪伴首页', '生活与日程', '连接与工具', '工�
     if (autoCalls.length) failures.push(`媒体页：第一次保存之前就自动发起了 ${autoCalls.map((item) => item.sub).join(',')}`);
     if (!mediaFixture.ok) failures.push(`媒体页：媒体假后端不可用（${mediaFixture.reason}）`);
 
+    // A saved selection must expose its fields without a second "expand" action.
+    if (!inputIn(cardByText('OpenAI-compatible'), 'Base URL')) {
+      failures.push('媒体页：已选 OpenAI-compatible 的配置没有自动展开');
+    }
+
     // (1) 识图：明确「预留，当前关闭」且开关不可操作
     const visionToggle = toggleIn(tree, '启用识图');
     if (!visionToggle) failures.push('媒体页：找不到识图开关');
@@ -760,8 +765,12 @@ for (const label of ['陪伴首页', '生活与日程', '连接与工具', '工�
     const protocol = selectIn(tree, '协议');
     if (!protocol) failures.push('媒体页：找不到「协议」选择器');
     else {
+      const collapseNai = buttonIn(cardByText('NovelAI'), '收起');
+      if (collapseNai) { collapseNai.props.onClick(); await reload(); }
       protocol.props.onChange({ target: { value: 'nai' } });
       await reload();
+      if (selectIn(tree, '协议')?.props.value !== 'nai') failures.push('媒体页：协议选择没有反映尚未保存的 NAI 选项');
+      if (!inputIn(cardByText('NovelAI'), '步数')) failures.push('媒体页：选择 NAI 后配置没有自动展开');
       const saveSection = sectionSaveButton('生图');
       if (!saveSection) failures.push('媒体页：生图分区里找不到「保存这一块」');
       else if (saveSection.props.disabled) failures.push('媒体页：切了协议后「保存这一块」仍然禁用');
@@ -827,6 +836,7 @@ for (const label of ['陪伴首页', '生活与日程', '连接与工具', '工�
       if (protocolNow && String(protocolNow.props.value) !== 'openai-compatible') {
         protocolNow.props.onChange({ target: { value: 'openai-compatible' } });
         await reload();
+        if (!inputIn(cardByText('OpenAI-compatible'), 'Base URL')) failures.push('媒体页：切回 OpenAI-compatible 后配置没有自动展开');
         const saveBack = sectionSaveButton('生图');
         if (saveBack && !saveBack.props.disabled) { saveBack.props.onClick(); await reload(); }
       }
@@ -834,6 +844,7 @@ for (const label of ['陪伴首页', '生活与日程', '连接与工具', '工�
       if (imageToggle && imageToggle.props.checked !== true) {
         imageToggle.props.onChange({ target: { checked: true } });
         await reload();
+        if (toggleIn(tree, '启用生图')?.props.checked !== true) failures.push('媒体页：启用开关没有立即反映未保存的选择');
         const saveToggle = sectionSaveButton('生图');
         if (saveToggle && !saveToggle.props.disabled) { saveToggle.props.onClick(); await reload(); }
       }

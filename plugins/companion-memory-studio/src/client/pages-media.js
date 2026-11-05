@@ -571,8 +571,10 @@
       error ? h('p', { className: 'cpxp-media-error' }, error) : null);
   }
 
-  function ProviderCard({ provider, states, draft, secrets, clears, errors, testing, busy, onDraft, onSecret, onClear, onSave, onTest }) {
-    const [open, setOpen] = P.useState(false);
+  function ProviderCard({ provider, selected, states, draft, secrets, clears, errors, testing, busy, onDraft, onSecret, onClear, onSave, onTest }) {
+    const [open, setOpen] = P.useState(selected);
+    // Follow protocol changes while retaining manual expand/collapse between selections.
+    P.useEffect(() => setOpen(selected), [selected]);
     const status = testing[provider.id] || null;
     const dirty = provider.fields.some(field => (
       (field.secret ? Boolean(secrets[field.path]) : String(draft[field.path] ?? '') !== String(field.original ?? ''))
@@ -778,10 +780,11 @@
   function SectionCard({ section, states, testing, draft, secrets, clears, errors, busy, onDraft, onSecret, onClear, onSave, onTest }) {
     const [open, setOpen] = P.useState(true);
     const dirty = sectionDirty(section, draft, secrets, clears);
+    const selectedProvider = section.selector ? (draft[section.selector.path] ?? section.selector.value) : null;
     const toggleNode = section.toggle
       ? h('div', { className: 'cpxp-media-actions' },
         h(ui.Toggle, {
-          checked: Boolean(section.toggle.value),
+          checked: Boolean(draft[section.toggle.path] ?? section.toggle.value),
           disabled: section.toggle.disabled,
           label: section.toggle.label,
           hint: section.toggle.disabled ? (section.toggle.why || '这一项本轮不可操作') : '',
@@ -792,7 +795,7 @@
       ? h('div', { className: 'cpxp-media-actions' },
         h(ui.Field, { label: section.selector.label, id: `media-${section.selector.path}` },
           h(ui.Select, {
-            value: section.selector.value,
+            value: selectedProvider,
             disabled: section.selector.disabled,
             ariaLabel: section.selector.label,
             options: section.selector.options,
@@ -815,6 +818,7 @@
       ? h('div', null, section.providers.map(provider => h(ProviderCard, {
         key: provider.id,
         provider,
+        selected: provider.id === selectedProvider,
         states,
         draft,
         secrets,
