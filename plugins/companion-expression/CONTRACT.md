@@ -166,7 +166,32 @@ pageDescriptor(config, status) -> {
 
 ---
 
-## 6. 未实现（写清楚，不含糊）
+## 6. 入站旁路端口（`process[Symbol.for('dsh.companion.expression.v1')]`）
 
-GIF 关键帧理解、OCR、embedding 向量召回、QQ 内置 `face` 表情投递、真实平台发送验收。
-当前证据只到 `offline-test`；「图库能看、规则能改、实验室能模拟」不等于「QQ 上真能发」。
+`dsh-channel-qq` 的 observers 把每一条 QQ 消息的**元数据**递给这里，采集与唤醒彻底分离。
+这一格的形状是**实际发布的样子**（不是早期设计稿里的 `offers` / `ingest` 两个方法）：
+
+```js
+process[Symbol.for('dsh.companion.expression.v1')] = {
+  version: 1,
+  service,            // 本模块的 service 句柄
+  observe(event),     // 同步、非阻塞、永不抛；只入队（授权判定在服务内部做）
+  status(),           // 三行统计，供诊断
+}
+```
+
+- **只转发元数据**：`{messageId, at, kind:'dm'|'group', chatId, isOwner, senderId, images:[{url,subType?,summary?,emojiId?,emojiPackageId?,key?}], text?}`。
+  不含字节、不下载、不 `await`。`channel-qq` 侧先问一遍「要不要这条」（拿不到就整段跳过），
+  再同步 `observe()`；端口抛错一律吞掉并记一行，**绝不拖慢消息路径、绝不唤醒 Agent**。
+- **懒探测**：`companion-expression` 常常比 channel-qq 的 observers 段晚挂载，所以消费端
+  每次现取、取不到就立刻返回（只在 `apply` 时探一次会永远接不上）。
+- **两处都不在时**：没有端口 = 零开销、零副作用；`modules.expression=false` 时本模块根本不
+  发布这一格，通道侧的行为与没有装本模块完全一致。
+
+---
+
+## 7. 未实现（写清楚，不含糊）
+
+GIF 关键帧理解、OCR、embedding 向量召回、QQ 内置 `face` 表情投递、**真实平台发送验收**。
+证据分级见仓库 `docs/07-verification-status.md` §2.6：`offline-test` 与 `host-load` 已达成，
+`real-send` **未验证**；「图库能看、规则能改、实验室能模拟」不等于「QQ 上真能发」。
