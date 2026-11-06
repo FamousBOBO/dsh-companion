@@ -18,8 +18,8 @@
     "realertMs": 1800000
   },
   "segmentation": {
-    "enabled": false,
-    "style": "natural",
+    "enabled": true,
+    "style": "active",
     "minLength": 8,
     "maxSegments": 8,
     "removeTrailingPeriod": true,

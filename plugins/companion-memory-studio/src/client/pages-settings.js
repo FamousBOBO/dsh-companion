@@ -738,6 +738,7 @@
       if (spec.control === 'integer' || spec.control === 'number') {
         return h(ui.Input, {
           type: 'number',
+          min: spec.min, max: spec.max, step: spec.step ?? (spec.control === 'integer' ? 1 : 'any'),
           value: text(value),
           width: '140px',
           disabled: locked,

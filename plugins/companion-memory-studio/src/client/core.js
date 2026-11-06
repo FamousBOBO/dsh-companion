@@ -556,10 +556,11 @@ function Stat({ label, value, hint, tone, onClick }) {
 
 // `id` 必须落到真正的控件上：`ui.Field` 只负责 `<label htmlFor>`，点标签能不能聚焦
 // 取决于控件自己的 id（2026-11-06 UI 审核：label.for 有值、控件 id 为空 → 点了没反应）。
-function Input({ value, onChange, placeholder, onEnter, type, disabled, width, ariaLabel, id }) {
+function Input({ value, onChange, placeholder, onEnter, type, disabled, width, ariaLabel, id, min, max, step }) {
   return h('input', {
     id,
     type: type || 'text',
+    min, max, step: step ?? (type === 'number' ? 'any' : undefined),
     value: value ?? '',
     placeholder,
     'aria-label': ariaLabel || placeholder,

@@ -21,8 +21,8 @@ override = {}
   "realertMs": 1800000
  },
  "segmentation": {
-  "enabled": false,
-  "style": "natural",
+  "enabled": true,
+  "style": "active",
   "minLength": 8,
   "maxSegments": 8,
   "removeTrailingPeriod": true,
@@ -707,8 +707,8 @@ override = {}
   "realertMs": 1800000
  },
  "segmentation": {
-  "enabled": false,
-  "style": "natural",
+  "enabled": true,
+  "style": "active",
   "minLength": 8,
   "maxSegments": 8,
   "removeTrailingPeriod": true,
@@ -1391,8 +1391,8 @@ override = {"batching":{"windowMs":20000}}
   "realertMs": 1800000
  },
  "segmentation": {
-  "enabled": false,
-  "style": "natural",
+  "enabled": true,
+  "style": "active",
   "minLength": 8,
   "maxSegments": 8,
   "removeTrailingPeriod": true,
@@ -2075,8 +2075,8 @@ override = {"admin":{"port":8790}}
   "realertMs": 1800000
  },
  "segmentation": {
-  "enabled": false,
-  "style": "natural",
+  "enabled": true,
+  "style": "active",
   "minLength": 8,
   "maxSegments": 8,
   "removeTrailingPeriod": true,
@@ -2759,8 +2759,8 @@ override = {"imageGen":{"model":"flux"}}
   "realertMs": 1800000
  },
  "segmentation": {
-  "enabled": false,
-  "style": "natural",
+  "enabled": true,
+  "style": "active",
   "minLength": 8,
   "maxSegments": 8,
   "removeTrailingPeriod": true,
@@ -3443,8 +3443,8 @@ override = {"tts":{"voice":"b"}}
   "realertMs": 1800000
  },
  "segmentation": {
-  "enabled": false,
-  "style": "natural",
+  "enabled": true,
+  "style": "active",
   "minLength": 8,
   "maxSegments": 8,
   "removeTrailingPeriod": true,
@@ -4127,8 +4127,8 @@ override = {"flood":{"windowSec":30}}
   "realertMs": 1800000
  },
  "segmentation": {
-  "enabled": false,
-  "style": "natural",
+  "enabled": true,
+  "style": "active",
   "minLength": 8,
   "maxSegments": 8,
   "removeTrailingPeriod": true,
@@ -4811,8 +4811,8 @@ override = {}
   "realertMs": 1800000
  },
  "segmentation": {
-  "enabled": false,
-  "style": "natural",
+  "enabled": true,
+  "style": "active",
   "minLength": 8,
   "maxSegments": 8,
   "removeTrailingPeriod": true,
@@ -5502,8 +5502,8 @@ override = {"keywordTriggers":[]}
   "realertMs": 1800000
  },
  "segmentation": {
-  "enabled": false,
-  "style": "natural",
+  "enabled": true,
+  "style": "active",
   "minLength": 8,
   "maxSegments": 8,
   "removeTrailingPeriod": true,
@@ -6186,8 +6186,8 @@ override = {"rss":{"pollIntervalMin":5}}
   "realertMs": 1800000
  },
  "segmentation": {
-  "enabled": false,
-  "style": "natural",
+  "enabled": true,
+  "style": "active",
   "minLength": 8,
   "maxSegments": 8,
   "removeTrailingPeriod": true,
@@ -6877,8 +6877,8 @@ override = {"groupEnabled":false}
   "realertMs": 1800000
  },
  "segmentation": {
-  "enabled": false,
-  "style": "natural",
+  "enabled": true,
+  "style": "active",
   "minLength": 8,
   "maxSegments": 8,
   "removeTrailingPeriod": true,
@@ -7561,8 +7561,8 @@ override = {}
   "realertMs": 1800000
  },
  "segmentation": {
-  "enabled": false,
-  "style": "natural",
+  "enabled": true,
+  "style": "active",
   "minLength": 8,
   "maxSegments": 8,
   "removeTrailingPeriod": true,
@@ -8245,8 +8245,8 @@ override = {"groupEnabled":true}
   "realertMs": 1800000
  },
  "segmentation": {
-  "enabled": false,
-  "style": "natural",
+  "enabled": true,
+  "style": "active",
   "minLength": 8,
   "maxSegments": 8,
   "removeTrailingPeriod": true,
@@ -8929,8 +8929,8 @@ override = {"admin":{"host":"127.0.0.1"}}
   "realertMs": 1800000
  },
  "segmentation": {
-  "enabled": false,
-  "style": "natural",
+  "enabled": true,
+  "style": "active",
   "minLength": 8,
   "maxSegments": 8,
   "removeTrailingPeriod": true,
@@ -9613,8 +9613,8 @@ override = {}
   "realertMs": 1800000
  },
  "segmentation": {
-  "enabled": false,
-  "style": "natural",
+  "enabled": true,
+  "style": "active",
   "minLength": 8,
   "maxSegments": 8,
   "removeTrailingPeriod": true,
@@ -10297,8 +10297,8 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
   "realertMs": 1800000
  },
  "segmentation": {
-  "enabled": false,
-  "style": "natural",
+  "enabled": true,
+  "style": "active",
   "minLength": 8,
   "maxSegments": 8,
   "removeTrailingPeriod": true,

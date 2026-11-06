@@ -25,7 +25,7 @@
     const save=async()=>{
       setBusy(true);setError(null);
       try{
-        const patch={};for(const field of changed){let value=draft[field.path];if(field.kind==='json'&&typeof value==='string')value=JSON.parse(value);patch[field.path]=value;}
+        const patch={};for(const field of changed){let value=draft[field.path];if(field.kind==='json'&&typeof value==='string')value=JSON.parse(value);if(field.kind==='number'&&typeof value==='string')value=value===''?null:(field.displayDivisor>1?Math.round(Number(value)*field.displayDivisor):Number(value));patch[field.path]=value;}
         const result=await P.api.post('chat-settings',{patch,revision:state.data.revision});
         setNotice(result.restartRequired?.length?'已保存，待重启后加载':'已保存并应用');cache.revision='';state.reload();
       }catch(error){setError(error instanceof SyntaxError?new Error('结构化设置需要填写有效 JSON'):error);}finally{setBusy(false);}
@@ -39,14 +39,15 @@
       const value=draft[field.path],onChange=value=>change(field.path,value);
       const info=(field.help||'').replace(/\*\*|`/g,'');
       let control;
-      if(field.kind==='boolean')control=h('button',{type:'button',className:'cpxp-enable',role:'switch','aria-label':field.label,'aria-checked':value===true,disabled:busy,onClick:()=>onChange(value!==true)},h('span',{className:'cpxp-switch-track'}),'启用');
+      if(field.path==='keywordReactions')control=h(P.ui.KeywordMap,{value,onChange,disabled:busy});
+      else if(field.kind==='boolean')control=h('button',{type:'button',className:'cpxp-enable',role:'switch','aria-label':field.label,'aria-checked':value===true,disabled:busy,onClick:()=>onChange(value!==true)},h('span',{className:'cpxp-switch-track'}),'启用');
       else if(field.kind==='enum')control=h(ui.Select,{value,ariaLabel:field.label,disabled:busy,options:field.options||[],onChange});
       else if(field.path==='contact.quietHours'){
         const rows=Array.isArray(value)?value:[];
         control=h('div',null,rows.map((row,index)=>h('div',{key:index,className:'cpx-quiet-row'},h('input',{type:'time',className:'cmx-input','aria-label':'免打扰开始 '+(index+1),value:row.from,onChange:event=>onChange(rows.map((r,i)=>i===index?{...r,from:event.target.value}:r))}),h('span',null,'至'),h('input',{type:'time',className:'cmx-input','aria-label':'免打扰结束 '+(index+1),value:row.to,onChange:event=>onChange(rows.map((r,i)=>i===index?{...r,to:event.target.value}:r))}),h(ui.Button,{disabled:busy,onClick:()=>onChange(rows.filter((_,i)=>i!==index))},'移除'))),h(ui.Button,{disabled:busy,onClick:()=>onChange(rows.concat({from:'23:00',to:'08:00'}))},'添加免打扰时段'));
       }else if(field.kind==='json')control=h(ui.TextArea,{ariaLabel:field.label,value:typeof value==='string'?value:JSON.stringify(value,null,2),onChange,disabled:busy});
       else if(field.kind==='list')control=h(ui.Input,{ariaLabel:field.label,value:Array.isArray(value)?value.join(', '):'',disabled:busy,onChange:text=>onChange(text.split(/[,，\n]/).map(x=>x.trim()).filter(Boolean).map(x=>field.itemsKind==='number'?Number(x):x))});
-      else control=h(ui.Input,{type:field.kind==='number'?'number':'text',ariaLabel:field.label,value:value??'',disabled:busy,onChange:text=>onChange(field.kind==='number'?(text===''?null:Number(text)):text)});
+      else control=h(ui.Input,{type:field.kind==='number'?'number':'text',ariaLabel:field.label,value:field.kind==='number'&&typeof value==='number'?Number((value/(field.displayDivisor||1)).toFixed(6)):value??'',min:field.min!=null?field.min/(field.displayDivisor||1):undefined,max:field.max!=null?field.max/(field.displayDivisor||1):undefined,step:field.displayDivisor>1?'any':field.step??'any',disabled:busy,onChange});
       return h('div',{key:field.path,className:field.kind==='json'?'cpx-chat-wide':''},h(ui.Field,{label:field.label,info},control));
     };
     return h(ui.Page,{title:'聊天设置',lead:'调整回复节奏、群聊行为和免打扰。',actions:[h(ui.Button,{key:'save',variant:'primary',loading:busy,disabled:busy||!changed.length,onClick:save},'保存'),h(ui.Button,{key:'reload',disabled:busy||!!changed.length,onClick:state.reload},'重新读取')]},
@@ -54,7 +55,7 @@
       notice?h(ui.Callout,{tone:'info',title:notice}):null,
       !state.data?h(ui.Skeleton,{rows:6}):[
         h('div',{key:'summary',className:'cpx-chat-summary'},h(ui.Badge,{tone:state.data.live?'ok':'neutral'},state.data.live?'通道运行中':'通道未加载'),h('span',null,state.data.live?'支持热更新的设置保存即应用':'保存的设置将在通道启用并重启后加载')),
-        h(ui.Segmented,{key:'tabs',label:'聊天设置分类',value:tab,onChange:setTab,options:[{id:'reply',label:'回复设置'},{id:'groups',label:'群聊行为'},{id:'contact',label:'主动与免打扰'},{id:'advanced',label:'会话设置'},{id:'all',label:'全部'}]}),
+        h(ui.Segmented,{key:'tabs',label:'聊天设置分类',value:tab,onChange:setTab,options:[{id:'reply',label:'回复设置'},{id:'groups',label:'群聊行为'},{id:'contact',label:'主动与免打扰'},{id:'all',label:'全部'}]}),
         ...groups.map(group=>h(ui.Band,{key:group,title:visible.find(f=>f.group===group).groupLabel},h('div',{className:'cpx-chat-settings'},visible.filter(field=>field.group===group).map(renderField)))),
       ]);
   }

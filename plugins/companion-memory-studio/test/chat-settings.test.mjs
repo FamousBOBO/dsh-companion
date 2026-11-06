@@ -55,3 +55,28 @@ test('restart reminder survives handler recreation and clears on actual process 
 });
 
 test('chat settings require a bound owner',async()=>{const f=fixture(false);try{assert.equal((await f.call('GET')).ok,false);}finally{f.cleanup();}});
+
+test('chat fields omit removed panels, expose decimal limits and preserve minute-backed native values',async()=>{
+  const f=fixture();try{
+    const first=await f.call('GET');const fields=first.data.fields;
+    for(const field of fields){assert.ok(!['primaryTalkValue','rooms','agentPreset','permissionPreset','groupAgentPreset','groupPermissionPreset'].includes(field.path));assert.ok(!['groupModel','planner','context'].includes(field.group));}
+    assert.equal(fields.find(field=>field.path==='talkValue').step,0.05);
+    const ttl=fields.find(field=>field.path==='presence.ambientTtlMs');assert.equal(ttl.displayDivisor,60000);assert.match(ttl.label,/min/);
+    assert.equal(fields.find(field=>field.path==='segmentation.enabled').value,true);
+    assert.equal(fields.find(field=>field.path==='segmentation.style').value,'active');
+    const saved=await f.call('POST','chat-settings',{revision:first.data.revision,patch:{talkValue:0.35,'presence.ambientTtlMs':90000}});assert.equal(saved.ok,true);
+    const next=await f.call('GET');assert.equal(next.data.fields.find(field=>field.path==='talkValue').value,0.35);assert.equal(next.data.fields.find(field=>field.path==='presence.ambientTtlMs').value,90000);
+  }finally{f.cleanup();}
+});
+
+test('keyword mappings combine shared reactions, reject ambiguous and malformed inputs, and round-trip natively',async()=>{
+  const f=fixture();try{
+    const first=await f.call('GET');const save=value=>f.call('POST','chat-settings',{revision:first.data.revision,patch:{keywordReactions:value}});
+    assert.equal((await save([{keywords:[''],reaction:'安慰'}])).status,400);
+    assert.equal((await save([{keywords:['难过'],reaction:''}])).status,400);
+    assert.equal((await save([{keywords:['难过'],reaction:'安慰'},{keywords:['难过'],reaction:'关心'}])).status,400);
+    assert.equal((await save([{keywords:['难过'],reaction:'安慰'},{keywords:['低落'],reaction:'安慰'}])).ok,true);
+    assert.deepEqual(JSON.parse(fs.readFileSync(f.file,'utf8')).keywordReactions,[{keywords:['难过','低落'],reaction:'安慰'}]);
+    f.reload();assert.deepEqual((await f.call('GET')).data.fields.find(field=>field.path==='keywordReactions').value,[{keywords:['难过','低落'],reaction:'安慰'}]);
+  }finally{f.cleanup();}
+});

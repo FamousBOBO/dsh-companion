@@ -566,10 +566,11 @@ function Stat({ label, value, hint, tone, onClick }) {
 
 // `id` 必须落到真正的控件上：`ui.Field` 只负责 `<label htmlFor>`，点标签能不能聚焦
 // 取决于控件自己的 id（2026-11-06 UI 审核：label.for 有值、控件 id 为空 → 点了没反应）。
-function Input({ value, onChange, placeholder, onEnter, type, disabled, width, ariaLabel, id }) {
+function Input({ value, onChange, placeholder, onEnter, type, disabled, width, ariaLabel, id, min, max, step }) {
   return h('input', {
     id,
     type: type || 'text',
+    min, max, step: step ?? (type === 'number' ? 'any' : undefined),
     value: value ?? '',
     placeholder,
     'aria-label': ariaLabel || placeholder,
@@ -2519,6 +2520,60 @@ P.THEME_LABEL = THEME_LABEL;
   P.registerPage({id:'qq-web',label:'QQ 连接',order:15,component:QQWeb});
 })(P);
 
+// ==== src/client/keyword-map.js ====
+(function(P){
+  const {h,ui}=P;
+  P.css(`
+    .cpx-keymap{position:relative;min-width:0;}.cpx-keymap-help{font-size:12px;color:var(--dsw-alias-label-secondary);line-height:1.6;margin:0 0 16px;}.cpx-keymap-head{display:grid;grid-template-columns:1fr 48px 1fr;font-size:12px;margin-bottom:10px;color:var(--dsw-alias-label-secondary);}.cpx-keymap-head span:last-child{grid-column:3;}
+    .cpx-keymap-group{display:grid;grid-template-columns:minmax(0,1fr) 48px minmax(0,1fr);align-items:center;padding:16px 12px;margin-bottom:12px;border:1px solid var(--dsw-alias-border-primary,#73737a55);border-radius:12px;background:var(--dsw-alias-bg-layer-2);min-width:0;}
+    .cpx-keymap-words{min-width:0;}.cpx-keymap-word{height:44px;margin-bottom:12px;display:flex;align-items:center;gap:6px;position:relative;}.cpx-keymap-word:last-child{margin-bottom:0;}.cpx-keymap-word input{width:100%;min-width:0;padding-right:4px;}.cpx-keymap-remove{flex:none;background:none;color:var(--dsw-alias-label-secondary);border:0;cursor:pointer;padding:4px;}
+    .cpx-keymap-port{position:absolute;width:14px;height:14px;border-radius:50%;padding:0;border:2px solid var(--dsw-alias-bg-layer-1,#191c23);background:#b48da7;cursor:crosshair;z-index:2;}.cpx-keymap-word .cpx-keymap-port{right:-7px;}.cpx-keymap-port[aria-pressed=true]{outline:3px solid #dca2c5;}.cpx-keymap-port:focus-visible{outline:3px solid #64a9ed;}.cpx-keymap-lines{width:48px;overflow:visible;pointer-events:none;}.cpx-keymap-lines path{fill:none;stroke:#b48da7;stroke-width:2;opacity:.8;}
+    .cpx-keymap-reaction{position:relative;min-width:0;}.cpx-keymap-reaction>.cpx-keymap-port{left:-7px;top:50%;transform:translateY(-50%);}.cpx-keymap-reaction textarea{width:100%;min-height:76px;max-height:180px;resize:vertical;box-sizing:border-box;}.cpx-keymap-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap;}.cpx-keymap-actions .cmx-btn{font-size:12px;}.cpx-keymap-preview{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:200;}.cpx-keymap-preview line{stroke:#dca2c5;stroke-width:3;stroke-dasharray:6 4;}
+    @media(max-width:650px){.cpx-keymap-group,.cpx-keymap-head{grid-template-columns:minmax(0,1fr) 32px minmax(0,1fr);}.cpx-keymap-lines{width:32px;}.cpx-keymap-group{padding:12px 8px;}}
+  `);
+  function merge(rows){
+    const result=[];
+    for(const row of rows){const found=row.reaction.trim()&&result.find(item=>item.reaction.trim()===row.reaction.trim());if(found)found.keywords.push(...row.keywords);else result.push({keywords:[...row.keywords],reaction:row.reaction});}
+    return result;
+  }
+  function KeywordMap({value,onChange,disabled}){
+    const rows=Array.isArray(value)?value:[];
+    const [selected,setSelected]=P.useState(null),[wire,setWire]=P.useState(null);
+    const update=fn=>{const next=rows.map(row=>({keywords:[...row.keywords],reaction:row.reaction}));fn(next);onChange(next);};
+    const connect=(target,source=selected)=>{
+      if(!source||!rows[source.group]?.keywords[source.word]&&rows[source.group]?.keywords[source.word]!=='')return;
+      if(target!==source.group)update(next=>{const [word]=next[source.group].keywords.splice(source.word,1);next[target].keywords.push(word);});
+      setSelected(null);setWire(null);
+    };
+    return h('div',{className:'cpx-keymap'},
+      h('p',{className:'cpx-keymap-help'},'从关键词右侧圆点拖线到反应左侧圆点，也可以依次点击两个圆点。连接同一反应的关键词会自动归到一起。'),
+      h('div',{className:'cpx-keymap-head'},h('span',null,'关键词'),h('span',null,'反应提示')),
+      rows.map((row,group)=>{
+        const height=Math.max(1,row.keywords.length)*56-12;
+        return h('div',{key:group,className:'cpx-keymap-group'},
+          h('div',{className:'cpx-keymap-words'},row.keywords.map((word,index)=>h('div',{key:index,className:'cpx-keymap-word'},
+            h('input',{className:'cmx-input',value:word,maxLength:100,disabled,'aria-label':`反应 ${group+1} 的关键词 ${index+1}`,onChange:event=>update(next=>{next[group].keywords[index]=event.target.value;})}),
+            h('button',{type:'button',className:'cpx-keymap-remove',disabled,'aria-label':`移除关键词 ${group+1}-${index+1}`,onClick:()=>{setSelected(null);update(next=>{next[group].keywords.splice(index,1);});}},'×'),
+            h('button',{type:'button',className:'cpx-keymap-port',disabled,draggable:!disabled,'aria-label':`连接关键词 ${group+1}-${index+1}`,'aria-pressed':selected?.group===group&&selected?.word===index,
+              onClick:()=>setSelected({group,word:index}),
+              onDragStart:event=>{const source={group,word:index};event.dataTransfer.setData('text/x-companion-keyword',JSON.stringify(source));event.dataTransfer.effectAllowed='move';setSelected(source);setWire({x1:event.clientX,y1:event.clientY,x2:event.clientX,y2:event.clientY});},
+              onDrag:event=>{if(event.clientX||event.clientY)setWire(previous=>previous?{...previous,x2:event.clientX,y2:event.clientY}:null);},onDragEnd:()=>setWire(null)}),
+          )),!row.keywords.length?h('span',{className:'cpx-muted'},'拖入关键词或添加一项'):null),
+          h('svg',{className:'cpx-keymap-lines',height,viewBox:`0 0 48 ${height}`,'aria-hidden':true},row.keywords.map((word,index)=>h('path',{key:index,d:`M 0 ${index*56+22} C 24 ${index*56+22}, 24 ${height/2}, 48 ${height/2}`}))),
+          h('div',{className:'cpx-keymap-reaction'},
+            h('button',{type:'button',className:'cpx-keymap-port',disabled,'aria-label':`连接到反应 ${group+1}`,onClick:()=>connect(group),onDragOver:event=>{event.preventDefault();event.dataTransfer.dropEffect='move';},onDrop:event=>{event.preventDefault();try{connect(group,JSON.parse(event.dataTransfer.getData('text/x-companion-keyword')));}catch{setWire(null);}}}),
+            h('textarea',{className:'cmx-input cmx-textarea',value:row.reaction,maxLength:2000,disabled,'aria-label':`反应提示 ${group+1}`,placeholder:'例如：先安慰，再问问发生了什么',onChange:event=>update(next=>{next[group].reaction=event.target.value;}),onBlur:()=>{setSelected(null);onChange(merge(rows));}}),
+            h('div',{className:'cpx-keymap-actions'},h(ui.Button,{disabled,onClick:()=>update(next=>{next[group].keywords.push('');})},'添加关键词'),h(ui.Button,{disabled,onClick:()=>{setSelected(null);onChange(rows.filter((_,index)=>index!==group));}},'删除反应')),
+          ),
+        );
+      }),
+      h(ui.Button,{disabled,onClick:()=>onChange(rows.concat({keywords:[''],reaction:''}))},'添加反应'),
+      wire?h('svg',{className:'cpx-keymap-preview','aria-hidden':true},h('line',wire)):null,
+    );
+  }
+  P.ui.KeywordMap=KeywordMap;
+})(P);
+
 // ==== src/client/pages-chat-settings.js ====
 (function(P){
   const {h,ui}=P;
@@ -2547,7 +2602,7 @@ P.THEME_LABEL = THEME_LABEL;
     const save=async()=>{
       setBusy(true);setError(null);
       try{
-        const patch={};for(const field of changed){let value=draft[field.path];if(field.kind==='json'&&typeof value==='string')value=JSON.parse(value);patch[field.path]=value;}
+        const patch={};for(const field of changed){let value=draft[field.path];if(field.kind==='json'&&typeof value==='string')value=JSON.parse(value);if(field.kind==='number'&&typeof value==='string')value=value===''?null:(field.displayDivisor>1?Math.round(Number(value)*field.displayDivisor):Number(value));patch[field.path]=value;}
         const result=await P.api.post('chat-settings',{patch,revision:state.data.revision});
         setNotice(result.restartRequired?.length?'已保存，待重启后加载':'已保存并应用');cache.revision='';state.reload();
       }catch(error){setError(error instanceof SyntaxError?new Error('结构化设置需要填写有效 JSON'):error);}finally{setBusy(false);}
@@ -2561,14 +2616,15 @@ P.THEME_LABEL = THEME_LABEL;
       const value=draft[field.path],onChange=value=>change(field.path,value);
       const info=(field.help||'').replace(/\*\*|`/g,'');
       let control;
-      if(field.kind==='boolean')control=h('button',{type:'button',className:'cpxp-enable',role:'switch','aria-label':field.label,'aria-checked':value===true,disabled:busy,onClick:()=>onChange(value!==true)},h('span',{className:'cpxp-switch-track'}),'启用');
+      if(field.path==='keywordReactions')control=h(P.ui.KeywordMap,{value,onChange,disabled:busy});
+      else if(field.kind==='boolean')control=h('button',{type:'button',className:'cpxp-enable',role:'switch','aria-label':field.label,'aria-checked':value===true,disabled:busy,onClick:()=>onChange(value!==true)},h('span',{className:'cpxp-switch-track'}),'启用');
       else if(field.kind==='enum')control=h(ui.Select,{value,ariaLabel:field.label,disabled:busy,options:field.options||[],onChange});
       else if(field.path==='contact.quietHours'){
         const rows=Array.isArray(value)?value:[];
         control=h('div',null,rows.map((row,index)=>h('div',{key:index,className:'cpx-quiet-row'},h('input',{type:'time',className:'cmx-input','aria-label':'免打扰开始 '+(index+1),value:row.from,onChange:event=>onChange(rows.map((r,i)=>i===index?{...r,from:event.target.value}:r))}),h('span',null,'至'),h('input',{type:'time',className:'cmx-input','aria-label':'免打扰结束 '+(index+1),value:row.to,onChange:event=>onChange(rows.map((r,i)=>i===index?{...r,to:event.target.value}:r))}),h(ui.Button,{disabled:busy,onClick:()=>onChange(rows.filter((_,i)=>i!==index))},'移除'))),h(ui.Button,{disabled:busy,onClick:()=>onChange(rows.concat({from:'23:00',to:'08:00'}))},'添加免打扰时段'));
       }else if(field.kind==='json')control=h(ui.TextArea,{ariaLabel:field.label,value:typeof value==='string'?value:JSON.stringify(value,null,2),onChange,disabled:busy});
       else if(field.kind==='list')control=h(ui.Input,{ariaLabel:field.label,value:Array.isArray(value)?value.join(', '):'',disabled:busy,onChange:text=>onChange(text.split(/[,，\n]/).map(x=>x.trim()).filter(Boolean).map(x=>field.itemsKind==='number'?Number(x):x))});
-      else control=h(ui.Input,{type:field.kind==='number'?'number':'text',ariaLabel:field.label,value:value??'',disabled:busy,onChange:text=>onChange(field.kind==='number'?(text===''?null:Number(text)):text)});
+      else control=h(ui.Input,{type:field.kind==='number'?'number':'text',ariaLabel:field.label,value:field.kind==='number'&&typeof value==='number'?Number((value/(field.displayDivisor||1)).toFixed(6)):value??'',min:field.min!=null?field.min/(field.displayDivisor||1):undefined,max:field.max!=null?field.max/(field.displayDivisor||1):undefined,step:field.displayDivisor>1?'any':field.step??'any',disabled:busy,onChange});
       return h('div',{key:field.path,className:field.kind==='json'?'cpx-chat-wide':''},h(ui.Field,{label:field.label,info},control));
     };
     return h(ui.Page,{title:'聊天设置',lead:'调整回复节奏、群聊行为和免打扰。',actions:[h(ui.Button,{key:'save',variant:'primary',loading:busy,disabled:busy||!changed.length,onClick:save},'保存'),h(ui.Button,{key:'reload',disabled:busy||!!changed.length,onClick:state.reload},'重新读取')]},
@@ -2576,7 +2632,7 @@ P.THEME_LABEL = THEME_LABEL;
       notice?h(ui.Callout,{tone:'info',title:notice}):null,
       !state.data?h(ui.Skeleton,{rows:6}):[
         h('div',{key:'summary',className:'cpx-chat-summary'},h(ui.Badge,{tone:state.data.live?'ok':'neutral'},state.data.live?'通道运行中':'通道未加载'),h('span',null,state.data.live?'支持热更新的设置保存即应用':'保存的设置将在通道启用并重启后加载')),
-        h(ui.Segmented,{key:'tabs',label:'聊天设置分类',value:tab,onChange:setTab,options:[{id:'reply',label:'回复设置'},{id:'groups',label:'群聊行为'},{id:'contact',label:'主动与免打扰'},{id:'advanced',label:'会话设置'},{id:'all',label:'全部'}]}),
+        h(ui.Segmented,{key:'tabs',label:'聊天设置分类',value:tab,onChange:setTab,options:[{id:'reply',label:'回复设置'},{id:'groups',label:'群聊行为'},{id:'contact',label:'主动与免打扰'},{id:'all',label:'全部'}]}),
         ...groups.map(group=>h(ui.Band,{key:group,title:visible.find(f=>f.group===group).groupLabel},h('div',{className:'cpx-chat-settings'},visible.filter(field=>field.group===group).map(renderField)))),
       ]);
   }
@@ -12188,6 +12244,7 @@ P.THEME_LABEL = THEME_LABEL;
       if (spec.control === 'integer' || spec.control === 'number') {
         return h(ui.Input, {
           type: 'number',
+          min: spec.min, max: spec.max, step: spec.step ?? (spec.control === 'integer' ? 1 : 'any'),
           value: text(value),
           width: '140px',
           disabled: locked,

@@ -2,7 +2,7 @@
  *
  * 这段逻辑在 P4.6 被删过一次（当时确实没人调用它），P6h 把它作为出站阶段接回来。
  * 所以两条都要钉住：**规则本身**（逐字搬回，不许在搬的过程中走样）与**开关语义**
- * （关着 = 一条，打开 = 分条；默认关——P6 的规矩是"每项独立开关，默认关"）。
+ * （私聊默认按句发送，显式关闭时保持一条；群聊始终只发一条）。
  */
 
 import { test } from 'node:test'
@@ -137,14 +137,25 @@ async function waitGroupSends(client: { calls: Array<{ action: string }> }, n: n
   throw new Error(`等了 ${String(timeoutMs)}ms 只发了 ${String(count())} 条（期望 ${String(n)}）`)
 }
 
-test('接线：默认关着 → 一条消息发出去（与从前逐字节一样）', async () => {
-  const { client, run } = sendText({}, '先吃饭。然后写代码。最后早点睡。')
+test('接线：显式关闭 → 一条消息发出去（兼容旧配置）', async () => {
+  const { client, run } = sendText({segmentation:{enabled:false}}, '先吃饭。然后写代码。最后早点睡。')
   const result = await run()
   const sends = client.calls.filter((c) => c.action === 'send_private_msg')
   assert.equal(sends.length, 1, '关着就是一条')
   assert.equal(result.segments, 1)
   const text = (sends[0]!.params.message as Array<{ data: { text: string } }>)[0]!.data.text
   assert.equal(text, '先吃饭。然后写代码。最后早点睡。', '关着时文本逐字节不变')
+})
+
+test('新默认：私聊开启分段，按句发送；显式关闭仍优先', async () => {
+  assert.equal(PROD_SEG.enabled, true)
+  assert.equal(PROD_SEG.style, 'active')
+  assert.equal(resolveConfig({segmentation:{...PROD_SEG,enabled:false}}).segmentation.enabled, false)
+  const {client,run}=sendText({},'先吃饭。然后写代码。最后早点睡。')
+  const result=await run()
+  assert.equal(result.segments,3)
+  await waitGroupSends(client,3)
+  assert.equal(client.calls.filter(call=>call.action==='send_private_msg').length,3)
 })
 
 test('接线：打开之后 → 按句分成三条，逐条发', async () => {

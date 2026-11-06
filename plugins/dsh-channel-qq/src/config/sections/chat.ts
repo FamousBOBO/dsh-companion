@@ -149,10 +149,9 @@ export const CHAT_GROUPS: FieldGroup[] = [
     help: '把一条长回复拆成几条发出去，像人连着说话而不是一大段。',
     fields: {
       // 读法：P6h 起由 `qq_send_text` 消费（`core/text/segment.ts`）。
-      // **默认关**：打开后一条长回复会按句拆成几条发出去，那是行为变化，
-      // 按 P6 的规矩"每项独立开关、默认关"。
-      enabled: b('启用', false, { hot: 'live' }),
-      style: e('风格', 'natural', [
+      // 私聊默认按句拆分，群聊始终保持一条回复。
+      enabled: b('启用', true, { hot: 'live' }),
+      style: e('风格', 'active', [
         ['natural', '跟标点走'],
         ['conservative', '太短的相邻句合并'],
         ['active', '每句一条'],
