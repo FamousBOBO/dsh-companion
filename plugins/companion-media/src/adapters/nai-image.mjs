@@ -92,8 +92,11 @@ export async function generate({ section, limits, key, net, prompt, negative = '
       model,
       transport,
       size,
-      steps: section.steps,
+      steps: parameters.steps,
       sampler: section.sampler,
+      // The seed actually sent — with `seed: -1` this is the random one that was
+      // resolved for this image, so the result stays reproducible.
+      seed: parameters.seed,
       presetFamily: preset.family,
       presetApplied: preset.applyDefaults,
       presetWarnings: preset.warnings,

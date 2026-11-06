@@ -61,6 +61,66 @@ test('NAI official：ZIP 响应 → 解出 PNG；请求体是 {input, model, act
   }
 });
 
+// 2026-11-06 真实接口回归：同样是这一个体，只有 seed 不同 —— `seed:-1` 得到
+// HTTP 500 {"statusCode":500,"message":"Internal Server Error"}，具体整数得到 200+ZIP。
+// 这条测试把"绝不把 -1 发出去"锁进请求体，避免再靠真实扣费请求去发现它。
+test('NAI：seed:-1 必须落成具体非负整数（发 -1 会被服务端 500）', async () => {
+  const { dir, cleanup } = tempDataDir();
+  try {
+    configured(dir, { seed: -1 });
+    const { fetchImpl, calls } = mockFetch([{ match: () => true, response: { status: 200, json: { image: PNG.toString('base64') } } }]);
+    const service = createMediaService({ dataDir: dir, env: {}, fetchImpl });
+    const first = await service.generateImage({ prompt: 'subject' });
+    const second = await service.generateImage({ prompt: 'subject' });
+    assert.equal(first.ok, true, JSON.stringify(first.error ?? {}));
+    assert.equal(second.ok, true, JSON.stringify(second.error ?? {}));
+
+    const seedA = JSON.parse(calls[0].body).parameters.seed;
+    const seedB = JSON.parse(calls[1].body).parameters.seed;
+    for (const seed of [seedA, seedB]) {
+      assert.equal(Number.isInteger(seed), true, `seed 必须是整数，实际 ${JSON.stringify(seed)}`);
+      assert.notEqual(seed, -1, 'seed:-1 必须由插件解析成随机种子再发送');
+      assert.equal(seed >= 0 && seed <= 0xffff_ffff, true, `seed 越界：${seed}`);
+    }
+    assert.notEqual(seedA, seedB, '两次随机生图不应复用同一个种子');
+    assert.equal(first.artifact.seed, seedA, '产物里记录实际使用的 seed，便于复现');
+  } finally {
+    cleanup();
+  }
+});
+
+test('NAI：配置里给了具体 seed 就原样发送（可复现）', async () => {
+  const { dir, cleanup } = tempDataDir();
+  try {
+    configured(dir, { seed: 3141592653 });
+    const { fetchImpl, calls } = mockFetch([{ match: () => true, response: { status: 200, json: { image: PNG.toString('base64') } } }]);
+    const service = createMediaService({ dataDir: dir, env: {}, fetchImpl });
+    const result = await service.generateImage({ prompt: 'subject' });
+    assert.equal(result.ok, true, JSON.stringify(result.error ?? {}));
+    assert.equal(JSON.parse(calls[0].body).parameters.seed, 3141592653);
+  } finally {
+    cleanup();
+  }
+});
+
+test('NAI：V4+/V5 请求带 params_version=3，且 uc 与 negative_prompt 同文', async () => {
+  const { dir, cleanup } = tempDataDir();
+  try {
+    configured(dir, { model: 'nai-diffusion-5-full', negativePrompt: 'lowres, bad quality' });
+    const { fetchImpl, calls } = mockFetch([{ match: () => true, response: { status: 200, json: { image: PNG.toString('base64') } } }]);
+    const service = createMediaService({ dataDir: dir, env: {}, fetchImpl });
+    const result = await service.generateImage({ prompt: 'subject' });
+    assert.equal(result.ok, true, JSON.stringify(result.error ?? {}));
+    const { parameters } = JSON.parse(calls[0].body);
+    assert.equal(parameters.params_version, 3);
+    assert.equal(typeof parameters.uc, 'string');
+    assert.equal(parameters.uc, parameters.negative_prompt, 'uc 与 negative_prompt 必须是同一份文本');
+    assert.match(parameters.uc, /lowres/);
+  } finally {
+    cleanup();
+  }
+});
+
 test('NAI official：SSE 响应（分片 base64）也能拼出图片', async () => {
   const { dir, cleanup } = tempDataDir();
   try {

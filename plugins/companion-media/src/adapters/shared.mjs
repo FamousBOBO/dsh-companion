@@ -1,3 +1,4 @@
+import crypto from 'node:crypto';
 import { Code, mapRemoteStatus, mediaError } from '../errors.mjs';
 import { redactText } from '../secrets.mjs';
 
@@ -70,6 +71,30 @@ export async function probeReachability({ net, url, headers = {}, timeoutMs, pro
   }
 }
 
+/** Highest seed the endpoint accepts (`0 … 2^32-1`). */
+export const SEED_MAX = 0xffff_ffff;
+
+/**
+ * Resolve the seed that is actually sent.
+ *
+ * Config `seed: -1` means "a fresh seed per image". It must NOT be forwarded as
+ * `-1`: NovelAI's V5/V4.5 encoder answers `seed: -1` with a bare
+ * `HTTP 500 {"statusCode":500,"message":"Internal Server Error"}`, which looks
+ * exactly like an outage. Verified against the live endpoint on 2026-11-06 —
+ * identical request body, only the seed changed:
+ *
+ *     seed: -1                 → 500, 53 bytes of JSON
+ *     seed: <random int>       → 200, ZIP with the PNG
+ *
+ * So the random seed is resolved here, and the value used is reported back in
+ * `meta.seed`, which keeps a generated image reproducible.
+ */
+export function resolveSeed(section, randomInt = max => crypto.randomInt(0, max)) {
+  const configured = section?.seed;
+  if (Number.isInteger(configured) && configured >= 0 && configured <= SEED_MAX) return configured;
+  return randomInt(SEED_MAX + 1);
+}
+
 /** Build the `parameters` object for NovelAI transports. Shared by both styles. */
 export function buildNaiParameters(section, { prompt, negative, preset }) {
   const family = preset.family;
@@ -81,7 +106,7 @@ export function buildNaiParameters(section, { prompt, negative, preset }) {
     noise_schedule: section.noiseSchedule,
     steps: section.steps,
     n_samples: 1,
-    seed: Number.isInteger(section.seed) ? section.seed : -1,
+    seed: resolveSeed(section),
     negative_prompt: negative,
     ucPreset: section.negativePreset && section.negativePreset !== 'legacy' ? undefined : section.ucPreset,
     qualityToggle: section.qualityPreset && section.qualityPreset !== 'legacy' ? false : Boolean(section.qualityToggle),
@@ -91,6 +116,15 @@ export function buildNaiParameters(section, { prompt, negative, preset }) {
   // V4/V5 take the structured caption; V3-era fields stay out of it so an old
   // model cannot receive a shape it does not understand.
   if (family === '5' || family === '4.5') {
+    // `params_version: 3` pins the caption-envelope semantics this block sends;
+    // the reference client that is verified against the live API always sets it.
+    // (Not proven necessary on its own — the 500 above was the seed — but it is
+    // part of the shape that is known to work, so it stays.)
+    parameters.params_version = 3;
+    // `uc` is the V4+/V5 "undesired content" field. `negative_prompt` is kept
+    // alongside it for compatibility and carries the same text on purpose, which
+    // is how the verified reference client sends it.
+    parameters.uc = negative;
     parameters.v4_prompt = {
       caption: { base_caption: prompt, char_captions: [] },
       use_coords: false,

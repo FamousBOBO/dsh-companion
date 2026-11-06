@@ -112,6 +112,10 @@ node --test "test/*.test.mjs"     # 99 个断言，全部离线，不需要任�
 
 1. 所有 provider 的**真实调用**本轮一次都没发起（会产生费用）。协议按官方源码/文档核对 + mock 测试；真实可用性需操作者逐服务手动触发（见 `docs/media/M5-report.md` 的手动步骤）。
 2. NovelAI `parameters` 的逐字段明细来自 MIT 参考实现的交叉验证（C 级）；官方规范只写"model specific"。
+   **2026-11-06 已补一次真实直连验证**，并据此修正两处：
+   - `seed` 不能把配置里的 `-1` 原样上线路：V5/V4.5 编码器对它返回 `HTTP 500 {"statusCode":500,...}`（同一体换具体整数种子即 200 + ZIP）。现在由 `resolveSeed()` 解析成 `0…2^32-1`，实际种子写进产物 `seed`。
+   - V4+/V5 请求补 `params_version: 3` 与 `uc`（与 `negative_prompt` 同文），与真实参考实现对齐。
+   证据与产物见 `docs/07-verification-status.md` §2.5。
 3. NovelAI 模型 ID 字符串（`nai-diffusion-5-full` 等）不在官方 Swagger 的过期 enum 里，属社区证据。
 4. NovelAI 官方"质量标签 / Undesired Content"预设的逐字文本没有权威副本，插件只提供**空占位**，不假装是官方原文。
 5. Fish Audio 的 Models 列表接口本轮未取到页面证据；`reference_id` 当不透明字符串处理。

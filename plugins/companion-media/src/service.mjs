@@ -357,6 +357,7 @@ export function createMediaService({
         height: result.height ?? null,
         provider: id,
         model: result.meta?.model ?? section.model ?? '',
+        seed: result.meta?.seed ?? null,
         sha256: artifact.sha256,
       };
       ledger.putArtifact({ ...meta, sessionId });
