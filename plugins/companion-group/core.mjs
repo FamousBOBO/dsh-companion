@@ -21,15 +21,14 @@ export function markGroupReady(agent) {
 export function groupIsReady(agent) { return ready.has(agent); }
 
 /**
- * 媒体工具（2026-11-02）：识图 / 合成语音 / 生成图片 / 查任务。
+ * 媒体工具：状态 / 合成语音 / 生成图片 / 查任务。
  *
- * 这四个工具**只产出本地文件**、不直接往 QQ 发东西，所以群聊放开的只是"看图和准备素材"；
+ * 这些工具不直接往 QQ 发东西，群聊只开放查询与准备素材；
  * 真正的发送仍然只有下面三条固定动作，且目标必须是当前群。
  * 刻意**不**放 `companion_media_warm`：那是拉/卸 GPU 的运维开关，群聊没有理由动它。
  */
 export const GROUP_MEDIA_TOOLS = Object.freeze([
   'companion_media_status',
-  'companion_media_inspect',
   'companion_media_draw',
   'companion_media_speak',
   'companion_media_job',

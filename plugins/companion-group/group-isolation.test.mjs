@@ -8,7 +8,7 @@ import { apply as boundary } from './boundary.mjs';
 import { apply as persona, GROUP_PERSONA } from './index.mjs';
 import { createIdentity } from '../companion-foundation/identity.mjs';
 
-const agent = (id = 'qq-group-123') => ({ id, session: { id }, ctx: { tools: { restrict() {} } } });
+const agent = (id = 'qq-group-123') => ({ id, session: { id }, ctx: { tools: { restrict() {}, view: () => ({ restrictableNames: new Set(GROUP_ALLOWED_TOOLS) }) } } });
 const send = (a, over = {}) => ({ agent: a, name: 'qq_message', arguments: { action: 'send', isGroup: true, target: 123, text: '你好', phase: 'final', ...over } });
 
 // 媒体根（真实 `home/media` 的绝对路径）与一个"合法的"媒体产物路径。
@@ -45,9 +45,11 @@ test('group tool boundary defaults deny, even if tools/policy switches change', 
   assert.equal(groupToolDenial({ ...send(agent('qq-dm-456')), name: 'pwsh' }), undefined, 'owner DM unchanged');
 });
 
-test('media tools are open to the group: inspect / draw / speak / job / status never touch QQ directly', () => {
+test('media tools are open to the group: draw / speak / job / status never touch QQ directly', () => {
   const a = agent(); markGroupReady(a);
-  assert.deepEqual(GROUP_MEDIA_TOOLS, ['companion_media_status', 'companion_media_inspect', 'companion_media_draw', 'companion_media_speak', 'companion_media_job']);
+  assert.deepEqual(GROUP_MEDIA_TOOLS, ['companion_media_status', 'companion_media_draw', 'companion_media_speak', 'companion_media_job']);
+  assert.equal(GROUP_PERSONA.includes('companion_media_inspect'), false);
+  assert.match(groupToolDenial({ agent: a, name: 'companion_media_inspect', arguments: {} }, OPTS), /只开放/);
   for (const name of GROUP_MEDIA_TOOLS) {
     assert.equal(groupToolDenial({ agent: a, name, arguments: {} }, OPTS), undefined, name);
   }
@@ -176,4 +178,23 @@ test('restrictions bind to each agent scope once, preserving inherited preset me
   for (const item of [a, a, b]) await step({ agent: item, step: 1, turn: 1 }, async () => ({ kind: 'enter' }));
   assert.deepEqual(calls.map(c => c.id), ['qq-group-123', 'qq-group-456']);
   for (const call of calls) assert.deepEqual(call.filter, { allow: [...GROUP_ALLOWED_TOOLS] });
+});
+
+test('strict host registry accepts current media surface and QQ-only deployments without unknown tools', async () => {
+  let step;
+  persona({tools:{guard(){},restrict(){}},systemPrompt:{section(){}},on(name,fn){if(name==='agent/pre-step')step=fn;}});
+  for(const media of [true,false]){
+    const a=agent(),registered=new Set(['qq_message','qq_sticker','qq_voice','pwsh',...(media?GROUP_MEDIA_TOOLS:[])]);
+    let restriction;
+    a.ctx.tools.view=()=>({restrictableNames:registered});
+    a.ctx.tools.restrict=filter=>{for(const name of filter.allow)assert.ok(registered.has(name),`unknown tool: ${name}`);restriction=filter;};
+    let entered=false;
+    await step({agent:a,step:1,turn:1},async()=>{entered=true;return {kind:'enter'};});
+    assert.equal(entered,true);
+    assert.deepEqual(restriction.allow,media?[...GROUP_ALLOWED_TOOLS]:['qq_message','qq_sticker','qq_voice']);
+    assert.equal(restriction.allow.includes('pwsh'),false);
+    assert.equal(restriction.allow.includes('companion_media_inspect'),false);
+    assert.equal(groupToolDenial(send(a)),undefined);
+    assert.match(groupToolDenial({...send(a),name:'pwsh'}),/只开放/);
+  }
 });

@@ -18,7 +18,6 @@ export const GROUP_PERSONA = `你是「bot」，用户的 AI 陪伴助手。具�
 - qq_message(action=send, isGroup=true, target=当前群号, text=纯文本, phase=final)
 - qq_sticker(action=send, isGroup=true, target=当前群号, file=图片绝对路径) 发的是照片段，对方直接看到图
 - qq_voice(action=send_file, isGroup=true, target=当前群号, file=语音绝对路径)
-- companion_media_inspect(path=图片路径) 用来看群里的图或表情
 - companion_media_draw(prompt=自然语言画面描述) 生成图片，返回 handoff.file，本工具不发送
 - companion_media_speak(text=要说的台词, instructions=怎么说) 合成语音，返回 handoff.file，本工具不发送
 发图或发语音由你自己判断：真的更自然时才用（例如对方想听你的声音、或需要看图说话），不是每条都要配图配语音；群里默认还是文字。
@@ -54,8 +53,11 @@ export function apply(ctx) {
   ctx.on('agent/pre-step', async (event, next) => {
     if (!groupIdOf(event.agent)) return { kind: 'reject' };
     if (!restricted.has(event.agent)) {
-      // Media tools are inherited by the agent, but local to the preset scope.
-      event.agent.ctx.tools.restrict({ allow: [...GROUP_ALLOWED_TOOLS] });
+      // Optional plugins may be disabled. The host rejects names absent from
+      // the inherited registry, so intersect with the actual restrictable tools.
+      const tools = event.agent.ctx.tools;
+      const registered = tools.view(event.agent).restrictableNames;
+      tools.restrict({ allow: GROUP_ALLOWED_TOOLS.filter(name => registered.has(name)) });
       restricted.add(event.agent);
     }
     const id = event.agent.session.id;
