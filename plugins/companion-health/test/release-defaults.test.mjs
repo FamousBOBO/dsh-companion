@@ -46,6 +46,23 @@ function countingFetch(answer = () => { throw new Error('offline'); }) {
   return impl;
 }
 
+test('来源未提供 token 到期信息时，真实同步与探测均保持未知，不虚构过期时间', async t => {
+  const home = tempHome(t);
+  const fetchImpl = countingFetch(() => new Response(JSON.stringify({token: {},daily:[],health:[],sessions:[],devices:[],sources:[],errors:[]})));
+  const service = createHealthService({home,fetchImpl,log:()=>{},config:{enabled:true}});
+  t.after(()=>service.close());
+  assert.equal((await service.initialize()).ok,true);
+  await service.syncNow();
+  const status = await service.status();
+  assert.equal(status.source.auth.status,'unknown');
+  assert.equal(status.source.auth.minutesLeft,null);
+  assert.equal(status.source.auth.expiresAt,null);
+  assert.equal(status.source.auth.refreshExpiresAt,null);
+  const probe=await service.probeSource();
+  assert.equal(probe.token.minutesLeft,null);
+  assert.equal(probe.token.status,'unknown');
+});
+
 test('默认配置：采集关闭、BLE 关闭（安全默认值，不是"贴心地"开着）', () => {
   const config = defaultConfig();
   assert.equal(config.enabled, false, '健康采集必须默认关闭');

@@ -452,7 +452,7 @@ export function createHealthService(options = {}) {
     const redacted = result?.redactedToken;
     if (!redacted || typeof redacted !== 'object') return;
     const at = Number(result?.fetchedAt ?? clock());
-    const minutesLeft = Number.isFinite(Number(redacted.minutesLeft)) ? Number(redacted.minutesLeft) : null;
+    const minutesLeft = redacted.minutesLeft != null && redacted.minutesLeft !== '' && Number.isFinite(Number(redacted.minutesLeft)) ? Number(redacted.minutesLeft) : null;
     const tokenBlock = result?.payload?.token && typeof result.payload.token === 'object' ? result.payload.token : null;
     // The adapter's redacted view is the authority; it currently carries the sidecar's display
     // timestamps under both the camelCase and the sidecar spelling. Prefer the adapter's own field,
@@ -462,8 +462,8 @@ export function createHealthService(options = {}) {
     const refreshExpiresAt = parseLocalTimestamp(redacted.refreshExpiresAtText ?? tokenBlock?.refresh_dies_text);
     const snapshot = {
       status: normaliseAuthStatus(redacted.status),
-      expiresAt: Number.isFinite(Number(expiresAt)) ? Number(expiresAt) : null,
-      refreshExpiresAt: Number.isFinite(Number(refreshExpiresAt)) ? Number(refreshExpiresAt) : null,
+      expiresAt: expiresAt != null && Number.isFinite(Number(expiresAt)) ? Number(expiresAt) : null,
+      refreshExpiresAt: refreshExpiresAt != null && Number.isFinite(Number(refreshExpiresAt)) ? Number(refreshExpiresAt) : null,
       minutesLeft,
       rotated: typeof redacted.rotated === 'boolean' ? redacted.rotated : null,
       hostKind: ['cn', 'other', 'unknown'].includes(String(redacted.hostKind)) ? String(redacted.hostKind) : 'unknown',
@@ -1395,7 +1395,7 @@ export function createHealthService(options = {}) {
         if (!redacted) return null;
         return {
           status: normaliseAuthStatus(redacted.status),
-          minutesLeft: Number.isFinite(Number(redacted.minutesLeft)) ? Number(redacted.minutesLeft) : null,
+          minutesLeft: redacted.minutesLeft != null && redacted.minutesLeft !== '' && Number.isFinite(Number(redacted.minutesLeft)) ? Number(redacted.minutesLeft) : null,
           rotated: typeof redacted.rotated === 'boolean' ? redacted.rotated : null,
           hostKind: ['cn', 'other', 'unknown'].includes(String(redacted.hostKind)) ? String(redacted.hostKind) : 'unknown',
         };

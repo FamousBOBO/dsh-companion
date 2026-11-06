@@ -91,6 +91,7 @@ function safe(fn, fallback = null) {
 }
 
 function numberOrNull(value) {
+  if (value == null || value === '') return null;
   const n = Number(value);
   return Number.isFinite(n) ? n : null;
 }
