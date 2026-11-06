@@ -5,6 +5,7 @@ import path from 'node:path';
 import { mountMedia as apply, apply as hostApply } from '../index.mjs';
 import { API_PREFIX, createMediaHandlers, registerMediaApi } from '../src/http-api.mjs';
 import { createMediaService } from '../src/service.mjs';
+import { apply as httpApply } from '../http.mjs';
 import { tempDataDir } from './helpers.mjs';
 
 test('宿主插件返回 void，避免 Cordis 拒绝 service 对象并回滚媒体路由', async () => {
@@ -35,6 +36,20 @@ test('宿主插件返回 void，避免 Cordis 拒绝 service 对象并回滚媒�
  */
 
 const EXPECTED_ROUTES = 10;
+
+test('top-level HTTP media service receives the host LLM binding without making a generation',async()=>{
+  const {dir,cleanup}=tempDataDir();const previous=process.env.DSH_COMPANION_DATA_DIR;
+  process.env.DSH_COMPANION_DATA_DIR=dir;
+  const routes=[];let generations=0;
+  const llm={prepareCall(){generations++;throw Error('read must never generate');}};
+  const connection={fetch:{register(entry){routes.push(entry);return ()=>{};}}};
+  try{
+    await httpApply({get:name=>name==='connection'?connection:name==='llm'?llm:undefined});
+    const status=routes.find(entry=>entry.path===API_PREFIX+'/status');
+    assert.ok(status);const body=await (await status.fetch(new Request('http://localhost'+API_PREFIX+'/status'))).json();
+    assert.equal(body.processing.hostAvailable,true);assert.equal(body.processing.model,'DSH default');assert.equal(generations,0);
+  }finally{if(previous===undefined)delete process.env.DSH_COMPANION_DATA_DIR;else process.env.DSH_COMPANION_DATA_DIR=previous;cleanup();}
+});
 
 function makeHost() {
   const registered = new Map(); // path -> entry (host de-dupes by path)
