@@ -52,6 +52,8 @@
           # 媒体层（识图 / TTS / 生图）：能力默认全关，开关在 <dataDir>/home/media/config.json，
           # 保存即生效。没有配置任何服务商时它照样挂载，只是所有能力报「未配置」。
           - id: companion-media
+            isolate:
+              companionMedia: true
             name: 'file://${SUITE_ROOT}/plugins/companion-media/index.mjs'
 #@@end:media
           - id: time-context

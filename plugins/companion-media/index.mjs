@@ -291,6 +291,11 @@ async function registerApiWhenReady(ctx, service, log, { connectionWaitMs = null
 }
 
 export async function apply(ctx, options = {}) {
+  // Cordis accepts only a disposer or void from a plugin effect.
+  await mountMedia(ctx, options);
+}
+
+export async function mountMedia(ctx, options = {}) {
   const dataRoot = options?.dataDir
     ? { dir: path.resolve(String(options.dataDir)), source: 'option' }
     : resolveDataDir({ dataDir: '', env: process.env, suiteRoot: SUITE_ROOT });

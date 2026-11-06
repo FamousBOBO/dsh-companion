@@ -2,7 +2,7 @@ import { autoResolution } from './resolution.mjs';
 
 // Named presets contain generation parameters only, never credentials or endpoints.
 export const GENERATION_FIELDS = Object.freeze([
-  'model', 'autoResolution', 'aspect', 'width', 'height', 'steps', 'scale', 'sampler',
+  'qualityPreset', 'negativePreset', 'model', 'autoResolution', 'aspect', 'width', 'height', 'steps', 'scale', 'sampler',
   'noiseSchedule', 'seed', 'ucPreset', 'qualityToggle', 'sm', 'smDyn', 'negativePrompt', 'artistString',
 ]);
 

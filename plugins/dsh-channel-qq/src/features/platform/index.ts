@@ -1,3 +1,5 @@
+import fs from 'node:fs'
+import path from 'node:path'
 /** 平台子插件（P5.1）：OneBot 传输 + 端口包装 + 出站队列。
  *
  * 连接对象（`OneBotClient`）与业务看到的 `ChatPlatform` 在这里分开：
@@ -24,6 +26,22 @@ export const platformPlugin: SubPlugin = {
   apply(host) {
     const { config } = host
     const client = new OneBotClient(config.connection, config.accessToken, host.log)
+    // Connection telemetry contains no account IDs, message data or credentials.
+    const publishConnection = (connected = client.isConnected()) => {
+      try {
+        const file = path.join(host.dshHome, 'channel-qq', 'connection-status.json')
+        fs.mkdirSync(path.dirname(file), { recursive: true })
+        const temp = file + '.tmp'
+        fs.writeFileSync(temp, JSON.stringify({ connected, checkedAt: Date.now() }))
+        fs.renameSync(temp, file)
+      } catch { /* A dashboard must never interrupt the channel. */ }
+    }
+    publishConnection(false)
+    client.on('connect', () => publishConnection())
+    client.on('disconnect', () => publishConnection(false))
+    const statusTimer = setInterval(() => publishConnection(), 10000)
+    statusTimer.unref()
+
     const platform = platformOf(client)
     // 指标插件晚于本插件挂载，计数用惰性取值。
     const out = new OutboundQueue(platform.api, config, host.log, {
@@ -45,7 +63,7 @@ export const platformPlugin: SubPlugin = {
       selfId: () => client.selfId ?? (Number.isFinite(config.selfId) ? config.selfId : null),
       now: () => systemClock.now(),
     }))
-    return () => { client.stop() }
+    return () => { clearInterval(statusTimer); client.stop(); publishConnection(false) }
   },
   // 与原实现一致：client.start() 在全部装配完成之后、scheduler/admin 之前。
   start(host) {

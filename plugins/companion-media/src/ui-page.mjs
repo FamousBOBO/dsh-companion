@@ -1,3 +1,4 @@
+import { officialOptions } from './official-prompts.mjs';
 import { GENERATION_FIELDS } from './generation-presets.mjs';
 /**
  * The 「工具 → 媒体能力」 page, as data.
@@ -39,6 +40,8 @@ const FIELD_TYPES = {
   latency: 'select',
   sampler: 'select',
   noiseSchedule: 'select',
+  qualityPreset: 'select',
+  negativePreset: 'select',
   transport: 'select',
   autoResolution: 'boolean',
   aspect: 'select',
@@ -207,13 +210,15 @@ function providerSection({ kind, record, state, config }) {
   const push = name => {
     if (used.has(name)) return;
     used.add(name);
-    const cleanLabels = {baseUrl:'服务地址',apiKey:'密钥',model:'模型',transport:'连接方式',scale:'提示词引导（Classifier-Free Guidance）',steps:'步数',width:'宽度',height:'高度',background:'背景',outputFormat:'输出格式',quality:'画质',size:'画面尺寸',timeoutMs:'超时（毫秒，1000–600000）',negativePrompt:'反向提示词',seed:'随机种子',noiseSchedule:'噪声调度',sampler:'采样器'};
+    const cleanLabels = {qualityPreset:'正向预设',negativePreset:'反向预设',refAudioPath:'参考音频',refText:'音频里说的话',promptText:'音频里说的话',baseUrl:'服务地址',apiKey:'密钥',model:'模型',transport:'连接方式',scale:'提示词引导（Classifier-Free Guidance）',steps:'步数',width:'宽度',height:'高度',background:'背景',outputFormat:'输出格式',quality:'画质',size:'画面尺寸',timeoutMs:'超时（毫秒，1000–600000）',negativePrompt:'反向提示词',seed:'随机种子',noiseSchedule:'噪声调度',sampler:'采样器'};
     const label = cleanLabels[name] ?? FIELD_LABELS_DEFAULT[name] ?? record.fieldLabels?.[name] ?? name;
     const type = FIELD_TYPES[name] ?? 'text';
     const hint = name === 'apiKey' ? '只写：保存后只显示"已配置"；留空 = 保留原值；清除需显式动作' : '';
     let options = record.fieldOptions?.[name] ? optionList(name, record.fieldOptions[name]) : null;
     let actualType = type;
     if (record.id === 'nai' && name === 'model') { actualType = 'select'; options = ['nai-diffusion-5-full','nai-diffusion-5-curated','nai-diffusion-4-5-full','nai-diffusion-4-5-curated'].map(value=>({value,label:value.replace('nai-diffusion-','NAI ').replace('4-5','4.5').replace('-full',' · 完整版').replace('-curated',' · 精选版')})); const current=config.image?.nai?.model; if(current&&!options.some(o=>o.value===current))options.push({value:current,label:current}); }
+    if(name==='qualityPreset')options=officialOptions(config.image?.nai?.model).quality;
+    if(name==='negativePreset')options=officialOptions(config.image?.nai?.model).negative;
     if (name === 'aspect') options = [{value:'portrait',label:'竖图 2:3'},{value:'landscape',label:'横图 3:2'},{value:'square',label:'方图 1:1'}];
     fields.push(field([...baseParts, name], label, config, { type: actualType, hint: '', options }));
   };
@@ -225,6 +230,8 @@ function providerSection({ kind, record, state, config }) {
   if (kind === 'tts') fields.unshift(field([...baseParts, 'enabled'], `${record.label}：启用`, config, { type: 'boolean' }));
 
   return {
+    promptOptions: record.id === 'nai' ? Object.fromEntries(['nai-diffusion-5-full','nai-diffusion-5-curated','nai-diffusion-4-5-full','nai-diffusion-4-5-curated'].map(model=>[model,officialOptions(model)])) : null,
+    description: record.id === 'openai-compatible' ? 'GPT Image 等图片接口；Nano Banana 需使用提供兼容图片接口的中转服务。' : '',
     generationFields: record.id === 'nai' ? GENERATION_FIELDS : null,
     id: record.id,
     label: record.label,
@@ -287,7 +294,7 @@ export function mediaPageDescriptor(status) {
     sections: [
       {
         id: 'vision',
-        title: '识图',
+        title: '本地识图',
         status: states.vision?.status ?? 'reserved-disabled',
         state: 'disabled',
         locked: true,

@@ -1,3 +1,5 @@
+import { storeReference } from './reference-audio.mjs';
+import { resolveNaiPrompt } from './official-prompts.mjs';
 import { resolveGenerationSection } from './generation-presets.mjs';
 import fs from 'node:fs';
 import path from 'node:path';
@@ -315,13 +317,7 @@ export function createMediaService({
     if (dryRun) {
       const dry = { ok: true, dryRun: true, provider: id, wouldSend: '不发起任何网络请求' };
       if (id === 'nai') {
-        const preset = resolvePreset({
-          model: section.model,
-          presets: section.presets,
-          negativePrompt: section.negativePrompt,
-          artistString: section.artistString ?? '',
-          request: { prompt, negative },
-        });
+        const preset = resolveNaiPrompt(section,{prompt,negative});
         dry.preset = { family: preset.family, applied: preset.applyDefaults, positive: preset.positive, negative: preset.negative, warnings: preset.warnings };
         dry.resolution = previewResolution({ mode: 'fixed', size: `${section.width}x${section.height}` });
         dry.transport = section.transport;
@@ -487,6 +483,7 @@ export function createMediaService({
     status,
     readConfig,
     saveConfig,
+    uploadReference: async ({id,bytes}) => storeReference({dataDir,id,bytes,section:ttsSection(store.load().config,id),net,key:keyFor(id).value}),
     testProvider,
     generateImage,
     synthesize,

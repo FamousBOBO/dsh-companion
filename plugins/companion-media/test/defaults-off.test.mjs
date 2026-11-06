@@ -21,7 +21,7 @@ test('插件挂载：注册的工具只有 4 个，且没有识图 / 没有模�
   try {
     const plugin = await import('../index.mjs');
     const { ctx, tools } = fakeHost();
-    const service = plugin.apply(ctx, { dataDir: dir, fetchImpl: mockFetch([{ match: () => true, response: { status: 200, json: {} } }]).fetchImpl });
+    const service = await plugin.mountMedia(ctx, { dataDir: dir, fetchImpl: mockFetch([{ match: () => true, response: { status: 200, json: {} } }]).fetchImpl });
     assert.ok(service && !service.error, `挂载不应失败：${JSON.stringify(service)}`);
     const names = tools.map(tool => tool.name).sort();
     assert.deepEqual(names, ['companion_media_draw', 'companion_media_job', 'companion_media_speak', 'companion_media_status']);
@@ -89,7 +89,7 @@ test('识图：合同可见，但任何入口都拒绝，且不接受 enabled=tr
 test('mount 失败也不会抛：坏掉的数据目录降级为 {error}', async () => {
   const plugin = await import('../index.mjs');
   const { ctx } = fakeHost();
-  const result = plugin.apply(ctx, { dataDir: '\u0000invalid\u0000' });
+  const result = await plugin.mountMedia(ctx, { dataDir: '\u0000invalid\u0000' });
   assert.ok(result && typeof result === 'object');
   // 要么挂载成功（服务对象），要么返回 {error}；两种情况都不得抛出
   assert.ok('error' in result === false || typeof result.error === 'string');

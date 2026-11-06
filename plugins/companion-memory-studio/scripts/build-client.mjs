@@ -31,6 +31,7 @@ const CLIENT_FILE = path.join(PACKAGE_ROOT, 'client.js');
 /** 拼装顺序即契约 §5.1 的固定顺序。 */
 const FRAGMENTS = [
   { file: 'src/client/core.js', label: '外壳：P 原语 + CSS + 导航 + 主题 + apply', required: true },
+  { file: 'src/client/pages-operator.js', label: '运行库控制、后台日志与QQ网页' },
   { file: 'src/client/pages-home.js', label: '陪伴首页' },
   { file: 'src/client/pages-life.js', label: '生活与日程' },
   { file: 'src/client/pages-health.js', label: '健康与睡眠（生活与日程的二级 tab）' },

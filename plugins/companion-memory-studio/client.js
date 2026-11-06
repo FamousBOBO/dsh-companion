@@ -69,10 +69,12 @@ P.registerPage = (definition) => {
 const NAV = [
   { id: 'home', label: '陪伴首页', icon: 'home', hint: '她现在的生活与最近一起经历的事' },
   { id: 'chat', label: '聊天', icon: 'chat', hint: '回到宿主原生对话', native: 'conversation' },
+  { id: 'persona', label: '人格', icon: 'heart', hint: '性格、语气与相处方式' },
+  { id: 'qq-web', label: 'QQ 连接', icon: 'chat', hint: 'NapCat / SnowLuma 网页面板' },
   { id: 'life', label: '生活与日程', icon: 'calendar', hint: '今天、接下来，以及她的计划' },
   { id: 'memory', label: '记忆与档案', icon: 'book', hint: '记忆库、Wiki、时间线与待核对', tabs: ['vault', 'wiki', 'timeline', 'review', 'microscope'] },
   { id: 'connections', label: '连接与工具', icon: 'plug', hint: '管理连接与工具' },
-  { id: 'media', label: '媒体能力', icon: 'plug', hint: '图片生成与语音合成' },
+  { id: 'media', label: '媒体能力', icon: 'image', hint: '图片生成与语音合成' },
   { id: 'workspace', label: '工作区', icon: 'folder', hint: '回到文件、会话与开发现场' },
   { id: 'settings', label: '设置', icon: 'sliders', hint: '外观、角色、模型与记忆', tabs: ['settings', 'overview'] },
 ];
@@ -724,9 +726,9 @@ function KeyValue({ items }) {
   h('dd', { className: cx(item.mono ? 'cmx-mono' : '', item.breakable ? 'cmx-break' : '') }, item.v === null || item.v === undefined || item.v === '' ? '—' : item.v))));
 }
 
-function Field({ label, hint, children, id }) {
+function Field({ label, hint, info, children, id }) {
   return h('div', { className: 'cpx-field' },
-    h('label', { className: 'cpx-field-label', htmlFor: id }, label),
+    h('label', { className: 'cpx-field-label', htmlFor: id }, label, info ? h(Info, { text: info }) : null),
     children,
     hint ? h('p', { className: 'cpx-field-hint' }, hint) : null);
 }
@@ -1056,16 +1058,13 @@ const HEALTH_CAPS = [
     },
   },
   {
-    id: 'qq', label: 'QQ 投递', page: 'connections', probe: 'companion', source: 'GET companion · 投递与联系人',
-    judge: ({ data }) => {
-      const qq = (data && (data.contact || data.delivery || data.channel)) || null;
-      if (!qq || typeof qq !== 'object') return { state: 'unknown', note: '没有投递状态字段' };
-      if (qq.bound === false || qq.linked === false) return { state: 'off', note: '还没绑定投递对象' };
-      const last = qq.lastSentAt || qq.lastSentAtByRoom || null;
-      if (last) return { state: 'ok', note: '有投递记录' };
-      const sent = Number(qq.sentToday);
-      if (Number.isFinite(sent) && sent > 0) return { state: 'ok', note: '今天已投递 ' + sent + ' 条' };
-      return { state: 'ok', note: '通道可读，今天还没投递' };
+    id: 'qq', label: 'QQ连接状态', page: 'connections', probe: 'companion', source: 'GET companion · QQ连接',
+    judge: ({data}) => {
+      const qq=data?.qqConnection;
+      if(!qq||typeof qq.connected!=='boolean')return {state:'unknown',note:'尚未读取到QQ连接状态'};
+      if(!qq.connected)return {state:'down',note:'QQ连接已断开'};
+      if(qq.online===false)return {state:'warn',note:'QQ账号未在线'};
+      return {state:'ok',note:'QQ已连接'};
     },
   },
   {
@@ -1336,6 +1335,7 @@ function HealthBoard({ items, now, onOpen }) {
 }
 
 P.css(`
+.cmx-textarea { max-height:320px; max-width:100%; overflow:auto; resize:vertical; }
 .cpx-info { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 6px; border-radius: 50%; border: 1px solid currentColor; color: var(--dsw-alias-label-secondary); font-family: Georgia, serif; font-size: 10px; font-style: italic; line-height: 1; cursor: help; vertical-align: 1px; flex: none; }
 .cpx-info::before { content: 'i'; }
 .cpx-info:hover, .cpx-info:focus-visible { color: var(--dsw-alias-label-primary); outline: none; box-shadow: 0 0 0 2px var(--dsw-alias-border-l2); }
@@ -1915,7 +1915,7 @@ function Rail({ currentPage, collapsed, onToggle, compact, onCompact, compactAva
   }, [page]);
 
   const groups = [
-    { label: '陪伴', ids: ['home', 'chat', 'life'] },
+    { label: '陪伴', ids: ['home', 'chat', 'persona', 'qq-web', 'life'] },
     { label: '记录', ids: ['memory'] },
     { label: '工具', ids: ['connections', 'media', 'workspace'] },
     { label: '系统', ids: ['settings'] },
@@ -2413,6 +2413,105 @@ P.PANEL_ID = PANEL_ID;
 P.NS = NS;
 P.NAV = NAV;
 P.THEME_LABEL = THEME_LABEL;
+
+// ==== src/client/pages-operator.js ====
+(function(P){
+  const {h,ui}=P;
+  P.css(`
+    .cpx-runtime-controls { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:12px; }
+    .cpx-runtime-control { display:flex;align-items:center;justify-content:space-between;gap:14px;padding:18px;border:1px solid var(--dsw-alias-border-l1);border-radius:12px;background:var(--dsw-alias-bg-layer-1); }
+    .cpx-runtime-control h3 { margin:0;font-size:14px; }
+    .cpx-runtime-control p { margin:3px 0 0;font-size:12px;color:var(--dsw-alias-label-secondary); }
+    .cpx-log-toolbar { display:flex;gap:12px;align-items:center;flex-wrap:wrap; }
+    .cpx-live-log { font:12px/1.7 var(--cpx-mono);white-space:pre-wrap;overflow-wrap:anywhere;margin:0;padding:18px;border-radius:12px;background:var(--dsw-alias-bg-layer-1);border:1px solid var(--dsw-alias-border-l1);max-height:360px;overflow:auto; }
+    .cpx-web-frame { width:100%;height:calc(100vh - 190px);min-height:500px;border:1px solid var(--dsw-alias-border-l1);border-radius:14px;background:var(--dsw-alias-bg-layer-1); }
+    .cpx-web-settings { display:grid;grid-template-columns:180px minmax(0,1fr) auto;gap:16px;align-items:end;margin:16px 0; }
+    @media(max-width:760px) { .cpx-runtime-controls,.cpx-web-settings {grid-template-columns:1fr;} }
+  `);
+  function RuntimeSettings(){
+    const state=P.useApi(()=>P.api.get('runtime-settings'),[]);
+    const [busy,setBusy]=P.useState('');
+    const [notice,setNotice]=P.useState('');
+    const [error,setError]=P.useState(null);
+    const toggle=key=>{
+      setBusy(key);setError(null);
+      P.api.post('runtime-settings',{patch:{[key]:!state.data.values[key]}}).then(()=>{state.reload();setNotice('已保存，重启套件后生效');},e=>setError(e)).finally(()=>setBusy(''));
+    };
+    return h(ui.Band,{title:'生活与运行库'},
+      state.error?h(ui.ErrorBox,{error:state.error,onRetry:state.reload}):null,
+      error?h(ui.ErrorBox,{error}):null,
+      notice?h('p',{className:'cpx-muted'},notice):null,
+      h('div',{className:'cpx-runtime-controls'},[
+        ['enabled','运行库','认知、日程与状态管理'],['planning','自主规划','自动安排日程'],['heartbeat','心跳','定时推进已启用的任务'],['share','分享候选','整理待分享的内容'],
+      ].map(([key,label,hint])=>h('div',{className:'cpx-runtime-control',key},
+        h('div',null,h('h3',null,label),h('p',null,hint)),
+        h('button',{type:'button',className:'cpxp-enable cpx-stable-switch',role:'switch','aria-label':label,'aria-checked':!!state.data?.values?.[key],disabled:!!busy||!state.data,onClick:()=>toggle(key)},h('span',{className:'cpxp-switch-track'}),'启用')))));
+  }
+  P.css(`
+    .cpx-log-console{border:1px solid var(--dsw-alias-border-l2);border-radius:14px;overflow:hidden;background:#101319;color:#dae0eb;}
+    .cpx-log-console-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 18px;background:#191e27;border-bottom:1px solid #2b313c;font-size:12px;}
+    .cpx-log-connection{display:flex;align-items:center;gap:8px;color:#9ca8bb;}.cpx-log-dot{width:7px;height:7px;border-radius:50%;background:#e5b868;}.cpx-log-dot[data-live=true]{background:#62c99b;box-shadow:0 0 9px #62c99b55;}
+    .cpx-log-source{font-family:var(--cpx-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#929eb0;}
+    .cpx-log-output{height:420px;min-height:260px;max-height:65vh;overflow:auto;overscroll-behavior:contain;padding:12px 0;font:13px/1.8 var(--cpx-mono);tab-size:2;}
+    .cpx-log-row{display:flex;gap:14px;padding:1px 18px 1px 12px;}.cpx-log-row:hover{background:#ffffff06;}.cpx-log-number{flex:none;width:36px;color:#69758a;text-align:right;user-select:none;}.cpx-log-message{white-space:pre-wrap;overflow-wrap:anywhere;min-width:0;}.cpx-log-row[data-level=error]{color:#f49b9b;}.cpx-log-row[data-level=warn]{color:#e4c183;}
+    .cpx-log-empty{padding:32px 24px;color:#909aab;}.cpx-log-count{margin-left:auto;color:var(--dsw-alias-label-secondary);font-size:12px;}.cpx-log-toolbar{margin-bottom:14px;}.cpx-log-toolbar .cmx-input{max-width:280px;}
+    .cpx-persona-editor .cmx-textarea{height:320px;min-height:200px;max-height:320px;font-size:14px;line-height:1.8;}.cpx-persona-footer{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:18px;color:var(--dsw-alias-label-secondary);font-size:13px;}
+  `);
+  function RuntimeLog(){
+    const [rows,setRows]=P.useState([]),[source,setSource]=P.useState(''),[status,setStatus]=P.useState('connecting');
+    const [paused,setPaused]=P.useState(false),[follow,setFollow]=P.useState(true),[filter,setFilter]=P.useState(''),[refresh,setRefresh]=P.useState(0);
+    const output=P.useRef(null),sequence=P.useRef(0);
+    P.useEffect(()=>{
+      if(paused){setStatus('paused');return;}
+      let active=true;
+      setStatus('connecting');
+      const stream=new EventSource(new URL('api/companion-memory/runtime-logs/stream',document.baseURI));
+      stream.addEventListener('ready',()=>{if(active)setStatus('live');});
+      stream.addEventListener('logs',event=>{if(!active)return;try{const data=JSON.parse(event.data);setSource(data.source||'');setStatus('live');const next=data.lines.map(text=>({id:++sequence.current,text}));setRows(previous=>(data.reset?next:previous.concat(next)).slice(-2000));}catch{setStatus('error');}});
+      stream.addEventListener('log-error',()=>{if(active)setStatus('error');});
+      stream.onerror=()=>{if(active)setStatus('reconnecting');};
+      return()=>{active=false;stream.close();};
+    },[paused,refresh]);
+    const visible=rows.filter(row=>!filter||row.text.toLowerCase().includes(filter.toLowerCase()));
+    P.useEffect(()=>{if(follow&&output.current)output.current.scrollTop=output.current.scrollHeight;},[rows,filter,follow]);
+    const labels={connecting:'正在连接',live:'实时连接',paused:'已暂停',reconnecting:'正在重连',error:'读取异常，正在重试'};
+    return h(ui.Band,{title:'后台日志',actions:[h(ui.Button,{key:'refresh',disabled:paused,onClick:()=>setRefresh(value=>value+1)},'重新连接'),h(ui.Button,{key:'pause',onClick:()=>setPaused(!paused)},paused?'继续':'暂停')]},
+      h('div',{className:'cpx-log-toolbar'},h(ui.Input,{value:filter,ariaLabel:'筛选日志',placeholder:'筛选日志',onChange:setFilter}),h(ui.Button,{pressed:follow,onClick:()=>setFollow(!follow)},follow?'跟随最新：开':'跟随最新：关'),h(ui.Button,{onClick:()=>setRows([])},'清屏'),h('span',{className:'cpx-log-count'},visible.length+' 行')),
+      h('div',{className:'cpx-log-console'},h('div',{className:'cpx-log-console-head'},h('span',{className:'cpx-log-connection',role:'status'},h('span',{className:'cpx-log-dot','data-live':status==='live'}),labels[status]),h('span',{className:'cpx-log-source'},source||'等待运行日志')),
+        h('div',{ref:output,className:'cpx-log-output',role:'log','aria-label':'实时后台日志','aria-live':'off',tabIndex:0,onScroll:event=>{const node=event.currentTarget;if(node.scrollHeight-node.scrollTop-node.clientHeight>48&&follow)setFollow(false);}},visible.length?visible.map(row=>h('div',{className:'cpx-log-row',key:row.id,'data-level':/\b(error|exception|failed)\b/i.test(row.text)?'error':/\b(warn|warning)\b/i.test(row.text)?'warn':'info'},h('span',{className:'cpx-log-number','aria-hidden':true},row.id),h('span',{className:'cpx-log-message'},row.text))):h('div',{className:'cpx-log-empty'},filter?'没有匹配的日志':paused?'日志已暂停':'等待新的日志输出…'))));
+  }
+  function PersonaPage(){
+    const state=P.useApi(()=>P.api.get('persona'),[]);
+    const [draft,setDraft]=P.useState(''),[revision,setRevision]=P.useState(''),[busy,setBusy]=P.useState(false),[error,setError]=P.useState(null),[notice,setNotice]=P.useState('');
+    P.useEffect(()=>{if(state.data){setDraft(state.data.content);setRevision(state.data.revision);}},[state.data]);
+    const dirty=!!state.data&&draft!==state.data.content;
+    const save=()=>{setBusy(true);setError(null);P.api.post('persona',{content:draft,revision}).then(()=>{setNotice('已保存，重启套件后应用到对话');state.reload();},setError).finally(()=>setBusy(false));};
+    return h(ui.Page,{title:'人格',lead:'设定性格、语气与相处方式。',actions:[h(ui.Button,{key:'save',variant:'primary',loading:busy,disabled:!dirty||busy,onClick:save},'保存')]},
+      state.error?h(ui.ErrorBox,{error:state.error,onRetry:state.reload}):null,error?h(ui.ErrorBox,{error}):null,notice?h(ui.Callout,{tone:'info',title:notice}):null,
+      !state.data?h(ui.Skeleton,{rows:6}):h(ui.Band,{title:'人格设定'},h('div',{className:'cpx-persona-editor'},h(ui.TextArea,{value:draft,onChange:setDraft,ariaLabel:'人格设定',disabled:busy,placeholder:'写下角色的性格、说话方式，以及你们如何相处…'})),h('div',{className:'cpx-persona-footer'},h('span',null,dirty?'有未保存的修改':'已保存'),h('span',null,draft.length+' 字'))));
+  }
+  function QQWeb(){
+    const state=P.useApi(()=>P.api.get('web-panel'),[]);
+    const [url,setUrl]=P.useState('');const [provider,setProvider]=P.useState('napcat');const [busy,setBusy]=P.useState('');const [error,setError]=P.useState(null);const [notice,setNotice]=P.useState('');const [frameKey,setFrameKey]=P.useState(0);
+    P.useEffect(()=>{if(state.data){setUrl(state.data.url||'');setProvider(state.data.provider||'napcat');}},[state.data]);
+    const save=()=>{setBusy('save');setError(null);P.api.post('web-panel',{url,provider}).then(()=>state.reload(),setError).finally(()=>setBusy(''));};
+    const control=action=>{setBusy(action);setError(null);setNotice('');P.api.post('web-panel-control',{action}).then(result=>{setNotice(result.running?'服务已就绪':result.pending?'进程已启动，服务正在准备':'启动未完成');setFrameKey(key=>key+1);state.reload();},setError).finally(()=>setBusy(''));};
+    const label=state.data?.provider==='snowluma'?'SnowLuma':'NapCat';
+    const form=h('div',{className:'cpx-web-settings'},h(ui.Field,{label:'网页面板'},h(ui.Select,{ariaLabel:'网页面板',value:provider,onChange:setProvider,options:[{value:'napcat',label:'NapCat'},{value:'snowluma',label:'SnowLuma'}]})),h(ui.Field,{label:'网页地址'},h(ui.Input,{ariaLabel:'网页地址',value:url,onChange:setUrl,placeholder:'填写已部署的网页地址'})),h(ui.Button,{variant:'primary',loading:busy==='save',disabled:!!busy,onClick:save},'保存'));
+    return h(ui.Page,{title:state.data?.configured?label:'QQ 连接',actions:state.data?.configured?[
+      h(ui.Badge,{key:'status',tone:state.data.running?'ok':'neutral'},state.data.running?'运行中':state.data.running===false?'未启动':'远端面板'),
+      h(ui.Button,{key:'start',variant:'primary',loading:busy==='start',disabled:!!busy||!state.data.canControl,onClick:()=>control('start')},'启动'),
+      h(ui.Button,{key:'restart',loading:busy==='restart',disabled:!!busy||!state.data.canControl,onClick:()=>control('restart')},'重启')]:[]},
+      state.error?h(ui.ErrorBox,{error:state.error,onRetry:state.reload}):null,error?h(ui.ErrorBox,{error}):null,
+      notice?h('p',{className:'cpx-muted',role:'status'},notice):null,
+      state.data?.configured?h('details',null,h('summary',null,'面板设置'),form):h(ui.Band,{title:'连接 NapCat 或 SnowLuma'},h('p',{className:'cpx-muted'},'选择面板并填写网页地址。配置仅保存在本机。'),form),
+      state.data?.configured?h('iframe',{key:frameKey,className:'cpx-web-frame',title:label+' 网页面板',src:state.data.embedUrl||state.data.url,referrerPolicy:'no-referrer',sandbox:'allow-scripts allow-forms allow-same-origin allow-popups'}):null);
+  }
+  P.registerPage({id:'persona',label:'人格',order:12,component:PersonaPage});
+  P.ui.RuntimeSettings=RuntimeSettings;
+  P.ui.RuntimeLog=RuntimeLog;
+  P.registerPage({id:'qq-web',label:'QQ 连接',order:15,component:QQWeb});
+})(P);
 
 // ==== src/client/pages-home.js ====
 (function (P) {
@@ -3172,12 +3271,11 @@ P.THEME_LABEL = THEME_LABEL;
         onOpen: (item) => { if (item && item.page) P.nav.go(item.page); },
         compact: true,
       })),
-      healthBandNode(data ? data.health : null),
       nextBandNode(life, next),
       recentBandNode(events, data),
       pendingBandNode(pendingReview, pendingSlots, pendingShare));
 
-    const aside = asideNode({ now, life, counts, pendingReview, pendingShare, observedAt, data });
+    const aside = h(P.Fragment,null,healthBandNode(data ? data.health : null),asideNode({ now, life, counts, pendingReview, pendingShare, observedAt, data }));
 
     return h(ui.Page, page, h(ui.Split, { main, aside }));
   }
@@ -9215,12 +9313,15 @@ P.THEME_LABEL = THEME_LABEL;
     .cpxp-media-sec-title { font-size:20px; font-weight:650; }
     .cpxp-section-body { padding:24px; display:flex; flex-direction:column; gap:24px; }
     .cpxp-media-head-actions { display:flex; align-items:center; gap:14px; }
-    .cpxp-enable { display:inline-flex; align-items:center; gap:9px; padding:8px 0; border:0; background:transparent; color:var(--dsw-alias-label-secondary); font:inherit; font-size:13px; white-space:nowrap; cursor:pointer; }
+    .cpxp-enable { display:inline-flex; align-items:center; gap:9px; padding:8px 0; border:0; background:transparent; color:var(--dsw-alias-label-secondary); font:inherit; font-size:14px; min-height:42px; white-space:nowrap; cursor:pointer; }
     .cpxp-enable[aria-checked=true] { color:var(--dsw-alias-label-primary); }
-    .cpxp-switch-track { width:30px; height:18px; border-radius:99px; padding:3px; background:var(--dsw-alias-border-l2); transition:background .18s; display:inline-flex; flex:none; }
-    .cpxp-switch-track::before { content:''; width:12px; height:12px; border-radius:50%; background:var(--dsw-alias-label-secondary); transition:transform .18s; }
+    .cpxp-switch-track { width:38px; height:22px; border-radius:99px; padding:3px; background:var(--dsw-alias-border-l2); transition:background .18s; display:inline-flex; flex:none; }
+    .cpxp-switch-track::before { content:''; width:16px; height:16px; border-radius:50%; background:var(--dsw-alias-label-secondary); transition:transform .18s; }
     [aria-checked=true] > .cpxp-switch-track { background:var(--dsw-alias-brand-primary); }
-    [aria-checked=true] > .cpxp-switch-track::before { background:var(--dsw-alias-bg-base); transform:translateX(12px); }
+    [aria-checked=true] > .cpxp-switch-track::before { background:var(--dsw-alias-bg-base); transform:translateX(16px); }
+    .cpxp-audio-picker{display:flex;gap:10px;align-items:center;}.cpxp-audio-picker .cmx-input{flex:1;min-width:0;width:100%;}.cpxp-audio-picker .cmx-btn{flex:none;}
+    .cpxp-preset-picker .cmx-select{width:100%;min-height:48px;border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 45%,var(--dsw-alias-border-l1));background:color-mix(in srgb,var(--dsw-alias-brand-primary) 6%,var(--dsw-alias-bg-layer-1));font-size:15px;font-weight:600;}
+    .cpxp-media-description{margin:-8px 0 20px;font-size:13px;color:var(--dsw-alias-label-secondary);}
     .cpxp-media-card { padding:0; border:0; border-radius:0; background:transparent; }
     .cpxp-media-card-head { margin-bottom:20px; }
     .cpxp-media-card-title { font-size:15px; margin-bottom:5px; }
@@ -9239,6 +9340,10 @@ P.THEME_LABEL = THEME_LABEL;
     .cpxp-advanced { border:1px solid var(--dsw-alias-border-l1); border-radius:10px; padding:12px 16px; }
     .cpxp-advanced summary { cursor:pointer; color:var(--dsw-alias-label-secondary); font-size:13px; }
     .cpxp-advanced[open] > .cpxp-media-fields { margin-top:20px; }
+    .cpxp-auto-resolution { display:flex;align-items:center;gap:8px;align-self:end; }
+    .cpxp-resolution-button { display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:50px;min-width:224px;padding:12px 18px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;font:inherit;font-weight:600;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);cursor:pointer; }
+    .cpxp-resolution-button[aria-checked=true] { color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-brand-primary);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 14%,var(--dsw-alias-bg-layer-1)); }
+    .cpxp-resolution-state {font-size:12px;font-weight:400;}
     .cpxp-resolution { display:flex; gap:20px; align-items:center; flex-wrap:wrap; }
     .cpxp-media-field-wide textarea { min-height:100px; resize:vertical; }
     @media(max-width:760px) { .cpxp-media-sec-head,.cpxp-section-body { padding:18px; } .cpxp-media-head-actions { gap:8px; } .cpxp-media-fields { grid-template-columns:1fr; gap:18px; } .cpxp-media-sec-title { font-size:18px; } .cpxp-section-symbol { display:none; } }
@@ -9365,6 +9470,8 @@ P.THEME_LABEL = THEME_LABEL;
     return {
       id: provider.id,
       generationFields: provider.generationFields || null,
+      promptOptions:provider.promptOptions || null,
+      description:provider.description || '',
       kind,
       label: provider.label || provider.id,
       prefix,
@@ -9808,8 +9915,32 @@ P.THEME_LABEL = THEME_LABEL;
       error ? h('p', { className: 'cpxp-media-error' }, error) : null);
   }
 
+
+  function ReferenceAudio({entry,value,disabled,error,onChange}) {
+    const input=P.useRef(null);
+    const [busy,setBusy]=P.useState(false);
+    const [failure,setFailure]=P.useState('');
+    const provider=entry.pathParts[2];
+    const upload=async event=>{
+      const file=event.target.files?.[0];if(!file)return;
+      setFailure('');setBusy(true);
+      try {
+        if(file.size>16*1024*1024)throw Error('参考音频需小于16MB');
+        const response=await fetch(mediaUrl(MEDIA_BASE+'reference-audio?provider='+encodeURIComponent(provider)),{method:'POST',credentials:'same-origin',headers:{'content-type':file.type||'application/octet-stream'},body:file});
+        const result=await response.json();
+        if(!result.ok)throw Error(result.error?.message||'上传没有完成');
+        onChange(result.path);
+        if(typeof P.notice==='function')P.notice('参考音频已上传，请保存设置','ok');
+      } catch(e){setFailure(e.message||'上传没有完成');}finally{setBusy(false);event.target.value='';}
+    };
+    return h(ui.Field,{label:'参考音频',id:'media-'+entry.path},
+      h('div',{className:'cpxp-audio-picker'},h(ui.Input,{id:'media-'+entry.path,value:value||'',disabled:disabled||busy,ariaLabel:'参考音频',placeholder:provider==='gpt-sovits'?'服务端路径，或选择文件上传':'选择音频文件',onChange}),h(ui.Button,{disabled:disabled||busy,loading:busy,onClick:()=>input.current?.click()},'选择文件'),h('input',{ref:input,type:'file',accept:'.wav,.mp3,.ogg,.flac,audio/*',style:{display:'none'},onChange:upload,'aria-label':'上传参考音频'})),
+      provider==='gpt-sovits'?h('p',{className:'cpx-field-hint'},'文件上传需服务支持参考音频桥接；也可填写服务端已有路径。'):null,
+      failure||error?h('p',{className:'cpxp-media-error'},failure||error):null);
+  }
   function FieldControl({ entry, value, disabled, error, onChange }) {
     const controlId = `media-${entry.path}`;
+    if(lastSegment(entry.path)==='refAudioPath')return h(ReferenceAudio,{entry,value,disabled,error,onChange});
     if (entry.type === 'boolean') {
       return h('div', null,
         h(ui.Toggle, { id: controlId, checked: value === true, disabled, label: entry.label, hint: entry.hint, onChange: next => onChange(next) }),
@@ -9830,7 +9961,7 @@ P.THEME_LABEL = THEME_LABEL;
         onChange: text => onChange(text),
       });
     }
-    return h(ui.Field, { label: entry.label, hint: entry.hint, id: controlId },
+    return h(ui.Field, { label: entry.label, hint: entry.hint, info: entry.info, id: controlId },
       control,
       error ? h('p', { className: 'cpxp-media-error' }, error) : null);
   }
@@ -9864,6 +9995,7 @@ P.THEME_LABEL = THEME_LABEL;
     }
     const fieldNodes = provider.fields.filter(field => {
       const key = lastSegment(field.path);
+      if(provider.kind==='tts' && ['enabled','mediaType'].includes(key))return false;
       if (provider.generationFields && (provider.generationFields.includes(key) || ['activePresetId','generationPresets'].includes(key))) return false;
       return !(provider.generationFields && key === 'baseUrl' && draft[provider.prefix+'.transport'] === 'official');
     }).sort((a,b) => (lastSegment(a.path)==='transport'?-1:lastSegment(b.path)==='transport'?1:0)).map((field) => {
@@ -9931,6 +10063,7 @@ P.THEME_LABEL = THEME_LABEL;
     return h('div', { key: `provider-${provider.id}`, className: 'cpxp-media-card' },
       header,
       null,
+      provider.description ? h('p',{className:'cpxp-media-description'},provider.description) : null,
       h('div', { className: 'cpxp-media-fields' }, fieldNodes),
       actions,
       dirtyNote,
@@ -9994,7 +10127,11 @@ P.THEME_LABEL = THEME_LABEL;
     };
     const change = (path,value) => {
       onDraft(path,value);
-      if (active) onDraft(libraryPath,JSON.stringify(library.map(item => item.id===active.id ? {...item,...snapshot(path,value)} : item)));
+      const data=snapshot(path,value);
+      if(path===prefix+'.model' && provider.promptOptions?.[value]) {
+        for(const [key,options]of [['qualityPreset',provider.promptOptions[value].quality],['negativePreset',provider.promptOptions[value].negative]])if(!options.some(o=>o.value===data.settings[key])){data.settings[key]=key==='qualityPreset'?'standard':'heavy';onDraft(prefix+'.'+key,data.settings[key]);}
+      }
+      if (active) onDraft(libraryPath,JSON.stringify(library.map(item => item.id===active.id ? {...item,...data} : item)));
     };
     const select = id => {
       const item = library.find(p => p.id===id);
@@ -10022,22 +10159,26 @@ P.THEME_LABEL = THEME_LABEL;
     };
     const fields = [...provider.fields,...(presets?.artist?[presets.artist]:[])].filter(field => provider.generationFields.includes(lastSegment(field.path)) && !['width','height','aspect','autoResolution'].includes(lastSegment(field.path)));
     const advancedKeys=['seed','ucPreset','qualityToggle','sm','smDyn'];
-    const renderField=field=>h('div',{key:field.path,className:field.type==='textarea'?'cpxp-media-field-wide':''},h(FieldControl,{entry:{...field,hint:''},value:draft[field.path],disabled:!!busy,error:errors[field.path],onChange:value=>change(field.path,value)}));
+    const promptOptions=provider.promptOptions?.[model];
+    const presetTags=(kind,key)=>{
+      const option=promptOptions?.[kind]?.find(item=>item.value===draft[prefix+'.'+key]);
+      return option?.tags===null?'当前使用旧版自定义预设。':option?.tags||'当前未添加预设标签。';
+    };
+    const renderField=field=>h('div',{key:field.path,className:field.type==='textarea'?'cpxp-media-field-wide':''},h(FieldControl,{entry:{...field,hint:'',info:lastSegment(field.path)==='artistString'?presetTags('quality','qualityPreset'):lastSegment(field.path)==='negativePrompt'?presetTags('negative','negativePreset'):'',options:lastSegment(field.path)==='qualityPreset'?promptOptions?.quality||field.options:lastSegment(field.path)==='negativePreset'?promptOptions?.negative||field.options:field.options},value:draft[field.path],disabled:!!busy,error:errors[field.path],onChange:value=>change(field.path,value)}));
     return h('section',{className:'cpxp-generation', 'aria-label':'生成预设'},
       h('div',{className:'cpxp-preset-head'},
-        h('div',null,h('h4',null,'生成预设'),h('p',{className:'cpx-muted'},active ? active.name : '当前参数')),
+        h('div',null,h('h4',null,'生成预设'),h('p',{className:'cpx-muted'},active ? active.name : '默认预设')),
         h(ui.Button,{onClick:create,disabled:!!busy||library.length>=32},'新建预设')),
       h('div',{className:'cpxp-media-fields'},
-        h(ui.Field,{label:'选择预设'},h(ui.Select,{ariaLabel:'选择预设',value:active?.id||'',disabled:!!busy,options:[{value:'',label:'当前参数'},...library.map(i=>({value:i.id,label:i.name}))],onChange:select})),
+        h('div',{className:'cpxp-preset-picker'},h(ui.Field,{label:'生成方案'},h(ui.Select,{ariaLabel:'生成方案',value:active?.id||'',disabled:!!busy,options:[{value:'',label:'默认预设'},...library.map(i=>({value:i.id,label:i.name}))],onChange:select}))),
         active ? h(ui.Field,{label:'预设名称'},h(ui.Input,{ariaLabel:'预设名称',value:active.name,disabled:!!busy,onChange:name=>onDraft(libraryPath,JSON.stringify(library.map(i=>i.id===active.id?{...i,name}:i)))})) : null),
       errors[libraryPath] ? h('p',{className:'cpxp-media-error'},errors[libraryPath]) : null,
-      h('div',{className:'cpxp-media-fields'},fields.filter(f=>!advancedKeys.includes(lastSegment(f.path))).map(renderField)),
-      h('details',{className:'cpxp-advanced'},h('summary',null,'更多生成参数'),h('div',{className:'cpxp-media-fields'},fields.filter(f=>advancedKeys.includes(lastSegment(f.path))).map(renderField))),
+      h('div',{className:'cpxp-media-fields'},fields.filter(f=>!advancedKeys.includes(lastSegment(f.path))&&!['qualityPreset','negativePreset','artistString','negativePrompt'].includes(lastSegment(f.path))).map(renderField)),
+      h('details',{className:'cpxp-advanced'},h('summary',null,'更多生成参数'),h('div',{className:'cpxp-media-fields'},fields.filter(f=>advancedKeys.includes(lastSegment(f.path))&&!(lastSegment(f.path)==='qualityToggle'&&draft[prefix+'.qualityPreset']!=='legacy')&&!(lastSegment(f.path)==='ucPreset'&&draft[prefix+'.negativePreset']!=='legacy')).map(renderField))),
       h('div',{className:'cpxp-resolution'},
         h(ui.Field,{label:'画面比例'},h(ui.Segmented,{label:'画面比例',value:aspect,disabled:!!busy,options:[{id:'portrait',label:'竖图 2:3'},{id:'landscape',label:'横图 3:2'},{id:'square',label:'方图 1:1'}],onChange:setAspect})),
-        h('button',{type:'button',className:'cpxp-enable',role:'switch','aria-checked':draft[prefix+'.autoResolution']===true,disabled:!!busy,onClick:()=>change(prefix+'.autoResolution',draft[prefix+'.autoResolution']!==true)},h('span',{className:'cpxp-switch-track'}),'自动分辨率'),
-        h('span',{className:'cpx-muted'},draft[prefix+'.autoResolution']===true?'约 100 万像素':`${draft[prefix+'.width']} × ${draft[prefix+'.height']}`)),
-      family && presets ? h('div',{className:'cpxp-media-fields'},presets.families.find(f=>f.family===family)?.fields.map(field=>h('div',{key:field.path,className:'cpxp-media-field-wide'},h(FieldControl,{entry:{...field,label:lastSegment(field.path)==='applyDefaults'?'应用提示词预设':lastSegment(field.path)==='positive'?'正向提示词预设':'反向提示词预设'},value:draft[field.path],disabled:!!busy,onChange:value=>change(field.path,value)})))) : null);
+        h('div',{className:'cpxp-auto-resolution'},h('button',{type:'button',className:'cpxp-resolution-button',role:'switch','aria-label':'自动分辨率','aria-checked':draft[prefix+'.autoResolution']===true,disabled:!!busy,onClick:()=>change(prefix+'.autoResolution',draft[prefix+'.autoResolution']!==true)},h(ui.Icon,{name:'image',size:18}),'自动分辨率',h('span',{className:'cpxp-resolution-state'},draft[prefix+'.autoResolution']===true?'已开启':'已关闭')),h(ui.Info,{text:draft[prefix+'.autoResolution']===true?'约 100 万像素，按画面比例自动计算分辨率。':`固定分辨率：${draft[prefix+'.width']} × ${draft[prefix+'.height']}`}))),
+      h('div',{className:'cpxp-media-fields'},['qualityPreset','negativePreset','artistString','negativePrompt'].map(key=>fields.find(f=>lastSegment(f.path)===key)).filter(Boolean).map(renderField)));
   }
 
   function SectionCard({ section, states, testing, draft, secrets, clears, errors, busy, onDraft, onSecret, onClear, onSave, onTest }) {
@@ -10050,10 +10191,10 @@ P.THEME_LABEL = THEME_LABEL;
       h('div',{className:'cpxp-media-sec-head'},
         h('div',{className:'cpxp-section-name'},h('span',{className:'cpxp-section-symbol','aria-hidden':true},h(ui.Icon,{name:section.id==='image'?'image':section.id==='tts'?'audio':'eye',size:20})),h('h3',{className:'cpxp-media-sec-title'},section.title)),
         h('div',{className:'cpxp-media-head-actions'},
-          section.toggle&&!section.locked?h('button',{type:'button',className:'cpxp-enable',role:'switch','aria-label':section.toggle.label,'aria-checked':!!draft[section.toggle.path],disabled:!!busy,onClick:()=>onDraft(section.toggle.path,!draft[section.toggle.path])},h('span',{className:'cpxp-switch-track'}),draft[section.toggle.path]?'已启用':'启用'+section.title):h(ui.Badge,{tone:'neutral'},'未启用'),
+          section.toggle&&!section.locked?h('button',{type:'button',className:'cpxp-enable',role:'switch','aria-label':section.toggle.label,'aria-checked':!!draft[section.toggle.path],disabled:!!busy,onClick:()=>onDraft(section.toggle.path,!draft[section.toggle.path])},h('span',{className:'cpxp-switch-track'}),section.toggle.label):h(ui.Badge,{tone:'neutral'},'未启用'),
           h(ui.Button,{size:'sm',onClick:()=>setOpen(!open),ariaLabel:(open?'收起':'展开')+section.title},open?'收起':'展开'))),
       open?h('div',{className:'cpxp-section-body'},
-        section.selector?h(ui.Segmented,{label:section.id==='image'?'生图服务':'语音服务',value:selected,disabled:!!busy,options:options.map(o=>({id:o.value,label:o.value==='none'?'未选择':o.label.replace(' 生图','').replace('（官方直连 / 中转站）','')})),onChange:value=>onDraft(section.selector.path,value)}):null,
+        section.selector?h(ui.Segmented,{label:section.id==='image'?'生图服务':'语音服务',value:selected,disabled:!!busy,options:options.map(o=>({id:o.value,label:o.value==='none'?'未选择':o.label.replace(' 生图','').replace('（官方直连 / 中转站）','')})),onChange:value=>{onDraft(section.selector.path,value);if(section.id==='tts')section.providers.filter(p=>p.canEnable).forEach(p=>onDraft(p.enablePath,p.id===value));}}):null,
         section.fields.length?h('div',{className:'cpxp-media-fields'},section.fields.map(field=>h(FieldControl,{key:field.path,entry:field,value:draft[field.path],disabled:field.locked||!!busy,error:errors[field.path],onChange:value=>onDraft(field.path,value)}))):null,
         provider?h(ProviderCard,{provider,selected:true,states,draft,secrets,clears,errors,testing,busy,onDraft,onSecret,onClear,onSave,onTest}):null,
         provider?.generationFields?h(GenerationEditor,{provider,presets:section.presets,draft,busy,errors,onDraft}):null,
@@ -10176,6 +10317,7 @@ P.THEME_LABEL = THEME_LABEL;
 
     /** 切换默认协议时，如果新协议还没配好，先把能力关掉——否则后端会以 400 拒绝整次保存。 */
     const setField = (path, value) => {
+      if(path==='tts.providers.gpt-sovits.refAudioPath')setFieldDirect('tts.providers.gpt-sovits.mediaType','wav');
       forgetTests(providerIdsFor(path));
       setDraft(previous => ({ ...previous, [path]: value }));
       if (path === 'image.nai.transport') {
@@ -11251,6 +11393,10 @@ P.THEME_LABEL = THEME_LABEL;
 
   // 页面自有样式只用 cpxp- 前缀，颜色一律走 alias / cpx token。
   P.css(`
+.cpx-settings-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px; }
+.cpx-settings-group { padding:20px;border:1px solid var(--dsw-alias-border-l1);border-radius:14px;min-width:0; }
+.cpx-settings-group > .cpxp-set-sub {margin:0 0 14px;font-size:15px;color:var(--dsw-alias-label-primary);}
+@media(max-width:900px){.cpx-settings-grid{grid-template-columns:1fr;}}
 .cpxp-set-field { display: flex; flex-direction: column; gap: var(--cpx-s1, 4px); padding: var(--cpx-s3, 12px) 0; border-top: 1px solid var(--dsw-alias-border-l1); min-width: 0; }
 .cpxp-set-field:first-child { border-top: 0; padding-top: 0; }
 .cpxp-set-field[data-dirty="true"] { border-left: 2px solid var(--dsw-alias-brand-primary); padding-left: var(--cpx-s3, 12px); }
@@ -12082,7 +12228,6 @@ P.THEME_LABEL = THEME_LABEL;
       return h(ui.Band, {
         title: '外观',
         hint: '不需要重启',
-        info: '只影响这个面板的配色；和左栏底部那组三档是同一个值（P.theme 同步）。',
         children: [
           h(ui.Field, { key: 'theme', label: '主题', hint: currentText },
             canSet
@@ -12110,7 +12255,6 @@ P.THEME_LABEL = THEME_LABEL;
       return h(ui.Band, {
         title: '角色',
         hint: '只读',
-        info: '角色身份由宿主绑定（owner 视角），本页不提供改名或切换；人设、语气、关系都不在记忆引擎的配置白名单里。运行库的开关在下面「生活与运行库」里只读展示。',
         children: [
           companion.error
             ? h(ui.Callout, {
@@ -12164,13 +12308,12 @@ P.THEME_LABEL = THEME_LABEL;
       return h(ui.Band, {
         title: '记忆与档案',
         hint: '重启后生效',
-        info: '记忆引擎的 21 个可写项，按存储 / 提炼 / 检索 / 向量 / 重排 / Wiki 排；写入 memory.config.json，重启桌面后生效。对话模型与推理强度不在白名单里，本页读不到也改不了。',
-        children: [].concat(...groups.map(group => [
+        children: h('div',{className:'cpx-settings-grid'},groups.map(group => h('section',{className:'cpx-settings-group',key:group.id},[
           h('p', { key: `mem-sub-${group.id}`, className: 'cpxp-set-sub' }, group.title),
           ...group.keys.map(fieldRow),
           group.id === 'embedding' ? secretRow('embedding', 'embeddingApiKey') : null,
           group.id === 'rerank' ? secretRow('rerank', 'rerankApiKey') : null,
-        ]).filter(Boolean)),
+        ].filter(Boolean)))),
       });
     };
 
@@ -12214,8 +12357,7 @@ P.THEME_LABEL = THEME_LABEL;
 
       return h(ui.Band, {
         title: '健康与睡眠',
-        hint: '真开关，写完整回读',
-        info: '数据采集写 health.connect 授权（POST maintenance pause/resume），实时心率写 health.pulse.live（POST pulse consent）；主动关怀目前没有写入接口，只能看。这两个开关和「健康与睡眠」页是同一套接口，改哪边都一样。',
+        hint: '',
         children: [
           reason
             ? h(ui.Callout, {
@@ -12303,65 +12445,6 @@ P.THEME_LABEL = THEME_LABEL;
 
     // -- 生活与运行库：只读（没有写入接口）-----------------------------------
 
-    const renderRuntime = () => {
-      const companionData = companion.data && typeof companion.data === 'object' ? companion.data : null;
-      const runtime = companionData && companionData.runtime && typeof companionData.runtime === 'object' ? companionData.runtime : null;
-      const switches = companionData && companionData.life && companionData.life.switches && typeof companionData.life.switches === 'object'
-        ? companionData.life.switches
-        : null;
-      const mark = value => (value === true
-        ? h(ui.Badge, { tone: 'ok' }, '已启用')
-        : value === false
-          ? h(ui.Badge, { tone: 'neutral' }, '未启用')
-          : h(ui.Badge, { tone: 'neutral' }, '未知'));
-      return h(ui.Band, {
-        title: '生活与运行库',
-        hint: '只读，没有写入接口',
-        info: '运行库的 enabled / mode / 自主规划 / 心跳 / 分享都写在 home/companion/runtime.config.json 里，studio 没有写入接口，所以这里只显示当前值，不做成 disabled 开关冒充配置项。',
-        children: [
-          companion.error
-            ? h(ui.Callout, {
-              key: 'runtime-error',
-              tone: 'warn',
-              title: '读不到运行库状态',
-              action: h(ui.Button, { variant: 'ghost', size: 'sm', onClick: companion.reload }, '重试'),
-            }, failText(companion.error))
-            : null,
-          h(ui.List, { key: 'runtime-list', label: '运行库配置（只读）' }, [
-            h(ui.Row, {
-              key: 'runtime-enabled',
-              title: '运行库总开关',
-              meta: '配置项；开着不代表进程正在跑',
-              side: mark(runtime ? runtime.enabled : null),
-            }),
-            h(ui.Row, {
-              key: 'runtime-mode',
-              title: '运行模式',
-              side: h('span', { className: 'cpxp-set-mono' }, runtime ? text(runtime.mode) || '—' : '—'),
-            }),
-            h(ui.Row, {
-              key: 'runtime-planning',
-              title: '自主规划（日程）',
-              meta: '关掉以后不会自己排日程',
-              side: mark(switches ? switches.planning : null),
-            }),
-            h(ui.Row, {
-              key: 'runtime-heartbeat',
-              title: '心跳规则',
-              meta: '定期自查的节奏',
-              side: mark(runtime ? runtime.heartbeat : null),
-            }),
-            h(ui.Row, {
-              key: 'runtime-share',
-              title: '分享候选',
-              meta: '交给联系通道处理',
-              side: mark(switches ? switches.share : null),
-            }),
-          ]),
-        ],
-      });
-    };
-
     const renderConnections = () => {
       const companionData = companion.data && typeof companion.data === 'object' ? companion.data : null;
       const runtime = companionData && companionData.runtime && typeof companionData.runtime === 'object' ? companionData.runtime : null;
@@ -12376,7 +12459,6 @@ P.THEME_LABEL = THEME_LABEL;
       return h(ui.Band, {
         title: '连接与工具',
         hint: '只读，没有写入接口',
-        info: '这里显示运行库配置里的媒体、QQ 投递与记忆桥接状态；「连接与工具」里也只读展示，本页不修改它们，也不会代为发送任何消息。「已启用」只说明配置开着，不说明这条通道此刻可用。',
         actions: [
           h(ui.Button, {
             key: 'go-connections',
@@ -12431,7 +12513,6 @@ P.THEME_LABEL = THEME_LABEL;
       return h(ui.Band, {
         title: '高级',
         hint: '危险操作需确认',
-        info: '维护动作与原始配置都在这里。重建索引会写数据库并二次确认，完整性检查只读、不改数据；「立即提炼」需要会话上下文，在 studio 里恒不可用。存储后端在「记忆与档案 › 存储」里改。',
         children: [
           h(ui.Diagnostic, {
             key: 'storage',
@@ -12537,7 +12618,7 @@ P.THEME_LABEL = THEME_LABEL;
 
     const headProps = {
       title: '设置',
-      lead: '改的是本机配置文件，密钥不回显。',
+      lead: '管理陪伴、记忆与服务偏好。',
       actions: [
         h(ui.Button, {
           key: 'save',
@@ -12588,14 +12669,14 @@ P.THEME_LABEL = THEME_LABEL;
           title: notice.tone === 'danger' ? '这一步没成功' : notice.tone === 'warn' ? '还差一步' : '已生效（重启后）',
         }, notice.message)
         : null,
-      data.restartRequiredHint === false
+      !hasDirty || data.restartRequiredHint === false
         ? null
         : h(ui.Callout, { key: 'restart', tone: 'info', title: '改动要重启桌面才生效' }, '保存成功不等于已生效。'),
+      h(ui.RuntimeSettings),
       renderAppearance(),
       renderRole(),
       renderMemoryArchive(),
       renderHealthSection(),
-      renderRuntime(),
       renderConnections(),
       renderAdvanced());
   }
@@ -13045,6 +13126,7 @@ P.THEME_LABEL = THEME_LABEL;
     }
 
     return h(ui.Page, headProps,
+      h(ui.RuntimeLog),
       renderHealth(),
       summary.error
         ? h(ui.Callout, {

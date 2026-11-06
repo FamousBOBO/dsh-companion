@@ -31,6 +31,8 @@ const LOCAL_ORIGIN = /^https?:\/\/(127\.0\.0\.1|localhost|\[::1\])(:\d+)?$/i;
  *     endpoint itself is fine (HTTP 200).
  */
 const STATUS_BY_CODE = new Map([
+  [Code.TOO_LARGE,413],
+  [Code.UNSUPPORTED_TYPE,415],
   [Code.BAD_INPUT, 400],
   [Code.CONFIG_INVALID, 400],
   [Code.PROVIDER_UNKNOWN, 400],
@@ -81,6 +83,13 @@ export function createMediaHandlers(service) {
   };
 
   return {
+    [`POST ${API_PREFIX}/reference-audio`]: wrap(async request => {
+      const id=new URL(request.url).searchParams.get('provider');
+      const chunks=[];let size=0;
+      for await (const chunk of request.body || []) {size+=chunk.length;if(size>16*1024*1024)return json({ok:false,error:{code:Code.TOO_LARGE,message:'参考音频需小于16MB'}},413);chunks.push(Buffer.from(chunk));}
+      const result=await service.uploadReference({id,bytes:Buffer.concat(chunks)});
+      return json(result);
+    }),
     [`GET ${API_PREFIX}/status`]: wrap(async () => json({ ok: true, ...service.status() })),
     [`GET ${API_PREFIX}/config`]: wrap(async () => json(service.readConfig())),
     [`POST ${API_PREFIX}/config`]: wrap(async request => {

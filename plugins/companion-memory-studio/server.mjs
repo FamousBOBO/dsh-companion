@@ -5,6 +5,8 @@
 // 的 composition 里静默跳过（不影响宿主启动）。
 
 import { createKernel, errorEnvelope, respond } from './lib/api-kernel.mjs';
+import * as operator from './lib/operator.mjs';
+import { personaSettings } from './lib/persona-settings.mjs';
 import * as read from './lib/read.mjs';
 import * as write from './lib/write.mjs';
 import * as health from './lib/health.mjs';
@@ -27,6 +29,15 @@ export const HEALTH_API_PREFIX = health.HEALTH_PREFIX;
 
 // 精确路径匹配；参数走 query string / JSON body。
 export const ROUTES = Object.freeze([
+  {name:'persona',method:'GET',path:`${API_PREFIX}/persona`,handler:personaSettings},
+  {name:'persona-save',method:'POST',path:`${API_PREFIX}/persona`,handler:personaSettings},
+  {name:'runtime-logs-stream',method:'GET',path:`${API_PREFIX}/runtime-logs/stream`,handler:operator.runtimeLogsStream},
+  {name:'web-panel-control',method:'POST',path:`${API_PREFIX}/web-panel-control`,handler:operator.webPanelControl},
+  {name:'runtime-settings',method:'GET',path:`${API_PREFIX}/runtime-settings`,handler:operator.runtimeSettings},
+  {name:'runtime-settings-write',method:'POST',path:`${API_PREFIX}/runtime-settings`,handler:operator.runtimeSettings},
+  {name:'runtime-logs',method:'GET',path:`${API_PREFIX}/runtime-logs`,handler:operator.runtimeLogs},
+  {name:'web-panel',method:'GET',path:`${API_PREFIX}/web-panel`,handler:operator.webPanel},
+  {name:'web-panel-write',method:'POST',path:`${API_PREFIX}/web-panel`,handler:operator.webPanel},
   { name: 'companion', method: 'GET', path: `${API_PREFIX}/companion`, handler: companionDashboard },
   { name: 'summary', method: 'GET', path: `${API_PREFIX}/summary`, handler: read.summary },
   { name: 'memories', method: 'GET', path: `${API_PREFIX}/memories`, handler: read.memories },

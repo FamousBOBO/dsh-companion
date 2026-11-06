@@ -74,7 +74,9 @@ export async function generate({ section, limits, key, net, text, instruction = 
       if (error instanceof mediaError === false && error?.code === Code.TOO_LARGE) throw error;
       throw mediaError(Code.BAD_INPUT, `参考音频读不到：${String(error?.message ?? error).slice(0, 120)}`);
     }
-    file = { field: 'ref_audio', filename: 'reference.wav', mime: 'audio/wav', bytes };
+    const detected=sniffAudio(bytes);
+    if(!detected)throw mediaError(Code.UNSUPPORTED_TYPE,'参考音频格式无法识别');
+    file = { field: 'ref_audio', filename: 'reference.'+detected.format, mime: detected.mime, bytes };
   }
 
   const multipart = buildMultipart({

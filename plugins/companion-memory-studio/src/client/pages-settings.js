@@ -13,6 +13,10 @@
 
   // 页面自有样式只用 cpxp- 前缀，颜色一律走 alias / cpx token。
   P.css(`
+.cpx-settings-grid { display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:24px; }
+.cpx-settings-group { padding:20px;border:1px solid var(--dsw-alias-border-l1);border-radius:14px;min-width:0; }
+.cpx-settings-group > .cpxp-set-sub {margin:0 0 14px;font-size:15px;color:var(--dsw-alias-label-primary);}
+@media(max-width:900px){.cpx-settings-grid{grid-template-columns:1fr;}}
 .cpxp-set-field { display: flex; flex-direction: column; gap: var(--cpx-s1, 4px); padding: var(--cpx-s3, 12px) 0; border-top: 1px solid var(--dsw-alias-border-l1); min-width: 0; }
 .cpxp-set-field:first-child { border-top: 0; padding-top: 0; }
 .cpxp-set-field[data-dirty="true"] { border-left: 2px solid var(--dsw-alias-brand-primary); padding-left: var(--cpx-s3, 12px); }
@@ -844,7 +848,6 @@
       return h(ui.Band, {
         title: '外观',
         hint: '不需要重启',
-        info: '只影响这个面板的配色；和左栏底部那组三档是同一个值（P.theme 同步）。',
         children: [
           h(ui.Field, { key: 'theme', label: '主题', hint: currentText },
             canSet
@@ -872,7 +875,6 @@
       return h(ui.Band, {
         title: '角色',
         hint: '只读',
-        info: '角色身份由宿主绑定（owner 视角），本页不提供改名或切换；人设、语气、关系都不在记忆引擎的配置白名单里。运行库的开关在下面「生活与运行库」里只读展示。',
         children: [
           companion.error
             ? h(ui.Callout, {
@@ -926,13 +928,12 @@
       return h(ui.Band, {
         title: '记忆与档案',
         hint: '重启后生效',
-        info: '记忆引擎的 21 个可写项，按存储 / 提炼 / 检索 / 向量 / 重排 / Wiki 排；写入 memory.config.json，重启桌面后生效。对话模型与推理强度不在白名单里，本页读不到也改不了。',
-        children: [].concat(...groups.map(group => [
+        children: h('div',{className:'cpx-settings-grid'},groups.map(group => h('section',{className:'cpx-settings-group',key:group.id},[
           h('p', { key: `mem-sub-${group.id}`, className: 'cpxp-set-sub' }, group.title),
           ...group.keys.map(fieldRow),
           group.id === 'embedding' ? secretRow('embedding', 'embeddingApiKey') : null,
           group.id === 'rerank' ? secretRow('rerank', 'rerankApiKey') : null,
-        ]).filter(Boolean)),
+        ].filter(Boolean)))),
       });
     };
 
@@ -976,8 +977,7 @@
 
       return h(ui.Band, {
         title: '健康与睡眠',
-        hint: '真开关，写完整回读',
-        info: '数据采集写 health.connect 授权（POST maintenance pause/resume），实时心率写 health.pulse.live（POST pulse consent）；主动关怀目前没有写入接口，只能看。这两个开关和「健康与睡眠」页是同一套接口，改哪边都一样。',
+        hint: '',
         children: [
           reason
             ? h(ui.Callout, {
@@ -1065,65 +1065,6 @@
 
     // -- 生活与运行库：只读（没有写入接口）-----------------------------------
 
-    const renderRuntime = () => {
-      const companionData = companion.data && typeof companion.data === 'object' ? companion.data : null;
-      const runtime = companionData && companionData.runtime && typeof companionData.runtime === 'object' ? companionData.runtime : null;
-      const switches = companionData && companionData.life && companionData.life.switches && typeof companionData.life.switches === 'object'
-        ? companionData.life.switches
-        : null;
-      const mark = value => (value === true
-        ? h(ui.Badge, { tone: 'ok' }, '已启用')
-        : value === false
-          ? h(ui.Badge, { tone: 'neutral' }, '未启用')
-          : h(ui.Badge, { tone: 'neutral' }, '未知'));
-      return h(ui.Band, {
-        title: '生活与运行库',
-        hint: '只读，没有写入接口',
-        info: '运行库的 enabled / mode / 自主规划 / 心跳 / 分享都写在 home/companion/runtime.config.json 里，studio 没有写入接口，所以这里只显示当前值，不做成 disabled 开关冒充配置项。',
-        children: [
-          companion.error
-            ? h(ui.Callout, {
-              key: 'runtime-error',
-              tone: 'warn',
-              title: '读不到运行库状态',
-              action: h(ui.Button, { variant: 'ghost', size: 'sm', onClick: companion.reload }, '重试'),
-            }, failText(companion.error))
-            : null,
-          h(ui.List, { key: 'runtime-list', label: '运行库配置（只读）' }, [
-            h(ui.Row, {
-              key: 'runtime-enabled',
-              title: '运行库总开关',
-              meta: '配置项；开着不代表进程正在跑',
-              side: mark(runtime ? runtime.enabled : null),
-            }),
-            h(ui.Row, {
-              key: 'runtime-mode',
-              title: '运行模式',
-              side: h('span', { className: 'cpxp-set-mono' }, runtime ? text(runtime.mode) || '—' : '—'),
-            }),
-            h(ui.Row, {
-              key: 'runtime-planning',
-              title: '自主规划（日程）',
-              meta: '关掉以后不会自己排日程',
-              side: mark(switches ? switches.planning : null),
-            }),
-            h(ui.Row, {
-              key: 'runtime-heartbeat',
-              title: '心跳规则',
-              meta: '定期自查的节奏',
-              side: mark(runtime ? runtime.heartbeat : null),
-            }),
-            h(ui.Row, {
-              key: 'runtime-share',
-              title: '分享候选',
-              meta: '交给联系通道处理',
-              side: mark(switches ? switches.share : null),
-            }),
-          ]),
-        ],
-      });
-    };
-
     const renderConnections = () => {
       const companionData = companion.data && typeof companion.data === 'object' ? companion.data : null;
       const runtime = companionData && companionData.runtime && typeof companionData.runtime === 'object' ? companionData.runtime : null;
@@ -1138,7 +1079,6 @@
       return h(ui.Band, {
         title: '连接与工具',
         hint: '只读，没有写入接口',
-        info: '这里显示运行库配置里的媒体、QQ 投递与记忆桥接状态；「连接与工具」里也只读展示，本页不修改它们，也不会代为发送任何消息。「已启用」只说明配置开着，不说明这条通道此刻可用。',
         actions: [
           h(ui.Button, {
             key: 'go-connections',
@@ -1193,7 +1133,6 @@
       return h(ui.Band, {
         title: '高级',
         hint: '危险操作需确认',
-        info: '维护动作与原始配置都在这里。重建索引会写数据库并二次确认，完整性检查只读、不改数据；「立即提炼」需要会话上下文，在 studio 里恒不可用。存储后端在「记忆与档案 › 存储」里改。',
         children: [
           h(ui.Diagnostic, {
             key: 'storage',
@@ -1299,7 +1238,7 @@
 
     const headProps = {
       title: '设置',
-      lead: '改的是本机配置文件，密钥不回显。',
+      lead: '管理陪伴、记忆与服务偏好。',
       actions: [
         h(ui.Button, {
           key: 'save',
@@ -1350,14 +1289,14 @@
           title: notice.tone === 'danger' ? '这一步没成功' : notice.tone === 'warn' ? '还差一步' : '已生效（重启后）',
         }, notice.message)
         : null,
-      data.restartRequiredHint === false
+      !hasDirty || data.restartRequiredHint === false
         ? null
         : h(ui.Callout, { key: 'restart', tone: 'info', title: '改动要重启桌面才生效' }, '保存成功不等于已生效。'),
+      h(ui.RuntimeSettings),
       renderAppearance(),
       renderRole(),
       renderMemoryArchive(),
       renderHealthSection(),
-      renderRuntime(),
       renderConnections(),
       renderAdvanced());
   }

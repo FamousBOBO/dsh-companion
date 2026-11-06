@@ -83,12 +83,15 @@
     .cpxp-media-sec-title { font-size:20px; font-weight:650; }
     .cpxp-section-body { padding:24px; display:flex; flex-direction:column; gap:24px; }
     .cpxp-media-head-actions { display:flex; align-items:center; gap:14px; }
-    .cpxp-enable { display:inline-flex; align-items:center; gap:9px; padding:8px 0; border:0; background:transparent; color:var(--dsw-alias-label-secondary); font:inherit; font-size:13px; white-space:nowrap; cursor:pointer; }
+    .cpxp-enable { display:inline-flex; align-items:center; gap:9px; padding:8px 0; border:0; background:transparent; color:var(--dsw-alias-label-secondary); font:inherit; font-size:14px; min-height:42px; white-space:nowrap; cursor:pointer; }
     .cpxp-enable[aria-checked=true] { color:var(--dsw-alias-label-primary); }
-    .cpxp-switch-track { width:30px; height:18px; border-radius:99px; padding:3px; background:var(--dsw-alias-border-l2); transition:background .18s; display:inline-flex; flex:none; }
-    .cpxp-switch-track::before { content:''; width:12px; height:12px; border-radius:50%; background:var(--dsw-alias-label-secondary); transition:transform .18s; }
+    .cpxp-switch-track { width:38px; height:22px; border-radius:99px; padding:3px; background:var(--dsw-alias-border-l2); transition:background .18s; display:inline-flex; flex:none; }
+    .cpxp-switch-track::before { content:''; width:16px; height:16px; border-radius:50%; background:var(--dsw-alias-label-secondary); transition:transform .18s; }
     [aria-checked=true] > .cpxp-switch-track { background:var(--dsw-alias-brand-primary); }
-    [aria-checked=true] > .cpxp-switch-track::before { background:var(--dsw-alias-bg-base); transform:translateX(12px); }
+    [aria-checked=true] > .cpxp-switch-track::before { background:var(--dsw-alias-bg-base); transform:translateX(16px); }
+    .cpxp-audio-picker{display:flex;gap:10px;align-items:center;}.cpxp-audio-picker .cmx-input{flex:1;min-width:0;width:100%;}.cpxp-audio-picker .cmx-btn{flex:none;}
+    .cpxp-preset-picker .cmx-select{width:100%;min-height:48px;border-color:color-mix(in srgb,var(--dsw-alias-brand-primary) 45%,var(--dsw-alias-border-l1));background:color-mix(in srgb,var(--dsw-alias-brand-primary) 6%,var(--dsw-alias-bg-layer-1));font-size:15px;font-weight:600;}
+    .cpxp-media-description{margin:-8px 0 20px;font-size:13px;color:var(--dsw-alias-label-secondary);}
     .cpxp-media-card { padding:0; border:0; border-radius:0; background:transparent; }
     .cpxp-media-card-head { margin-bottom:20px; }
     .cpxp-media-card-title { font-size:15px; margin-bottom:5px; }
@@ -107,6 +110,10 @@
     .cpxp-advanced { border:1px solid var(--dsw-alias-border-l1); border-radius:10px; padding:12px 16px; }
     .cpxp-advanced summary { cursor:pointer; color:var(--dsw-alias-label-secondary); font-size:13px; }
     .cpxp-advanced[open] > .cpxp-media-fields { margin-top:20px; }
+    .cpxp-auto-resolution { display:flex;align-items:center;gap:8px;align-self:end; }
+    .cpxp-resolution-button { display:inline-flex;align-items:center;justify-content:center;gap:10px;min-height:50px;min-width:224px;padding:12px 18px;border:1px solid var(--dsw-alias-border-l2);border-radius:12px;font:inherit;font-weight:600;background:var(--dsw-alias-bg-layer-2);color:var(--dsw-alias-label-secondary);cursor:pointer; }
+    .cpxp-resolution-button[aria-checked=true] { color:var(--dsw-alias-label-primary);border-color:var(--dsw-alias-brand-primary);background:color-mix(in srgb,var(--dsw-alias-brand-primary) 14%,var(--dsw-alias-bg-layer-1)); }
+    .cpxp-resolution-state {font-size:12px;font-weight:400;}
     .cpxp-resolution { display:flex; gap:20px; align-items:center; flex-wrap:wrap; }
     .cpxp-media-field-wide textarea { min-height:100px; resize:vertical; }
     @media(max-width:760px) { .cpxp-media-sec-head,.cpxp-section-body { padding:18px; } .cpxp-media-head-actions { gap:8px; } .cpxp-media-fields { grid-template-columns:1fr; gap:18px; } .cpxp-media-sec-title { font-size:18px; } .cpxp-section-symbol { display:none; } }
@@ -233,6 +240,8 @@
     return {
       id: provider.id,
       generationFields: provider.generationFields || null,
+      promptOptions:provider.promptOptions || null,
+      description:provider.description || '',
       kind,
       label: provider.label || provider.id,
       prefix,
@@ -676,8 +685,32 @@
       error ? h('p', { className: 'cpxp-media-error' }, error) : null);
   }
 
+
+  function ReferenceAudio({entry,value,disabled,error,onChange}) {
+    const input=P.useRef(null);
+    const [busy,setBusy]=P.useState(false);
+    const [failure,setFailure]=P.useState('');
+    const provider=entry.pathParts[2];
+    const upload=async event=>{
+      const file=event.target.files?.[0];if(!file)return;
+      setFailure('');setBusy(true);
+      try {
+        if(file.size>16*1024*1024)throw Error('参考音频需小于16MB');
+        const response=await fetch(mediaUrl(MEDIA_BASE+'reference-audio?provider='+encodeURIComponent(provider)),{method:'POST',credentials:'same-origin',headers:{'content-type':file.type||'application/octet-stream'},body:file});
+        const result=await response.json();
+        if(!result.ok)throw Error(result.error?.message||'上传没有完成');
+        onChange(result.path);
+        if(typeof P.notice==='function')P.notice('参考音频已上传，请保存设置','ok');
+      } catch(e){setFailure(e.message||'上传没有完成');}finally{setBusy(false);event.target.value='';}
+    };
+    return h(ui.Field,{label:'参考音频',id:'media-'+entry.path},
+      h('div',{className:'cpxp-audio-picker'},h(ui.Input,{id:'media-'+entry.path,value:value||'',disabled:disabled||busy,ariaLabel:'参考音频',placeholder:provider==='gpt-sovits'?'服务端路径，或选择文件上传':'选择音频文件',onChange}),h(ui.Button,{disabled:disabled||busy,loading:busy,onClick:()=>input.current?.click()},'选择文件'),h('input',{ref:input,type:'file',accept:'.wav,.mp3,.ogg,.flac,audio/*',style:{display:'none'},onChange:upload,'aria-label':'上传参考音频'})),
+      provider==='gpt-sovits'?h('p',{className:'cpx-field-hint'},'文件上传需服务支持参考音频桥接；也可填写服务端已有路径。'):null,
+      failure||error?h('p',{className:'cpxp-media-error'},failure||error):null);
+  }
   function FieldControl({ entry, value, disabled, error, onChange }) {
     const controlId = `media-${entry.path}`;
+    if(lastSegment(entry.path)==='refAudioPath')return h(ReferenceAudio,{entry,value,disabled,error,onChange});
     if (entry.type === 'boolean') {
       return h('div', null,
         h(ui.Toggle, { id: controlId, checked: value === true, disabled, label: entry.label, hint: entry.hint, onChange: next => onChange(next) }),
@@ -698,7 +731,7 @@
         onChange: text => onChange(text),
       });
     }
-    return h(ui.Field, { label: entry.label, hint: entry.hint, id: controlId },
+    return h(ui.Field, { label: entry.label, hint: entry.hint, info: entry.info, id: controlId },
       control,
       error ? h('p', { className: 'cpxp-media-error' }, error) : null);
   }
@@ -732,6 +765,7 @@
     }
     const fieldNodes = provider.fields.filter(field => {
       const key = lastSegment(field.path);
+      if(provider.kind==='tts' && ['enabled','mediaType'].includes(key))return false;
       if (provider.generationFields && (provider.generationFields.includes(key) || ['activePresetId','generationPresets'].includes(key))) return false;
       return !(provider.generationFields && key === 'baseUrl' && draft[provider.prefix+'.transport'] === 'official');
     }).sort((a,b) => (lastSegment(a.path)==='transport'?-1:lastSegment(b.path)==='transport'?1:0)).map((field) => {
@@ -799,6 +833,7 @@
     return h('div', { key: `provider-${provider.id}`, className: 'cpxp-media-card' },
       header,
       null,
+      provider.description ? h('p',{className:'cpxp-media-description'},provider.description) : null,
       h('div', { className: 'cpxp-media-fields' }, fieldNodes),
       actions,
       dirtyNote,
@@ -862,7 +897,11 @@
     };
     const change = (path,value) => {
       onDraft(path,value);
-      if (active) onDraft(libraryPath,JSON.stringify(library.map(item => item.id===active.id ? {...item,...snapshot(path,value)} : item)));
+      const data=snapshot(path,value);
+      if(path===prefix+'.model' && provider.promptOptions?.[value]) {
+        for(const [key,options]of [['qualityPreset',provider.promptOptions[value].quality],['negativePreset',provider.promptOptions[value].negative]])if(!options.some(o=>o.value===data.settings[key])){data.settings[key]=key==='qualityPreset'?'standard':'heavy';onDraft(prefix+'.'+key,data.settings[key]);}
+      }
+      if (active) onDraft(libraryPath,JSON.stringify(library.map(item => item.id===active.id ? {...item,...data} : item)));
     };
     const select = id => {
       const item = library.find(p => p.id===id);
@@ -890,22 +929,26 @@
     };
     const fields = [...provider.fields,...(presets?.artist?[presets.artist]:[])].filter(field => provider.generationFields.includes(lastSegment(field.path)) && !['width','height','aspect','autoResolution'].includes(lastSegment(field.path)));
     const advancedKeys=['seed','ucPreset','qualityToggle','sm','smDyn'];
-    const renderField=field=>h('div',{key:field.path,className:field.type==='textarea'?'cpxp-media-field-wide':''},h(FieldControl,{entry:{...field,hint:''},value:draft[field.path],disabled:!!busy,error:errors[field.path],onChange:value=>change(field.path,value)}));
+    const promptOptions=provider.promptOptions?.[model];
+    const presetTags=(kind,key)=>{
+      const option=promptOptions?.[kind]?.find(item=>item.value===draft[prefix+'.'+key]);
+      return option?.tags===null?'当前使用旧版自定义预设。':option?.tags||'当前未添加预设标签。';
+    };
+    const renderField=field=>h('div',{key:field.path,className:field.type==='textarea'?'cpxp-media-field-wide':''},h(FieldControl,{entry:{...field,hint:'',info:lastSegment(field.path)==='artistString'?presetTags('quality','qualityPreset'):lastSegment(field.path)==='negativePrompt'?presetTags('negative','negativePreset'):'',options:lastSegment(field.path)==='qualityPreset'?promptOptions?.quality||field.options:lastSegment(field.path)==='negativePreset'?promptOptions?.negative||field.options:field.options},value:draft[field.path],disabled:!!busy,error:errors[field.path],onChange:value=>change(field.path,value)}));
     return h('section',{className:'cpxp-generation', 'aria-label':'生成预设'},
       h('div',{className:'cpxp-preset-head'},
-        h('div',null,h('h4',null,'生成预设'),h('p',{className:'cpx-muted'},active ? active.name : '当前参数')),
+        h('div',null,h('h4',null,'生成预设'),h('p',{className:'cpx-muted'},active ? active.name : '默认预设')),
         h(ui.Button,{onClick:create,disabled:!!busy||library.length>=32},'新建预设')),
       h('div',{className:'cpxp-media-fields'},
-        h(ui.Field,{label:'选择预设'},h(ui.Select,{ariaLabel:'选择预设',value:active?.id||'',disabled:!!busy,options:[{value:'',label:'当前参数'},...library.map(i=>({value:i.id,label:i.name}))],onChange:select})),
+        h('div',{className:'cpxp-preset-picker'},h(ui.Field,{label:'生成方案'},h(ui.Select,{ariaLabel:'生成方案',value:active?.id||'',disabled:!!busy,options:[{value:'',label:'默认预设'},...library.map(i=>({value:i.id,label:i.name}))],onChange:select}))),
         active ? h(ui.Field,{label:'预设名称'},h(ui.Input,{ariaLabel:'预设名称',value:active.name,disabled:!!busy,onChange:name=>onDraft(libraryPath,JSON.stringify(library.map(i=>i.id===active.id?{...i,name}:i)))})) : null),
       errors[libraryPath] ? h('p',{className:'cpxp-media-error'},errors[libraryPath]) : null,
-      h('div',{className:'cpxp-media-fields'},fields.filter(f=>!advancedKeys.includes(lastSegment(f.path))).map(renderField)),
-      h('details',{className:'cpxp-advanced'},h('summary',null,'更多生成参数'),h('div',{className:'cpxp-media-fields'},fields.filter(f=>advancedKeys.includes(lastSegment(f.path))).map(renderField))),
+      h('div',{className:'cpxp-media-fields'},fields.filter(f=>!advancedKeys.includes(lastSegment(f.path))&&!['qualityPreset','negativePreset','artistString','negativePrompt'].includes(lastSegment(f.path))).map(renderField)),
+      h('details',{className:'cpxp-advanced'},h('summary',null,'更多生成参数'),h('div',{className:'cpxp-media-fields'},fields.filter(f=>advancedKeys.includes(lastSegment(f.path))&&!(lastSegment(f.path)==='qualityToggle'&&draft[prefix+'.qualityPreset']!=='legacy')&&!(lastSegment(f.path)==='ucPreset'&&draft[prefix+'.negativePreset']!=='legacy')).map(renderField))),
       h('div',{className:'cpxp-resolution'},
         h(ui.Field,{label:'画面比例'},h(ui.Segmented,{label:'画面比例',value:aspect,disabled:!!busy,options:[{id:'portrait',label:'竖图 2:3'},{id:'landscape',label:'横图 3:2'},{id:'square',label:'方图 1:1'}],onChange:setAspect})),
-        h('button',{type:'button',className:'cpxp-enable',role:'switch','aria-checked':draft[prefix+'.autoResolution']===true,disabled:!!busy,onClick:()=>change(prefix+'.autoResolution',draft[prefix+'.autoResolution']!==true)},h('span',{className:'cpxp-switch-track'}),'自动分辨率'),
-        h('span',{className:'cpx-muted'},draft[prefix+'.autoResolution']===true?'约 100 万像素':`${draft[prefix+'.width']} × ${draft[prefix+'.height']}`)),
-      family && presets ? h('div',{className:'cpxp-media-fields'},presets.families.find(f=>f.family===family)?.fields.map(field=>h('div',{key:field.path,className:'cpxp-media-field-wide'},h(FieldControl,{entry:{...field,label:lastSegment(field.path)==='applyDefaults'?'应用提示词预设':lastSegment(field.path)==='positive'?'正向提示词预设':'反向提示词预设'},value:draft[field.path],disabled:!!busy,onChange:value=>change(field.path,value)})))) : null);
+        h('div',{className:'cpxp-auto-resolution'},h('button',{type:'button',className:'cpxp-resolution-button',role:'switch','aria-label':'自动分辨率','aria-checked':draft[prefix+'.autoResolution']===true,disabled:!!busy,onClick:()=>change(prefix+'.autoResolution',draft[prefix+'.autoResolution']!==true)},h(ui.Icon,{name:'image',size:18}),'自动分辨率',h('span',{className:'cpxp-resolution-state'},draft[prefix+'.autoResolution']===true?'已开启':'已关闭')),h(ui.Info,{text:draft[prefix+'.autoResolution']===true?'约 100 万像素，按画面比例自动计算分辨率。':`固定分辨率：${draft[prefix+'.width']} × ${draft[prefix+'.height']}`}))),
+      h('div',{className:'cpxp-media-fields'},['qualityPreset','negativePreset','artistString','negativePrompt'].map(key=>fields.find(f=>lastSegment(f.path)===key)).filter(Boolean).map(renderField)));
   }
 
   function SectionCard({ section, states, testing, draft, secrets, clears, errors, busy, onDraft, onSecret, onClear, onSave, onTest }) {
@@ -918,10 +961,10 @@
       h('div',{className:'cpxp-media-sec-head'},
         h('div',{className:'cpxp-section-name'},h('span',{className:'cpxp-section-symbol','aria-hidden':true},h(ui.Icon,{name:section.id==='image'?'image':section.id==='tts'?'audio':'eye',size:20})),h('h3',{className:'cpxp-media-sec-title'},section.title)),
         h('div',{className:'cpxp-media-head-actions'},
-          section.toggle&&!section.locked?h('button',{type:'button',className:'cpxp-enable',role:'switch','aria-label':section.toggle.label,'aria-checked':!!draft[section.toggle.path],disabled:!!busy,onClick:()=>onDraft(section.toggle.path,!draft[section.toggle.path])},h('span',{className:'cpxp-switch-track'}),draft[section.toggle.path]?'已启用':'启用'+section.title):h(ui.Badge,{tone:'neutral'},'未启用'),
+          section.toggle&&!section.locked?h('button',{type:'button',className:'cpxp-enable',role:'switch','aria-label':section.toggle.label,'aria-checked':!!draft[section.toggle.path],disabled:!!busy,onClick:()=>onDraft(section.toggle.path,!draft[section.toggle.path])},h('span',{className:'cpxp-switch-track'}),section.toggle.label):h(ui.Badge,{tone:'neutral'},'未启用'),
           h(ui.Button,{size:'sm',onClick:()=>setOpen(!open),ariaLabel:(open?'收起':'展开')+section.title},open?'收起':'展开'))),
       open?h('div',{className:'cpxp-section-body'},
-        section.selector?h(ui.Segmented,{label:section.id==='image'?'生图服务':'语音服务',value:selected,disabled:!!busy,options:options.map(o=>({id:o.value,label:o.value==='none'?'未选择':o.label.replace(' 生图','').replace('（官方直连 / 中转站）','')})),onChange:value=>onDraft(section.selector.path,value)}):null,
+        section.selector?h(ui.Segmented,{label:section.id==='image'?'生图服务':'语音服务',value:selected,disabled:!!busy,options:options.map(o=>({id:o.value,label:o.value==='none'?'未选择':o.label.replace(' 生图','').replace('（官方直连 / 中转站）','')})),onChange:value=>{onDraft(section.selector.path,value);if(section.id==='tts')section.providers.filter(p=>p.canEnable).forEach(p=>onDraft(p.enablePath,p.id===value));}}):null,
         section.fields.length?h('div',{className:'cpxp-media-fields'},section.fields.map(field=>h(FieldControl,{key:field.path,entry:field,value:draft[field.path],disabled:field.locked||!!busy,error:errors[field.path],onChange:value=>onDraft(field.path,value)}))):null,
         provider?h(ProviderCard,{provider,selected:true,states,draft,secrets,clears,errors,testing,busy,onDraft,onSecret,onClear,onSave,onTest}):null,
         provider?.generationFields?h(GenerationEditor,{provider,presets:section.presets,draft,busy,errors,onDraft}):null,
@@ -1044,6 +1087,7 @@
 
     /** 切换默认协议时，如果新协议还没配好，先把能力关掉——否则后端会以 400 拒绝整次保存。 */
     const setField = (path, value) => {
+      if(path==='tts.providers.gpt-sovits.refAudioPath')setFieldDirect('tts.providers.gpt-sovits.mediaType','wav');
       forgetTests(providerIdsFor(path));
       setDraft(previous => ({ ...previous, [path]: value }));
       if (path === 'image.nai.transport') {

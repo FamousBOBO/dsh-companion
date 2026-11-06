@@ -14,7 +14,9 @@ export async function companionDashboard(request, kernel) {
   const config = readJson('home/companion/runtime.config.json');
   const media = readJson('home/media/config.json');
   const contact = readJson('home/channel-qq/contact.json');
+  const connection=readJson('home/channel-qq/connection-status.json');
   const result = {
+    qqConnection: connection && Number(connection.checkedAt)>Date.now()-30000 ? {connected:connection.connected===true,checkedAt:connection.checkedAt} : null,
     observedAt: new Date().toISOString(), persona: viewer.personaId,
     runtime: { available: false, enabled: config?.enabled ?? null, mode: config?.mode ?? 'unknown',
       agenda: config?.agenda?.enabled ?? null, heartbeat: config?.heartbeat?.enabled ?? null,

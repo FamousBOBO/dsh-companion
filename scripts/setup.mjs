@@ -291,11 +291,7 @@ function personaFromExample(exampleText) {
   const firstSection = lines.findIndex((line) => /^##\s+/.test(line));
   const body = (firstSection === -1 ? [] : lines.slice(firstSection)).join('\n').trimEnd();
   return [
-    '# 人格（本机配置，不入库）',
-    '',
-    '> 本文件由 `npm run setup` 从 `config/persona.example.md` 生成，此后归你所有：',
-    '> setup 不会再覆盖它。改完重启 `npm run start` 生效。',
-    '> 下面只是可以照抄的起点 —— 名字、关系、性格、说话风格都按你自己的偏好写。',
+    '# 人格',
     '',
     body,
     '',

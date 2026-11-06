@@ -2,10 +2,21 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import path from 'node:path';
-import { apply } from '../index.mjs';
+import { mountMedia as apply, apply as hostApply } from '../index.mjs';
 import { API_PREFIX, createMediaHandlers, registerMediaApi } from '../src/http-api.mjs';
 import { createMediaService } from '../src/service.mjs';
 import { tempDataDir } from './helpers.mjs';
+
+test('宿主插件返回 void，避免 Cordis 拒绝 service 对象并回滚媒体路由', async () => {
+  const { dir, cleanup } = tempDataDir();
+  try {
+    const routes = [];
+    const ctx = { tools: { register() {} }, provide() {}, effect: fn => fn(),
+      get: () => ({ fetch: { register: route => { routes.push(route); return () => {}; } } }) };
+    assert.equal(await hostApply(ctx, { dataDir: dir }), undefined);
+    assert.equal(routes.length, 10);
+  } finally { cleanup(); }
+});
 
 /**
  * Mount-time registration tests.
@@ -23,7 +34,7 @@ import { tempDataDir } from './helpers.mjs';
  * `ctx.provide` / `ctx.tools.register`.
  */
 
-const EXPECTED_ROUTES = 9;
+const EXPECTED_ROUTES = 10;
 
 function makeHost() {
   const registered = new Map(); // path -> entry (host de-dupes by path)
@@ -83,7 +94,7 @@ function readLogFile(dir) {
   return fs.readFileSync(file, 'utf8').trim().split('\n').filter(Boolean).map(line => JSON.parse(line));
 }
 
-test('connection 在 apply 期间才出现：apply 等它就绪后注册（awaited），9 条路由真的存在', async () => {
+test('connection 在 apply 期间才出现：apply 等它就绪后注册（awaited），10 条路由（含参考音频上传）真的存在', async () => {
   const { dir, cleanup } = tempDataDir();
   const host = makeHost();
   try {

@@ -83,8 +83,8 @@ export function buildNaiParameters(section, { prompt, negative, preset }) {
     n_samples: 1,
     seed: Number.isInteger(section.seed) ? section.seed : -1,
     negative_prompt: negative,
-    ucPreset: section.ucPreset,
-    qualityToggle: Boolean(section.qualityToggle),
+    ucPreset: section.negativePreset && section.negativePreset !== 'legacy' ? undefined : section.ucPreset,
+    qualityToggle: section.qualityPreset && section.qualityPreset !== 'legacy' ? false : Boolean(section.qualityToggle),
     sm: Boolean(section.sm),
     sm_dyn: Boolean(section.smDyn),
   };

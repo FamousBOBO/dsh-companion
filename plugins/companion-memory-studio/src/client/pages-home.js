@@ -755,12 +755,11 @@
         onOpen: (item) => { if (item && item.page) P.nav.go(item.page); },
         compact: true,
       })),
-      healthBandNode(data ? data.health : null),
       nextBandNode(life, next),
       recentBandNode(events, data),
       pendingBandNode(pendingReview, pendingSlots, pendingShare));
 
-    const aside = asideNode({ now, life, counts, pendingReview, pendingShare, observedAt, data });
+    const aside = h(P.Fragment,null,healthBandNode(data ? data.health : null),asideNode({ now, life, counts, pendingReview, pendingShare, observedAt, data }));
 
     return h(ui.Page, page, h(ui.Split, { main, aside }));
   }

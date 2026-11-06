@@ -1,3 +1,4 @@
+import { officialOptions } from './official-prompts.mjs';
 import { Code, mediaError } from './errors.mjs';
 import { normalizePresets } from './presets.mjs';
 import { validateGenerationLibrary } from './generation-presets.mjs';
@@ -86,6 +87,8 @@ export const DEFAULTS = Object.freeze({
       background: 'auto',
     },
     nai: {
+      qualityPreset: 'standard',
+      negativePreset: 'heavy',
       autoResolution: false,
       aspect: 'portrait',
       activePresetId: '',
@@ -479,6 +482,8 @@ export function normalizeConfig(raw = {}) {
   }
   merged.image.provider = canonicalImageProvider(merged.image.provider);
   merged.image.nai = { ...merged.image.nai, presets: normalizePresets(merged.image?.nai?.presets) };
+  if (raw?.image?.nai && raw.image.nai.qualityPreset === undefined) merged.image.nai.qualityPreset = 'legacy';
+  if (raw?.image?.nai && raw.image.nai.negativePreset === undefined) merged.image.nai.negativePreset = 'legacy';
   if (merged.image.nai.transport === 'official' && !String(merged.image.nai.baseUrl || '').trim()) merged.image.nai.baseUrl = 'https://image.novelai.net';
 
   // Same folding for TTS provider sections.
@@ -585,6 +590,8 @@ export function validateConfig(config) {
   if (image.provider === 'nai') {
     const nai = image.nai ?? {};
     errors.push(...validateGenerationLibrary(nai));
+    const official=officialOptions(nai.model);
+    for(const [key,options]of [['qualityPreset',official.quality],['negativePreset',official.negative]])if(!options.some(o=>o.value===nai[key]))add('image.nai.'+key,Code.CONFIG_INVALID,'该预设等级不适用于当前模型');
     if (!['official', 'openai-relay'].includes(nai.transport)) {
       add('image.nai.transport', Code.PROVIDER_UNKNOWN, 'transport 只能是 official 或 openai-relay');
     }

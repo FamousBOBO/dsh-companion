@@ -59,10 +59,12 @@ P.registerPage = (definition) => {
 const NAV = [
   { id: 'home', label: '陪伴首页', icon: 'home', hint: '她现在的生活与最近一起经历的事' },
   { id: 'chat', label: '聊天', icon: 'chat', hint: '回到宿主原生对话', native: 'conversation' },
+  { id: 'persona', label: '人格', icon: 'heart', hint: '性格、语气与相处方式' },
+  { id: 'qq-web', label: 'QQ 连接', icon: 'chat', hint: 'NapCat / SnowLuma 网页面板' },
   { id: 'life', label: '生活与日程', icon: 'calendar', hint: '今天、接下来，以及她的计划' },
   { id: 'memory', label: '记忆与档案', icon: 'book', hint: '记忆库、Wiki、时间线与待核对', tabs: ['vault', 'wiki', 'timeline', 'review', 'microscope'] },
   { id: 'connections', label: '连接与工具', icon: 'plug', hint: '管理连接与工具' },
-  { id: 'media', label: '媒体能力', icon: 'plug', hint: '图片生成与语音合成' },
+  { id: 'media', label: '媒体能力', icon: 'image', hint: '图片生成与语音合成' },
   { id: 'workspace', label: '工作区', icon: 'folder', hint: '回到文件、会话与开发现场' },
   { id: 'settings', label: '设置', icon: 'sliders', hint: '外观、角色、模型与记忆', tabs: ['settings', 'overview'] },
 ];
@@ -714,9 +716,9 @@ function KeyValue({ items }) {
   h('dd', { className: cx(item.mono ? 'cmx-mono' : '', item.breakable ? 'cmx-break' : '') }, item.v === null || item.v === undefined || item.v === '' ? '—' : item.v))));
 }
 
-function Field({ label, hint, children, id }) {
+function Field({ label, hint, info, children, id }) {
   return h('div', { className: 'cpx-field' },
-    h('label', { className: 'cpx-field-label', htmlFor: id }, label),
+    h('label', { className: 'cpx-field-label', htmlFor: id }, label, info ? h(Info, { text: info }) : null),
     children,
     hint ? h('p', { className: 'cpx-field-hint' }, hint) : null);
 }
@@ -1046,16 +1048,13 @@ const HEALTH_CAPS = [
     },
   },
   {
-    id: 'qq', label: 'QQ 投递', page: 'connections', probe: 'companion', source: 'GET companion · 投递与联系人',
-    judge: ({ data }) => {
-      const qq = (data && (data.contact || data.delivery || data.channel)) || null;
-      if (!qq || typeof qq !== 'object') return { state: 'unknown', note: '没有投递状态字段' };
-      if (qq.bound === false || qq.linked === false) return { state: 'off', note: '还没绑定投递对象' };
-      const last = qq.lastSentAt || qq.lastSentAtByRoom || null;
-      if (last) return { state: 'ok', note: '有投递记录' };
-      const sent = Number(qq.sentToday);
-      if (Number.isFinite(sent) && sent > 0) return { state: 'ok', note: '今天已投递 ' + sent + ' 条' };
-      return { state: 'ok', note: '通道可读，今天还没投递' };
+    id: 'qq', label: 'QQ连接状态', page: 'connections', probe: 'companion', source: 'GET companion · QQ连接',
+    judge: ({data}) => {
+      const qq=data?.qqConnection;
+      if(!qq||typeof qq.connected!=='boolean')return {state:'unknown',note:'尚未读取到QQ连接状态'};
+      if(!qq.connected)return {state:'down',note:'QQ连接已断开'};
+      if(qq.online===false)return {state:'warn',note:'QQ账号未在线'};
+      return {state:'ok',note:'QQ已连接'};
     },
   },
   {
@@ -1326,6 +1325,7 @@ function HealthBoard({ items, now, onOpen }) {
 }
 
 P.css(`
+.cmx-textarea { max-height:320px; max-width:100%; overflow:auto; resize:vertical; }
 .cpx-info { position: relative; display: inline-flex; align-items: center; justify-content: center; width: 15px; height: 15px; margin-left: 6px; border-radius: 50%; border: 1px solid currentColor; color: var(--dsw-alias-label-secondary); font-family: Georgia, serif; font-size: 10px; font-style: italic; line-height: 1; cursor: help; vertical-align: 1px; flex: none; }
 .cpx-info::before { content: 'i'; }
 .cpx-info:hover, .cpx-info:focus-visible { color: var(--dsw-alias-label-primary); outline: none; box-shadow: 0 0 0 2px var(--dsw-alias-border-l2); }
@@ -1905,7 +1905,7 @@ function Rail({ currentPage, collapsed, onToggle, compact, onCompact, compactAva
   }, [page]);
 
   const groups = [
-    { label: '陪伴', ids: ['home', 'chat', 'life'] },
+    { label: '陪伴', ids: ['home', 'chat', 'persona', 'qq-web', 'life'] },
     { label: '记录', ids: ['memory'] },
     { label: '工具', ids: ['connections', 'media', 'workspace'] },
     { label: '系统', ids: ['settings'] },

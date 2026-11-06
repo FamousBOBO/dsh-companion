@@ -439,6 +439,7 @@
     }
 
     return h(ui.Page, headProps,
+      h(ui.RuntimeLog),
       renderHealth(),
       summary.error
         ? h(ui.Callout, {

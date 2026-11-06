@@ -1,3 +1,4 @@
+import { resolveNaiPrompt } from '../official-prompts.mjs';
 import { resolveGenerationSection } from '../generation-presets.mjs';
 import { Code, mediaError } from '../errors.mjs';
 import { assertSize, extensionFor, firstImageFromZip, parseNaiSse, sniffImage } from '../media-format.mjs';
@@ -46,13 +47,7 @@ export async function generate({ section, limits, key, net, prompt, negative = '
   const model = String(section.model ?? '').trim();
   if (!model) throw mediaError(Code.NOT_CONFIGURED, '未填写模型（nai-diffusion-5-full / nai-diffusion-4-5-full …）');
 
-  const preset = resolvePreset({
-    model,
-    presets: section.presets,
-    negativePrompt: section.negativePrompt,
-    artistString: section.artistString ?? '',
-    request: { prompt: text, negative },
-  });
+  const preset = resolveNaiPrompt(section,{prompt:text,negative});
   if (!preset.positive) throw mediaError(Code.BAD_INPUT, '提示词为空');
 
   const parameters = buildNaiParameters(section, { prompt: preset.positive, negative: preset.negative, preset });

@@ -235,6 +235,10 @@ export function createConfigStore({ dataDir, env = process.env, now = () => new 
     save(patch, { reason = 'operator-save' } = {}) {
       const loaded = load();
       const merged = mergePreservingSecrets(loaded.config, patch ?? {});
+      if(patch?.image?.nai?.presets) {
+        if(patch.image.nai.qualityPreset===undefined)merged.image.nai.qualityPreset='legacy';
+        if(patch.image.nai.negativePreset===undefined)merged.image.nai.negativePreset='legacy';
+      }
       // vision is not writable at all
       const nextVision = { ...merged.vision, enabled: false };
       const next = normalizeConfig({ ...merged, vision: nextVision });
