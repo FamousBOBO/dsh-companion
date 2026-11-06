@@ -320,6 +320,12 @@ export function mediaPageDescriptor(status) {
           value: config.image?.provider ?? 'none',
           options: [{ value: 'none', label: '未选择' }, ...(catalog.image ?? []).map(item => ({ value: item.id, label: item.label }))],
         },
+        fields: [
+          field(['image','pipeline','enabled'],'提示词生成管线',config,{type:'boolean',hint:'使用当前 DSH 默认模型处理 NovelAI 提示词，仅在生成时调用。'}),
+          field(['image','pipeline','mode'],'处理方式',config,{type:'select',options:[{value:'compose',label:'生成 NovelAI 标签'},{value:'translate',label:'仅翻译为英文'}]}),
+          field(['image','pipeline','timeoutMs'],'提示词处理超时（毫秒）',config,{type:'number'}),
+          field(['image','pipeline','systemPrompt'],'提示词模板',config,{type:'textarea',hint:'留空使用内置模板；编排模式须返回 tag、negative 两个字符串。'}),
+        ],
         providers: (catalog.image ?? []).map(record => providerSection({ kind: 'image', record, state: imageStates[record.id], config })),
         preview: {
           endpoint: 'GET /api/companion-media/preview',
@@ -364,6 +370,11 @@ export function mediaPageDescriptor(status) {
           value: config.tts?.provider ?? 'none',
           options: [{ value: 'none', label: '未选择' }, ...(catalog.tts ?? []).map(item => ({ value: item.id, label: item.label }))],
         },
+        fields: [
+          field(['tts','director','enabled'],'语音导演（Breeze）',config,{type:'boolean',hint:'跟随当前 DSH 默认模型生成表演指令；失败时使用原台词和已有指令。'}),
+          field(['tts','director','timeoutMs'],'导演超时（毫秒）',config,{type:'number'}),
+          field(['tts','director','maxInstructionChars'],'表演指令字数上限',config,{type:'number'}),
+        ],
         providers: (catalog.tts ?? []).map(record => providerSection({ kind: 'tts', record, state: ttsStates[record.id], config })),
       },
     ],

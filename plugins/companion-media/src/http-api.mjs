@@ -152,6 +152,8 @@ export function createMediaHandlers(service) {
       const result = await service.generateImage({
         prompt: String(body.prompt ?? ''),
         negative: String(body.negative ?? ''),
+        context: String(body.context ?? ''),
+        signal: request.signal,
         dryRun: body.dryRun === true,
       });
       return json(result, result.ok ? 200 : 400);
@@ -162,7 +164,7 @@ export function createMediaHandlers(service) {
       if (body.confirm !== true) {
         return json({ ok: false, error: { code: Code.DISABLED, message: '合成语音可能计费：请求必须带 confirm:true' } }, 400);
       }
-      const result = await service.synthesize({ text: String(body.text ?? ''), provider: body.provider ? String(body.provider) : null });
+      const result = await service.synthesize({ text: String(body.text ?? ''), provider: body.provider ? String(body.provider) : null,context:String(body.context??''),instructions:String(body.instructions??''),signal:request.signal });
       return json(result, result.ok ? 200 : 400);
     }),
     // Vision is contract-only: every method on this path is a refusal, including

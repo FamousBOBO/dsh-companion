@@ -65,6 +65,12 @@
           "negative": ""
         }
       }
+    },
+    "pipeline": {
+      "enabled": false,
+      "mode": "compose",
+      "timeoutMs": 60000,
+      "systemPrompt": ""
     }
   },
   "tts": {
@@ -132,6 +138,11 @@
         "temperature": 0.7,
         "topP": 0.7
       }
+    },
+    "director": {
+      "enabled": false,
+      "timeoutMs": 60000,
+      "maxInstructionChars": 2000
     }
   }
 }

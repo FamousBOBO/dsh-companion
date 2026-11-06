@@ -1,4 +1,6 @@
 import { storeReference } from './reference-audio.mjs';
+import { prepareImagePrompt } from './image-pipeline.mjs';
+import { directSpeech } from './director.mjs';
 import { resolveNaiPrompt } from './official-prompts.mjs';
 import { resolveGenerationSection } from './generation-presets.mjs';
 import fs from 'node:fs';
@@ -57,6 +59,7 @@ export function createMediaService({
   log = null,
   suiteRoot = null,
   testStoreFile = null,
+  host = null,
 } = {}) {
   if (!dataDir) throw new Error('createMediaService needs a dataDir');
   const store = createConfigStore({ dataDir, env, now });
@@ -200,6 +203,7 @@ export function createMediaService({
       migrated: loaded.migrated ?? false,
       persona,
       enabled: config.enabled,
+      processing: { model: 'DSH default', hostAvailable: host?.available?.() === true, image: config.image.pipeline, speech: config.tts.director },
       states: {
         vision: visionContract(config.vision),
         image: {
@@ -300,7 +304,7 @@ export function createMediaService({
     return cap;
   }
 
-  async function generateImage({ prompt, negative = '', dryRun = false, sessionId = null } = {}) {
+  async function generateImage({ prompt, negative = '', context = '', dryRun = false, sessionId = null, signal = null } = {}) {
     const loaded = store.load();
     const config = loaded.config;
     if (!config.enabled) return { ok: false, error: { code: Code.DISABLED, message: '媒体插件已停用' } };
@@ -325,6 +329,7 @@ export function createMediaService({
         dry.size = section.size;
         dry.model = section.model;
       }
+      dry.processing = { enabled: config.image.pipeline.enabled, mode: config.image.pipeline.mode, model: 'DSH default', invoked: false };
       return dry;
     }
 
@@ -336,15 +341,20 @@ export function createMediaService({
     });
     const timeoutMs = budgetFor(config.limits, section.timeoutMs);
     try {
+      if(typeof prompt!=='string'||!prompt.trim()||prompt.length>config.limits.maxTextChars||typeof negative!=='string'||negative.length>config.limits.maxTextChars)throw new MediaError(Code.BAD_INPUT,'提示词为空或超过长度上限');
+      const budgetSignal=signal?AbortSignal.any([signal,AbortSignal.timeout(config.limits.requestBudgetMs)]):AbortSignal.timeout(config.limits.requestBudgetMs);
+      budgetSignal.throwIfAborted();
+      const prepared=id==='nai'?await prepareImagePrompt({host,prompt,negative,context,config,sessionId,signal:budgetSignal,log:note}):{prompt,negative,processing:{used:false,reason:'not-nai'}};
+      budgetSignal.throwIfAborted();
       const adapter = imageAdapter(id);
       const result = await adapter.generate({
         section: { ...section, timeoutMs },
         limits: config.limits,
         key: keyFor(id).value,
         net,
-        prompt,
-        negative,
-        signal: null,
+        prompt: prepared.prompt,
+        negative: prepared.negative,
+        signal: budgetSignal,
       });
       const artifact = writeArtifact({ root: artifactLocation(config).artifactRoot, kind: 'image', bytes: result.bytes, extension: result.extension });
       const meta = {
@@ -382,6 +392,7 @@ export function createMediaService({
           mustSend: `调用 qq_sticker action=send 并传 file=${artifact.absolutePath}`,
         },
         meta: result.meta ?? {},
+        processing: prepared.processing,
       };
     } catch (error) {
       const failure = toFailure(error);
@@ -391,7 +402,7 @@ export function createMediaService({
     }
   }
 
-  async function synthesize({ text, provider = null, sessionId = null } = {}) {
+  async function synthesize({ text, provider = null, sessionId = null, context = '', instructions = '', signal = null } = {}) {
     const loaded = store.load();
     const config = loaded.config;
     if (!config.enabled) return { ok: false, error: { code: Code.DISABLED, message: '媒体插件已停用' } };
@@ -413,14 +424,21 @@ export function createMediaService({
     const job = ledger.createJob({ kind: 'speech', provider: id, model: String(section.model ?? ''), requestDigest: digestOf(`${id}:${text}`) });
     const timeoutMs = budgetFor(config.limits, section.timeoutMs);
     try {
+      if(typeof text!=='string'||!text.trim()||text.length>config.limits.maxTextChars)throw new MediaError(Code.BAD_INPUT,'台词为空或超过长度上限');
+      if(typeof instructions!=='string'||instructions.length>4000)throw new MediaError(Code.BAD_INPUT,'表演指令超过长度上限');
+      const budgetSignal=signal?AbortSignal.any([signal,AbortSignal.timeout(config.limits.requestBudgetMs)]):AbortSignal.timeout(config.limits.requestBudgetMs);
+      budgetSignal.throwIfAborted();
+      const directed=id==='breeze-tts2'?await directSpeech({host,text,context,sessionId,config,signal:budgetSignal,log:note}):{used:false,reason:'provider-not-supported'};
+      budgetSignal.throwIfAborted();
       const adapter = ttsAdapter(id);
       const result = await adapter.generate({
         section: { ...section, timeoutMs },
         limits: config.limits,
         key: keyFor(id).value,
         net,
-        text,
-        signal: null,
+        text: directed.used ? directed.input : text,
+        instruction: directed.used ? directed.instructions : instructions || section.instruction || '',
+        signal: budgetSignal,
       });
       const artifact = writeArtifact({ root: artifactLocation(config).artifactRoot, kind: 'speech', bytes: result.bytes, extension: result.extension });
       const meta = {
@@ -443,6 +461,7 @@ export function createMediaService({
         jobId: job.jobId,
         provider: id,
         artifact: meta,
+        director: { used: directed.used, ...(directed.reason ? { reason: directed.reason } : {}) },
         handoff: {
           tool: 'qq_voice',
           action: 'send_file',

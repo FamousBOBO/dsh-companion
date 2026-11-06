@@ -76,6 +76,7 @@ export const DEFAULTS = Object.freeze({
   image: {
     enabled: false,
     provider: 'none',
+    pipeline: { enabled: false, mode: 'compose', timeoutMs: 60000, systemPrompt: '' },
     'openai-compatible': {
       baseUrl: '',
       apiKey: '',
@@ -118,6 +119,7 @@ export const DEFAULTS = Object.freeze({
   tts: {
     enabled: false,
     provider: 'none',
+    director: { enabled: false, timeoutMs: 60000, maxInstructionChars: 2000 },
     providers: {
       'breeze-tts2': {
         enabled: false,
@@ -526,6 +528,13 @@ export function validateConfig(config) {
   if (config.vision?.enabled === true) {
     add('vision.enabled', Code.VISION_LOCKED, '识图本期只保留合同，enabled 必须为 false，且不能通过任何界面或工具打开');
   }
+  for (const [key,section] of [['image.pipeline',config.image?.pipeline],['tts.director',config.tts?.director]]) {
+    if (!isPlainObject(section)||typeof section.enabled!=='boolean') add(key,Code.CONFIG_INVALID,`${key} 的 enabled 必须为布尔值`);
+    if (!Number.isInteger(section?.timeoutMs)||section.timeoutMs<1000||section.timeoutMs>120000) add(key+'.timeoutMs',Code.PARAM_OUT_OF_RANGE,'模型处理超时应为 1000–120000 毫秒');
+  }
+  if (!['compose','translate'].includes(config.image?.pipeline?.mode)) add('image.pipeline.mode',Code.CONFIG_INVALID,'请选择提示词编排或英文翻译');
+  if (typeof config.image?.pipeline?.systemPrompt!=='string'||config.image.pipeline.systemPrompt.length>16000) add('image.pipeline.systemPrompt',Code.CONFIG_INVALID,'提示词模板必须是字符串，最多 16000 字符');
+  if (!Number.isInteger(config.tts?.director?.maxInstructionChars)||config.tts.director.maxInstructionChars<100||config.tts.director.maxInstructionChars>4000) add('tts.director.maxInstructionChars',Code.PARAM_OUT_OF_RANGE,'导演指令上限应为 100–4000 字符');
   if (typeof config.paths?.artifactsDir === 'string' && config.paths.artifactsDir.trim() && !/^[A-Za-z]:[\\/]|^\//.test(config.paths.artifactsDir.trim())) {
     // 相对路径是允许的（按 dataDir 解析），但空字符串以外的非字符串必须拒绝
     warnings.push(`paths.artifactsDir 是相对路径，将按 dataDir 解析为 <dataDir>/${config.paths.artifactsDir.trim()}`);
@@ -752,6 +761,10 @@ export function migrateLegacyConfig(raw = {}) {
 
   const legacyImage = isPlainObject(raw.image) ? raw.image : null;
   if (legacyImage) {
+    if (legacyImage.generationFlow === 'tag' || legacyImage.translatePrompt?.enabled === true) {
+      next.image.pipeline = { ...next.image.pipeline, enabled: true, mode: legacyImage.generationFlow === 'tag' ? 'compose' : 'translate', timeoutMs: Math.min(120000,legacyImage.tagTimeoutMs ?? 60000) };
+      warnings.push('生图提示词处理已迁移，模型跟随当前 DSH 默认选择；不再依赖 AstrBot 安装目录');
+    }
     if (legacyImage.backend && legacyImage.backend !== 'openai' && legacyImage.backend !== 'openai-compatible' && legacyImage.backend !== 'nai') {
       dropped.push(`image.backend=${legacyImage.backend}（python 桥/本地管线不再随插件发布，标记 unsupported）`);
     }
@@ -799,10 +812,15 @@ export function migrateLegacyConfig(raw = {}) {
         model: typeof backend.model === 'string' ? backend.model : 'breeze-tts2',
         cfgScale: typeof backend.cfgScale === 'number' ? backend.cfgScale : 1,
         seed: Number.isInteger(backend.seed) ? backend.seed : 42,
+        instruction: typeof legacySpeech.defaultInstructions === 'string' ? legacySpeech.defaultInstructions : '',
         timeoutMs: Number(backend.timeoutMs) || next.tts.providers['breeze-tts2'].timeoutMs,
       };
     }
-    for (const key of ['presetsFile', 'emotionPresets', 'defaultInstructions', 'ffmpegPath', 'atempoTimeoutMs', 'director', 'auto']) {
+    if (isPlainObject(legacySpeech.director)) {
+      next.tts.director = { enabled: legacySpeech.director.enabled === true, timeoutMs: legacySpeech.director.timeoutMs ?? 60000, maxInstructionChars: legacySpeech.director.maxInstructionChars ?? 2000 };
+      warnings.push('语音导演已迁移，模型跟随当前 DSH 默认选择');
+    }
+    for (const key of ['presetsFile', 'emotionPresets', 'ffmpegPath', 'atempoTimeoutMs', 'auto']) {
       if (key in legacySpeech) dropped.push(`speech.${key}`);
     }
     warnings.push('旧配置里的音色 ID（个人参考音色）不被搬移：请在你的 Breeze 服务里重新指定参考音频');
