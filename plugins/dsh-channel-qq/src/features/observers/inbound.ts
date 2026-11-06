@@ -28,6 +28,7 @@ import { autoResolveLinks } from '../../adapters/providers/links/index.js'
 import type { LearnStore } from '../learn/store.js'
 import type { EmojiStore } from '../../emoji.js'
 import type { EmojiLibrary } from '../../emoji-library.js'
+import { forwardInbound, type ExpressionBridgePort } from '../expression-bridge.js'
 
 /** 主群偷表情包时的图片体积上限（原实现里的常量，语义未变）。 */
 const MAX_STEAL_BYTES = 8 * 1024 * 1024
@@ -48,6 +49,13 @@ export interface InboundObserverDeps {
   readonly learn: () => LearnStore | null
   readonly emoji: () => EmojiStore | null
   readonly library: () => EmojiLibrary | null
+  /**
+   * 表情包入站旁路（端口来自 `companion-expression` 的进程级注册表）。
+   *
+   * 可选：装配里没接就是 `undefined`；接了但端口还没发布时给 `null`。每次现取，
+   * 不缓存空结果——那个模块常常比本段晚挂载。
+   */
+  readonly expression?: () => ExpressionBridgePort | null
   /** 取回图片用的取回器（带 SSRF 闸门与体积上限）。 */
   readonly http: HttpClient
   /**
@@ -70,6 +78,19 @@ export class InboundObservers {
   observe(event: OneBotEvent): void {
     this.track(event)
     this.stealSticker(event)
+    this.forward(event)
+  }
+
+  /**
+   * 表情包收集的入站旁路（`companion-expression` 的端口）。
+   *
+   * 装配里没接这一格就整段跳过；接了但端口还没发布时 `expression()` 给 `null`，
+   * 也是一次判空就返回——这条路径上**不许**有任何 await、IO 或异常。
+   */
+  private forward(event: OneBotEvent): void {
+    const bridge = this.deps.expression?.() ?? null
+    if (bridge === null) return
+    bridge.forwardInbound(event, this.deps.config().admins)
   }
 
   /** 风控 + 口癖 + 链接卡片。 */

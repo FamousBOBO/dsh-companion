@@ -1,0 +1,16 @@
+# companion-expression bundle patch.
+#
+# Mounts ONLY the management API, at application level. The expression tools are mounted
+# separately by the suite's preset patch, because tools must live inside the agent preset to be
+# visible to the model.
+#
+# Why the split: preset plugins get an isolate realm, and their `connection` service is a private
+# instance — routes registered from inside the preset report success and still answer 404 on the
+# web server. A bundle patch runs at the application level, which is the only context where
+# `connection.fetch.register` is accepted (the same reason companion-media ships its API this way).
+#
+# Nothing here sends a message: every route is a read or an explicit operator action, and the
+# send-side gate is `delivery.enabled` in <dataDir>/home/expression/config.json (default false).
+- insert:
+    - id: companion-expression-http
+      name: './http.mjs'

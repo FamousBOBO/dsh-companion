@@ -92,6 +92,16 @@ export const MODULE_SPECS = {
     patchBlocks: ['media'],
     title: '媒体层（生图/TTS/识图，能力默认全关）',
   },
+  expression: {
+    // Two blocks, same reason as `media`: the tools must live inside the preset to be visible to
+    // the model, while the Studio API has to be registered at the top level — a route registered
+    // from inside the preset's isolate realm reports success and still answers 404.
+    kind: 'file',
+    directory: 'plugins/companion-expression',
+    files: ['index.mjs', 'http.mjs'],
+    patchBlocks: ['expression'],
+    title: '表情包系统（采集/检索/投递 + Studio 管理入口，默认全关）',
+  },
   pasteSearch: {
     kind: 'bundle',
     directory: 'plugins/dsh-paste-search',
@@ -580,11 +590,15 @@ export async function runSetup(argv = process.argv.slice(2)) {
 
     if (spec.kind === 'file') {
       for (const block of spec.patchBlocks || []) activeBlocks.add(block);
+      // A `file` module is mounted straight from the source tree, so a missing entry file is a
+      // silent no-op at host start time — that is exactly the failure this check exists to name.
+      const missing = (spec.files || []).filter((rel) => !fs.existsSync(path.join(directory, rel)));
       reportStep(reporter, {
-        id: `module:${key}`, title: spec.title, status: 'ok',
-        detail: `补丁里会挂载 file://${spec.directory}（不进 profile 依赖）`,
+        id: `module:${key}`, title: spec.title, status: missing.length ? 'warn' : 'ok',
+        detail: `补丁里会挂载 file://${spec.directory}（不进 profile 依赖）`
+          + (missing.length ? `；但入口缺失：${missing.join('、')}` : ''),
       });
-      moduleResults.push({ key, status: 'ok' });
+      moduleResults.push({ key, status: missing.length ? 'warn' : 'ok' });
       continue;
     }
 

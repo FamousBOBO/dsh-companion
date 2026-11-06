@@ -1,0 +1,38 @@
+{
+  "name": "@dsh-companion/expression",
+  "version": "0.1.0",
+  "type": "module",
+  "private": true,
+  "description": "表情包系统：按来源授权的被动采集、语义卡、检索与决策、整轮回复计划、真实投递与反馈，外加陪伴空间「表情包」管理入口（图库 / 收集规则 / 自然度实验室 / 表达习惯）。默认关闭。",
+  "license": "MIT",
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./http": "./http.mjs",
+    "./config": "./src/config.mjs",
+    "./library": "./src/library.mjs",
+    "./studio": "./src/studio.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.mjs",
+    "http.mjs",
+    "src/",
+    "test/",
+    "scripts/",
+    "cordis.patch.yml",
+    "config.example.json",
+    "CONTRACT.md",
+    "README.md"
+  ],
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "scripts": {
+    "test": "node --test \"test/*.test.mjs\"",
+    "test:unit": "node --test \"test/*.test.mjs\"",
+    "check:patch": "node scripts/check-patch.mjs",
+    "check:hostload": "node scripts/check-hostload.mjs",
+    "build": "node -e \"import('./index.mjs').then(() => console.log('companion-expression: 源码可直接加载，无构建步骤'));\""
+  }
+}

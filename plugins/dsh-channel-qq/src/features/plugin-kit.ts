@@ -33,6 +33,7 @@ import type { TurnLauncher } from '../app/conversation/turns.js'
 import type { NoticeHandler } from '../app/inbound/notices.js'
 import type { InboundPipeline } from '../app/inbound/pipeline.js'
 import type { InboundObservers } from './observers/inbound.js'
+import type { ExpressionBridgePort } from './expression-bridge.js'
 import type { EmojiLibrary } from '../emoji-library.js'
 import type { EmojiStore } from '../emoji.js'
 import type { SentLog, SentLogHub } from '../sent-log.js'
@@ -142,6 +143,8 @@ export interface ServiceBag {
   learn?: LearnStore
   flood?: FloodGuard
   observers?: InboundObservers
+  /** 表情包入站旁路（observers 提供）：只暴露 `forwardInbound`，单向同步、发射后不管。 */
+  expressionBridge?: ExpressionBridgePort
   /** 发送侧健康探测（platform 提供；后台 `/api/healthz` 与运维脚本读它）。 */
   health?: HealthProbe
   /** 网关错误总线（inbound 提供；换血看门狗消费）。 */

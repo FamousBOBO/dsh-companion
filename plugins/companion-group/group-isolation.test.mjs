@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { groupIdOf, groupToolDenial, markGroupReady, GROUP_ALLOWED_TOOLS, GROUP_MEDIA_TOOLS } from './core.mjs?v=group-media-20261102-restrict3';
+import { groupIdOf, groupToolDenial, markGroupReady, GROUP_ALLOWED_TOOLS, GROUP_MEDIA_TOOLS, GROUP_EXPRESSION_TOOLS } from './core.mjs?v=group-media-20261102-restrict3';
 import { apply as boundary } from './boundary.mjs';
 import { apply as persona, GROUP_PERSONA } from './index.mjs';
 import { createIdentity } from '../companion-foundation/identity.mjs';
@@ -24,7 +24,10 @@ test('owner identity refuses group, foreign DM and malformed QQ ids, including o
   const dir = path.join(root, 'home/companion'); fs.mkdirSync(dir, { recursive: true });
   const file = path.join(dir, 'identity.json');
   fs.writeFileSync(file, JSON.stringify({ schemaVersion: 1, persona: 'bot', owner: { id: '456', displayName: 'Synthetic', platform: 'qq' }, desktop: { mode: 'local-owner', userId: '456' }, sessions: { 'qq-group-123': { userId: '456', persona: 'bot' } } }));
-  const identity = createIdentity(root); const before = fs.readFileSync(file, 'utf8');
+  // 这些断言全部与宿主机配置无关：identity.json 里写的是 `persona: 'bot'`，所以这里显式把
+  // persona id 钉成 'bot'。不加这一句，本机 `config/suite.json` 里配置的 persona id 如果
+  // 不是 'bot'，会让 createIdentity 判 "not configured" —— 那是环境差异，不是身份层的判定被改坏。
+  const identity = createIdentity(root, { personaId: 'bot' }); const before = fs.readFileSync(file, 'utf8');
   for (const id of ['qq-group-123', 'qq-group-999', 'qq-dm-789', 'qq-unknown', 'qq-dm-0456']) {
     assert.throws(() => identity.resolve(id), /Owner memory is unavailable/);
     assert.throws(() => identity.context(id), /Owner memory is unavailable/);
@@ -184,17 +187,66 @@ test('strict host registry accepts current media surface and QQ-only deployments
   let step;
   persona({tools:{guard(){},restrict(){}},systemPrompt:{section(){}},on(name,fn){if(name==='agent/pre-step')step=fn;}});
   for(const media of [true,false]){
-    const a=agent(),registered=new Set(['qq_message','qq_sticker','qq_voice','pwsh',...(media?GROUP_MEDIA_TOOLS:[])]);
+    // 表情包工具与媒体工具一样是**可选插件**提供的：注册了就应留下，没注册就不该被下发。
+    const a=agent(),registered=new Set(['qq_message','qq_sticker','qq_voice','pwsh',...(media?GROUP_MEDIA_TOOLS:[]),...GROUP_EXPRESSION_TOOLS]);
     let restriction;
     a.ctx.tools.view=()=>({restrictableNames:registered});
     a.ctx.tools.restrict=filter=>{for(const name of filter.allow)assert.ok(registered.has(name),`unknown tool: ${name}`);restriction=filter;};
     let entered=false;
     await step({agent:a,step:1,turn:1},async()=>{entered=true;return {kind:'enter'};});
     assert.equal(entered,true);
-    assert.deepEqual(restriction.allow,media?[...GROUP_ALLOWED_TOOLS]:['qq_message','qq_sticker','qq_voice']);
+    assert.deepEqual(restriction.allow,media?[...GROUP_ALLOWED_TOOLS]:['qq_message','qq_sticker','qq_voice',...GROUP_EXPRESSION_TOOLS]);
     assert.equal(restriction.allow.includes('pwsh'),false);
     assert.equal(restriction.allow.includes('companion_media_inspect'),false);
     assert.equal(groupToolDenial(send(a)),undefined);
     assert.match(groupToolDenial({...send(a),name:'pwsh'}),/只开放/);
   }
+});
+
+test('expression tools: only assetId, only the current group, and never a file or path argument', () => {
+  const a = agent(); markGroupReady(a);
+  // `target` 在工具 schema 里是**字符串**；群这一层两种形态都认，且只认当前群。
+  const reply = (over = {}) => ({ agent: a, name: 'expression_reply', arguments: { action: 'send', isGroup: true, target: '123', assetId: 'ast_abc123456', ...over } });
+  const candidates = (over = {}) => ({ agent: a, name: 'expression_candidates', arguments: { query: '开心', limit: 3, ...over } });
+  const feedback = (over = {}) => ({ agent: a, name: 'expression_feedback', arguments: { action: 'praise', assetId: 'ast_abc123456', ...over } });
+
+  // 三个工具都在群里出现，且都不接受路径类参数。
+  assert.ok(GROUP_ALLOWED_TOOLS.includes('expression_candidates'));
+  assert.ok(GROUP_ALLOWED_TOOLS.includes('expression_reply'));
+  assert.ok(GROUP_ALLOWED_TOOLS.includes('expression_feedback'));
+
+  // 只读旁路不发消息：不给 isGroup/target 也能过；给了别的键就不行。
+  assert.equal(groupToolDenial(candidates()), undefined);
+  assert.equal(groupToolDenial(feedback()), undefined);
+  assert.equal(groupToolDenial(candidates({ isGroup: true, target: '123' })), undefined);
+  for (const over of [{ file: 'C:/secret.png' }, { path: '/etc/passwd' }, { filePath: mediaFile('image/abc.png') }, { url: 'https://x/y.png' }, { scope: 'owner_private:x' }, { text: '附带文字' }]) {
+    assert.equal(typeof groupToolDenial(candidates(over)), 'string', `candidates ${JSON.stringify(over)}`);
+    assert.equal(typeof groupToolDenial(feedback(over)), 'string', `feedback ${JSON.stringify(over)}`);
+  }
+  // 只读也不许借道看别的群。
+  for (const over of [{ isGroup: false }, { target: '999' }, { isGroup: true, target: '999' }]) {
+    assert.equal(typeof groupToolDenial(candidates(over)), 'string', `candidates ${JSON.stringify(over)}`);
+    assert.equal(typeof groupToolDenial(feedback(over)), 'string', `feedback ${JSON.stringify(over)}`);
+  }
+  assert.equal(typeof groupToolDenial(feedback({ action: 'send' })), 'string', '反馈只有 praise/reject/correction');
+
+  // 发送动作：目标必须是当前群，素材只能按 assetId 指名。
+  assert.equal(groupToolDenial(reply()), undefined);
+  assert.equal(groupToolDenial(reply({ target: 123, mode: 'sticker_only' }), OPTS), undefined);
+  assert.equal(groupToolDenial(reply({ mode: 'text_then_sticker', text: '配一句话' }), OPTS), undefined);
+  for (const over of [
+    { target: 999 }, { target: '999' }, { isGroup: false }, { action: 'reply' },
+    { assetId: '' }, { assetId: 'C:/secret.png' }, { assetId: 'images/abc.png' }, { assetId: 'ast_abc 123' }, { assetId: '[CQ:image,file=x.png]' },
+    { file: mediaFile('image/abc.png') }, { path: '/etc/passwd' }, { filePath: mediaFile('image/abc.png') }, { url: 'https://x/y.png' },
+    { mode: 'silent' }, { mode: 'sticker_only ' },
+    { text: '[CQ:image,file=C:/secret.png]' }, { text: 'x'.repeat(4001) },
+    { note: '额外字段' }, { signal: 'extra' },
+  ]) {
+    assert.equal(typeof groupToolDenial(reply(over), OPTS), 'string', JSON.stringify(over));
+  }
+  // 别的群的 agent 也不能用：闸门按 agent 的群号判定，与 target 无关。
+  const other = agent('qq-group-456'); markGroupReady(other);
+  assert.equal(typeof groupToolDenial({ ...reply(), agent: other }), 'string', '不能向别的群发');
+  // 私聊回合不受这一层管（旧行为：不是群会话就直接放行）。
+  assert.equal(groupToolDenial({ ...reply(), agent: agent('qq-dm-456') }), undefined);
 });

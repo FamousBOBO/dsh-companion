@@ -22,11 +22,12 @@
 | `qq-idle-compaction` | （随通道） | 同通道 | 同上 | ❌ 否（`modules.qqIdleCompaction`） |
 | `companion-media` | `@dsh-companion/media` | Win（实机）／其余未验证 | TTS / 生图服务（可选，缺省即关闭）；识图可走云端模型 | ❌ 否 |
 | `companion-health` | `@dsh-companion/health` | Win（实机）／其余未验证 | `sidecars/huawei-health-cn`（**随包分发**，需华为账号授权）与/或 `sidecars/ble-heart-rate`（BLE 设备） | ❌ 否 |
+| `companion-expression` | `@dsh-companion/expression` | Win（离线测试）／其余未验证 | QQ 通道（采集与投递都走它）；无第三方库（只用 `node:sqlite`） | ❌ 否（`modules.expression` + `delivery.enabled` 两道闸） |
 | `sidecars/huawei-health-cn` | —（Python） | Win（实机）／其余未验证 | Python 3.9+；华为运动健康 CN 账号。上游为 **MIT 且随包分发**（`python/` 下 3 个派生文件 + 1 个本项目自写的服务端，见 §1.2.1）；`$HUAWEI_UPSTREAM_PKG` 只是**可选覆盖** | ❌ 否 |
 | `sidecars/ble-heart-rate` | —（Python） | Win（实机，真机跑通）／macOS·Linux 未验证 | Python 3.12 + `bleak`；支持心率广播的 BLE 设备（**原创代码，不受上游许可影响**） | ❌ 否 |
 | `dsh-paste-search` | `@dsh-companion/paste-search` | Win / Linux / macOS | 无 | ❌ 否 |
 
-发布树规模：**9 个插件模块 + 2 个 sidecar**（另有 `qq-idle-compaction.mjs` 作为通道随附模块）。
+发布树规模：**10 个插件模块 + 2 个 sidecar**（另有 `qq-idle-compaction.mjs` 作为通道随附模块）。
 
 ### 1.1 外部可选模块（**不在本仓库**）
 
@@ -227,6 +228,7 @@ dsh-paste-search              独立（UI 入口）
 | `dsh-channel-qq` | **1208 / 1207 通过 / 0 失败 / 1 跳过** | 未验证（验收未启用通道） | 未验证 | **未验证** | — |
 | `companion-media` | 通过（计数未单独汇总） | 未验证（验收未启用该模块） | 未验证 | 未验证 | — |
 | `companion-health` | 通过（计数未单独汇总） | 未验证（验收未启用该模块） | 未验证 | — | 未验证 |
+| `companion-expression` | 见 `docs/07` §2.6（本轮离线测试计数） | **✅**（真宿主装载，两行都装上、无 `did not activate`） | 未验证 | **未验证** | — |
 | `sidecars/huawei-health-cn` | 见负责人交接报告（含 `test_protocol_contract.py` / `test_redact.py`） | — | **未验证**（需要真实华为账号；代码路径与 MIT 许可已就位） | — | — |
 | `sidecars/ble-heart-rate` | 见负责人交接报告（`--fixture` 可无硬件跑） | — | — | — | 未验证 |
 | `dsh-paste-search` | **无测试** | 未验证（验收未启用该模块） | — | — | — |
@@ -273,5 +275,7 @@ dsh-paste-search              独立（UI 入口）
 | `companion-media` | 识图默认关闭；投递通道 mock；**Index-TTS 明确不实现**（上游非开源许可 + 无文档化 HTTP 契约，见 §1.3） | 「发出去了」不会被证明 |
 | `companion-health` | 四个能力（上下文注入 / 习惯记忆 / 日程调整 / 主动关怀）本轮代码里没有读取分支 | 开关存在但无效，`docs/02` §3.6 已注明 |
 | `companion-group` | 无独立测试目录；群内媒体/自主接话在历史上无真实证据 | 群里发图/发语音属未验证 |
+| `companion-expression` | **未验证**：GIF 关键帧理解、OCR、embedding 向量召回、QQ 内置 `face` 投递全部未实现；真实平台发图未验收 | 图库可用、决策可算、管理入口可看，但「真的发出去了」没有证据（`docs/07` §2.6） |
+| `companion-expression`（默认开关） | 补丁块默认关：`modules.expression=true` 才会挂载；模块内另有 `delivery.enabled` 第二道闸 | 没开模块时侧栏「表情包」页面会自己给出启用片段，不是坏掉 |
 | 实时语音 | 不在发布树（实验态 sidecar） | 不要承诺它可用 |
 | B站 | 外部模块 | 版本、许可、Python 环境都由用户负责 |

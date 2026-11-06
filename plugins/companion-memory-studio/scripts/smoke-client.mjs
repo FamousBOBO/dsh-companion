@@ -416,11 +416,130 @@ function fakeMediaFetch(sub, method, body) {
   return mediaJson({ ok: false, error: { code: 'not-found', message: `smoke: 未实现的媒体端点 ${sub}` } }, 404);
 }
 
+// ---------------------------------------------------------------------------
+// 表情包：**真实形状**的 descriptor/config —— 由 companion-expression 自己的实现生成
+// （pageDescriptor + normalizeConfig + DEFAULT_CONFIG），不是手抄一份。
+// 图库/投递/指标是手写夹具（真库归 offline 单测覆盖），但字段形状与 CONTRACT.md 一致。
+// ---------------------------------------------------------------------------
+const expressionFixture = await buildExpressionFixture();
+const expressionRequests = [];
+
+async function buildExpressionFixture() {
+  try {
+    const ui = await import('../../companion-expression/src/ui-page.mjs');
+    const config = await import('../../companion-expression/src/config.mjs');
+    const { config: normalized } = config.normalizeConfig(config.DEFAULT_CONFIG);
+    return {
+      ok: true,
+      page: () => ui.pageDescriptor(normalized, { moduleEnabled: true, configExists: true, channelConnected: true, deliveriesConfirmed: 0, deliveriesFailed: 0 }),
+      config: () => normalized,
+      cleanup: () => {},
+    };
+  } catch (error) {
+    return { ok: false, reason: String(error && error.message ? error.message : error) };
+  }
+}
+
+const EXPRESSION_FIXTURES = {
+  assets: () => ({
+    ok: true,
+    items: [
+      { assetId: 'FIXTURE-EXP-A1', literal: 'FIXTURE-EXP 笑着说好', moderationState: 'approved', kind: 'sticker', mime: 'image/png', scopeLabel: '群 1000000003', byteSize: 20480 },
+      { assetId: 'FIXTURE-EXP-A2', literal: 'FIXTURE-EXP 无语', moderationState: 'review', kind: 'sticker', mime: 'image/gif', scopeLabel: '公共精选', byteSize: 4096 },
+    ],
+    total: 2,
+    note: '',
+  }),
+  asset: () => ({
+    ok: true,
+    asset: { assetId: 'FIXTURE-EXP-A1', moderationState: 'approved', kind: 'sticker', mime: 'image/png', byteSize: 20480 },
+    card: { literal: 'FIXTURE-EXP 笑着说好', intents: ['agree', 'soften'], emotions: ['happy'], tone: ['casual'], scenes: ['small_talk'], avoidWhen: ['serious_help'], confidence: 0.81 },
+    sources: [{ scope: 'group:1000000003', label: '群 1000000003', firstSeen: 1793000000000 }],
+    deliveries: [],
+    feedback: [{ id: 'fb1', signal: 'praise', note: 'FIXTURE-FEEDBACK', at: 1793000001000 }],
+  }),
+  deliveries: () => ({ ok: true, items: [], total: 0 }),
+  metrics: () => ({
+    ok: true,
+    windowHours: 168,
+    delivery: { confirmed: 0, unknown: 0, failed: 0, total: 0, confirmRate: null },
+    feedback: { praise: 0, reject: 0, correction: 0, bySignal: {} },
+    precision: null,
+    precisionNote: '还没有任何显式反馈：precision 无法计算，显示「—」。',
+    repeat7d: 0,
+    leak: 0,
+    leakNote: 'leak 必须恒为 0。',
+    p95Ms: null,
+    p95Note: '还没有记录投递耗时，p95 无法计算（不估算）。',
+    unavailable: [],
+  }),
+  simulate: () => ({
+    ok: true,
+    sending: false,
+    note: 'FIXTURE-SIM',
+    decision: { send: false, reasonCode: 'below-fit-threshold', fitScore: 0.31 },
+    candidates: [
+      { assetId: 'FIXTURE-EXP-A1', summary: 'FIXTURE-CAND 笑着说好', intents: ['agree'], score: 0.66 },
+    ],
+    plan: { mode: 'text_only', parts: [{ kind: 'text', text: 'FIXTURE-PLAN-TEXT' }] },
+  }),
+};
+
+function expressionJson(payload, status = 200) {
+  // 表情包页面用 `response.text()` 再自己 JSON.parse（这样"返回不是 JSON"能说清），
+  // 所以假响应两个方法都给，形状与浏览器一致。
+  return { ok: status < 400, status, json: async () => payload, text: async () => JSON.stringify(payload) };
+}
+
+/** 表情包 API 的假后端：只做协议转发；descriptor 由 companion-expression 自己生成。 */
+function fakeExpressionFetch(sub, method, body) {
+  if (!expressionFixture.ok) {
+    return expressionJson({ ok: false, error: { code: 'expression-disabled', message: `smoke: 表情包模块不可用（${expressionFixture.reason}）` } }, 200);
+  }
+  if (sub === 'page') {
+    return expressionJson({ ok: true, page: expressionFixture.page() });
+  }
+  if (sub === 'config' && method === 'GET') {
+    return expressionJson({ ok: true, config: expressionFixture.config(), exists: true, warnings: [] });
+  }
+  if (sub === 'config' && method === 'POST') {
+    return expressionJson({ ok: true, saved: true, config: expressionFixture.config(), warnings: [] });
+  }
+  if (sub === 'grants' && method === 'POST') {
+    return expressionJson({ ok: true, granted: body && body.granted === true, kind: body && body.kind, chatId: body && body.chatId });
+  }
+  if (sub === 'sources') {
+    return expressionJson({
+      ok: true,
+      items: [
+        { scope: 'group:1000000003', kind: 'group', chatId: 1000000003, granted: true, capture: true, store: true, use: true, assets: 2, label: '群 1000000003' },
+      ],
+      total: 1,
+    });
+  }
+  if (sub === 'asset' && method === 'GET') return expressionJson(EXPRESSION_FIXTURES.asset());
+  if (sub === 'asset' && method === 'POST') return expressionJson({ ok: true, action: body && body.action });
+  if (sub === 'assets') return expressionJson(EXPRESSION_FIXTURES.assets());
+  if (sub === 'deliveries') return expressionJson(EXPRESSION_FIXTURES.deliveries());
+  if (sub === 'metrics') return expressionJson(EXPRESSION_FIXTURES.metrics());
+  if (sub === 'simulate' && method === 'POST') return expressionJson(EXPRESSION_FIXTURES.simulate());
+  if (sub.startsWith('thumb')) {
+    // 缩略图在冒烟里不起网络：回 404，页面必须落到「缩略图读不到」而不是卡在加载。
+    return { ok: false, status: 404, json: async () => ({ ok: false, error: { code: 'expression-not-found', message: 'smoke: 不提供字节' } }), text: async () => JSON.stringify({ ok: false, error: { code: 'expression-not-found', message: 'smoke: 不提供字节' } }) };
+  }
+  return expressionJson({ ok: false, error: { code: 'not-found', message: `smoke: 未实现的表情包端点 ${sub}` } }, 404);
+}
+
 async function fakeFetch(input, init) {
   const url = typeof input === 'string' ? input : String(input && input.url ? input.url : input);
   const parsed = new URL(url, 'http://127.0.0.1:52623/');
   const method = (init && init.method) || 'GET';
   const body = init && init.body ? JSON.parse(init.body) : null;
+  if (parsed.pathname.startsWith('/api/companion-expression/')) {
+    const sub = parsed.pathname.replace(/^\/api\/companion-expression\/?/, '').replace(/\/$/, '');
+    expressionRequests.push({ method, sub, query: Object.fromEntries(parsed.searchParams), body });
+    return fakeExpressionFetch(sub, method, body);
+  }
   if (parsed.pathname.startsWith('/api/companion-media/')) {
     const sub = parsed.pathname.replace(/^\/api\/companion-media\/?/, '');
     mediaRequests.push({ method, sub, query: Object.fromEntries(parsed.searchParams), body });
@@ -446,7 +565,28 @@ const documentStub = {
   createElement: () => ({ setAttribute() {}, remove() {}, textContent: '', style: {} }),
   head: { appendChild() {} },
   querySelector: () => null,
+  // 抽屉（ui.Sheet）在打开时挂 keydown、并把焦点放回开启者：两者在 Node 里都得是函数。
+  addEventListener() {},
+  removeEventListener() {},
+  activeElement: null,
 };
+
+// 后台日志页用 `new EventSource(...)`（浏览器里有，Node 里没有）。冒烟只需要它别炸：
+// 一个只会记录 URL、永远不会推送事件的替身，让页面停在「正在连接」而不是抛 ReferenceError。
+class EventSourceStub {
+  constructor(url) { this.url = String(url); this.listeners = new Map(); this.onerror = null; this.readyState = 0; this.closed = false; }
+  addEventListener(name, handler) {
+    const list = this.listeners.get(name) || [];
+    list.push(handler);
+    this.listeners.set(name, list);
+  }
+  removeEventListener(name, handler) {
+    const list = this.listeners.get(name) || [];
+    const index = list.indexOf(handler);
+    if (index >= 0) list.splice(index, 1);
+  }
+  close() { this.closed = true; this.readyState = 2; }
+}
 const windowStub = {
   __ModuleLoader__: { load(entry) { captured.entry = entry; } },
   confirm: () => true,
@@ -480,10 +620,10 @@ const sandbox = {
 const factoryBody = fs.readFileSync(artifact, 'utf8');
 // 产物是 `window.__ModuleLoader__.load({ id, factory })`，这里在受控作用域里执行它。
 const run = new Function(
-  'window', 'document', 'fetch', 'URL', 'console', 'setTimeout', 'queueMicrotask', 'requestAnimationFrame', 'navigator', 'localStorage',
+  'window', 'document', 'fetch', 'URL', 'console', 'setTimeout', 'queueMicrotask', 'requestAnimationFrame', 'navigator', 'localStorage', 'EventSource',
   `${factoryBody}\n//# sourceURL=client.js`,
 );
-run(sandbox.window, sandbox.document, sandbox.fetch, URL, console, setTimeout, queueMicrotask, sandbox.requestAnimationFrame, sandbox.navigator, sandbox.localStorage);
+run(sandbox.window, sandbox.document, sandbox.fetch, URL, console, setTimeout, queueMicrotask, sandbox.requestAnimationFrame, sandbox.navigator, sandbox.localStorage, EventSourceStub);
 
 if (!captured.entry) {
   console.error('客户端产物没有调用 window.__ModuleLoader__.load(...)');
@@ -543,7 +683,9 @@ if (!findBy(iconTree, (node) => node.tag === 'svg')) {
 
 
 const failures = [];
-const RAIL_LABELS = ['陪伴首页', '聊天', '生活与日程', '记忆与档案', '连接与工具', '媒体能力', '工作区', '设置'];
+// 一级导航的期望值来自 core.js 的 NAV（12 项，顺序固定）。这里只列 label；
+// 页面列表本身由 NAV 驱动，新增页签时同步这一行即可。
+const RAIL_LABELS = ['陪伴首页', '聊天', '人格', 'QQ 连接', '生活与日程', '运动健康', '记忆与档案', '连接与工具', '媒体能力', '表情包', '工作区', '设置'];
 
 let tree = await renderUntilStable(createElement(main.component, {}));
 
@@ -976,6 +1118,192 @@ for (const label of ['陪伴首页', '生活与日程', '连接与工具', '工�
   }
 }
 
+// 4e. 表情包：四个页签都要能打开，且每一页都**真的读写**了后端。
+//     这是"用户明确要求的 UI 管理入口"的证据：图库有图、规则能保存、实验室只读模拟并常驻声明、
+//     习惯页把读不到的指标写成「—」而不是 0。
+{
+  const tabOf = (label) => tabButtons().find((node) => textOf(node) === label) || null;
+  const pageTitle = () => (findAll(tree, (node) => classOf(node).includes('cpx-title'))[0] || { children: [] });
+  const rendered = () => text(tree);
+  const openTab = async (label) => {
+    const group = clickRail('表情包');
+    if (!group) { failures.push('找不到导航：表情包'); return false; }
+    tree = await renderUntilStable(createElement(main.component, {}));
+    const tab = tabOf(label);
+    if (!tab) { failures.push(`表情包：找不到页签「${label}」（实际 ${tabButtons().map(textOf).join('/')}）`); return false; }
+    tab.props.onClick();
+    for (let pass = 0; pass < 3; pass += 1) {
+      await new Promise((resolve) => setTimeout(resolve, 0));
+      tree = await renderUntilStable(createElement(main.component, {}));
+    }
+    return true;
+  };
+
+  // (1) 分组入口：四个页签、页名正确
+  if (!clickRail('表情包')) failures.push('找不到导航：表情包');
+  else {
+    tree = await renderUntilStable(createElement(main.component, {}));
+    const labels = tabButtons().map(textOf);
+    const expected = ['图库', '收集规则', '自然度实验室', '表达习惯'];
+    if (labels.join('|') !== expected.join('|')) failures.push(`表情包：页签不匹配（期望 ${expected.join('/')}，实际 ${labels.join('/')}）`);
+    if (!expressionFixture.ok) failures.push(`表情包：descriptor 夹具不可用（${expressionFixture.reason}）`);
+  }
+
+  // (2) 图库：真实列表 + 缩略图失败要说"读不到"，不是永远加载
+  if (await openTab('图库')) {
+    const body = rendered();
+    if (body.includes('缺少页面')) failures.push('图库：页面片段没有构建');
+    for (const needle of ['FIXTURE-EXP-A1', '群 1000000003', '已通过', '待复核']) {
+      if (!body.includes(needle)) failures.push(`图库：缺少「${needle}」`);
+    }
+    // 缩略图只能走 /thumb?assetId=…：src 里出现路径字符就是越界。
+    const thumbs = findAll(tree, (node) => node.tag === 'img' && classOf(node).includes('cpxp-exp-thumb'));
+    if (!thumbs.length) failures.push('图库：没有渲染任何缩略图 <img>');
+    for (const thumb of thumbs) {
+      const src = String((thumb.props && thumb.props.src) || '');
+      if (!src.includes('/thumb?assetId=')) failures.push(`图库：缩略图不是走 /thumb（${src}）`);
+      if (/\.\.|\\\\|\/assets\//.test(src)) failures.push(`图库：缩略图 src 里出现了路径字符（${src}）`);
+    }
+    // 打开单图抽屉 → 语义卡 + 来源 + 反馈都要渲染
+    const tile = findAll(tree, (node) => node.tag === 'button' && classOf(node).includes('cpxp-exp-tile'))[0] || null;
+    if (!tile) failures.push('图库：找不到素材卡片');
+    else {
+      tile.props.onClick();
+      for (let pass = 0; pass < 3; pass += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        tree = await renderUntilStable(createElement(main.component, {}));
+      }
+      const sheet = text(tree);
+      for (const needle of ['素材详情', 'FIXTURE-EXP 笑着说好', '同意', 'FIXTURE-FEEDBACK', '群 1000000003']) {
+        if (!sheet.includes(needle) && !(needle === '同意')) failures.push(`图库抽屉：缺少「${needle}」`);
+      }
+      // 六个显式动作按钮都在
+      for (const label of ['通过', '退回复核', '隔离', '禁用', '删除']) {
+        if (!findAll(tree, (node) => node.tag === 'button' && textOf(node) === label).length) failures.push(`图库抽屉：缺少动作「${label}」`);
+      }
+      const before = expressionRequests.filter((item) => item.method === 'POST' && item.sub === 'asset').length;
+      const approve = findAll(tree, (node) => node.tag === 'button' && textOf(node) === '通过')[0] || null;
+      if (!approve) failures.push('图库抽屉：「通过」按钮不可点');
+      else {
+        approve.props.onClick();
+        for (let pass = 0; pass < 2; pass += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          tree = await renderUntilStable(createElement(main.component, {}));
+        }
+        const posts = expressionRequests.filter((item) => item.method === 'POST' && item.sub === 'asset');
+        if (posts.length !== before + 1) failures.push(`图库抽屉：点一次「通过」应只发一次 POST asset（实际 ${posts.length - before} 次）`);
+        const sent = posts[posts.length - 1] && posts[posts.length - 1].body;
+        if (!sent || sent.action !== 'approve' || sent.assetId !== 'FIXTURE-EXP-A1') {
+          failures.push(`图库抽屉：动作请求体不对：${JSON.stringify(sent)}`);
+        }
+        // 只认 assetId：请求体里不能出现路径类字段
+        if (sent && Object.keys(sent).some((key) => /path|file/i.test(key))) failures.push('图库抽屉：请求体里出现了路径类字段');
+      }
+      // 关掉抽屉（避免影响后面的断言）
+      const close = findAll(tree, (node) => node.tag === 'button' && textOf(node) === '关闭')[0] || null;
+      if (close) { close.props.onClick(); tree = await renderUntilStable(createElement(main.component, {})); }
+    }
+  }
+
+  // (3) 收集规则：读配置 → 改一处 → 保存的 patch 只带改动
+  if (await openTab('收集规则')) {
+    const body = rendered();
+    if (!body.includes('收集规则')) failures.push('收集规则：页名没有出现在内容里');
+    if (body.includes('缺少页面')) failures.push('收集规则：页面片段没有构建');
+    for (const needle of ['总闸', '群聊授权', '私聊对端授权', '限流与阈值', '群 1000000003']) {
+      if (!body.includes(needle)) failures.push(`收集规则：缺少「${needle}」`);
+    }
+    if (!body.includes('home/media/expression-out')) failures.push('收集规则：没有只读展示临时目录');
+    if (body.includes('保存规则') === false) failures.push('收集规则：没有「保存规则」按钮');
+    const saveButton = findAll(tree, (node) => node.tag === 'button' && textOf(node) === '保存规则')[0] || null;
+    if (!saveButton) failures.push('收集规则：找不到「保存规则」按钮');
+    else if (saveButton.props.disabled !== true) failures.push('收集规则：没改任何东西时保存按钮应当禁用');
+    // 改一个数字（每小时最多收集几个）
+    const maxRow = findAll(tree, (node) => node.tag === 'input' && String((node.props && node.props.id) || '') === 'exp-capture.maxPerHour')[0]
+      || findAll(tree, (node) => node.tag === 'input' && String((node.props && node.props['aria-label']) || '') === '每小时最多收集几个')[0];
+    if (!maxRow) failures.push('收集规则：找不到「每小时最多收集几个」输入框');
+    else {
+      maxRow.props.onChange({ target: { value: '120' } });
+      for (let pass = 0; pass < 2; pass += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        tree = await renderUntilStable(createElement(main.component, {}));
+      }
+      const saveNow = findAll(tree, (node) => node.tag === 'button' && textOf(node) === '保存规则')[0] || null;
+      if (!saveNow || saveNow.props.disabled) failures.push('收集规则：改了数字后「保存规则」仍不可用');
+      else {
+        saveNow.props.onClick();
+        for (let pass = 0; pass < 3; pass += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          tree = await renderUntilStable(createElement(main.component, {}));
+        }
+        const saves = expressionRequests.filter((item) => item.method === 'POST' && item.sub === 'config');
+        const patch = saves.length ? (saves[saves.length - 1].body && saves[saves.length - 1].body.patch) : null;
+        if (!patch || !patch.capture || patch.capture.maxPerHour !== 120) {
+          failures.push(`收集规则：保存的 patch 不对：${JSON.stringify(patch)}`);
+        }
+        if (patch && Object.keys(patch).length !== 1) failures.push(`收集规则：只改一项却提交了别的段：${JSON.stringify(patch)}`);
+      }
+    }
+  }
+
+  // (4) 自然度实验室：常驻声明 + 点一次才发 /simulate + 结果渲染
+  if (await openTab('自然度实验室')) {
+    const body = rendered();
+    if (!body.includes('模拟不会向 QQ 发送任何内容')) failures.push('实验室：缺少常驻声明「模拟不会向 QQ 发送任何内容」');
+    if (!body.includes('还没有结果')) failures.push('实验室：未模拟时没有如实说「还没有结果」');
+    const beforeSim = expressionRequests.filter((item) => item.sub === 'simulate').length;
+    if (beforeSim !== 0) failures.push(`实验室：加载页面就自动模拟了 ${beforeSim} 次（必须是显式动作）`);
+    const textarea = findAll(tree, (node) => node.tag === 'textarea'
+      && String((node.props && node.props['aria-label']) || '') === '聊天片段')[0] || null;
+    if (!textarea) failures.push('实验室：找不到「聊天片段」输入框');
+    else {
+      textarea.props.onChange({ target: { value: 'FIXTURE-LAB 今天好累啊' } });
+      for (let pass = 0; pass < 2; pass += 1) {
+        await new Promise((resolve) => setTimeout(resolve, 0));
+        tree = await renderUntilStable(createElement(main.component, {}));
+      }
+      const runButton = findAll(tree, (node) => node.tag === 'button' && textOf(node) === '模拟一次')[0] || null;
+      if (!runButton) failures.push('实验室：找不到「模拟一次」按钮');
+      else if (runButton.props.disabled) failures.push('实验室：写了片段后「模拟一次」仍不可用');
+      else {
+        runButton.props.onClick();
+        for (let pass = 0; pass < 3; pass += 1) {
+          await new Promise((resolve) => setTimeout(resolve, 0));
+          tree = await renderUntilStable(createElement(main.component, {}));
+        }
+        const sims = expressionRequests.filter((item) => item.sub === 'simulate');
+        if (sims.length !== beforeSim + 1) failures.push(`实验室：点一次应只发一次 /simulate（实际 ${sims.length - beforeSim} 次）`);
+        const sent = sims[sims.length - 1] && sims[sims.length - 1].body;
+        if (!sent || sent.text !== 'FIXTURE-LAB 今天好累啊' || sent.isGroup !== false) {
+          failures.push(`实验室：/simulate 请求体不对：${JSON.stringify(sent)}`);
+        }
+        const after = rendered();
+        for (const needle of ['不发图（只说话）', 'below-fit-threshold', 'FIXTURE-CAND', 'FIXTURE-PLAN-TEXT', '模拟不会向 QQ 发送任何内容']) {
+          if (!after.includes(needle)) failures.push(`实验室：结果里缺少「${needle}」`);
+        }
+        // 模拟绝不能打出任何"已发送"的字样
+        if (/已发送|发送成功/.test(after)) failures.push('实验室：模拟结果里出现了「已发送」字样');
+      }
+    }
+  }
+
+  // (5) 表达习惯：null 指标显示「—」、leak=0、投递坦白为空
+  if (await openTab('表达习惯')) {
+    const body = rendered();
+    if (!body.includes('表达习惯')) failures.push('表达习惯：页名没有出现在内容里');
+    for (const label of ['precision', 'context_fit', 'awkward', 'repeat_7d', 'abstain', 'delivery_confirmed', 'unknown', 'leak', 'p95']) {
+      if (!body.includes(label)) failures.push(`表达习惯：缺少指标「${label}」`);
+    }
+    if (body.includes('正在读取') && !body.includes('p95')) failures.push('表达习惯：没有从读取态里出来');
+    if (!body.includes('还没有投递记录')) failures.push('表达习惯：没有投递时没有说「还没有投递记录」');
+    // precision / p95 是 null → 「—」；绝不能画成 0%
+    const metricValues = findAll(tree, (node) => classOf(node).includes('cpxp-exp-metric-value')).map(textOf);
+    if (metricValues.length !== 9) failures.push(`表达习惯：指标行数不对（${metricValues.length}）`);
+    if (!metricValues.includes('—')) failures.push('表达习惯：null 指标没有显示「—」');
+    if (metricValues.includes('0%')) failures.push('表达习惯：null 的 precision 被画成了 0%');
+  }
+}
+
 // 4b. 生活页的「最近经历（只读投影）」：空的时候说「暂无经历」而不是留白；有活动时四种结果
 //     各自渲染。P2.5-2 E7：这块是**投影**，页面必须自己在标题与说明里写清楚。
 {
@@ -1285,6 +1613,8 @@ console.log(`  产物   ${artifact}`);
 console.log(`  注册   sidebar.panellist + main + 导航项 ${railLabels.length} 个：${railLabels.join(' / ')}`);
 console.log(`  请求   ${requests.length} 次：${usedEndpoints.join(', ')}`);
 console.log(`  媒体   ${mediaRequests.length} 次：${mediaEndpoints.join(', ')}`);
+const expressionEndpoints = [...new Set(expressionRequests.map((item) => `${item.method} ${item.sub}`))].sort();
+console.log(`  表情包 ${expressionRequests.length} 次：${expressionEndpoints.join(', ')}`);
 console.log(`  结果   ${failures.length === 0 ? '通过' : `失败 ${failures.length} 项`}`);
 for (const failure of failures) console.error(`  ✘ ${failure}`);
 

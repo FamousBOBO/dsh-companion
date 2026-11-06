@@ -44,6 +44,7 @@ const FRAGMENTS = [
   { file: 'src/client/pages-microscope.js', label: '召回显微镜（诊断）' },
   { file: 'src/client/pages-connections.js', label: '连接与工具' },
   { file: 'src/client/pages-media.js', label: '媒体能力设置（按 media descriptor 渲染）' },
+  { file: 'src/client/pages-expression.js', label: '表情包管理（图库/规则/实验室/习惯）' },
   { file: 'src/client/pages-workspace.js', label: '工作区' },
   { file: 'src/client/pages-settings.js', label: '设置' },
   { file: 'src/client/pages-overview.js', label: '运行状态（诊断）' },
