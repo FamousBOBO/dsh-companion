@@ -65,7 +65,7 @@ function harness(opts: {
 // 轮询到条件成立或超时：正常情况 ~200ms 返回，慢机器不会假红，失败时直接报"等到几条"。
 async function waitForCalls(h: { calls: Array<{ action: string }> }, n: number, timeoutMs = 8000): Promise<void> {
   const deadline = Date.now() + timeoutMs
-  const count = (): number => h.calls.filter((c) => c.action === 'send_group_msg').length
+  const count = (): number => h.calls.filter((c) => c.action === 'send_private_msg').length
   while (Date.now() < deadline) {
     if (count() >= n) return
     await new Promise((resolve) => { setTimeout(resolve, 50) })
@@ -74,24 +74,24 @@ async function waitForCalls(h: { calls: Array<{ action: string }> }, n: number, 
 }
 
 const OK = { get_group_list: [{ group_id: GROUP }], get_group_info: { group_name: '主群' }, get_login_info: { user_id: SELF, nickname: 'bot' } }
-const DIRECT = 'send_group_msg'
+const DIRECT = 'send_private_msg'
 
 test('合并转发：开关关着 → 逐条发送，没有转发动作', async () => {
   const h = harness({ forward: { longReplyThreshold: 0, maxNodes: 20 }, responses: OK })
-  await h.run({ isGroup: true, target: GROUP, text: TEXT })
+  await h.run({ isGroup: false, target: MASTER, text: TEXT })
   const syncCount = h.calls.filter((c) => c.action === DIRECT).length
   await waitForCalls(h, 3)
   assert.equal(syncCount, 1, 'PATCH-8：同步只发第一段')
   assert.equal(h.calls.filter((c) => c.action === DIRECT).length, 3, '排空后三段都发出去（后台补发其余两段）')
-  assert.equal(h.calls.some((c) => c.action === 'send_group_forward_msg'), false)
+  assert.equal(h.calls.some((c) => c.action === 'send_private_forward_msg'), false)
   assert.equal(h.calls.some((c) => c.action === 'get_login_info'), false)
 })
 
 test('合并转发：达到阈值 → 一条卡片，节点带机器人昵称与各段正文', async () => {
   const h = harness({ forward: { longReplyThreshold: 3, maxNodes: 20 }, responses: OK })
-  const result = await h.run({ isGroup: true, target: GROUP, text: TEXT })
+  const result = await h.run({ isGroup: false, target: MASTER, text: TEXT })
   assert.equal(h.calls.some((c) => c.action === DIRECT), false, '不该再逐条发')
-  const forward = h.calls.find((c) => c.action === 'send_group_forward_msg')
+  const forward = h.calls.find((c) => c.action === 'send_private_forward_msg')
   assert.ok(forward)
   const nodes = forward!.params.messages as Array<{ type: string; data: { nickname: string; content: Array<{ data: { text: string } }> } }>
   assert.equal(nodes.length, 3)
@@ -102,27 +102,27 @@ test('合并转发：达到阈值 → 一条卡片，节点带机器人昵称与
 
 test('合并转发：条数低于阈值 → 仍逐条发送', async () => {
   const h = harness({ forward: { longReplyThreshold: 4, maxNodes: 20 }, responses: OK })
-  await h.run({ isGroup: true, target: GROUP, text: TEXT })
+  await h.run({ isGroup: false, target: MASTER, text: TEXT })
   const syncCount = h.calls.filter((c) => c.action === DIRECT).length
   await waitForCalls(h, 3)
   assert.equal(syncCount, 1, 'PATCH-8：同步只发第一段')
   assert.equal(h.calls.filter((c) => c.action === DIRECT).length, 3, '排空后三段都发出去（后台补发其余两段）')
-  assert.equal(h.calls.some((c) => c.action === 'send_group_forward_msg'), false)
+  assert.equal(h.calls.some((c) => c.action === 'send_private_forward_msg'), false)
 })
 
 test('合并转发：条数超过 maxNodes → 回退逐条（不截断）', async () => {
   const h = harness({ forward: { longReplyThreshold: 2, maxNodes: 2 }, responses: OK })
-  await h.run({ isGroup: true, target: GROUP, text: TEXT })
+  await h.run({ isGroup: false, target: MASTER, text: TEXT })
   const syncCount = h.calls.filter((c) => c.action === DIRECT).length
   await waitForCalls(h, 3)
   assert.equal(syncCount, 1, 'PATCH-8：同步只发第一段')
   assert.equal(h.calls.filter((c) => c.action === DIRECT).length, 3, '排空后三段都发出去（后台补发其余两段）')
-  assert.equal(h.calls.some((c) => c.action === 'send_group_forward_msg'), false)
+  assert.equal(h.calls.some((c) => c.action === 'send_private_forward_msg'), false)
 })
 
 test('合并转发：转发失败 → 回退逐条，内容不丢', async () => {
   const h = harness({ forward: { longReplyThreshold: 2, maxNodes: 20 }, responses: OK, failForward: true })
-  await h.run({ isGroup: true, target: GROUP, text: TEXT })
+  await h.run({ isGroup: false, target: MASTER, text: TEXT })
   const syncCount = h.calls.filter((c) => c.action === DIRECT).length
   await waitForCalls(h, 3)
   assert.equal(syncCount, 1, 'PATCH-8：同步只发第一段')
@@ -145,7 +145,7 @@ test('合并转发：私聊走 send_private_forward_msg', async () => {
 
 test('PATCH-8 契约：提交 3 段后队列最终排空、3 段全部到达', async () => {
   const h = harness({ forward: { longReplyThreshold: 0, maxNodes: 20 }, responses: OK })
-  await h.run({ isGroup: true, target: GROUP, text: TEXT })
+  await h.run({ isGroup: false, target: MASTER, text: TEXT })
 
   // 同步只发第一段（PATCH-8 的承诺）。
   assert.equal(h.calls.filter((c) => c.action === DIRECT).length, 1, '同步只发第一段')
@@ -175,7 +175,7 @@ test('PATCH-8 契约：尾段失败也必须释放队列计数（不许泄漏）
     return await original(action, params)
   }
   try {
-    await h.run({ isGroup: true, target: GROUP, text: TEXT })
+    await h.run({ isGroup: false, target: MASTER, text: TEXT })
   } catch {
     // 尾段失败不该把 run 整体炸掉；若炸了也继续断言计数。
   }

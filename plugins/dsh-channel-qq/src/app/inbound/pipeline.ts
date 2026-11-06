@@ -19,7 +19,7 @@ import { parseInbound, type ParsedInbound } from '../../core/message/parse.js'
 import { renderMessageLine } from '../../core/message/render.js'
 import { isBatchFull, queueChars } from '../../core/batching.js'
 import { plannerAllows } from './planner-gate.js'
-import { isCalled, reactionHintOf } from '../../core/trigger.js'
+import { isCalled, isOwnerMessage, reactionHintOf } from '../../core/trigger.js'
 import { resolveRoomPolicy } from '../../core/room-policy.js'
 import { roomOf } from '../../core/room.js'
 import type { AgentGateway } from '../../ports/agent-gateway.js'
@@ -193,7 +193,9 @@ export class InboundPipeline {
         nowMs: this.deps.clock.now(),
       })
     }
-    const called = event.message_type === 'private' ? true : isCalled(event, parsed, config)
+    const called = event.message_type === 'private'
+      ? true
+      : isCalled(event, parsed, config) || isOwnerMessage(event, config)
     // 纯旁听：只记不提——不下载图片、不转写语音、不展开转发、不进队列、不调模型。
     if (watched && groupId !== null
       && resolveRoomPolicy(config, groupId).requireMention && !called) {

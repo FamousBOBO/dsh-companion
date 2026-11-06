@@ -19,6 +19,7 @@ import { formatLocalStamp } from '../../core/schedule/stamp.js'
 import { registeredToolCount } from '../../adapters/dsh-host/tools.js'
 import type { RunnerStatus } from '../reminders/runner-status.js'
 import type { SubHost, SubPlugin } from '../plugin-kit.js'
+import { publishStudioBridge } from './studio-bridge.js'
 
 /** host → 实例：apply 建、start 启、reload 重绑、dispose 收，四处拿同一个对象。 */
 const servers = new WeakMap<SubHost, AdminServer>()
@@ -301,7 +302,9 @@ export const adminPlugin: SubPlugin = {
   apply(host) {
     const server = new AdminServer(adminDeps(host, Date.now()))
     servers.set(host, server)
+    const unpublish=publishStudioBridge(host,server)
     return () => {
+      unpublish()
       const current = servers.get(host)
       servers.delete(host)
       current?.stop()

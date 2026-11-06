@@ -109,6 +109,7 @@ export function touchedRestartPaths(patch: Json): string[] {
 }
 
 export class AdminServer {
+  get configVersion(): number { return this.history.current }
   private server: http.Server | null = null
   private started = false
   private startedAt = 0

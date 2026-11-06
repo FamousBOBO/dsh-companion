@@ -5,6 +5,7 @@
 // 它不碰 SQLite（db.mjs 的职责），也不做业务判断（read/write 的职责）。
 
 import { redactSecrets, truncate } from '../../companion-memory/lib/text.mjs';
+import { markRestart,requiresRestart } from './restart-state.mjs';
 
 // 契约 §4：所有响应固定来源与 schema 版本，方便前端做兼容判断。
 export const SOURCE = 'companion-memory';
@@ -213,7 +214,14 @@ export function createKernel({ engine = null, identity = null, root = '', log = 
     guard(routeName, handler) {
       return async request => {
         try {
-          return await handler(request);
+          const response=await handler(request);
+          if(request.method==='POST'&&response.headers.get('content-type')?.includes('application/json')){
+            const result=await response.clone().json();
+            if(result.ok&&requiresRestart(result.data))markRestart(root,({
+              'persona-save':'人格设定','settings-write':'记忆与模型设置','runtime-settings-write':'生活与运行库','chat-settings-save':'聊天与回复设置',
+            })[routeName]||'系统设置');
+          }
+          return response;
         } catch (error) {
           if (error instanceof ApiError) {
             logger('route-failed', { route: routeName, code: error.code, status: error.status });

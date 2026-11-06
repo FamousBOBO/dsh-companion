@@ -28,7 +28,8 @@ override = {}
   "removeTrailingPeriod": true,
   "delayPerCharMs": 60,
   "delayMinMs": 200,
-  "delayMaxMs": 3000
+  "delayMaxMs": 3000,
+  "groupMaxChars": 120
  },
  "batching": {
   "windowMs": 20000,
@@ -713,7 +714,8 @@ override = {}
   "removeTrailingPeriod": true,
   "delayPerCharMs": 60,
   "delayMinMs": 200,
-  "delayMaxMs": 3000
+  "delayMaxMs": 3000,
+  "groupMaxChars": 120
  },
  "batching": {
   "windowMs": 20000,
@@ -1396,7 +1398,8 @@ override = {"batching":{"windowMs":20000}}
   "removeTrailingPeriod": true,
   "delayPerCharMs": 60,
   "delayMinMs": 200,
-  "delayMaxMs": 3000
+  "delayMaxMs": 3000,
+  "groupMaxChars": 120
  },
  "batching": {
   "windowMs": 20000,
@@ -2079,7 +2082,8 @@ override = {"admin":{"port":8790}}
   "removeTrailingPeriod": true,
   "delayPerCharMs": 60,
   "delayMinMs": 200,
-  "delayMaxMs": 3000
+  "delayMaxMs": 3000,
+  "groupMaxChars": 120
  },
  "batching": {
   "windowMs": 20000,
@@ -2762,7 +2766,8 @@ override = {"imageGen":{"model":"flux"}}
   "removeTrailingPeriod": true,
   "delayPerCharMs": 60,
   "delayMinMs": 200,
-  "delayMaxMs": 3000
+  "delayMaxMs": 3000,
+  "groupMaxChars": 120
  },
  "batching": {
   "windowMs": 20000,
@@ -3445,7 +3450,8 @@ override = {"tts":{"voice":"b"}}
   "removeTrailingPeriod": true,
   "delayPerCharMs": 60,
   "delayMinMs": 200,
-  "delayMaxMs": 3000
+  "delayMaxMs": 3000,
+  "groupMaxChars": 120
  },
  "batching": {
   "windowMs": 20000,
@@ -4128,7 +4134,8 @@ override = {"flood":{"windowSec":30}}
   "removeTrailingPeriod": true,
   "delayPerCharMs": 60,
   "delayMinMs": 200,
-  "delayMaxMs": 3000
+  "delayMaxMs": 3000,
+  "groupMaxChars": 120
  },
  "batching": {
   "windowMs": 20000,
@@ -4811,7 +4818,8 @@ override = {}
   "removeTrailingPeriod": true,
   "delayPerCharMs": 60,
   "delayMinMs": 200,
-  "delayMaxMs": 3000
+  "delayMaxMs": 3000,
+  "groupMaxChars": 120
  },
  "batching": {
   "windowMs": 20000,
@@ -5501,7 +5509,8 @@ override = {"keywordTriggers":[]}
   "removeTrailingPeriod": true,
   "delayPerCharMs": 60,
   "delayMinMs": 200,
-  "delayMaxMs": 3000
+  "delayMaxMs": 3000,
+  "groupMaxChars": 120
  },
  "batching": {
   "windowMs": 20000,
@@ -6184,7 +6193,8 @@ override = {"rss":{"pollIntervalMin":5}}
   "removeTrailingPeriod": true,
   "delayPerCharMs": 60,
   "delayMinMs": 200,
-  "delayMaxMs": 3000
+  "delayMaxMs": 3000,
+  "groupMaxChars": 120
  },
  "batching": {
   "windowMs": 20000,
@@ -6874,7 +6884,8 @@ override = {"groupEnabled":false}
   "removeTrailingPeriod": true,
   "delayPerCharMs": 60,
   "delayMinMs": 200,
-  "delayMaxMs": 3000
+  "delayMaxMs": 3000,
+  "groupMaxChars": 120
  },
  "batching": {
   "windowMs": 20000,
@@ -7557,7 +7568,8 @@ override = {}
   "removeTrailingPeriod": true,
   "delayPerCharMs": 60,
   "delayMinMs": 200,
-  "delayMaxMs": 3000
+  "delayMaxMs": 3000,
+  "groupMaxChars": 120
  },
  "batching": {
   "windowMs": 20000,
@@ -8240,7 +8252,8 @@ override = {"groupEnabled":true}
   "removeTrailingPeriod": true,
   "delayPerCharMs": 60,
   "delayMinMs": 200,
-  "delayMaxMs": 3000
+  "delayMaxMs": 3000,
+  "groupMaxChars": 120
  },
  "batching": {
   "windowMs": 20000,
@@ -8923,7 +8936,8 @@ override = {"admin":{"host":"127.0.0.1"}}
   "removeTrailingPeriod": true,
   "delayPerCharMs": 60,
   "delayMinMs": 200,
-  "delayMaxMs": 3000
+  "delayMaxMs": 3000,
+  "groupMaxChars": 120
  },
  "batching": {
   "windowMs": 20000,
@@ -9606,7 +9620,8 @@ override = {}
   "removeTrailingPeriod": true,
   "delayPerCharMs": 60,
   "delayMinMs": 200,
-  "delayMaxMs": 3000
+  "delayMaxMs": 3000,
+  "groupMaxChars": 120
  },
  "batching": {
   "windowMs": 20000,
@@ -10289,7 +10304,8 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
   "removeTrailingPeriod": true,
   "delayPerCharMs": 60,
   "delayMinMs": 200,
-  "delayMaxMs": 3000
+  "delayMaxMs": 3000,
+  "groupMaxChars": 120
  },
  "batching": {
   "windowMs": 20000,

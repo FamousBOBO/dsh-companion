@@ -58,10 +58,11 @@ P.registerPage = (definition) => {
 // is a registered page; `chat` is not a page of this plugin at all.
 const NAV = [
   { id: 'home', label: '陪伴首页', icon: 'home', hint: '她现在的生活与最近一起经历的事' },
-  { id: 'chat', label: '聊天', icon: 'chat', hint: '回到宿主原生对话', native: 'conversation' },
+  { id: 'chat', label: '聊天', icon: 'chat', hint: '回复、延时、免打扰与群聊行为' },
   { id: 'persona', label: '人格', icon: 'heart', hint: '性格、语气与相处方式' },
   { id: 'qq-web', label: 'QQ 连接', icon: 'chat', hint: 'NapCat / SnowLuma 网页面板' },
   { id: 'life', label: '生活与日程', icon: 'calendar', hint: '今天、接下来，以及她的计划' },
+  { id: 'health', label: '运动健康', icon: 'heart', hint: '活动、睡眠与实时心率' },
   { id: 'memory', label: '记忆与档案', icon: 'book', hint: '记忆库、Wiki、时间线与待核对', tabs: ['vault', 'wiki', 'timeline', 'review', 'microscope'] },
   { id: 'connections', label: '连接与工具', icon: 'plug', hint: '管理连接与工具' },
   { id: 'media', label: '媒体能力', icon: 'image', hint: '图片生成与语音合成' },
@@ -349,7 +350,11 @@ async function request(path, init) {
 
 P.api = {
   get: (path, params) => request(withQuery(path, params), { method: 'GET' }),
-  post: (path, payload) => request(path, { method: 'POST', body: JSON.stringify(payload || {}) }),
+  post: async (path, payload) => {
+    const result=await request(path, { method: 'POST', body: JSON.stringify(payload || {}) });
+    if(result?.restartRequired===true||(Array.isArray(result?.restartRequired)&&result.restartRequired.length))window.dispatchEvent(new Event('companion:restart-required'));
+    return result;
+  },
   raw: request,
 };
 
@@ -1905,7 +1910,7 @@ function Rail({ currentPage, collapsed, onToggle, compact, onCompact, compactAva
   }, [page]);
 
   const groups = [
-    { label: '陪伴', ids: ['home', 'chat', 'persona', 'qq-web', 'life'] },
+    { label: '陪伴', ids: ['home', 'chat', 'persona', 'qq-web', 'life', 'health'] },
     { label: '记录', ids: ['memory'] },
     { label: '工具', ids: ['connections', 'media', 'workspace'] },
     { label: '系统', ids: ['settings'] },
@@ -2117,6 +2122,7 @@ function Shell() {
   }),
   h('div', { className: 'cpx-drawer-backdrop', onClick: () => setDrawer(false), 'aria-hidden': 'true' }),
   h('main', { className: 'cpx-main', id: 'cpx-main', ref: mainRef, tabIndex: -1 },
+    P.ui.RestartNotice?h(P.ui.RestartNotice):null,
     h('button', {
       type: 'button',
       className: 'cpx-nav-toggle',

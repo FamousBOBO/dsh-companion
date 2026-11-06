@@ -58,6 +58,7 @@ interface HarnessOptions {
   /** 旧版的"为什么没理它"那行日志只在 debug 打开时写（要不要写不是说谎，是噪音控制）。 */
   debug?: boolean
   /** 用真的 `PacketComposer` + 真人格包组包（端到端看最终交给模型的那一串）。 */
+  admins?: number[]
   realPackets?: boolean
 }
 
@@ -84,6 +85,7 @@ function harness(opts: HarnessOptions = {}) {
     talkValue: 1,
     keywordTriggers: [],
     keywordReactions: [],
+    admins: opts.admins ?? [],
     selfId: opts.selfId ?? SELF,
     planner: { enabled: false },
     ...(opts.realPackets === true ? { context: { v2: true } } : {}),
@@ -456,4 +458,32 @@ test('presence.enabled=false（配了白名单但总开关关着）：与旧版�
   assert.deepEqual(h.store.groups(), [], '总开关优先于白名单')
   assert.deepEqual(h.conv.queue, [])
   assert.equal(h.submitted.length, 0)
+})
+
+// ── 8. 主人特权（2026-11-06）：主人在群里说话必须回，旁人照样可以不回 ──────────
+
+const OWNER = 90010001
+
+test('主人在群里说话（没有 @）：照常组包并提交回合，不被 requireMention 拦下', async () => {
+  const h = harness({ presence: 'on', admins: [OWNER] })
+  await h.pipeline.handle(groupEvent(OWNER, '今天有点累', 31))
+
+  assert.equal(h.composeCalls.length, 1, '主人说话要进组包（要回）')
+  assert.equal(h.submitted.length, 1, '要真的提交一次回合')
+  assert.match((h.conv.queue.join('\n')), /今天有点累/, '当前消息就是他说的那句')
+})
+
+test('旁人说话（没有 @）：仍然只旁听，不因为"别人也必须回"而打开', async () => {
+  const h = harness({ presence: 'on', admins: [OWNER] })
+  await h.pipeline.handle(groupEvent(200, '今天有点累', 32))
+
+  assert.equal(h.composeCalls.length, 0, '旁人没 @ 就不组包')
+  assert.equal(h.submitted.length, 0)
+  assert.equal(ambientOf(h.store).length, 1, '但仍然进旁听')
+})
+
+test('主人发的消息即使 @ 的是别人，也要回（特权只看发送者身份）', async () => {
+  const h = harness({ presence: 'on', admins: [OWNER] })
+  await h.pipeline.handle(groupEvent(OWNER, '[CQ:at,qq=200] 你看这个', 33))
+  assert.equal(h.composeCalls.length, 1, '主人发的照样要回')
 })

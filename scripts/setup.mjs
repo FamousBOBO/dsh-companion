@@ -485,6 +485,19 @@ export async function runSetup(argv = process.argv.slice(2)) {
     });
   }
 
+  const skillSource = path.join(SUITE_ROOT, 'skills', 'companion-setup', 'SKILL.md');
+  const skillTarget = path.join(paths.workspace, '.agents', 'skills', 'companion-setup', 'SKILL.md');
+  if (fs.existsSync(skillTarget)) {
+    reportStep(reporter, { id: 'setup-skill', title: 'DSH 自配置技能', status: 'skip', detail: '已存在，保持原样' });
+  } else if (fs.existsSync(skillSource)) {
+    planActions({ kind: 'write', target: skillTarget });
+    if (!opts.dryRun) {
+      fs.mkdirSync(path.dirname(skillTarget), { recursive: true });
+      fs.copyFileSync(skillSource, skillTarget);
+    }
+    reportStep(reporter, { id: 'setup-skill', title: 'DSH 自配置技能', status: opts.dryRun ? 'planned' : 'ok', detail: '安装到陪伴工作区 .agents/skills/companion-setup' });
+  }
+
   /* ── 4. profile ───────────────────────────────────────────── */
   reporter.heading(`4. DSH profile（${profileName}）`);
   say(`  DSH_HOME = ${dshHome}`);

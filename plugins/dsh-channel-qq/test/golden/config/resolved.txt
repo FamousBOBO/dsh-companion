@@ -25,7 +25,8 @@
     "removeTrailingPeriod": true,
     "delayPerCharMs": 60,
     "delayMinMs": 200,
-    "delayMaxMs": 3000
+    "delayMaxMs": 3000,
+    "groupMaxChars": 120
   },
   "batching": {
     "windowMs": 20000,

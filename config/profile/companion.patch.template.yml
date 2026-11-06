@@ -62,6 +62,12 @@
             name: '@deepseek-ai/dsh-agent-instructions'
             config:
               maxBytes: 16384
+          - id: skill
+            name: '@deepseek-ai/dsh-skill'
+          - id: skill-filesystem
+            name: '@deepseek-ai/dsh-skill-filesystem'
+          - id: tool-skill
+            name: '@deepseek-ai/dsh-tool-skill'
           - id: tool-pwsh
             name: '@deepseek-ai/dsh-tool-pwsh'
           - id: tool-fs
@@ -75,8 +81,7 @@
           - id: tool-schedule
             name: '@deepseek-ai/dsh-tool-schedule'
 
-# 想让陪伴会话也能改代码/看技能，再自行往上面的 plugins 里加 tool-bash（非 Windows）、
-# skill-filesystem、tool-skill 等条目；默认不给，减少工具面对提示词的占用。
+# 自配置技能从工作区 .agents/skills 读取；群聊预设不包含技能与写入工具。
 
 
 # ── 3. 工作区上下文 ─────────────────────────────────────────────────────────

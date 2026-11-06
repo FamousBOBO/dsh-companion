@@ -1,4 +1,4 @@
-﻿/**
+/**
  * 特征测试（golden）：把重构前的输出逐字节钉住。
  *
  * 这是 P3（拆 `bridge.ts`）与 P4（拆 `tools.ts`）唯一的安全网。规则很简单：
@@ -13,6 +13,7 @@
  */
 
 import { test, mock } from 'node:test'
+import { performance } from 'node:perf_hooks'
 import assert from 'node:assert/strict'
 import { mkdtempSync, rmSync } from 'node:fs'
 import { tmpdir } from 'node:os'
@@ -194,11 +195,13 @@ function snapshotOf(host: InstanceType<typeof FakeHost>): string {
  * **只用 `setImmediate` 推进、不碰 `setTimeout`/`Date`**：这条用例把这两个都 mock 掉了，
  * 用它们做等待会自己把自己卡死（`Date.now()` 冻结 ⇒ 超时判定永不到期）。
  */
-async function waitFor(predicate: () => boolean, maxTurns = 200): Promise<void> {
-  for (let turn = 0; turn < maxTurns; turn += 1) {
+async function waitFor(predicate: () => boolean, timeoutMs = 5_000): Promise<void> {
+  const deadline = performance.now() + timeoutMs
+  while (performance.now() < deadline) {
     if (predicate()) return
     await new Promise((resolve) => setImmediate(resolve))
   }
+  assert.ok(predicate(), `等待异步投递超时（${String(timeoutMs)}ms）`)
 }
 
 test.after(() => { rmSync(HOME, { recursive: true, force: true }) })
@@ -226,7 +229,7 @@ test('golden: 群聊 @ 别人 + 群主身份 + 头衔 + 图片 + 回复引用', 
     const { bridge, host } = harness()
     await bridge.handle(groupEvent(
       [{ type: 'reply', data: { id: '8800' } }, atOther, image, text('看这张图')],
-      { sender: { nickname: '主人', role: 'owner', title: '传奇' }, user_id: MASTER },
+      { sender: { nickname: '群友乙', role: 'owner', title: '传奇' }, user_id: OTHER },
     ))
     // 这条消息**没有叫我**（@ 的是别人，`requireMention: true`）⇒ 一个字都不该投递。
     // 以前这条用例只留一个空快照，读的人分不出"故意不投"和"快照丢了"；现在显式断言。

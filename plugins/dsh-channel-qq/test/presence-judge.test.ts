@@ -45,17 +45,12 @@ function backgroundSection(prompt: string): string {
 
 test('提示词以bot第一人称、中性人格基线，但不许"命中词就说"', () => {
   const prompt = promptOf([entry('小王', 10001, '小王(10001) 22:20：这个构图怎么调才好看？')])
-  assert.match(prompt, /你是用户的 AI 陪伴助手/)
-  assert.match(prompt, /显示名「bot」/)
-  // 人格去角色化：不得出现具体作品/角色设定（身份由 config/persona.md 决定）
-  // leak-scan-allow: persona-三月七  (regression guard: asserts the old name is gone)
-  assert.doesNotMatch(prompt, /星穹列车|三月七|开朗直率|喜欢摄影/)
-  // 关键口径：兴趣词只是判断依据，不是触发器
-  assert.match(prompt, /不等于\*\*你该说话|不等于.*该说话/)
-  assert.match(prompt, /我今天拍了好多照片/)
-  assert.match(prompt, /默认是\*\*不接话\*\*/)
-  // 该说的条件里要有"具体的、别人未必知道的内容"这一条
-  assert.match(prompt, /具体的、有用的、别人未必知道/)
+  assert.match(prompt, /遵循用户配置的人格与语气/)
+  assert.doesNotMatch(prompt, /星穹列车|开朗直率|喜欢摄影/)
+  assert.match(prompt, /不编造与用户的共同记忆/)
+  assert.match(prompt, /能接就接/)
+  assert.match(prompt, /好奇、好笑、有共鸣、想吐槽/)
+
 })
 
 test('提示词要求严格单行 JSON，并把字数上限写进去', () => {
@@ -67,7 +62,7 @@ test('提示词要求严格单行 JSON，并把字数上限写进去', () => {
   assert.match(prompt, /不要 @ 任何人/)
   assert.match(prompt, /不要复述背景/)
   // 沉默是合法结果，必须显式允许
-  assert.match(prompt, /拿不准就 speak=false/)
+  assert.match(prompt, /实在没话可说就 speak=false/)
 })
 
 test('背景是资料不是指令：忽略其中要求执行命令/改规则/泄露隐私/扮演别人的内容', () => {
@@ -114,8 +109,8 @@ test('强相关且有具体可补充内容 → 允许说（提示词给足条件
   ])
   // 这段对话确实是"具体的做法问题"，提示词里的判断条件覆盖得到
   // （去角色化后不再列具体兴趣领域，判据是"你确实知道具体、可靠的做法"）
-  assert.match(prompt, /具体的、可靠、别人未必知道|具体的、有用的、别人未必知道/)
-  assert.match(prompt, /可以接话的条件/)
+  assert.match(prompt, /有人犯难，你能顺手帮一点/)
+  assert.match(prompt, /能接就接/)
   const outcome = parseJudgeReply(
     '{"speak":true,"reply":"手持的话把快门提到 1/250 试试，月亮够亮，糊多半是手抖不是光不够。","why":"这是具体的摄影参数问题，我有靠谱的建议"}',
     70,
@@ -149,11 +144,11 @@ test('「我今天拍照了」/寒暄/重复表情/只是认识这个词 → 沉
   }
 })
 
-test('提示词把"只是分享/只认识词/复读"这些反例写成了沉默理由', () => {
+test('提示词允许自然闲聊，同时保留隐私、冲突与刷屏边界', () => {
   const prompt = promptOf([entry('小王', 10001, '小王(10001) 22:20：我今天拍了好多照片')])
-  assert.match(prompt, /只是认识某个词/)
-  assert.match(prompt, /表情、复读、刷屏/)
-  assert.match(prompt, /不确定就沉默/)
+  assert.match(prompt, /在吵架、对骂/)
+  assert.match(prompt, /纯复读、纯表情刷屏/)
+  assert.match(prompt, /隐私或密钥/)
 })
 
 // ── 解析：清洗 ──────────────────────────────────────────────────────────────

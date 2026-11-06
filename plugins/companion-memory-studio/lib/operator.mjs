@@ -6,6 +6,9 @@ import { loadConfig } from '../../companion-runtime/lib/config.mjs';
 import { ApiError } from './api-kernel.mjs';
 import { readPanelConfig, panelConfigFile, panelStatus, controlPanel } from './web-panel-process.mjs';
 import { createLogStream } from './runtime-log-stream.mjs';
+import { restartState } from './restart-state.mjs';
+
+export async function pendingRestart(request,kernel){kernel.viewer(await kernel.internal());return kernel.ok(restartState(kernel.root));}
 
 const runtimeFields = {enabled:['enabled'],planning:['p2','planning','enabled'],heartbeat:['heartbeat','enabled'],share:['p2','share','enabled']};
 const readJson = file => {try{return JSON.parse(fs.readFileSync(file,'utf8'));}catch{return {};}};

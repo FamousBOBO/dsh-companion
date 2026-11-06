@@ -93,7 +93,7 @@ test('分句：发之前先丢掉"不是话"的部分（思考块 / NO_REPLY / �
 
 // ── 接线：qq_send_text ──────────────────────────────────────────────────────
 
-function sendText(overrides: Record<string, unknown>, text: string) {
+function sendText(overrides: Record<string, unknown>, text: string, isGroup = false) {
   const { ctx, definitions } = toolRecorder()
   const client = fakeClient({ get_group_list: [{ group_id: 107 }], get_group_info: { group_name: '主群' } })
   const api = createQQApi(client as never)
@@ -107,15 +107,29 @@ function sendText(overrides: Record<string, unknown>, text: string) {
   return {
     client,
     run: async (): Promise<Record<string, unknown>> => await (def!.execute as (a: unknown) => Promise<Record<string, unknown>>)(
-      { isGroup: true, target: 107, text },
+      { isGroup, target: isGroup ? 107 : 280, text },
     ),
   }
 }
 
+test('群聊即使开启分段也只发送一条，超长拒绝且不外发', async () => {
+  const text = '先吃饭。然后写代码。最后早点睡。'
+  const h = sendText({ segmentation: { enabled: true } }, text, true)
+  assert.equal((await h.run()).segments, 1)
+  const calls = h.client.calls.filter(call => call.action === 'send_group_msg')
+  assert.equal(calls.length, 1)
+  assert.equal((calls[0]!.params.message as Array<{data:{text:string}}>)[0]!.data.text, text)
+  const long = sendText({}, '字'.repeat(121), true)
+  await assert.rejects(long.run, /120 字/)
+  assert.equal(long.client.calls.some(call => call.action === 'send_group_msg'), false)
+  const expanded = sendText({ segmentation: { groupMaxChars: 150 } }, '字'.repeat(121), true)
+  assert.equal((await expanded.run()).segments, 1)
+})
+
 /** 等 `client.calls` 至少 N 条：PATCH-8 下**同步只发第一段**，其余段走进程级队列。 */
 async function waitGroupSends(client: { calls: Array<{ action: string }> }, n: number, timeoutMs = 8000): Promise<void> {
   const deadline = Date.now() + timeoutMs
-  const count = (): number => client.calls.filter((c) => c.action === 'send_group_msg').length
+  const count = (): number => client.calls.filter((c) => c.action === 'send_private_msg').length
   while (Date.now() < deadline) {
     if (count() >= n) return
     await new Promise((resolve) => { setTimeout(resolve, 25) })
@@ -126,7 +140,7 @@ async function waitGroupSends(client: { calls: Array<{ action: string }> }, n: n
 test('接线：默认关着 → 一条消息发出去（与从前逐字节一样）', async () => {
   const { client, run } = sendText({}, '先吃饭。然后写代码。最后早点睡。')
   const result = await run()
-  const sends = client.calls.filter((c) => c.action === 'send_group_msg')
+  const sends = client.calls.filter((c) => c.action === 'send_private_msg')
   assert.equal(sends.length, 1, '关着就是一条')
   assert.equal(result.segments, 1)
   const text = (sends[0]!.params.message as Array<{ data: { text: string } }>)[0]!.data.text
@@ -141,7 +155,7 @@ test('接线：打开之后 → 按句分成三条，逐条发', async () => {
   const result = await run()
   // PATCH-8：同步只发第一段，其余两段走队列 ⇒ 等齐 3 条再断言。
   await waitGroupSends(client, 3)
-  const sends = client.calls.filter((c) => c.action === 'send_group_msg')
+  const sends = client.calls.filter((c) => c.action === 'send_private_msg')
   assert.equal(sends.length, 3)
   assert.equal(result.segments, 3)
   const texts = sends.map((s) => (s.params.message as Array<{ data: { text: string } }>)[0]!.data.text)
@@ -155,7 +169,7 @@ test('接线：分段之后仍然过硬切分（单条超过上限时再切）',
     `${long}。`,
   )
   await run()
-  const sends = client.calls.filter((c) => c.action === 'send_group_msg')
+  const sends = client.calls.filter((c) => c.action === 'send_private_msg')
   assert.ok(sends.length >= 3, `120 字 / 上限 50 → 至少 3 条，实际 ${sends.length}`)
   for (const send of sends) {
     const text = (send.params.message as Array<{ data: { text: string } }>)[0]!.data.text

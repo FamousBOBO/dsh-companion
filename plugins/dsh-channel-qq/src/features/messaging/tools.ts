@@ -1,4 +1,4 @@
-﻿/** 消息发送与撤回：6 个工具。
+/** 消息发送与撤回：6 个工具。
  *
  * 发送 / 引用回复 / 撤回 / 戳一戳 / 点赞。
  *
@@ -15,7 +15,7 @@ import { smartSplitMessage } from '../../outbound.js'
 import { segmentText } from '../../core/text/segment.js'
 import type { QQToolDeps } from '../tool-deps.js'
 import { dmRoom, groupRoom } from '../../core/room.js'
-import { assertGroupTextAllowed, assertTargetAllowed, assertWindowReachable } from './gates.js'
+import { assertGroupTextAllowed, assertGroupTextLength, assertTargetAllowed, assertWindowReachable } from './gates.js'
 
 /**
  * 本地补丁 COMPANION-QQ-PATCH-5：两条分段消息之间的停顿。
@@ -178,10 +178,10 @@ function qqSendText(deps: QQToolDeps): ToolSpec {
           await assertWindowReachable(deps, args)
           assertGroupTextAllowed(deps, text, args.isGroup === true)
           await assertTargetAllowed(deps, args)
-          // P6h：开关打开时按句拆成几条发（像人连着说话）。关着就是一条。
-          const pieces = segmentText(text, config.segmentation)
+          // 群聊不分段（2026-11-06）：群里连发几条像刷屏，一条说完更自然；私聊仍按下发节奏拆。
           const isGroup = args.isGroup === true
           const target = Number(args.target)
+          const pieces = isGroup ? [text] : segmentText(text, config.segmentation)
           // A3：够长就改一张合并转发卡片；不走（关着/超限/失败）就继续逐条发。
           const forwarded = await tryForward(deps, isGroup, target, pieces)
           if (forwarded !== null) return { ...forwarded, segments: pieces.length }
@@ -197,7 +197,7 @@ function qqSendText(deps: QQToolDeps): ToolSpec {
 
 /** `qq_reply_quote` — 引用回复某条消息：带上对方消息的#编号发一条引用回复，让对方明确知道我回应的是哪条。文本里不要重复#编号。… */
 function qqReplyQuote(deps: QQToolDeps): ToolSpec {
-  const { api, out, log, sentLog } = deps
+  const { api, out, log, sentLog, config } = deps
   const knownGroupIds = deps.knownGroups
   return {
         name: 'qq_reply_quote',
@@ -233,6 +233,8 @@ function qqReplyQuote(deps: QQToolDeps): ToolSpec {
             log(`blocked inner-monologue leak (quote): ${text.slice(0, 40)}`)
             throw new Error('这条是我的内部盘算/舞台指示，不是要说的话，已拦下。要么把真正要对群里说的那句话引用发出来，要么不调用任何发送工具直接结束回合。')
           }
+          // 群聊长度上限（2026-11-06）：引用回复也走同一条群聊规矩。
+          if (args.isGroup === true) assertGroupTextLength(text,config.segmentation.groupMaxChars??120)
           const message: OneBotMessageSegment[] = [
             { type: 'reply', data: { id: String(args.messageId) } },
             { type: 'text', data: { text } },

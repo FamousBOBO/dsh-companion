@@ -61,11 +61,22 @@ async function friendListHas(deps: QQToolDeps, target: number): Promise<boolean>
 /**
  * 闸门 2：**这段内容能进群吗**。
  *
- * 两条禁令各有来历：
+ * 三条禁令各有来历：
  *   - **代码不进群**：群聊里贴代码既刷屏又容易泄露工作区内容，让她改成私信主人审核；
  *   - **内心戏不进群**：一次真实事故——她决定"本轮先不说话"，然后把这个决定本身
- *     当成消息发了出去（判据见 `core/guards/monologue.ts`）。
+ *     当成消息发了出去（判据见 `core/guards/monologue.ts`）；
+ *   - **长文不进群**（2026-11-06）：群聊和私聊的规矩不一样。私聊可以写长、可以分段，
+ *     群里一条超长消息既刷屏又没人看。群聊单条上限 120 字，超了直接拒（提示她短一点），
+ *     与"群聊不分段"（`tools.ts` 里群聊不拆条）配套。
  */
+export const GROUP_TEXT_MAX_CHARS = 120
+
+export function assertGroupTextLength(text: string,maxChars=GROUP_TEXT_MAX_CHARS): void {
+  const length = [...text].length
+  if (length <= maxChars) return
+  throw new Error(`群聊一条不超过 ${String(maxChars)} 字（现在是 ${String(length)} 字）。群里说话短一点：留最想说的那一句，剩下的下一轮再说。`)
+}
+
 export function assertGroupTextAllowed(deps: QQToolDeps, text: string, isGroup: boolean): void {
   if (!isGroup) return
   if (looksLikeCode(text)) {
@@ -75,6 +86,7 @@ export function assertGroupTextAllowed(deps: QQToolDeps, text: string, isGroup: 
     deps.log(`blocked inner-monologue leak: ${text.slice(0, 40)}`)
     throw new Error('这条是我的内部盘算/舞台指示，不是要说的话，已拦下。要么把真正要对群里说的那句话发出来，要么不调用任何发送工具直接结束回合。')
   }
+  assertGroupTextLength(text,deps.config.segmentation.groupMaxChars??GROUP_TEXT_MAX_CHARS)
 }
 
 /**

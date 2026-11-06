@@ -54,6 +54,8 @@ export interface SegmentationConfig {
   delayMinMs: number
   /** 停顿上限（毫秒），防止超长句把回合拖住。 */
   delayMaxMs: number
+  /** Group replies stay in one message and use this separate length cap. */
+  groupMaxChars?: number
 }
 export interface GroupModelConfig {
   /** Group conversations run on this route; null = same as the default route. */
@@ -170,6 +172,7 @@ export const CHAT_GROUPS: FieldGroup[] = [
       }),
       delayMinMs: n('分段间隔下限', 200, { min: 0, max: 10_000, hot: 'live', unit: 'ms' }),
       delayMaxMs: n('分段间隔上限', 3000, { min: 0, max: 60_000, hot: 'live', unit: 'ms' }),
+      groupMaxChars: n('群聊单条字数上限', 120, { min:20, max:4000, hot:'live' }),
     },
   },
   {

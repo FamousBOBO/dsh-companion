@@ -7,6 +7,7 @@
 import { createKernel, errorEnvelope, respond } from './lib/api-kernel.mjs';
 import * as operator from './lib/operator.mjs';
 import { personaSettings } from './lib/persona-settings.mjs';
+import { chatSettings } from './lib/chat-settings.mjs';
 import * as read from './lib/read.mjs';
 import * as write from './lib/write.mjs';
 import * as health from './lib/health.mjs';
@@ -29,6 +30,9 @@ export const HEALTH_API_PREFIX = health.HEALTH_PREFIX;
 
 // 精确路径匹配；参数走 query string / JSON body。
 export const ROUTES = Object.freeze([
+  {name:'chat-settings',method:'GET',path:`${API_PREFIX}/chat-settings`,handler:chatSettings},
+  {name:'chat-settings-save',method:'POST',path:`${API_PREFIX}/chat-settings`,handler:chatSettings},
+  {name:'restart-status',method:'GET',path:`${API_PREFIX}/restart-status`,handler:operator.pendingRestart},
   {name:'persona',method:'GET',path:`${API_PREFIX}/persona`,handler:personaSettings},
   {name:'persona-save',method:'POST',path:`${API_PREFIX}/persona`,handler:personaSettings},
   {name:'runtime-logs-stream',method:'GET',path:`${API_PREFIX}/runtime-logs/stream`,handler:operator.runtimeLogsStream},

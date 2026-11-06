@@ -61,6 +61,6 @@ export function wirePresence(
     },
   })
   host.log(`presence: 已启用（白名单群 ${JSON.stringify(host.config.presence.groups)}；`
-    + '未 @ 时默认沉默，只有强相关话题才自主说一句，且受冷却与每小时额度约束）')
+    + '未 @ 时也会自己搭话：能接就接、没话可说就沉默，受最小间隔与每小时额度约束）')
   return { ambient, presence, dispose: () => presence.dispose() }
 }
