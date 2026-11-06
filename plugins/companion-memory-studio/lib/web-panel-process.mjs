@@ -46,6 +46,33 @@ export async function panelStatus(root) {
   return { provider: config.provider === 'luna' ? 'snowluma' : config.provider || '', url: config.url || '',
     embedUrl: panelEmbedUrl(config), configured: !!config.url, canControl: !!launcher(config), running: await probe(config) };
 }
+// macOS has no /proc. Query only this PID and reject a changed start time.
+export async function darwinProcessIdentity(pid,execute=run) {
+  if(!Number.isInteger(pid)||pid<=0)return null;
+  const field=async name=>{
+    const {stdout}=await execute('/bin/ps',['-ww','-p',String(pid),'-o',name+'='],{
+      env:{...process.env,LC_ALL:'C'},timeout:3000,
+    });
+    return stdout.trim();
+  };
+  try {
+    const started=await field('lstart');
+    const [executable,command]=await Promise.all([field('comm'),field('args')]);
+    if(!started||!executable||!command||started!==await field('lstart'))return null;
+    return {executable,command,createdAt:'darwin:'+started};
+  }catch{return null;}
+}
+
+export async function matchingDarwinProcess(pid,launch,expectedCreatedAt,execute=run) {
+  const identity=await darwinProcessIdentity(pid,execute);
+  if(!identity)return false;
+  try {
+    return fs.realpathSync(identity.executable)===fs.realpathSync(launch.executable)&&
+      identity.command===[identity.executable,...launch.args].join(' ').trim()&&
+      (!expectedCreatedAt||identity.createdAt===expectedCreatedAt);
+  }catch{return false;}
+}
+
 async function matchingProcess(pid, launch, expectedCreatedAt) {
   if (!Number.isInteger(pid) || pid <= 0) return false;
   if (process.platform === 'win32') {
@@ -57,6 +84,8 @@ async function matchingProcess(pid, launch, expectedCreatedAt) {
       launch.args.every(arg => String(item.CommandLine).includes(arg)) && (!expectedCreatedAt || item.CreationDate === expectedCreatedAt);
   }
   try {
+    if(process.platform==='darwin')return matchingDarwinProcess(pid,launch,expectedCreatedAt);
+    if(process.platform!=='linux')return false;
     const exe = fs.realpathSync(`/proc/${pid}/exe`);
     const args = fs.readFileSync(`/proc/${pid}/cmdline`, 'utf8').split('\0');
     return exe === fs.realpathSync(launch.executable) && launch.args.every(arg => args.includes(arg));
@@ -103,6 +132,7 @@ export async function controlPanel(root, action) {
     if (process.platform === 'win32') {
       try { const { stdout } = await run('powershell.exe', ['-NoProfile', '-Command', `Get-CimInstance Win32_Process -Filter 'ProcessId=${child.pid}' | Select-Object CreationDate | ConvertTo-Json -Compress`], { windowsHide: true }); createdAt = JSON.parse(stdout).CreationDate; } catch { /* PID and exact launch command are still verified. */ }
     }
+    if(process.platform==='darwin')createdAt=(await darwinProcessIdentity(child.pid))?.createdAt;
     writeFileAtomic(receiptFile(root), JSON.stringify({ pid: child.pid, createdAt, startedAt: Date.now() }));
     for (let i = 0; i < 40; i++) {
       if (await probe(config)) return { ...await panelStatus(root), started: true };

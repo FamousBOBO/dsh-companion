@@ -224,7 +224,11 @@ test('R17-6 空转可见：程序错误连击进 `status().softFault`（未到�
       const runner = new ReminderRunner(
         store,
         async () => 'sent',
-        () => {},
+        () => {
+          // Observe exactly two completed faults; a fixed sleep can already
+          // hit the halt threshold on faster Linux/macOS runners.
+          if (runner.status().softFault.streak === 2) runner.dispose()
+        },
         () => true,
         async () => null,
         async () => 'ok' as const,
@@ -232,7 +236,7 @@ test('R17-6 空转可见：程序错误连击进 `status().softFault`（未到�
       )
       try {
         runner.start(5)
-        await sleep(120)
+        await waitUntil(() => runner.status().softFault.streak === 2, 5_000)
         const snapshot = runner.status()
         assert.ok(snapshot.softFault.streak >= 2, `连击数必须能读出来（实际 ${String(snapshot.softFault.streak)}）`)
         assert.equal(snapshot.softFault.code, 'INVALID_CANDIDATE', '连击的是**哪一类**错误也要看得见')

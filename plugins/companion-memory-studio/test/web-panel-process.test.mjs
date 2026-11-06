@@ -5,7 +5,24 @@ import os from 'node:os';
 import path from 'node:path';
 import net from 'node:net';
 import { execFileSync } from 'node:child_process';
-import { panelConfigFile, panelEmbedUrl, panelStatus, controlPanel } from '../lib/web-panel-process.mjs';
+import { panelConfigFile, panelEmbedUrl, panelStatus, controlPanel,matchingDarwinProcess,darwinProcessIdentity } from '../lib/web-panel-process.mjs';
+
+test('macOS verifies spaced arguments and stable start time without /proc',async()=>{
+  const launch={executable:process.execPath,args:['/tmp/panel with spaces.mjs','--port','12345']};
+  const fields={comm:launch.executable,args:[launch.executable,...launch.args].join(' '),lstart:'Fri Nov  6 08:00:00 2026'};
+  const execute=async(command,args,options)=>{
+    assert.equal(command,'/bin/ps');assert.deepEqual(args.slice(0,4),['-ww','-p','123','-o']);assert.equal(options.env.LC_ALL,'C');
+    return {stdout:fields[args.at(-1).replace(/=$/,'')]+'\n'};
+  };
+  const createdAt='darwin:'+fields.lstart;
+  assert.equal(await matchingDarwinProcess(123,launch,createdAt,execute),true);
+  assert.equal(await matchingDarwinProcess(123,{...launch,args:['/tmp/other.mjs']},createdAt,execute),false);
+  assert.equal(await matchingDarwinProcess(123,launch,'darwin:another process',execute),false);
+  let reads=0;
+  const recycled=async(command,args,options)=>args.at(-1)==='lstart='?{stdout:++reads===1?fields.lstart:'changed'}:execute(command,args,options);
+  assert.equal(await darwinProcessIdentity(123,recycled),null);
+  assert.equal(await darwinProcessIdentity(123,async()=>{throw new Error('process exited');}),null);
+});
 
 test('NapCat token is used only for its configured local iframe, never returned as launch configuration', async () => {
   const root=fs.mkdtempSync(path.join(os.tmpdir(),'panel-token-'));
