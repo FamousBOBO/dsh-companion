@@ -25,6 +25,7 @@ import { decide, quotaBucketFor } from './decision.mjs';
 import { plan as buildPlan, partJobs } from './planner.mjs';
 import { deliver } from './delivery.mjs';
 import { createFeedback, feedbackScoreOf, isSuppressed } from './feedback.mjs';
+import { createStickerNotes } from './sticker-notes.mjs';
 import { createToolHandlers, parametersToJsonSchema, TOOL_SPECS } from './tools.mjs';
 import { createHostWiring, withToolAgent } from './host-wiring.mjs';
 
@@ -174,6 +175,37 @@ async function recordExpressionFeedback(state, { assetId = '', action = '', note
   }
 }
 
+/**
+ * 表情词典：认 / 记 / 列。作用域只用来数「这个表情在这儿见过几次」，不参与权限判定
+ * ——词典回答的是「它是什么意思」，不是「能不能用」（后者归 `expression_reply` 的硬门）。
+ *
+ * 群聊里 `record` 也允许：认错了会一直错，能改比不给改强。只有 `meaning` 的空值被拒
+ * ——「不知道就先问，别猜」这条写在工具描述里，也在参数校验里。
+ */
+function stickerNoteOf(state, { action = '', stickerKey = '', meaning = '', label = '', animated = false, isGroup = false, target = '', limit = 20 } = {}) {
+  try {
+    const ctx = contextOf(state, { chatId: Number(target) || 0, isGroup });
+    const notes = state.stickerNotes;
+    if (!notes) return { ok: false, reasonCode: 'notes-unavailable', message: '表情词典不可用（数据库未就绪）：本轮不记也不查。' };
+    if (action === 'lookup') {
+      const found = notes.lookup({ stickerKey, label, scope: ctx.scopes.own, animated });
+      return { ok: true, ...found };
+    }
+    if (action === 'record') {
+      const saved = notes.record({ stickerKey, label, meaning, animated, source: 'owner', scope: ctx.scopes.own });
+      if (saved.ok !== true) return saved;
+      return { ok: true, recorded: true, note: saved.note };
+    }
+    if (action === 'list') {
+      const listed = notes.list({ limit });
+      return { ok: true, ...listed, stats: notes.stats() };
+    }
+    return { ok: false, reasonCode: 'action-invalid', message: 'action 只能是 lookup / record / list。' };
+  } catch (error) {
+    return { ok: false, reasonCode: 'service-threw', message: String(error?.message ?? error).slice(0, 200) };
+  }
+}
+
 /** 统计：图库 + 投递 + 反馈 + 事件计数。只读，不含图片内容。 */
 function libraryStats(state, { limit = 10 } = {}) {
   try {
@@ -252,12 +284,15 @@ export function createService(options = {}) {
   const state = {
     config, dataRoot, paths, db, clock, options, library, salt,
     feedback: createFeedback({ db, library, config, now: clock }),
+    stickerNotes: createStickerNotes({ db, now: clock }),
     events: { observed: 0, dropped: 0, queued: 0, lastAt: 0 },
     warnings: [...(loaded.warnings ?? [])],
     isOwnerFor: explicitOwner ? options.isOwner : () => false,
   };
   return {
     ok: true, config, warnings: state.warnings, library: state.library, db, paths, events: state.events,
+    /** 表情词典（认 / 记 / 列）。`apply` 接采集管线时要用同一个实例。 */
+    stickerNotes: state.stickerNotes,
     /** 作用域盐（宿主接采集管线要用同一份；`scopesFor` 与 `ingestOne` 必须一致）。 */
     salt: state.salt,
     /** 数据根：`apply` 接宿主时要用同一个（不重新推导，避免 env 与 options 走岔）。 */
@@ -306,6 +341,7 @@ export function createService(options = {}) {
     reply: input => replyWithSticker(state, input),
     feedback: input => recordExpressionFeedback(state, input),
     stats: input => libraryStats(state, input),
+    stickerNote: input => stickerNoteOf(state, input),
     partsOf: planLike => partJobs(planLike),
     close: () => { try { db.close(); } catch { /* already closed */ } },
   };
@@ -456,6 +492,8 @@ export async function apply(ctx, options = {}) {
         config: service.config,
         salt: service.salt,
         env,
+        // 表情词典：采集到表情时先查它，认得就用记下的意思（不描述画面）。
+        notes: service.stickerNotes,
         // `fetchImpl` 只走 `options`（补丁给不了函数）：测试与运维脚本可以用它把网络换成假的。
         ...(typeof options.fetchImpl === 'function' ? { fetchImpl: options.fetchImpl } : {}),
         log: note,

@@ -18,6 +18,7 @@
 
 import type { OneBotEvent } from '../../types.js'
 import type { ParsedInbound } from './parse.js'
+import { stickerDisplay } from './parse.js'
 
 export interface RenderInput {
   readonly event: OneBotEvent
@@ -47,9 +48,13 @@ export function renderMessageLine(input: RenderInput): string | null {
   // Body from `plainText`: the display rendering would put `[图片]` / `[表情:5]`
   // in the body slot, which reads to the model as if the user typed those
   // words. `[图片]` survives only as the fallback for a caption-less image.
+  //
+  // 表情单独兜底：一条只有表情的消息（`[表情：困]`）没有正文，但那**就是**它的内容。
+  // 以前这里会退到 `[图片]` 甚至 `(无文字)`，模型于是拿不到「他困了」这个意思。
+  const stickerText = parsed.stickers.length > 0 ? parsed.stickers.map(stickerDisplay).join('') : ''
   const content = parsed.plainText !== ''
     ? parsed.plainText
-    : (parsed.imageUrls.length > 0 ? '[图片]' : null)
+    : (parsed.imageUrls.length > 0 ? '[图片]' : (stickerText !== '' ? stickerText : null))
   // 纯合并转发（无文字无图但有展开内容）也是"有得说"的消息。
   if (content === null && parsed.imageSummaries.length === 0 && (input.forwardText ?? '') === '') return null
   const time = new Date((event.time || Math.floor(input.nowMs / 1000)) * 1000)
@@ -74,6 +79,20 @@ export function renderMessageLine(input: RenderInput): string | null {
   // that a picture came along (imageRecognition is off by default).
   if (parsed.imageSummaries.length > 0) parts.push(`[图片含义：${parsed.imageSummaries.join('；')}]`)
   else if (parsed.imageUrls.length > 0 && parsed.plainText !== '') parts.push(`[随消息附了${parsed.imageUrls.length}张图]`)
+  // 表情的处置口径写在这一行里，而不是指望模型自己悟：先想「以前发过没有」，
+  // 没有就诚实说不认识，**不许照着画面描述**。私聊里可以直接问对方是什么意思。
+  if (parsed.stickers.length > 0) {
+    const unknown = parsed.stickers.filter(s => s.label === '').length
+    const animated = parsed.stickers.some(s => s.animated)
+    parts.push(
+      '[表情处置：先在记忆里找这个表情以前出现过没有（同一张图会认出是同一张）；'
+      + '认得出就直接按它原来的意思理解，不要描述画面。'
+      + (unknown > 0 ? '认不出的就说不认识，别猜画面内容' : '')
+      + '；私聊里可以直接问对方「这个表情是什么意思」，问清楚之后再用表情记录工具把意思记下来'
+      + (animated ? '（动图同样按这个办法，不需要逐帧看）' : '')
+      + ']',
+    )
+  }
   if (called && input.reactionHint !== undefined && input.reactionHint !== null) {
     parts.push(`（语气提示：${input.reactionHint}）`)
   }

@@ -126,6 +126,8 @@ test('转发的是元数据：消息号 / 时间 / 路由 / 发言人 / 图片�
   bridge.forwardInbound(event, { admins: [OWNER] })
   assert.equal(port.ingested.length, 1)
   const ingested = port.ingested[0]!
+  // 这一条是**表情**（subType=1 + summary 带方括号），所以它走 `stickers` 而不是 `images`：
+  // 表情是话不是画，下游要的是「这张以前见过没有」，不是像素。
   assert.deepEqual(ingested, {
     messageId: 42,
     at: 1_760_000_000_000,
@@ -133,11 +135,13 @@ test('转发的是元数据：消息号 / 时间 / 路由 / 发言人 / 图片�
     chatId: GROUP,
     isOwner: true,
     senderId: OWNER,
-    images: [{ url: 'https://cdn.example.com/a.png', subType: 1, summary: '[动画表情]', emojiId: 'e1', emojiPackageId: 'p1', key: 'k1' }],
+    images: [],
+    stickers: [{ url: 'https://cdn.example.com/a.png', stickerKey: 'k:k1', label: '', animated: true }],
     text: '看看这个',
   })
   // 占位符不进 `text`（`plainText` 才是内容），也不出现任何字节形态。
   assert.equal(/\[图片\]/.test(ingested.text ?? ''), false)
+  assert.equal(/\[表情/.test(ingested.text ?? ''), false, '表情在 stickers 里，不混进正文')
   assert.equal(Object.keys(ingested).includes('bytes'), false)
   for (const value of Object.values(ingested)) assert.equal(Buffer.isBuffer(value), false)
   assert.equal(JSON.stringify(ingested).includes('data:image'), false)

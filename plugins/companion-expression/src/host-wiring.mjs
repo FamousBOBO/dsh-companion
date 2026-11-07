@@ -274,12 +274,36 @@ function ingestInputOf(event, { salt, isOwnerFor }) {
 }
 
 /**
+ * 表情的入参：与图片走同一个 `ingestOne()`，但**语义来源不同**。
+ *
+ * 图片的语义要靠分析（标题 / 视觉模型）得到；表情的语义是**问出来或认出来的**
+ * ——`literal` 取词典里的意思。这样入库的卡片记的是「我困了」，而不是对画面的描述。
+ * `messageHash` 里带上 `stickerKey`，于是同一个表情再次出现时 `sourceKey` 一致，不会重复下载。
+ */
+function stickerInputOf(sticker, base) {
+  return {
+    ...base,
+    url: String(sticker?.url ?? '').trim(),
+    messageHash: `${base.messageHash}:sticker:${String(sticker?.stickerKey ?? '')}`,
+    literal: String(sticker?.literal ?? '').trim(),
+    summaryHint: String(sticker?.label ?? '').trim(),
+    subType: '1',
+    animated: sticker?.animated === true,
+    extraUrls: [],
+  };
+}
+
+/**
  * 建采集适配器：`observe(inbound)` → 对消息里每张图各跑一次 `ingestOne()`。
+ *
+ * 表情单独一条路（`stickers` 数组）：先查词典，认得就直接用记下的意思当 `literal`，
+ * 不认得就按 `label` 入（此时卡片是空的，等有人问清楚之后 `expression_sticker_note`
+ * 再补）。**绝不因为「不认识」就去描述画面**——那正是这次要改掉的行为。
  *
  * 同步返回、绝不 await（投递/入站路径不能被下载拖慢）；失败只计数，不外抛。
  * @returns {{observe: Function, counters: object} | null}
  */
-export function createIngestBridge({ db, library, config, http, salt, isOwnerFor, now, log = () => {} } = {}) {
+export function createIngestBridge({ db, library, config, http, salt, isOwnerFor, now, notes = null, log = () => {} } = {}) {
   if (!db || !library || typeof http?.get !== 'function' || typeof salt !== 'string' || salt === '') return null;
   let ingest;
   try {
@@ -288,14 +312,49 @@ export function createIngestBridge({ db, library, config, http, salt, isOwnerFor
     log(`采集管道没建起来：${String(error?.message ?? error).slice(0, 160)}`);
     return null;
   }
-  const counters = { observed: 0, queued: 0, dropped: 0, lastError: null };
+  const counters = { observed: 0, queued: 0, dropped: 0, stickers: 0, stickerKnown: 0, lastError: null };
+  const noteOf = () => (notes && typeof notes.lookup === 'function' ? notes : null);
+
+  /** 一个表情：查词典 → 认得出就用意思，认不出就只带字面。永远不描述画面。 */
+  function observeSticker(sticker, base) {
+    counters.stickers += 1;
+    const scope = base.kind === 'group' ? `group:${base.chatId}` : `dm:${base.chatId}`;
+    let literal = '';
+    const handle = noteOf();
+    if (handle) {
+      try {
+        const found = handle.lookup({ stickerKey: sticker.stickerKey, label: sticker.label, scope, animated: sticker.animated });
+        if (found.known === true) { literal = found.meaning; counters.stickerKnown += 1; }
+      } catch (error) { counters.lastError = String(error?.message ?? error).slice(0, 200); }
+    }
+    const input = stickerInputOf({ ...sticker, literal }, base);
+    if (input.url === '') { counters.dropped += 1; return; }
+    counters.queued += 1;
+    Promise.resolve(ingest.ingestOne(input)).catch((error) => {
+      counters.dropped += 1;
+      counters.lastError = String(error?.message ?? error).slice(0, 200);
+    });
+  }
 
   function observe(event = {}) {
     counters.observed += 1;
+    const stickers = Array.isArray(event?.stickers) ? event.stickers : [];
     const base = ingestInputOf(event, { salt, isOwnerFor });
     if (!base) {
-      counters.dropped += 1;
-      return { ok: false, queued: 0, reasonCode: 'no-image-url' };
+      if (stickers.length === 0) {
+        counters.dropped += 1;
+        return { ok: false, queued: 0, reasonCode: 'no-image-url' };
+      }
+      // 纯表情消息：没有普通图片，但仍然要认它、必要时入库。
+      const kind = event?.kind === 'group' ? 'group' : 'dm';
+      const chatId = Number(event?.chatId) || 0;
+      if (chatId <= 0) { counters.dropped += 1; return { ok: false, queued: 0, reasonCode: 'no-chat-id' }; }
+      const stub = {
+        kind, chatId, salt, isOwner: isOwnerFor({ chatId, isGroup: kind === 'group' }) === true,
+        url: '', messageHash: event?.messageId ? String(event.messageId) : '', summaryHint: '', subType: '', extraUrls: [],
+      };
+      for (const sticker of stickers) observeSticker(sticker, stub);
+      return { ok: true, queued: stickers.length, stickers: stickers.length };
     }
     const urls = [base.url, ...base.extraUrls];
     for (const url of urls) {
@@ -306,7 +365,8 @@ export function createIngestBridge({ db, library, config, http, salt, isOwnerFor
         counters.lastError = String(error?.message ?? error).slice(0, 200);
       });
     }
-    return { ok: true, queued: urls.length };
+    for (const sticker of stickers) observeSticker(sticker, base);
+    return { ok: true, queued: urls.length + stickers.length, stickers: stickers.length };
   }
 
   return { observe, counters, ingest };
@@ -340,7 +400,7 @@ export function createOffers({ config, salt, isOwnerFor }) {
  * }} input
  */
 export function createHostWiring({
-  ctx, dataRoot, db, library, config, salt, env = process.env, now, fetchImpl, log = () => {},
+  ctx, dataRoot, db, library, config, salt, env = process.env, now, fetchImpl, notes: notesHandle = null, log = () => {},
 } = {}) {
   const notes = [];
   let tools = null;
@@ -373,7 +433,7 @@ export function createHostWiring({
   if (!http) notes.push('没有可用的 HTTP 采集实现（全局 fetch 缺失）：入站图片不会下载。');
 
   const ingestBridge = http
-    ? createIngestBridge({ db, library, config, http, salt, isOwnerFor: isOwner, now, log })
+    ? createIngestBridge({ db, library, config, http, salt, isOwnerFor: isOwner, now, notes: notesHandle, log })
     : null;
   if (http && !ingestBridge) notes.push('采集管道没建起来：入站图片不会入库。');
 

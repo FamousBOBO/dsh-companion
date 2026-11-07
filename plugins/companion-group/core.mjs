@@ -45,6 +45,8 @@ export const GROUP_EXPRESSION_TOOLS = Object.freeze([
   'expression_candidates',
   'expression_reply',
   'expression_feedback',
+  // 表情词典：群里也要能认、能记（认错了会一直错，能改比不给改强）。它不发消息。
+  'expression_sticker_note',
 ]);
 
 /** 群聊允许出现的工具集合：与 `index.mjs` 的 `tools.restrict({ allow })` 共用一份。 */
@@ -62,6 +64,8 @@ export const GROUP_ALLOWED_TOOLS = Object.freeze(['qq_message', 'qq_sticker', 'q
 const READ_KEYS = Object.freeze({
   expression_candidates: ['isGroup', 'target', 'query', 'limit'],
   expression_feedback: ['isGroup', 'target', 'assetId', 'action', 'signal', 'note'],
+  // 表情词典：只认消息行里给出的指纹与「意思」文本，路径类键进不来（FORBIDDEN_KEYS 兜底）。
+  expression_sticker_note: ['isGroup', 'target', 'action', 'stickerKey', 'meaning', 'label', 'animated', 'limit'],
 });
 
 /** 发送类动作的白名单：工具名 → 允许的 action 与允许的参数键。 */

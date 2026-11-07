@@ -216,16 +216,20 @@ process[Symbol.for('dsh.companion.expression.v1')] = {
 | `ingest` | `ingest.createIngest({db, library, config, http})` + 元数据适配 | `observe()` 回 `ingest-not-injected` |
 | `isOwner` | `home/companion/identity.json` 的 `owner.id`（只读，不写） | 主人私聊按 `peer` 处理（宁可不认，也不把陌生人算成主人） |
 
+入站还有**第五条**：表情。`channel-qq` 的 `ExpressionInbound` 里 `stickers[]` 与 `images[]` 分列
+（表情是「一句话」，图片是「一幅画」），采集时先查 `sticker_notes` 词典：认得出就用记下的意思当
+`literal`，认不出就只按字面入、**绝不描述画面**。没有词典时行为退回「只按字面入」。
+
 两条**不变**的性质：
 
 1. **发送仍然是一次真实工具调用**，不是绕过通道自己发请求。因此预执行策略、群边界、
    出站边界、`policy.v2` 全部照常生效；这里只做参数搬运与结果解读。
 2. **显式注入优先**。`apply` 的 `options` 里已经给了 `qqSender` / `http` / `ingest` /
-   `isOwner` 时，宿主接线**不覆盖**（测试与运维脚本仍可自己接）。一条都没接上时，
-   日志里逐条写清缺哪一路，能力本身如实报不可用。
+   `isOwner` 时，宿主接线**不覆盖**（测试与运维脚本仍可自己接），`notes`（表情词典）同理。
+   一条都没接上时，日志里逐条写清缺哪一路，能力本身如实报不可用。
 
-`real-send` 仍**未验证**：接线只证明「有出口且走的是同一道闸门」，「QQ 上真的收到了」
-必须由操作者显式触发一次，见 `docs/07-verification-status.md` §2.6。
+`real-send` 已有 2 条回执（2026-11-07，「开心」与「生日快乐」）；批量/群聊/连续发图仍未验证，
+见 `docs/07-verification-status.md` §2.6。
 
 ---
 

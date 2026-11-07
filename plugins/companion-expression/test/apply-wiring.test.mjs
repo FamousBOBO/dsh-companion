@@ -6,7 +6,7 @@
  *   1. `apply` 能从 `ctx.tools` 把 `qq_message` / `qq_sticker` 的执行器接成 `qqSender`；
  *   2. 接上之后 `expression_reply` **不再**报 `sender-unavailable`（而是走到第二/第三道闸）；
  *   3. 接上之后入站端口 `observe()` **不再**报 `ingest-not-injected`，`offers()` 与入库同口径；
- *   4. 拿不到工具表时仍照常注册四个工具、照常发端口，但如实报「没有出口」。
+ *   4. 拿不到工具表时仍照常注册五个工具、照常发端口，但如实报「没有出口」。
  *
  * 仍然零网络、零 QQ：工具是假的、fetch 是假的；「真发到 QQ」只能由操作者显式触发，
  * 不在离线测试的证词范围内（docs/07-verification-status.md）。
@@ -213,7 +213,7 @@ test('apply 接上采集：observe() 不再报 ingest-not-injected；offers() �
   });
 });
 
-test('ctx 没有工具表时：apply 照常注册四个工具、照常发端口，但如实报「发送器没接上」', async () => {
+test('ctx 没有工具表时：apply 照常注册五个工具、照常发端口，但如实报「发送器没接上」', async () => {
   const dir = tempRoot();
   writeModuleConfig(dir, { delivery: { enabled: true } });
   resetServiceForTests();
@@ -224,7 +224,7 @@ test('ctx 没有工具表时：apply 照常注册四个工具、照常发端口�
   try {
     Object.assign(process.env, { DSH_COMPANION_DATA_DIR: dir });
     const dispose = await apply(ctx, { env: ENV_ON({ DSH_COMPANION_DATA_DIR: dir }) });
-    assert.equal(registered.length, 4, '工具照旧注册（缺发送器不影响工具面）');
+    assert.equal(registered.length, 5, '工具照旧注册（缺发送器不影响工具面）');
     assert.equal(typeof process[PORT_SYMBOL]?.observe, 'function', '端口照旧发布');
     const reply = registered.find(tool => tool.name === 'expression_reply');
     const out = JSON.parse(await reply.execute({ assetId: 'ast_abc123456', action: 'send', target: OWNER }, {}));

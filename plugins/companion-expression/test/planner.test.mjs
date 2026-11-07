@@ -149,10 +149,12 @@ test('describePlan 只说模式/段数与 assetId，不含路径', () => {
 
 /* ───────── 工具契约与插件入口的两道开关（AGENTS.md 硬规则 2） ───────── */
 
-test('四个工具：参数只有白名单里的键，路径类键连「被忽略」的机会都没有', () => {
-  assert.equal(TOOL_SPECS.length, 4);
+test('五个工具：参数只有白名单里的键，路径类键连「被忽略」的机会都没有', () => {
+  assert.equal(TOOL_SPECS.length, 5);
   assert.deepEqual(TOOL_SPECS.map(spec => spec.name), [
     'expression_candidates', 'expression_reply', 'expression_feedback', 'expression_library_stats',
+    // 表情是「一句话」不是一幅画：这一条让模型能把问清楚的意思记下来，下次直接认出。
+    'expression_sticker_note',
   ]);
   for (const spec of TOOL_SPECS) {
     for (const key of Object.keys(spec.parameters)) assert.ok(ALLOWED_KEYS.includes(key), `${spec.name}.${key} 不在白名单`);
@@ -193,7 +195,7 @@ test('模块级开关默认关闭；apply 在关闭时不注册工具、不发�
   assert.equal(process[PORT_SYMBOL], undefined, '关闭时不发布入站端口');
 });
 
-test('打开模块后：注册四个工具、发布端口，且 delivery.enabled 仍是第二道闸', async () => {
+test('打开模块后：注册五个工具、发布端口，且 delivery.enabled 仍是第二道闸', async () => {
   const dir = fs.mkdtempSync(path.join(os.tmpdir(), 'exp-idx-'));
   const registered = [];
   const ctx = { tools: { register: tool => registered.push(tool) }, provide: () => {}, effect: () => {}, on: () => {} };
@@ -207,7 +209,7 @@ test('打开模块后：注册四个工具、发布端口，且 delivery.enabled
       qqSender: { sendText: async () => ({ ok: true, messageId: 1 }), sendSticker: async () => ({ ok: true, messageId: 2 }) },
     });
     assert.equal(typeof dispose, 'function', 'apply 必须返回 disposer');
-    assert.equal(registered.length, 4, `应注册 4 个工具，实际 ${registered.length}`);
+    assert.equal(registered.length, 5, `应注册 5 个工具，实际 ${registered.length}`);
     assert.equal(typeof process[PORT_SYMBOL]?.observe, 'function', '端口只提供同步的 observe');
     const replyTool = registered.find(tool => tool.name === 'expression_reply');
     const replyOut = JSON.parse(await replyTool.execute({ assetId: 'ast_abc123456', action: 'send' }, {}));

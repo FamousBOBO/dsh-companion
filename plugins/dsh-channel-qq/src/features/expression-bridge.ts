@@ -15,8 +15,17 @@ export const EXPRESSION_PORT_SYMBOL = Symbol.for('dsh.companion.expression.v1')
 type Route = { kind: 'dm' | 'group'; chatId: number; isOwner: boolean; senderId: number }
 /** 一张图的 Vendor 元数据：`url` 是地址不是字节；mface 字段有才带。 */
 export type ExpressionImage = { url: string; subType?: number | string; summary?: string; emojiId?: string; emojiPackageId?: string; key?: string }
+/**
+ * 一个表情的元数据。
+ *
+ * 与 `ExpressionImage` 分开传：表情要的是**意思**（`stickerKey` 用来认「这张以前见过」，
+ * `label` 是 QQ 透出来的字面），而图片要的是像素。混在一起时下游只能当图片描述它。
+ */
+export type ExpressionSticker = { url: string; stickerKey: string; label: string; animated: boolean }
 /** 路由 + 整条元数据（没有别的字段，所以带不出字节）。 */
-export type ExpressionInbound = Route & { messageId: number; at: number; images: ExpressionImage[]; text?: string }
+export type ExpressionInbound = Route & {
+  messageId: number; at: number; images: ExpressionImage[]; stickers?: ExpressionSticker[]; text?: string
+}
 /** 正常化后的端口：消费端只认这两个方法。 */
 export interface ExpressionPort { offers(offer: Omit<Route, 'senderId'>): unknown; ingest(event: ExpressionInbound): unknown }
 /** 服务袋 `expressionBridge` 那一格（观察者只经它转发；端口由本模块解析）。 */
@@ -102,7 +111,16 @@ function payloadOf(event: OneBotEvent, route: Route): ExpressionInbound {
   const raw = Number(event.time) // OneBot 的 `time` 是 unix 秒；毫秒变体原样保留。
   const at = Number.isFinite(raw) && raw > 0 ? Math.round(raw > 1e12 ? raw : raw * 1000) : 0
   const text = parsed.plainText.trim()
-  return { ...route, at, messageId: typeof event.message_id === 'number' ? event.message_id : 0, images: parsed.imageUrls.map((url, i) => metas[i] ?? { url }), ...(text === '' ? {} : { text }) }
+  // 表情单独一层：下游靠 `stickerKey` 认出「这张以前见过」，不必重新描述画面。
+  const stickers: ExpressionSticker[] = parsed.stickers.map((sticker, i) => ({
+    url: parsed.stickerUrls[i] ?? '', stickerKey: sticker.key, label: sticker.label, animated: sticker.animated,
+  }))
+  return {
+    ...route, at, messageId: typeof event.message_id === 'number' ? event.message_id : 0,
+    images: parsed.imageUrls.map((url, i) => metas[i] ?? { url }),
+    ...(stickers.length === 0 ? {} : { stickers }),
+    ...(text === '' ? {} : { text }),
+  }
 }
 
 /** 旁路入口：**同步、永不抛、永不 await**。 */

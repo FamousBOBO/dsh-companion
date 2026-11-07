@@ -297,7 +297,8 @@ test('入站适配：一条消息里的每张图各入队一次，且立即返�
       kind: 'dm', chatId: Number(OWNER_ID), messageId: 1001, at: CLOCK,
       images: [{ url: 'https://cdn.example.com/a.png' }, { url: 'https://cdn.example.com/b.png' }],
     });
-    assert.deepEqual(first, { ok: true, queued: 2 });
+    // `stickers: 0` 是这次新增的那个字段：普通图片消息没有表情段（有的话单独走一条路）。
+    assert.deepEqual(first, { ok: true, queued: 2, stickers: 0 });
     assert.equal(typeof first.then, 'undefined', 'observe 是同步的：拿回来的是结果，不是 promise');
     assert.equal(bridge.counters.observed, 1);
     assert.equal(env.library.stats().assets, 0, '返回时还没入库（下载是后面的事）');

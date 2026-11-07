@@ -148,6 +148,39 @@ export const MIGRATIONS = Object.freeze([
        )`,
     ],
   },
+  {
+    version: 2,
+    statements: [
+      /**
+       * 表情词典：**同一个表情只用记一次意思**。
+       *
+       * 为什么单独一张表而不是塞进 `expression_cards`：卡片描述的是图库素材（字节在我这儿），
+       * 词典描述的是「这个表情是什么意思」——包括还没入库的、别人发的、动图。键是稳定指纹
+       * （文件名的 stem / summary 文本），不含 QQ 号。`meaning` 是人给的抽象意思，
+       * 不是画面描述；`source` 记它是谁定的（owner 解释 / 自己认出来的 / 导入清单）。
+       */
+      `CREATE TABLE IF NOT EXISTS sticker_notes (
+         sticker_key TEXT PRIMARY KEY,
+         label TEXT,
+         meaning TEXT NOT NULL,
+         animated INTEGER NOT NULL DEFAULT 0,
+         source TEXT,
+         scope TEXT,
+         hits INTEGER NOT NULL DEFAULT 0,
+         created_at INTEGER NOT NULL,
+         updated_at INTEGER NOT NULL
+       )`,
+      `CREATE INDEX IF NOT EXISTS sticker_notes_label ON sticker_notes(label)`,
+      `CREATE TABLE IF NOT EXISTS sticker_seen (
+         sticker_key TEXT NOT NULL,
+         scope TEXT NOT NULL,
+         first_seen INTEGER NOT NULL,
+         last_seen INTEGER NOT NULL,
+         times INTEGER NOT NULL DEFAULT 1,
+         PRIMARY KEY (sticker_key, scope)
+       )`,
+    ],
+  },
 ]);
 
 /**

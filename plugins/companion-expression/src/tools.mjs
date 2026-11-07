@@ -19,17 +19,25 @@ export const TOOL_NAMES = Object.freeze({
   reply: 'expression_reply',
   feedback: 'expression_feedback',
   stats: 'expression_library_stats',
+  stickerNote: 'expression_sticker_note',
 });
 
 /** 允许的参数键（白名单，唯一来源）。 */
-export const ALLOWED_KEYS = Object.freeze(['assetId', 'action', 'isGroup', 'target', 'mode', 'text', 'query', 'limit', 'signal', 'note']);
+export const ALLOWED_KEYS = Object.freeze([
+  'assetId', 'action', 'isGroup', 'target', 'mode', 'text', 'query', 'limit', 'signal', 'note',
+  'stickerKey', 'meaning', 'label', 'animated',
+]);
 /** 即使出现也直接拒绝的键：它们是「绕过服务端校验」的入口。 */
 export const FORBIDDEN_KEYS = Object.freeze(['file', 'path', 'filePath', 'url', 'bytes', 'source', 'staged', 'scope']);
 
 export const REPLY_ACTIONS = Object.freeze(['send']);
 export const REPLY_MODES = Object.freeze(['text_only', 'sticker_only', 'text_then_sticker', 'sticker_then_text']);
 export const FEEDBACK_ACTIONS = Object.freeze(['praise', 'reject', 'correction']);
+/** 表情词典的三个动作：认 / 记 / 列。 */
+export const NOTE_ACTIONS = Object.freeze(['lookup', 'record', 'list']);
 export const ASSET_ID_PATTERN = /^ast_[0-9a-zA-Z_-]{6,40}$/;
+/** 表情指纹形如 `f:0AB4…` / `s:困` / `u:xxx`（见 channel-qq 的 `stickerKeyOf`）。 */
+export const STICKER_KEY_PATTERN = /^[fsu]:[\s\S]{1,180}$/;
 
 function text(value, limit) {
   return String(value ?? '').slice(0, limit);
@@ -72,6 +80,17 @@ export function validateArgs(raw = {}) {
   }
   if (input.signal !== undefined) args.signal = text(input.signal, 24);
   if (input.note !== undefined) args.note = text(input.note, 240);
+  if (input.stickerKey !== undefined) {
+    const key = String(input.stickerKey ?? '').trim();
+    // 只认指纹（`f:`/`s:`/`u:` 前缀），不认路径也不认 URL —— 与 assetId 同一条纪律。
+    if (key !== '' && !STICKER_KEY_PATTERN.test(key)) {
+      return { ok: false, reasonCode: 'sticker-key-invalid', message: 'stickerKey 必须是消息行里给出的指纹（形如 f:… / s:… / u:…）。' };
+    }
+    if (key !== '') args.stickerKey = key.slice(0, 200);
+  }
+  if (input.meaning !== undefined) args.meaning = text(input.meaning, 200);
+  if (input.label !== undefined) args.label = text(input.label, 40);
+  if (input.animated !== undefined) args.animated = input.animated === true || input.animated === 'true';
   return { ok: true, args };
 }
 
@@ -122,6 +141,19 @@ export const TOOL_SPECS = Object.freeze([
     description: `图库与投递统计（只读）。含素材/来源/审核/投递/反馈计数与 abstain 比例。${NOTHING}`,
     parameters: {
       limit: { type: 'integer', description: '最近投递条数，默认 10。' },
+    },
+  },
+  {
+    name: TOOL_NAMES.stickerNote,
+    kind: 'write',
+    description: `表情词典：对方发来的表情是**一句话**，不是一幅画。action=lookup 先问「这张以前记过没有」（认出来就用原来的意思，别描述画面）；action=record 把问清楚的意思记下来（下次同一个表情直接认出，动图一样）；action=list 看记过哪些。不要用它记画面描述。`,
+    parameters: {
+      action: { type: 'string', required: true, description: 'lookup / record / list。' },
+      stickerKey: { type: 'string', description: '消息行里的表情指纹（[表情：困｜key=f:…] 里的 f:…）。' },
+      meaning: { type: 'string', description: 'record：这个表情表达什么（抽象意思，不是画面），最多 200 字。' },
+      label: { type: 'string', description: 'record：这个表情的字面（如 困 / 开心）。' },
+      animated: { type: 'boolean', description: 'record：是不是动图表情。' },
+      limit: { type: 'integer', description: 'list：最多几条，默认 20。' },
     },
   },
 ]);
@@ -213,10 +245,35 @@ export function createToolHandlers({ service } = {}) {
       void exec;
       return call('stats', { limit: checked.args.limit ?? 10 });
     },
+    async [TOOL_NAMES.stickerNote](rawArgs = {}, exec) {
+      const checked = validateArgs(rawArgs);
+      if (!checked.ok) return refusal(checked.reasonCode, checked.message);
+      const action = String(checked.args.action ?? '').trim();
+      if (!NOTE_ACTIONS.includes(action)) {
+        return refusal('action-invalid', `action 只能是 ${NOTE_ACTIONS.join(' / ')}。`);
+      }
+      // `record` 必须有意思与指纹：没有意思的记录等于没记，而编一个「意思」正是要防的事。
+      if (action === 'record' && !checked.args.stickerKey) {
+        return refusal('sticker-key-missing', 'record 需要 stickerKey（消息行里 [表情：…｜key=…] 的那个 key）。');
+      }
+      if (action === 'record' && String(checked.args.meaning ?? '').trim() === '') {
+        return refusal('meaning-empty', 'record 需要 meaning：这个表情表达什么。不知道就先问，别猜。');
+      }
+      if (action === 'lookup' && !checked.args.stickerKey) {
+        return refusal('sticker-key-missing', 'lookup 需要 stickerKey。');
+      }
+      const request = requestOf({ args: checked.args, exec });
+      return call('stickerNote', {
+        action, stickerKey: checked.args.stickerKey ?? '', meaning: checked.args.meaning ?? '',
+        label: checked.args.label ?? '', animated: checked.args.animated === true,
+        limit: checked.args.limit ?? 20, isGroup: request.isGroup, target: request.target,
+      });
+    },
   };
 }
 
 export default {
   TOOL_NAMES, ALLOWED_KEYS, FORBIDDEN_KEYS, REPLY_ACTIONS, REPLY_MODES, FEEDBACK_ACTIONS,
+  NOTE_ACTIONS, STICKER_KEY_PATTERN,
   TOOL_SPECS, TOOL_SPEC_BY_NAME, validateArgs, createToolHandlers,
 };

@@ -120,8 +120,10 @@ node plugins/companion-expression/scripts/import-pack.mjs \
 
 两个补丁块，和 `companion-media` 同一个原因：
 
-- **预设内**：`index.mjs` 注册四个工具（`expression_candidates` / `expression_reply` /
-  `expression_feedback` / `expression_library_stats`），模型才看得见它们。
+- **预设内**：`index.mjs` 注册五个工具（`expression_candidates` / `expression_reply` /
+  `expression_feedback` / `expression_library_stats` / `expression_sticker_note`），模型才看得见它们。
+  `expression_sticker_note` 是**表情词典**：对方发来的表情是「一句话」而不是一幅画，
+  它负责先把意思问清楚、记下来，下次同一个表情直接认出来（见 §7）。
 - **顶层**：`http.mjs` 注册管理 API。预设拿到的是 isolate realm，它的 `connection` 是私有实例，
   从预设里注册路由会「报告成功但仍 404」。顶层是唯一被 `connection.fetch.register` 接受的地方。
 
@@ -134,7 +136,7 @@ node plugins/companion-expression/scripts/import-pack.mjs \
 
 ```bash
 cd plugins/companion-expression
-node --test "test/*.test.mjs"          # 206 项，全离线、不联网、不碰 data/
+node --test "test/*.test.mjs"          # 214 项，全离线、不联网、不碰 data/
 ```
 
 两条**真宿主**证据（都用一个临时 `DSH_HOME` + 临时数据目录，跑完删掉，不写仓库）：
@@ -148,7 +150,7 @@ npm run check:hostload --workspace=@dsh-companion/expression   # 真启动宿主
 
 ```
 [companion-expression] 已发布入站端口 dsh.companion.expression.v1（只入队，不回复、不唤醒 Agent）。
-[companion-expression] 已注册 4 个工具（defineTool=host）
+[companion-expression] 已注册 5 个工具（defineTool=host）
 [companion-expression-http] 已注册 10 条管理路由。
 ```
 
@@ -165,8 +167,33 @@ node --test test/expression-page.test.mjs                        # 16 项
 
 ---
 
-## 7. 未实现（说清楚）
+## 7. 表情是「话」，不是「画」
 
-GIF 关键帧理解、OCR、embedding 向量召回、QQ 内置 `face` 表情投递、真实平台发送验收。
-证据分级见仓库的 `docs/07-verification-status.md` §2.6：装载已达成，**真实发图未验证**。
+群里/私聊收到一个表情，QQ 那边给的是 `image` 段 + `summary='[困]'`。原来的处理把它当图片，
+渲染成 `[图片][图片含义：[困]]` —— 模型读到的是「我看到一张图，图里有个字」，于是它去描述画面。
+用户 2026-11-08 指出：**这是错的**，表情本身就是它要表达的那句话。
+
+现在：
+
+| 环节 | 行为 |
+|---|---|
+| 入站解析 | `parse.ts` 的 `stickerOf()` 认三种来源（`sub_type=1` / `summary` 带方括号 / mface 字段），把它放进 `stickers`，**不进 `imageSummaries`** |
+| 渲染 | `[表情：困｜key=f:0AB4…]`；认不出字面写 `[表情：不认识｜key=…]`——诚实，不猜画面 |
+| 指纹 | `f:` 文件名 stem（最稳）→ `k:` mface key → `s:` 字面 → `u:` url 末段。**不含 QQ 号**，跨会话同一个表情认得出 |
+| 已在词典里 | 采集时直接用记下的意思当 `literal`，卡片就是那句意思，不是画面描述 |
+| 没在词典里 | 只按字面入，卡片留空；一轮里可以**在私聊问一句**「这个表情是什么意思」，问清楚后用 `expression_sticker_note` 记下来 |
+| 动图 | 同一个办法：记的是意思，不是帧（`animated` 只用来判断「要不要逐帧看」） |
+
+`sticker_notes` / `sticker_seen` 两张表（schema v2）：前者是「这个表情是什么意思」，
+后者只数「在本会话见过几次」——见过 ≥2 次还没记过的，正是最值得问一句的那一批（`stats().askable`）。
+
+---
+
+## 8. 未实现（说清楚）
+
+GIF 关键帧理解、OCR、embedding 向量召回、QQ 内置 `face` 表情投递。
+证据分级见仓库的 `docs/07-verification-status.md` §2.6：装载已达成，真实发图有 2 条回执
+（其中 1 条回读确认 `sub_type=1` 是表情）；批量、群聊、连续发图仍未验证。
 页面能看、规则能改、实验室能模拟，**不等于** QQ 上真能发。
+「表情不会被描述成图片」这一条只有**离线测试**（`sticker-parse.test.ts` 9 项）与一次真实入站回读，
+还没有「连续几天收到表情都理解正确」的长期证据。
