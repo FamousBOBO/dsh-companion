@@ -174,7 +174,7 @@ export function candidateLines(candidates: readonly SongCandidate[]): string {
 function qqSongCover(deps: SongToolDeps): ToolSpec {
   return {
     name: 'qq_song_cover',
-    description: '点歌：去B站找原唱，下载音轨，找出副歌，用三月七的音色翻唱，然后把副歌那一段'
+    description: '点歌：去B站找原唱，下载音轨，找出副歌，用机器人的音色翻唱，然后把副歌那一段'
       + '发成语音条。**只在私聊里可用**。这一步只受理（会立刻回答），做好之后才发语音条；'
       + '同名歌分不出来时会把候选列出来让主人挑。',
     parameters: {

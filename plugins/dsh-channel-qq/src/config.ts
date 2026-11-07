@@ -329,7 +329,7 @@ export interface QQChannelConfig extends SwitchSections {
   turn: TurnConfig
   /** 群聊旁听与自主接话（默认关；关着时入站路径与旧行为逐字节一致）。 */
   readonly presence: PresenceConfig
-  /** 点歌翻唱（B站 → 三月七 → 语音条）：外部程序路径、时间预算与两道外发闸（默认全关）。 */
+  /** 点歌翻唱（B站 → RVC 音色 → 语音条）：外部程序路径、时间预算与两道外发闸（默认全关）。 */
   readonly song: import('./config/sections/song.js').SongConfig
   groupAdmin: GroupAdminConfig
   debug: boolean

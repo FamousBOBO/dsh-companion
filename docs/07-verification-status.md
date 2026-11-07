@@ -177,7 +177,7 @@
 
 ### 2.7 点歌翻唱（`dsh-channel-qq` 的 `song` 段）：`offline-test` + **`real-api` + 两条 `real-send`（2026-11-07）**
 
-链路：B站搜歌 → 下载音轨 → 副歌定位 → 三月七 RVC 翻唱 → QQ 副歌语音条。
+链路：B站搜歌 → 下载音轨 → 副歌定位 → RVC 音色翻唱 → QQ 副歌语音条。
 设计取舍见 `docs/karaoke-cover.md`。**下面每行都写清证据到了哪一级，不要读成「点歌功能已完成」**。
 
 | 项 | 级别 | 证据 |
@@ -195,7 +195,7 @@
 | **部署形态**（`find_chorus.py` 进不了 `build/` 的缺口） | `offline-test` + **真打包** | `test/song-deploy.test.ts` **5 项**；并且**真的 `npm pack` → `tar -xzf` 解包 → 在解包目录里跑真实 chorus 适配器**得到 `{"startSeconds":87.5,…}`。解包根**没有**源码树 `tools/`，上溯第 3 跳命中 `build/tools/song/`。`e2e-acceptance.mjs` 在包内 **0 个** |
 | B站真实接口（搜索 / view / playurl / 音轨下载） | **`real-api` 已达成** | 2026-11-07 多次：搜索返回 8/20 条、`view` 给出 cid、`playurl` 30280/184052bps、音轨 **6 201 843 字节 → wav 47 540 586 字节（2 s）**。带凭据；匿名会 412 |
 | 真实音轨上的副歌定位 | **`real-api` 已达成** | 三条实测（真实音轨）：`wo_bu_nan_guo` start **90.5 s**（对齐前 76.0）、`jay-chou` **155.5 s**（对齐前 143.5）、晴天（B站音轨）**87.5 s**（对齐前 84.0）；`confidence` 0.90/0.81/0.87 **未因对齐变化**；单次 4.4–7.3 s。合成用例 7/7（人造台阶/毛刺/超窗/恒定/全静音），证明参数不是为这三首歌调的 |
-| 真实 RVC 翻唱（三月七音色、伴奏保留、25 s 语音条可解码） | **`real-api` 已达成** | 2026-11-07 端到端 72–90 s：分离+推理 63.7–75.4 s，`voice.mp3` **25.000249 s / 401 075 B**，`ffprobe` 与 `ffmpeg -f null` 都通过，summary 9 字段（`model=March7_RVC.pth`、`separator=mel-karaoke-gabox`） |
+| 真实 RVC 翻唱（女声音色模型、伴奏保留、25 s 语音条可解码） | **`real-api` 已达成** | 2026-11-07 端到端 72–90 s：分离+推理 63.7–75.4 s，`voice.mp3` **25.000249 s / 401 075 B**，`ffprobe` 与 `ffmpeg -f null` 都通过，summary 9 字段（`model=March7_RVC.pth`、`separator=mel-karaoke-gabox`） |
 | **男声升八度真的只动人声** | **`real-api` 已达成（对照实验）** | 同一条 45 s 片段跑 `--key 0` 与 `--key 12`：`inst.mp3` **MD5 完全相同**（`C91E602E…`）；`vocal.mp3` 逐帧基频 median **+12.00 半音**（p25 +11.94 / p75 +12.06，2858 个双清帧）；`voice.mp3` 时长与字节数**完全不变**。另一侧证：`make_cover.py` 直接双跑，`vocal.mp3` 中位基频 349 Hz → 630 Hz |
 | **QQ 真实发送（副歌语音条）** | **`real-send` 已达成（2 条）** | ① 21:29 晴天 `message_id=**695766929**`（副歌 87.5 s，25 s）；② 22:47 十年（女声翻唱版）`message_id=**1408692542**`（副歌 85.5 s，25 s）。两条都是**恰好一条**语音条、平台给了回执。**没有**逐条在手机端回听确认「起点是不是副歌第一句」——那一项见下 |
 | 自主选歌在真机上「到点自己发一首」 | **未验证** | 代码路径与拦截判据有离线覆盖（`song-auto` 12 项 + 闸门在 `pipeline` 里被断言），但**没有在真宿主上让主动联系真的触发一次自主点歌**。出厂默认 `autoPick=false`、`autoSongs=[]`，所以不打开就不会发生 |
