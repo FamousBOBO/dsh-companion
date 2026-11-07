@@ -397,3 +397,26 @@ test('analyzer：隐私分类与去向', async () => {
   assert.equal(off.modeUsed, 'off');
   assert.equal(off.reasonCode, 'analysis-off');
 });
+
+test('采集配额与投递配额分桶：收图不许吃掉发图额度', async () => {
+  // 2026-11-07 实测缺陷：群作用域收了 2 张图之后，decision.quotaState() 读到 reserved=2
+  // （= maxGroupPerHour）于是直接 abstain-hourly-quota —— 采集的账记在了投递的桶里。
+  // 两个用途必须分命名空间：采集只影响采集，投递只影响投递。
+  const http = fakeHttp();
+  const env = harness({ configOverrides: { capture: { ...DEFAULT_CONFIG.capture, maxPerHour: 3 } }, http });
+  try {
+    for (const hash of ['ns-1', 'ns-2']) {
+      assert.equal((await env.ingest.ingestOne({ ...baseInput, messageHash: hash })).ok, true);
+    }
+    const scope = ownerScope();
+    // 采集侧看得到用量（带 capture: 前缀的那个桶）。
+    assert.equal(env.ingest.quotaStatus(scope).used, 2);
+    // 投递侧的同名字段必须是空的：会话作用域这个桶不许被采集写脏。
+    const deliveryRow = env.db.get('SELECT used FROM quotas WHERE bucket = ? AND slot = ?', [scope, hourSlot(CLOCK)]);
+    assert.equal(deliveryRow, null, '会话作用域这个桶是投递用的，采集不许往里写');
+    const captureRow = env.db.get('SELECT used FROM quotas WHERE bucket = ? AND slot = ?', [`capture:${scope}`, hourSlot(CLOCK)]);
+    assert.equal(Number(captureRow.used), 2, '采集的账记在 capture: 前缀的桶里');
+  } finally {
+    env.cleanup();
+  }
+});

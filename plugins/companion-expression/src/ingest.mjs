@@ -92,6 +92,19 @@ export function createIngest({ db, library, config, http, vision = null, now = (
   }
 
   /**
+   * 采集配额桶的键：**必须与投递配额分命名空间**。
+   *
+   * `quotas` 表被两条路共用（采集的「每小时最多收几张」与投递的「每小时最多发几张」），
+   * 投递侧用的键是会话作用域本身（`quotaBucketFor()` 直接返回 scope）。所以在 2026-11-07
+   * 的实测里，群作用域收了 2 张图之后 `decision.quotaState()` 读到 `reserved=2 = maxGroupPerHour`，
+   * 直接 `abstain-hourly-quota` —— **收图把发图的额度吃掉了**。加前缀把两个桶分开：
+   * 采集只影响采集，投递只影响投递，谁都不许替对方扣帽子。
+   */
+  function captureBucket(scope) {
+    return `capture:${String(scope ?? '')}`;
+  }
+
+  /**
    * 占一个配额。上限 0 表示明确关闭收集，不是「不限」。
    * @returns {{ok: boolean, used: number, limit: number, reasonCode: string, message: string}}
    */
@@ -180,7 +193,7 @@ export function createIngest({ db, library, config, http, vision = null, now = (
     }
 
     // 2) 限流：同样在下载之前。
-    const quota = consumeQuota({ bucket: scopes.own, limit: config?.capture?.maxPerHour });
+    const quota = consumeQuota({ bucket: captureBucket(scopes.own), limit: config?.capture?.maxPerHour });
     if (!quota.ok) {
       finishJob(started.id, quota.reasonCode === 'quota-off' ? 'skipped' : 'quota', { error: quota.reasonCode });
       return refusal(started.id, quota.reasonCode, quota.message, { state: quota.reasonCode === 'quota-off' ? 'skipped' : 'quota' });
@@ -259,9 +272,9 @@ export function createIngest({ db, library, config, http, vision = null, now = (
     };
   }
 
-  /** 查询某作用域本小时的用量（Studio 用）。 */
+  /** 查询某作用域本小时的采集用量（Studio 用）。桶键带 `capture:` 前缀，与投递配额分开。 */
   function quotaStatus(scope, slot = hourSlot(clock())) {
-    const row = db.get('SELECT used FROM quotas WHERE bucket = ? AND slot = ?', [String(scope), String(slot)]);
+    const row = db.get('SELECT used FROM quotas WHERE bucket = ? AND slot = ?', [captureBucket(scope), String(slot)]);
     return { scope: String(scope), slot, used: Number(row?.used ?? 0), limit: Number(config?.capture?.maxPerHour ?? 0) };
   }
 
