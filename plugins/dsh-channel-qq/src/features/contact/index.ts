@@ -130,9 +130,10 @@ function buildWorker(
     // 起草上下文的取数面（P2.5-3D）：惰性服务袋 + 宿主预设 + 账本里的投递/未回复计数。
     // 装配只负责"往哪里取"，六个分区怎么读、怎么裁、缺了怎么记都在 `draft-context.ts`。
     draftContext: createHostDrafts(host, store, roomFacts, clock, log).source,
-    // 点歌的"自主选歌"挂在这一拍的收尾：它经服务袋拿 `song`（不 import 那个目录），
-    // 且自带免打扰/额度/授权三道闸（见 `features/song/auto.ts`）。这里只负责"到点了叫它一次"。
-    afterTick: async () => { await host.get('song')?.autoPickOnce() },
+    // **不挂 `afterTick`**：以前这里每一拍都会叫点歌自己挑一首，等于"到点就主动发歌"。
+    // 操作员的要求是"从不主动发歌，除非计划里有"，所以那根定时线整根拆掉：
+    // 现在只有两种途径会发出语音条——主人在私聊里点歌（`qq_song_cover`），
+    // 或者计划/后台显式调用 `autoPickOnce()`（服务袋 `song`、后台点歌表的 `pick` 动作）。
   })
 }
 
