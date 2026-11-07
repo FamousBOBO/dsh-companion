@@ -49,11 +49,16 @@ Bilibili 按模块矩阵检查 dsh-bili-scroll 外部包是否存在；不能把
 
 检查宿主是否已启用实验性持久终端 bundle 及当前平台后端。缺少工具时先说明并通过本机
 profile 启用，不伪造执行结果。按实际工具描述调用 terminal_open、terminal_send、terminal_read、
-terminal_signal、terminal_close；Windows 使用 pwsh 后端，其他平台检查 bash 后端。
+terminal_signal、terminal_close。默认后端类型都是 `shell`。Windows 只启用
+PowerShell 后端，Linux/macOS 只启用 Bash 后端。若旧配置强制打开了另一平台的
+后端，移除该条本机覆盖并重启，以恢复 bundle 的平台判断。
 
 为长驻服务建立有名称的终端，先检查现有端口和进程，发送对应平台 README 中的启动命令，
 读取输出直到健康检查就绪。保留终端供后续查看日志；服务未就绪不能报告成功。不要把凭据
 作为命令参数或打印配置全文。重启只针对本次配置的服务，不按端口盲杀其他部署。
+
+需要让华为健康云和 BLE 心率采集器随 DSH 启动时，按
+[采集器持久终端配置](../../docs/health-collector-terminals.md) 挂载本机配置。
 
 ## 验证与交付
 
