@@ -296,7 +296,8 @@ async function submit(
     accepted: result.accepted,
     taskId: result.taskId,
     note: result.accepted
-      ? `收到：用 B站「${chosen.title}」（${chosen.bvid}）做，${String(facts.config.seconds)} 秒副歌语音条`
+      ? `收到：用 B站「${chosen.title}」（${chosen.bvid}）做，`
+        + `最多 ${String(facts.config.seconds)} 秒，收在一句歌词结束处`
         + `${keyUp > 0 ? `（男声源，人声升高 ${String(keyUp)} 个半音）` : ''}，做好就发`
       : result.note,
     source: { bvid: chosen.bvid, title: chosen.title, author: chosen.author, keyUp },

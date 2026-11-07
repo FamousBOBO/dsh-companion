@@ -30,7 +30,7 @@ export interface SongConfig {
   readonly dryRun: boolean
   /** 第二道闸；与 `dryRun` 是与关系，两者都放开才可能真发。 */
   readonly allowExternalSend: boolean
-  /** 语音条长度（秒）；默认 25。QQ 对长语音有限制，超了会被拒。 */
+  /** 语音条长度上限（秒）；默认 59。实际长度会收在不超过它的最后一个人声句尾上。 */
   readonly seconds: number
   /** 副歌定位的置信度门槛（0–1）；低于它一律按"定位不可靠"处理。 */
   readonly minConfidence: number
@@ -83,7 +83,9 @@ export interface SongConfig {
 /**
  * 默认值。**每一项都是工程建议默认，不是用户决定**（出处见 `docs/karaoke-cover.md`）。
  *
- * `seconds=25`：副歌一段通常 20–30 秒，25 秒能听出"是这首歌的副歌"又不至于让语音条太长。
+ * `seconds=59`：QQ 语音上限附近留 1 秒余量。它只是一个**上限**——实际长度由定位出的
+ * 句尾决定（收在一句歌词结束处），所以通常是 40–59 秒之间的某个值。副歌一段本身
+ * 常常就是 20–40 秒，把上限放到 59 秒是把"能不能多听一句"交给歌本身。
  * `minConfidence=0.55`：低于这个数的定位宁可问用户，也不要从主歌中间切。
  * `prefixSeconds=12`：分离器需要上下文才能把人声与伴奏分开，太短的片段分离质量明显下降。
  * 四个超时按"本机实测 × 2.5 倍余量"给：下载 60 秒、定位 30 秒、翻唱 4 分钟、回执 30 秒。
@@ -93,7 +95,7 @@ export const SONG_DEFAULTS: SongConfig = {
   autoPick: false,
   dryRun: true,
   allowExternalSend: false,
-  seconds: 25,
+  seconds: 59,
   minConfidence: 0.55,
   preferFemale: true,
   maleKeyUp: 12,
@@ -147,9 +149,12 @@ export const SONG_GROUPS: FieldGroup[] = [
         hot: 'live',
         help: '第二道闸，默认为关。发出去的是**真实语音消息、撤不回**，所以与「演练模式」是两个独立的开关。',
       }),
-      seconds: n('语音条长度（秒）', SONG_DEFAULTS.seconds, {
-        hot: 'live', min: 10, max: 60, step: 1, unit: '秒',
-        help: '默认 25 秒，从副歌起点开始算。网关嫌长时会**保持同一个副歌起点**缩短，所以听到的仍是副歌开头。',
+      seconds: n('语音条长度上限（秒）', SONG_DEFAULTS.seconds, {
+        hot: 'live', min: 10, max: 59, step: 1, unit: '秒',
+        help: '默认 59 秒（QQ 语音上限附近留 1 秒余量）。它是一个**上限**：'
+          + '语音条从副歌起点开始，在不超这个长度的前提下尽量收在一句歌词的结束处'
+          + '（换气/句间停顿），所以实际可能明显更短（例如 47 秒）。'
+          + '网关嫌长时也会**保持同一个副歌起点**继续缩短，听到的仍是副歌开头。',
       }),
       minConfidence: n('副歌定位置信度门槛', SONG_DEFAULTS.minConfidence, {
         hot: 'live', min: 0.2, max: 0.95, step: 0.01,

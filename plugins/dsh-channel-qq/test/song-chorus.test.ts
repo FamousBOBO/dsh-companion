@@ -69,6 +69,7 @@ function makePort(plans: RunPlan[], logs: string[] = []): { port: ReturnType<typ
 
 const GOOD_JSON = JSON.stringify({
   ok: true, start: 62.5, end: 92.0, confidence: 0.71, method: 'repeat+energy', repeats: 2, vocalRatio: 0.83,
+  phraseEnds: [78.0, 84.5, 91.0],
 })
 
 test('正常解析：固定 JSON → ChorusPick（字段名与单位都对上）', async () => {
@@ -84,6 +85,7 @@ test('正常解析：固定 JSON → ChorusPick（字段名与单位都对上）
     method: 'repeat+energy',
     repeats: 2,
     vocalRatio: 0.83,
+    phraseEnds: [78.0, 84.5, 91.0],
   })
   // 参数是数组、--input 与 --out 都传到了（不拼 shell 字符串）。
   assert.equal(calls.length, 1)
@@ -92,6 +94,28 @@ test('正常解析：固定 JSON → ChorusPick（字段名与单位都对上）
   assert.equal(args[args.indexOf('--input') + 1], audio)
   assert.deepEqual(args.slice(args.indexOf('--out'), args.indexOf('--out') + 2), ['--out', args[args.indexOf('--out') + 1]])
   assert.ok(logs.some((line) => line.includes('副歌 62.5–92.0s')))
+})
+
+test('句尾：乱序会排好、非有限数与负数被丢掉；没这个字段就给空数组', async () => {
+  const messy = makePort([{
+    out: JSON.stringify({
+      ok: true, start: 10, end: 35, confidence: 0.6,
+      phraseEnds: [22.5, 'x', 14.0, null, -3, 18.5],
+    }),
+  }])
+  const pick = await messy.port.locate('/tmp/a.wav')
+  assert.ok(pick !== null)
+  assert.deepEqual(pick.phraseEnds, [14.0, 18.5, 22.5], '下游按"最后一个不超上限的"挑，顺序不能靠上游')
+
+  const missing = makePort([{ out: JSON.stringify({ ok: true, start: 10, end: 35, confidence: 0.6 }) }])
+  const plain = await missing.port.locate('/tmp/a.wav')
+  assert.ok(plain !== null)
+  assert.deepEqual(plain.phraseEnds, [], '取不到句尾就是空数组（不是定位失败）')
+
+  const notArray = makePort([{ out: JSON.stringify({ ok: true, start: 10, end: 35, confidence: 0.6, phraseEnds: 42 }) }])
+  const weird = await notArray.port.locate('/tmp/a.wav')
+  assert.ok(weird !== null)
+  assert.deepEqual(weird.phraseEnds, [], '形状不对也只当没有句尾')
 })
 
 test('脚本回报 ok:false → null（正常失败协议，不抛）', async () => {

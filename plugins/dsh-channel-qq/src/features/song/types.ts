@@ -98,7 +98,7 @@ export interface BiliVideoInfo {
 export interface ChorusPick {
   /** 副歌起点（秒，相对整条音轨）。 */
   readonly startSeconds: number
-  /** 副歌结束（秒）；用于判断"够不够 25 秒"。 */
+  /** 副歌结束（秒）；即"起点往后一整段"，用于判断"这段有多长"。 */
   readonly endSeconds: number
   /** 0..1；低于调用方阈值时调用方必须走"不可靠"分支。 */
   readonly confidence: number
@@ -108,6 +108,13 @@ export interface ChorusPick {
   readonly repeats: number
   /** 人声活跃比例（0..1），定位的第二个判据。 */
   readonly vocalRatio: number
+  /**
+   * 副歌起点之后**每一句唱完**的位置（换气/句间停顿；秒，相对整条音轨，升序）。
+   *
+   * 语音条据此收在一句歌词的结束处而不是硬切在整秒上（见 `features/song/phrase.ts`）。
+   * 脚本给不出可信的句尾时是空数组，那是"这段太平"，不是出错——调用方退回按上限硬切。
+   */
+  readonly phraseEnds: readonly number[]
 }
 
 /** 翻唱产物。 */

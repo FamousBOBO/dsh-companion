@@ -11,7 +11,11 @@
 
 输出（成功）：
     {"ok": true, "start": 62.5, "end": 92.0, "confidence": 0.71,
-     "method": "repeat+energy", "repeats": 2, "vocalRatio": 0.83}
+     "method": "repeat+energy", "repeats": 2, "vocalRatio": 0.83,
+     "phraseEnds": [78.0, 84.5, 91.0, 97.5]}
+
+`phraseEnds` 是副歌起点之后**每一句唱完的位置**（换气/句间停顿，绝对秒数、升序）。
+上层拿它把语音条收在句尾而不是硬切在整秒上；判据见下面第 5 段。
 
 输出（失败）：
     {"ok": false, "reason": "..."}
@@ -64,6 +68,24 @@
    `repeat+energy+vocal-align`，诊断里另有 `startBeforeAlign` / `startAfterAlign`。
    两条护栏：新起点必须仍在原窗口内，且新起点之后还剩整 `seconds` 秒可裁
    （宁可起点早一点，也不要裁出一条短语音）。
+
+5. **句尾（`phraseEnds`）：人声曲线"下凹再回升"的位置**。
+   语音条如果按整秒硬切，切点通常落在半个词或一句中间；而换气处本来就是句子之间，
+   切在那里像自然停顿。所以这里给出**候选收尾点**，让上层按"不超过上限的最后一个"
+   自己挑（本脚本不替上层决定语音条多长）。
+   判据全部取自这一段自己的分布，没有和某首歌绑定的常量：
+     - 阈值 = 段内 20 分位（这一段里的静音基线）与 70 分位（这一段里的"在唱"水平）
+       之间 `PHRASE_DIP_FRAC`（45%）处——固定绝对值换一首歌就会失效（轻声歌整体低、
+       摇滚整体高），而分位差本身就是"这首歌这一段自己的动态范围"；
+     - "下凹" = 曲线**从阈值之上跌到阈值之下**的那一帧（不是"低电平持续多久"，
+       后者会把一整段间奏吞进去）；
+     - "是换气不是收场" = 跌下去之后 `PHRASE_REBOUND_SEC` 秒内又回到高位，
+       且跌之前 `PHRASE_BACK_SEC` 秒里确实到过高位。缺了这两条，副歌唱完之后的
+       长静音、以及一记重音之后的单个低帧都会被当成句尾；
+     - 曲线起伏太小（段内高低差 < `PHRASE_MIN_SPAN`）时返回**空列表**：清唱/电音/
+       纯器乐没有可信的句间下凹，这时诚实地说"没找到"，让上层退回硬切。
+   看多远由 `PHRASE_HORIZON_SEC` 决定：语音条有上限，更远的句尾用不上，
+   而把它们算进来只会把分位统计拖偏。
 
 ## 两个刻意的取舍
 
@@ -130,6 +152,22 @@ ALIGN_HOLD_SEC = 1.5
 # "从低到高"的低：抬升点之前这段回看里必须出现过低于阈值的一帧，否则不算抬升
 # （而是"本来就在唱"——把起点挪进去等于随手往后挪 0 秒，没有意义）。
 ALIGN_LOOKBACK_SEC = 2.0
+
+# 句尾检测（见文件头第 5 段）。
+#
+# 往后看多远：语音条最长 59 s，留一点余量就够；更远的句尾用不上，还会污染分位统计。
+PHRASE_HORIZON_SEC = 90.0
+# 段内高低差不到这个值时没有可信的"下凹"（清唱/电音/纯器乐），直接不给句尾。
+PHRASE_MIN_SPAN = 0.12
+# 阈值落在 20 分位（静音基线）与 70 分位（在唱）之间的这个比例上。
+PHRASE_DIP_FRAC = 0.45
+# "刚才还在唱 / 随后又唱起来"的高位：阈值到 70 分位之间的这个比例。
+PHRASE_HIGH_FRAC = 0.6
+# 回看多久算"刚才还在唱"、往后多久内必须重新唱起来（秒）。
+PHRASE_BACK_SEC = 1.5
+PHRASE_REBOUND_SEC = 2.0
+# 两个句尾至少隔这么久：副歌里一句通常 3–6 s，半秒级的抖动不是句子边界。
+PHRASE_MIN_GAP_SEC = 2.5
 
 
 def percentile01(values, lo_p=10.0, hi_p=90.0):
@@ -251,6 +289,55 @@ def align_vocal_start(activity, start_frame, segment_sec):
     return None, round(float(threshold), 3)
 
 
+def phrase_ends(activity, start_frame, horizon_sec):
+    """副歌起点之后，人声"下凹再回升"的位置（秒，绝对时间，升序）。
+
+    返回 `(点列表, 诊断)`。阈值与两个高位都从**这一段自己的分布**里算（见文件头第 5 段），
+    所以换一首歌不需要改任何常量；段内起伏太平时返回空列表而不是硬找一个点。
+    """
+    scope_end = min(len(activity), start_frame + int(round(horizon_sec * FPS)))
+    scope = activity[start_frame:scope_end]
+    back = max(1, int(round(PHRASE_BACK_SEC * FPS)))
+    rebound = max(1, int(round(PHRASE_REBOUND_SEC * FPS)))
+    min_gap = max(1, int(round(PHRASE_MIN_GAP_SEC * FPS)))
+    diagnostics = {"horizonSec": round(horizon_sec, 1), "frameStartsAt": round(start_frame / FPS, 1),
+                   "frames": int(scope.size)}
+    # 一段下凹要三段证据（之前的高位、阈值、之后的高位），帧数不够就别硬判。
+    if scope.size < back + rebound + 2:
+        diagnostics["reason"] = "副歌之后剩下的音频太短，判断不了句尾"
+        return [], diagnostics
+    quiet = float(np.percentile(scope, 20))
+    loud = float(np.percentile(scope, 70))
+    diagnostics["quiet"] = round(quiet, 3)
+    diagnostics["loud"] = round(loud, 3)
+    if loud - quiet < PHRASE_MIN_SPAN:
+        diagnostics["reason"] = "段内人声活跃度起伏太小（清唱/电音或纯器乐），没有可信的句间下凹"
+        return [], diagnostics
+    dip = quiet + PHRASE_DIP_FRAC * (loud - quiet)
+    high = dip + PHRASE_HIGH_FRAC * (loud - dip)
+    diagnostics["dipThreshold"] = round(dip, 3)
+    diagnostics["highLevel"] = round(high, 3)
+
+    ends = []
+    last = -min_gap
+    for offset in range(back, scope.size):
+        # 只认"第一帧越线"：否则一段低电平里每一帧都会被数成一个句尾。
+        if not (scope[offset] < dip and scope[offset - 1] >= dip):
+            continue
+        before = scope[offset - back:offset]
+        after = scope[offset:offset + rebound]
+        if before.size == 0 or float(np.max(before)) < high:
+            continue  # 刚才并没有在唱：这不是句间停顿，是伴奏里的安静处
+        if after.size == 0 or float(np.max(after)) < high:
+            continue  # 之后没再唱起来：那是副歌收场，不是一句唱完
+        if offset - last < min_gap:
+            continue  # 同一次换气的抖动，只算一个句尾
+        last = offset
+        ends.append(round((start_frame + offset) / FPS, 1))
+    diagnostics["candidates"] = list(ends)
+    return ends, diagnostics
+
+
 def locate(path, seconds, align=True):
     """主流程。返回 (结果 dict, 诊断 dict)。"""
     started = time.time()
@@ -345,6 +432,9 @@ def locate(path, seconds, align=True):
     # "够不够一段"。对齐前后两个 end 都留在诊断里，谁想核对都能看到。
     end_after = float(min(aligned_start + segment_sec, duration))
 
+    # 第 5 段：副歌起点之后的人声句尾（上层据此把语音条收在句子结束处）。
+    ends, phrase_diag = phrase_ends(activity, int(round(aligned_start * FPS)), PHRASE_HORIZON_SEC)
+
     diagnostics = {
         "durationSec": round(duration, 1),
         "peak": round(peak, 4),
@@ -359,6 +449,9 @@ def locate(path, seconds, align=True):
         "endAfterAlign": round(end_after, 1),
         "alignThreshold": align_threshold,
         "alignCapSec": round(min(ALIGN_MAX_SEC, segment_sec), 1),
+        # 句尾这条：阈值、高位、候选点都留着（"为什么这条语音条只有 47.5 s"看这里）。
+        "phraseEnds": ends,
+        "phrase": phrase_diag,
         "elapsedSec": round(time.time() - started, 2),
     }
     return {
@@ -370,6 +463,8 @@ def locate(path, seconds, align=True):
         "method": "repeat+energy+vocal-align" if aligned else "repeat+energy",
         "repeats": int(picked["repeats"]),
         "vocalRatio": round(float(picked["vocal"]), 2),
+        # 句尾给不出的可能是"这段太平"，不是脚本坏了：给空数组而不是让上层猜。
+        "phraseEnds": ends,
     }, diagnostics
 
 

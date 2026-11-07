@@ -667,7 +667,7 @@
     "autoPick": false,
     "dryRun": true,
     "allowExternalSend": false,
-    "seconds": 25,
+    "seconds": 59,
     "minConfidence": 0.55,
     "prefixSeconds": 12,
     "preferFemale": true,

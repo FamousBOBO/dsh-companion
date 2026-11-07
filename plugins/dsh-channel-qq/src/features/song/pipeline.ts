@@ -4,9 +4,12 @@
  * **串行、去重、日上限、清理**（那是调度），这里关心的是**这条链路的顺序与失败边界**
  * （那是业务）。两者混在一起时，"卡在哪一步"这个问题就会被调度代码淹没。
  *
- * 四步的顺序不是可以随意换的：副歌定位要**整条音轨**（只听 25 秒片段判断不出
+ * 四步的顺序不是可以随意换的：副歌定位要**整条音轨**（只听一小段判断不出
  * "这段旋律重复了几次"）；翻唱要**副歌起点**（否则切出来的片段不知道从哪裁）；
  * 发送要**成品**。每一步的产物只喂给下一步，中间产物落在任务目录里，任务结束就删。
+ *
+ * 语音条的**长度**不是配置值，而是"配置上限 + 定位给出的句尾"算出来的
+ * （`clipLengthFor`，见 `phrase.ts`）：先按上限截，再争取收在一句歌词的结束处。
  *
  * 三个必须写明的取舍：
  *
@@ -29,6 +32,7 @@ import type {
   SongRequest, SongStage, VoicePort,
 } from './types.js'
 import { SongStepError } from './types.js'
+import { clipLengthFor, MIN_PHRASE_CLIP_SECONDS } from './phrase.js'
 import type { SongConfig } from '../../config/sections/song.js'
 
 /** 流水线需要的全部外部能力（装配在 `features/song/index.ts`）。 */
@@ -61,9 +65,16 @@ export interface PipelineOutcome {
   readonly messageId: number | null
 }
 
-/** 网关嫌长时的缩短短度阶梯（都保持同一个副歌起点）。 */
-const SHORTEN_STEPS = [15, 10] as const
-/** 阶梯里最短的那一档；到它就不再重试（再短就听不出是副歌了）。 */
+/** 网关嫌长时的缩短短度阶梯（都保持同一个副歌起点）。
+ *
+ * 档位按 59 s 的基线往下排：45 s 已经明显短了但还是一整段副歌，30/20/15 是最后几档。
+ * 每一档都比上一档短一大截——网关的上限是个数，卡在一两秒的差别上重做一次翻唱
+ * （本机约 70 秒）换不来任何东西。 */
+const SHORTEN_STEPS = [45, 30, 20, 15] as const
+/** 短于这个长度就不再尝试缩短：再短就听不出是副歌了。
+ *
+ * 阶梯自己也会走完（最后一档 15 s），所以它是"下限的下限"——网关连 15 s 都不收时，
+ * 多半不是长度问题，重做一次翻唱只会白花 70 秒。 */
 const SHORTEST_SECONDS = 10
 
 /**
@@ -144,21 +155,22 @@ async function walk(
   // ── 2. 定位副歌 ──────────────────────────────────────────────────────
   await step(signal, 'chorus', '取消（定位副歌之前）')
   await hooks.advance('chorus')
-  const chorusStart = await locateChorus(deps, request, audioFile, config, signal)
-  await hooks.advance('chorus', { chorusStart })
+  const plan = await locateChorus(deps, request, audioFile, config, signal)
+  await hooks.advance('chorus', { chorusStart: plan.start })
 
   // ── 3. 翻唱 + 裁语音条 ──────────────────────────────────────────────
   await step(signal, 'covering', '取消（翻唱之前）')
-  await hooks.advance('covering', { chorusStart })
-  const cover = await renderCover(deps, audioFile, workDir, chorusStart, config.seconds, request.keyUp, signal)
-  await hooks.advance('covering', { chorusStart, seconds: cover.seconds })
+  await hooks.advance('covering', { chorusStart: plan.start })
+  const seconds = clipSecondsFor(deps, request, plan, config)
+  const cover = await renderCover(deps, audioFile, workDir, plan.start, seconds, request.keyUp, signal)
+  await hooks.advance('covering', { chorusStart: plan.start, seconds: cover.seconds })
 
   // ── 4. 闸门 + 发送 ──────────────────────────────────────────────────
   // 发送之前**再查一次取消**：前面的翻唱要跑一两分钟，这期间用户完全可能改主意。
   // 少了这一查，"取消"只是"不再看结果"——语音条照样会发出去。
   await step(signal, 'sending', '取消（发送之前）')
-  await hooks.advance('sending', { chorusStart, seconds: cover.seconds })
-  return await deliver(deps, request, cover, audioFile, workDir, chorusStart, hooks, signal)
+  await hooks.advance('sending', { chorusStart: plan.start, seconds: cover.seconds })
+  return await deliver(deps, request, cover, audioFile, workDir, plan.start, hooks, signal)
 }
 
 /**
@@ -238,6 +250,12 @@ async function removeWorkDir(deps: PipelineDeps, workDir: string): Promise<void>
   })
 }
 
+/** 定位这一步的产物：起点，以及它之后的人声句尾（收尾用）。 */
+interface ChorusPlan {
+  readonly start: number
+  readonly phraseEnds: readonly number[]
+}
+
 /** 副歌起点：用户给了就直接用；否则定位；不可靠按"这一步失败"处理。 */
 async function locateChorus(
   deps: PipelineDeps,
@@ -245,10 +263,11 @@ async function locateChorus(
   audioFile: string,
   config: SongConfig,
   signal: AbortSignal,
-): Promise<number> {
+): Promise<ChorusPlan> {
   if (request.chorusAt !== null && Number.isFinite(request.chorusAt) && request.chorusAt >= 0) {
     deps.log(`song: ${request.id} 用用户给的副歌时间 ${request.chorusAt.toFixed(1)}s`)
-    return request.chorusAt
+    // 用户给的时间点没有配套的句尾：这一条按上限硬切（不猜句子边界）。
+    return { start: request.chorusAt, phraseEnds: [] }
   }
   let pick
   try {
@@ -264,7 +283,31 @@ async function locateChorus(
       `副歌定位不够可靠（置信度 ${pick.confidence.toFixed(2)} < ${config.minConfidence}），不猜`)
   }
   deps.log(`song: ${request.id} 副歌 ${pick.startSeconds.toFixed(1)}s（置信度 ${pick.confidence.toFixed(2)}）`)
-  return pick.startSeconds
+  return { start: pick.startSeconds, phraseEnds: pick.phraseEnds }
+}
+
+/**
+ * 这次要裁多长：在不超过 `config.seconds` 的前提下尽量收在一句歌词的结束处。
+ *
+ * 兜底与日志都在一起：没有可用句尾（空数组、全越界、太平给不出）时退回上限，
+ * 并且**明说**是按上限硬切——否则"为什么这条正好 59.0 s"只能靠猜。
+ */
+function clipSecondsFor(
+  deps: PipelineDeps,
+  request: SongRequest,
+  plan: ChorusPlan,
+  config: SongConfig,
+): number {
+  // 下限不许高过上限：操作员可以把上限调到 10 s，那时"至少 20 秒"是自相矛盾的。
+  const minSeconds = Math.min(MIN_PHRASE_CLIP_SECONDS, config.seconds)
+  const seconds = clipLengthFor(plan.start, plan.phraseEnds, config.seconds, minSeconds)
+  if (seconds < config.seconds) {
+    deps.log(`song: ${request.id} 收在句尾：${plan.start.toFixed(1)}s + ${seconds.toFixed(1)}s`
+      + `（上限 ${String(config.seconds)}s，候选句尾 ${String(plan.phraseEnds.length)} 个）`)
+  } else {
+    deps.log(`song: ${request.id} 没找到句尾，按 ${String(config.seconds)}s 硬切`)
+  }
+  return seconds
 }
 
 /** 跑翻唱；失败统一翻译（python 崩了 / 超时 / 产物校验不过都是"这一步没做成"）。 */

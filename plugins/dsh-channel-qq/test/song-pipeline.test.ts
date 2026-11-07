@@ -69,6 +69,8 @@ interface FakeOptions {
   readonly downloadFails?: boolean
   readonly chorusReliable?: boolean
   readonly chorusLowConfidence?: boolean
+  /** 定位给出的句尾（默认空 = "这段太平"，流水线按上限硬切）。 */
+  readonly chorusPhraseEnds?: readonly number[]
   readonly renderFails?: boolean
   /** 第 n 次发送的结果（默认成功，messageId = 900 + n）。 */
   readonly sendOutcome?: (attempt: number) => VoiceSendResult
@@ -111,10 +113,14 @@ function fakes(options: FakeOptions = {}): Fakes {
     async locate(): Promise<ChorusPick | null> {
       calls.chorus += 1
       if (options.chorusReliable === false) return null
+      const phraseEnds = options.chorusPhraseEnds ?? []
       if (options.chorusLowConfidence === true) {
-        return { startSeconds: 40, endSeconds: 60, confidence: 0.4, method: 'x', repeats: 1, vocalRatio: 0.3 }
+        return { startSeconds: 40, endSeconds: 60, confidence: 0.4, method: 'x', repeats: 1, vocalRatio: 0.3, phraseEnds }
       }
-      return { startSeconds: 84, endSeconds: 109, confidence: 0.87, method: 'repeat+energy', repeats: 2, vocalRatio: 0.7 }
+      return {
+        startSeconds: 84, endSeconds: 109, confidence: 0.87,
+        method: 'repeat+energy', repeats: 2, vocalRatio: 0.7, phraseEnds,
+      }
     },
   }
 
@@ -152,11 +158,11 @@ function fakes(options: FakeOptions = {}): Fakes {
   return { bili, chorus, cover, voice, gate, clock: fakeClock(), calls, renderedSeconds }
 }
 
-/** 一份可调的配置（默认是"开着、允许外发、25 秒、每日 1 首"）。 */
+/** 一份可调的配置（默认是"开着、允许外发、上限 59 秒、每日 1 首"）。 */
 function configOf(overrides: Partial<SongConfig> = {}): () => SongConfig {
   const base: SongConfig = {
     enabled: true, autoPick: true, dryRun: false, allowExternalSend: true,
-    seconds: 25, minConfidence: 0.55, preferFemale: true, maleKeyUp: 12, prefixSeconds: 12,
+    seconds: 59, minConfidence: 0.55, preferFemale: true, maleKeyUp: 12, prefixSeconds: 12,
     pythonPath: '', rvcRoot: '', makeCover: '', chorusPython: '',
     biliCredentialFile: '', workRoot: '', ffmpegPath: 'ffmpeg',
     downloadTimeoutMs: 60_000, chorusTimeoutMs: 30_000, coverTimeoutMs: 240_000,
@@ -313,15 +319,49 @@ test('网关嫌长：按更短的秒数重做，副歌起点**不变**，最终�
     assert.equal(row.stage, 'sent')
     assert.equal(f.calls.send, 2, '一次失败 + 一次成功')
     assert.equal(f.calls.render, 2, '缩短需要重做一次翻唱')
-    assert.deepEqual(f.renderedSeconds, [25, 15], '第二次用的秒数必须更短')
+    assert.deepEqual(f.renderedSeconds, [59, 45], '第二次用的秒数必须是阶梯的第一档')
     assert.equal(row.chorusStart, 84, '缩短之后副歌起点必须还是 84（同一段开头）')
-    assert.equal(row.seconds, 15)
+    assert.equal(row.seconds, 45)
+  } finally { cleanup() }
+})
+
+// ── 4b. 收尾落在句子上 ─────────────────────────────────────────────────────
+
+test('有句尾：语音条收在最后一个不超过上限的句尾，而不是硬切 59.0', async () => {
+  // 起点 84；句尾换算成长度 11.5（低于 20 的下限）/ 26 / 36 / 49.5（≤ 59）。
+  const f = fakes({ chorusPhraseEnds: [95.5, 110, 120, 133.5] })
+  const { queue, cleanup, logs } = makeQueue(f)
+  try {
+    await queue.load()
+    const result = await queue.enqueue(request())
+    const row = await settle(queue, result.taskId)
+    assert.ok(row !== null)
+    assert.equal(row.stage, 'sent')
+    assert.deepEqual(f.renderedSeconds, [49.5], '应当取最靠后且不超上限的那个句尾')
+    assert.equal(row.seconds, 49.5)
+    assert.equal(row.chorusStart, 84)
+    assert.ok(logs.some((line) => line.includes('收在句尾')), `日志要说清是按句尾收的：\n${logs.join('\n')}`)
+  } finally { cleanup() }
+})
+
+test('句尾全都越界（太长或太短）：退回按上限硬切，并在日志里说明', async () => {
+  const f = fakes({ chorusPhraseEnds: [90, 160] }) // 6 s（低于下限）与 76 s（超过上限）
+  const { queue, cleanup, logs } = makeQueue(f)
+  try {
+    await queue.load()
+    const result = await queue.enqueue(request())
+    const row = await settle(queue, result.taskId)
+    assert.ok(row !== null)
+    assert.equal(row.stage, 'sent')
+    assert.deepEqual(f.renderedSeconds, [59], '没有可用句尾就按上限硬切')
+    assert.equal(row.seconds, 59)
+    assert.ok(logs.some((line) => line.includes('硬切')), `日志要说清是硬切：\n${logs.join('\n')}`)
   } finally { cleanup() }
 })
 
 test('缩短判据：不像长度问题就**不重做**（"没连上 NapCat"不该白跑两分钟）', () => {
-  assert.equal(looksLikeLengthRejection('发送失败：语音太长', 25), true)
-  assert.equal(looksLikeLengthRejection('发送失败：连接已关闭', 25), false)
+  assert.equal(looksLikeLengthRejection('发送失败：语音太长', 59), true)
+  assert.equal(looksLikeLengthRejection('发送失败：连接已关闭', 59), false)
   assert.equal(looksLikeLengthRejection('发送失败：语音太长', 10), false, '已经最短了就不再缩')
 })
 
@@ -512,7 +552,7 @@ test('终态通知：队列会把终态交给 onFinish（含 bvid/副歌/秒数�
     assert.equal(event.stage, 'sent')
     assert.equal(event.bvid, 'BV1d4411N7zD')
     assert.equal(event.chorusStart, 84)
-    assert.equal(event.seconds, 25)
+    assert.equal(event.seconds, 59)
   } finally { cleanup() }
 })
 

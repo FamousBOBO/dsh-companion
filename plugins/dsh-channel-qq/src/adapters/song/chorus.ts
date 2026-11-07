@@ -6,7 +6,7 @@
  *
  * `null` 的合同：上层（队列）用它表示"定位不可靠"，于是走"从 0 秒开始裁一段"的
  * 兜底路径，仍然能发出语音条。如果这里抛，一次副歌定位失败就变成"整次点歌失败"，
- * 而那本来只是"这 25 秒可能不是最好听的那 25 秒"。**丢失一次点歌比定位不准更糟。**
+ * 而那本来只是"这一段可能不是最好听的那一段"。**丢失一次点歌比定位不准更糟。**
  *
  * 四种失败都归到 `null`，但日志里各自说清楚（诊断时能分清是环境问题还是歌的问题）：
  *   1. 脚本超时（`ProcessPort` 已经 tree-kill 过）；
@@ -44,11 +44,29 @@ interface ChorusPayload {
   method?: string
   repeats?: number
   vocalRatio?: number
+  phraseEnds?: unknown
 }
 
 /** 有限数？`NaN` / `Infinity` / 字符串数字都不算（JSON 里出现它们只可能是上游写坏了）。 */
 function finite(value: unknown): number | null {
   return typeof value === 'number' && Number.isFinite(value) ? value : null
+}
+
+/**
+ * 句尾列表：只留有限、非负的秒数，并升序。
+ *
+ * 排序放在这里而不是信上游：下游是按"最后一个不超过上限的"挑（`clipLengthFor`），
+ * 一份乱序的数组会让同一首歌两次跑出不同长度，而那种不可复现最难查。
+ * 形状不对（缺字段、不是数组）就给空数组——那是"没找到句尾"，不是定位失败。
+ */
+function phraseEndsOf(value: unknown): number[] {
+  if (!Array.isArray(value)) return []
+  const ends: number[] = []
+  for (const item of value) {
+    const seconds = finite(item)
+    if (seconds !== null && seconds >= 0) ends.push(seconds)
+  }
+  return ends.sort((left, right) => left - right)
 }
 
 /** 0..1 之间的比例；缺省时给 `fallback`。 */
@@ -84,6 +102,7 @@ function toPick(payload: ChorusPayload): { pick: ChorusPick | null; reason: stri
       method: typeof payload.method === 'string' && payload.method !== '' ? payload.method : 'unknown',
       repeats: repeats === null ? 0 : Math.max(0, Math.round(repeats)),
       vocalRatio: ratio(payload.vocalRatio, 0),
+      phraseEnds: phraseEndsOf(payload.phraseEnds),
     },
     reason: '',
   }
@@ -132,7 +151,8 @@ async function readPayload(outFile: string, log: (line: string) => void): Promis
   }
   const pick = verdict.pick
   log(`song/chorus: 副歌 ${pick.startSeconds.toFixed(1)}–${pick.endSeconds.toFixed(1)}s`
-    + `，置信度 ${pick.confidence.toFixed(2)}（${pick.method}，重复 ${String(pick.repeats)} 次）`)
+    + `，置信度 ${pick.confidence.toFixed(2)}（${pick.method}，重复 ${String(pick.repeats)} 次）`
+    + `，句尾 ${String(pick.phraseEnds.length)} 个`)
   return pick
 }
 
