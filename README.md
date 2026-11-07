@@ -33,6 +33,7 @@
 | `dsh-channel-qq` | QQ 私聊 / 群聊通道、提醒、主动联系 | 关 |
 | `companion-health` + `sidecars/` | 华为健康 / BLE 心率采集与只读查询 | 关 |
 | `companion-media` | 生图（OpenAI-compatible / NovelAI）、五种 TTS、识图合同 | 关 |
+| `companion-expression` | 表情包系统：按来源授权的被动采集、语义卡检索、整轮回复计划与真实投递，附带陪伴空间「表情包」管理入口（图库 / 收集规则 / 自然度实验室 / 表达习惯） | 关（`modules.expression` 与 `delivery.enabled` 两道闸） |
 | `dsh-paste-search` | 左侧栏搜图入口 | 关 |
 
 各模块当前**真到什么程度**，看 [`docs/03-modules-support-matrix.md`](docs/03-modules-support-matrix.md)

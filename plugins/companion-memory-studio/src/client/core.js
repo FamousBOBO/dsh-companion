@@ -66,6 +66,7 @@ const NAV = [
   { id: 'memory', label: '记忆与档案', icon: 'book', hint: '记忆库、Wiki、时间线与待核对', tabs: ['vault', 'wiki', 'timeline', 'review', 'microscope'] },
   { id: 'connections', label: '连接与工具', icon: 'plug', hint: '管理连接与工具' },
   { id: 'media', label: '媒体能力', icon: 'image', hint: '图片生成与语音合成' },
+  { id: 'expressions', label: '表情包', icon: 'sticker', hint: '图库、收集规则、自然度实验室与表达习惯', tabs: ['exp-library', 'exp-rules', 'exp-lab', 'exp-habits'] },
   { id: 'workspace', label: '工作区', icon: 'folder', hint: '回到文件、会话与开发现场' },
   { id: 'settings', label: '设置', icon: 'sliders', hint: '外观、角色、模型与记忆', tabs: ['settings', 'overview'] },
 ];
@@ -453,6 +454,8 @@ const ICON_PATHS = {
   sun: ['M12 7.6a4.4 4.4 0 1 0 0 8.8 4.4 4.4 0 0 0 0-8.8z', 'M12 3.6v1.8', 'M12 18.6v1.8', 'M3.6 12h1.8', 'M18.6 12h1.8', 'M6 6l1.3 1.3', 'M16.7 16.7 18 18', 'M18 6l-1.3 1.3', 'M7.3 16.7 6 18'],
   moon: ['M19.2 14.4A7.8 7.8 0 0 1 9.6 4.8a7.8 7.8 0 1 0 9.6 9.6z'],
   image: ['M4 4h16v16H4z','M4 15l5-5 5 5 3-3 3 3','M15 8h.01'],
+  // 表情包：一个带弯嘴角的方框（复用 image 的方框边 + 两点眼睛 + 上扬的嘴）。
+  sticker: ['M4 4h16v16H4z','M8.6 9.2h.01','M15.4 9.2h.01','M8.4 15.2c1.4-2.2 5.8-2.2 7.2 0'],
   audio: ['M10 5a2 2 0 0 1 4 0v7a2 2 0 0 1-4 0z','M7 11v1a5 5 0 0 0 10 0v-1','M12 17v4','M9 21h6'],
   eye: ['M2 12s4-7 10-7 10 7 10 7-4 7-10 7S2 12 2 12z','M12 9a3 3 0 1 0 0 6 3 3 0 0 0 0-6'],
   heart: ['M20.8 9.2c0 4.5-8.8 10-8.8 10s-8.8-5.5-8.8-10a4.8 4.8 0 0 1 8.8-2.5 4.8 4.8 0 0 1 8.8 2.5z'],
@@ -1913,7 +1916,7 @@ function Rail({ currentPage, collapsed, onToggle, compact, onCompact, compactAva
   const groups = [
     { label: '陪伴', ids: ['home', 'chat', 'persona', 'qq-web', 'life', 'health'] },
     { label: '记录', ids: ['memory'] },
-    { label: '工具', ids: ['connections', 'media', 'workspace'] },
+    { label: '工具', ids: ['connections', 'media', 'expressions', 'workspace'] },
     { label: '系统', ids: ['settings'] },
   ];
 

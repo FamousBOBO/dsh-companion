@@ -52,6 +52,7 @@
 | `plugins/dsh-channel-qq/src/adapters/providers/tts/edge.ts` | `TRUSTED_CLIENT_TOKEN = '6A5AA1D4EAFF4E9FB37E23D68491D6F4'` | Microsoft Edge「大声朗读」的**公开客户端常量**（`edge-tts` 等开源项目通用），用于 `Sec-MS-GEC` 计算与 WebSocket URL 参数。**不是账号凭据，也不是本项目的密钥**；删除后 Edge TTS 无法使用，故保留并在此声明来源性质 |
 | `plugins/companion-media/` | NovelAI 中转站专属参数的字段映射 | 仅参考 `woakato/astrbot_plugin_nai_image` 的**协议字段**做核实与映射；未复制其账号系统、图片归档或代理转售功能，未引入其代码 |
 | `plugins/dsh-channel-qq/assets/model-context.json` | 模型能力上下文快照 | 来源于公开的 models.dev 数据，不含个人信息 |
+| `plugins/companion-expression/` | **未引入任何第三方代码或依赖** | 只用 Node 内置模块（`node:sqlite` / `node:crypto` / `node:fs` / `node:path` / `node:url`）；图库、检索、决策、投递与 Studio API 均为本项目原创实现 |
 
 ## 外部依赖（不随仓库分发，由用户自行安装或部署）
 

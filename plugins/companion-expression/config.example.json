@@ -1,0 +1,45 @@
+{
+  "$schema": "./src/config.mjs",
+  "_comment": "companion-expression 配置模板。模块首次挂载时会在 <dataDir>/home/expression/config.json 原子生成一份默认值；这个文件只是模板，不会被自动复制。任何字段都能留空。默认两层闸门都关（套件级 modules.expression 与这里的 delivery.enabled），只打开这一份不会往任何人手里发图。",
+  "schemaVersion": 1,
+  "enabled": true,
+  "capture": {
+    "ownerPrivate": true,
+    "groupEnabled": false,
+    "groups": [],
+    "privatePeers": "opt_in",
+    "peers": [],
+    "maxDownloadBytes": 10485760,
+    "maxPerHour": 60,
+    "uncertain": "review",
+    "cloudVision": "deny"
+  },
+  "analysis": {
+    "mode": "heuristics",
+    "minConfidence": 0.55
+  },
+  "retrieval": {
+    "candidatesToModel": 5,
+    "minFitScore": 0.72
+  },
+  "delivery": {
+    "enabled": false,
+    "maxPerTurn": 1,
+    "dmCooldownSeconds": 300,
+    "dmCooldownTurns": 3,
+    "groupCooldownSeconds": 600,
+    "maxDmPerHour": 4,
+    "maxGroupPerHour": 2,
+    "repeatWindowDmHours": 48,
+    "repeatWindowGroupHours": 168,
+    "stageRoot": "home/media/expression-out",
+    "stageTtlSeconds": 600,
+    "failClosed": true,
+    "fallbackToText": true
+  },
+  "privacy": {
+    "crossRoomReuse": false,
+    "publicRequiresApproval": true,
+    "deleteOnRevocation": true
+  }
+}

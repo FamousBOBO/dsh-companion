@@ -28,6 +28,7 @@
     "bilibili": false,
     "health": false,
     "media": false,
+    "expression": false,
     "pasteSearch": false
   },
 

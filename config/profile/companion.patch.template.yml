@@ -56,6 +56,16 @@
               companionMedia: true
             name: 'file://${SUITE_ROOT}/plugins/companion-media/index.mjs'
 #@@end:media
+#@@begin:expression
+          # 表情包系统（采集 / 检索 / 决策 / 投递 / 反馈 + 四个工具）。
+          # 两层闸门：套件级 modules.expression=true（这块在不在）与模块内
+          # <dataDir>/home/expression/config.json 的 delivery.enabled（能不能真发）。
+          # 默认两层都关；只打开这一块不会往任何人手里发图。
+          - id: companion-expression
+            isolate:
+              companionExpression: true
+            name: 'file://${SUITE_ROOT}/plugins/companion-expression/index.mjs'
+#@@end:expression
           - id: time-context
             name: '@deepseek-ai/dsh-time-context'
           - id: agent-instructions
@@ -260,6 +270,19 @@
     - id: companion-health
       name: 'file://${SUITE_ROOT}/plugins/companion-health/index.mjs'
 #@@end:health
+
+
+# ── 9. 表情包系统（顶层：Studio 管理 API）────────────────────────────────────
+#@@begin:expression
+# 必须挂在**顶层**而不是预设里：预设插件拿到的是 isolate realm，它的 `connection`
+# 是私有实例，从预设里注册路由会「报告成功但仍然 404」（和 companion-media 同一个坑）。
+# 这一行只挂管理 API；四个表情包工具由第 2 节里那一行挂进预设。
+#
+# 没有这条，Studio 的「表情包」页面会读不到后端，页面会自己说明「未启用」并给出启用片段。
+- insert:
+    - id: companion-expression-http
+      name: 'file://${SUITE_ROOT}/plugins/companion-expression/http.mjs'
+#@@end:expression
 
 
 # =============================================================================

@@ -27,6 +27,7 @@ export const MODULE_KEYS = [
   'bilibili',
   'health',
   'media',
+  'expression',
   'pasteSearch',
 ];
 
@@ -49,6 +50,9 @@ export const SAFE_DEFAULTS = {
     bilibili: false,
     health: false,
     media: false,
+    // 表情包系统：采集、检索、决策、投递。它能在 QQ 里发图，所以默认整模块关闭；
+    // 打开后模块内还有 delivery.enabled 这道第二闸（见 docs/02 §3.9）。
+    expression: false,
     pasteSearch: false,
   },
   services: {

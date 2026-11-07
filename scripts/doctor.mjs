@@ -66,6 +66,12 @@ const MODULE_CHECKS = {
   bilibili: { kind: 'external', title: 'B站 刷视频（外部模块）', packageName: 'dsh-bili-scroll' },
   health: { kind: 'file', directory: 'plugins/companion-health', entry: 'index.mjs', title: '健康数据（含华为健康 sidecar）' },
   media: { kind: 'file', directory: 'plugins/companion-media', entry: 'index.mjs', title: '媒体层（生图/TTS/识图）' },
+  expression: {
+    kind: 'file',
+    directory: 'plugins/companion-expression',
+    entry: 'index.mjs',
+    title: '表情包系统（采集/检索/投递 + Studio 管理入口）',
+  },
   pasteSearch: { kind: 'bundle', directory: 'plugins/dsh-paste-search', title: '搜图入口' },
 };
 
@@ -356,6 +362,7 @@ export function runDoctor(argv = process.argv.slice(2)) {
       });
       if (key === 'health') expectedEntryIds.push('companion-health');
       if (key === 'media') expectedEntryIds.push('companion-media');
+      if (key === 'expression') expectedEntryIds.push('companion-expression', 'companion-expression-http');
       continue;
     }
 

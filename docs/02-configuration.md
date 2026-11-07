@@ -63,6 +63,7 @@ profile 的 patch 里，见 §3.5。
 | `bilibili` | `false` | **外部模块** `dsh-bili-scroll`，不在本仓库（见 §3.7） | 需要自行安装第三方 tarball + Python 环境 |
 | `health` | `false` | `companion-health` + `sidecars/huawei-health-cn` + `sidecars/ble-heart-rate` | 需要华为健康 sidecar 与/或 BLE 设备；华为云端实现**随包分发**（MIT），只需账号授权（§3.6） |
 | `media` | `false` | `companion-media` | 通常还需要外部 TTS / 生图服务 |
+| `expression` | `false` | `companion-expression`（表情包系统 + Studio 管理入口） | 需要 QQ 通道（采集与投递都走它）；打开后模块内还有 `delivery.enabled` 第二道闸（§3.9） |
 | `pasteSearch` | `false` | `dsh-paste-search`（贴图搜索入口） | 无外部依赖，但属可选 UI |
 
 > **本版没有 `modules.superInjector`**：`dsh-super-injector` 因许可证文本缺失与无法验证，已整体
@@ -268,6 +269,43 @@ profile 的 patch 里，见 §3.5。
 | `qq-idle-compaction` | profile patch + `modules.qqIdleCompaction` | 会话空闲压缩；**会调用模型**，默认关 |
 | ~~`dsh-super-injector`~~ | — | **本版未收录**（许可证文本缺失 + 无法验证）。需要的人自行从上游获取，见 `docs/03` §1.2 |
 | ~~`_selftest-hello`~~ | — | 注入器的冒烟夹具，随注入器一起移出 |
+
+### 3.9 `companion-expression`（表情包系统）
+
+两层闸门，**默认两层都关**：
+
+| 闸门 | 位置 | 默认 | 作用 |
+|---|---|---|---|
+| 模块 | `config/suite.json` → `modules.expression` | `false` | 决定补丁里那两块（预设内工具 + 顶层管理 API）在不在 |
+| 发送 | `<dataDir>/home/expression/config.json` → `delivery.enabled` | `false` | 决定「能不能把图真发出去」。关着时决策、检索、模拟、审核全部可用，一张图也不会出门 |
+
+配置文件由模块首次挂载时**原子生成一次**，之后**绝不覆盖**（与 `config/suite.json` 同一条硬规则）。
+坏值一律回退默认并在日志里说明原因；`npm run setup` 不会碰它。
+
+| 段 | 关键字段 | 默认 | 说明 |
+|---|---|---|---|
+| `capture` | `ownerPrivate` | `true` | 主人私聊里的图片可被动采集 |
+| `capture` | `groupEnabled` | `false` | 群采集**必须逐群授权**；`groups[]` 里每项有 `capture` / `store` / `use` **三个独立开关** |
+| `capture` | `privatePeers` | `opt_in` | 非主人私聊默认一律不采集；要采集得在 `peers[]` 里逐个 `approved:true` |
+| `capture` | `maxDownloadBytes` / `maxPerHour` | `10485760` / `60` | 单个素材体积上限与采集限流 |
+| `capture` | `uncertain` / `cloudVision` | `review` / `deny` | 分类不确定时进复核队列；`deny` = **绝不调用云端视觉模型** |
+| `analysis` | `mode` / `minConfidence` | `heuristics` / `0.55` | `host-vision` 需要 `cloudVision: "allow"`，否则按 heuristics 跑并说明 |
+| `retrieval` | `candidatesToModel` / `minFitScore` | `5` / `0.72` | 只给模型 3–5 个候选；低于阈值就退化为纯文字 |
+| `delivery` | `enabled` | `false` | **真发送的总闸** |
+| `delivery` | `maxPerTurn` / 冷却与配额 | `1` / 私聊 300s+3 轮、群 600s、私聊 4 张/时、群 2 张/时 | 基线，不是固定频率；按人工评估迭代 |
+| `delivery` | `repeatWindowDmHours` / `repeatWindowGroupHours` | `48` / `168` | 同图重复抑制窗口 |
+| `delivery` | `stageRoot` | `home/media/expression-out` | **只接受仍在 `home/media` 内的路径**；越界一律回退默认 |
+| `privacy` | `crossRoomReuse` / `publicRequiresApproval` / `deleteOnRevocation` | `false` / `true` / `true` | 跨房间复用默认禁止；跨会话共享必须人工批准；撤权时删文件与索引 |
+
+数据落在 `<dataDir>/home/expression/`（`expression.sqlite`、`assets/<aa>/<sha256>`、`quarantine/`、`queue/`），
+临时发图区是 `<dataDir>/home/media/expression-out/`——**只有这个目录里的图进得了群聊**，
+群出站守卫（`companion-group/core.mjs`）并没有被放宽。
+
+管理入口在陪伴空间侧栏「工具 → 表情包」，四个页签：**图库 / 收集规则 / 自然度实验室 / 表达习惯**。
+它们只经 `/api/companion-expression/*` 读写、只认 `assetId`，客户端从不构造也不会收到文件路径。
+
+> **未实现（写清楚，不含糊）**：GIF 关键帧理解、OCR、embedding 向量召回、QQ 内置 `face` 表情投递、
+> 真实平台发送验收。当前证据只到 `offline-test`，见 `docs/07`。
 
 ---
 

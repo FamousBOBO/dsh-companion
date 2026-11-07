@@ -136,6 +136,31 @@
 
 **仍未验证**：图片投递到 QQ（`real-send`）、`openai-relay` 中转站形态、非 Windows 平台。
 
+### 2.6 表情包系统（`companion-expression`）：`offline-test` + 一条 `host-load`（2026-11-07）
+
+按 §1 的五级词汇，**真实平台发图仍未验证**。下面这张表是它现在的真实状态，不要读成「可用」：
+
+| 项 | 级别 | 说明 |
+|---|---|---|
+| 采集授权判定、作用域隔离、sha256 物理去重 | `offline-test` | `node --test plugins/companion-expression/test/*.test.mjs` → **141 项通过 / 0 失败**（2026-11-07）；未授权来源 0 下载、0 入库（用例钉住） |
+| 下载安全（魔数判型 / 体积与像素上限 / SSRF / 重定向 / 文件名穿越） | `offline-test` | 全部用注入的假 `http`，**没有一次真实网络请求** |
+| 检索、决策、冷却与配额、回复计划、幂等投递 | `offline-test` | 假 `qqSender`；`unknown` 不重投的用例在其中 |
+| 反馈学习（`reject` 立刻抑制重发） | `offline-test` | — |
+| **宿主接线**（从 `ctx` 取发送器 / 采集 `http` / 入库适配 / 主人判定） | `offline-test` | `test/host-wiring.test.mjs` **18 项** + `test/apply-wiring.test.mjs` **4 项**。证明：① `apply` 能从 `ctx.tools` 把 `qq_message`/`qq_sticker` 接成 `qqSender`（发送走 `tools.execute()`，不绕过通道闸门）；② 接上后 `expression_reply` 不再回 `sender-unavailable`（此时拦住它的才是 `delivery.enabled`）；③ 接上后入站端口 `observe()` 不再回 `ingest-not-injected`，`offers()` 与入库用同一个 `scopesFor().capture`；④ 拿不到工具表时仍注册四个工具、照常发端口，并**如实**报 `sender-unavailable`。全程假工具表 + 假 `fetch`，**零网络、零 QQ** |
+| Studio 管理入口（图库 / 收集规则 / 实验室 / 习惯） | `offline-test` | 页面片段在最小 `P` 桩与 `smoke-client.mjs` 下渲染通过（**表情包相关失败 0 项**），`test/expression-page.test.mjs` **16 项通过**；**没有在真实浏览器里点过** |
+| Studio 管理 API（12 条路由 / 10 个 path） | `offline-test` | `test/http-api.test.mjs` **12 项通过**：路由表、Origin 守卫、只认 `assetId`、`/thumb` realpath 越界 403、未启用态 200+启用片段、`/simulate` 恒 `sending:false` |
+| 宿主装载 | **`host-load` 已达成（2026-11-07）** | 两次独立达成：① `npm run check:hostload --workspace=@dsh-companion/expression`：临时 `DSH_HOME` + 临时数据目录、`modules.expression=1`、只开 `expression` 补丁块；② 生产切换（`dsh-ops`，`expressions` 分支 `0278264`）真宿主启动后日志三行齐全（`已发布入站端口 dsh.companion.expression.v1` / `已注册 4 个工具（defineTool=host）` / `[companion-expression-http] 已注册 10 条管理路由`），且无 `did not activate`。裸 `fetch` 回 **401**（宿主 token 换会话的行为，浏览器里才有 cookie），因此判据不拿 200 作数 |
+| 补丁渲染与合成 | **`host-load` 的一部分（仅渲染+合成，未装载）** | `npm run check:patch --workspace=@dsh-companion/expression`：把模板按「四个可选块全开」渲染后送宿主 `--dump-config`，**217 个 loader 行**、`expression` 与 `expression-http` 两行都在（2026-11-07） |
+| 真实平台发图 | **未验证** | `delivery.enabled=true` 已在生产打开，且发送器**已经接到** `qq_message`/`qq_sticker`（2026-11-07 接线落地后），但**没有任何一条真实 QQ 回执证据**。要达成 `real-send` 必须由操作者显式触发一次发送并留存回执（`deliveries` 表一行 `status='sent'`）。`assets`/`deliveries`/`expression_feedback` 当前均为 0 行 |
+| GIF 关键帧理解 / OCR / embedding 向量召回 | **未实现** | 代码里是 `NOT_IMPLEMENTED` 常量，不是「待验证」 |
+| QQ 内置 `face` 表情投递 | **未实现** | 现有通道没有可复核的 face 发送入口，不凭空构造 |
+
+> 结论措辞只能用：「表情包系统的采集、检索、决策、**宿主接线**、投递与反馈在**离线测试**层面通过，
+> 两行插件在真宿主上**装载成功**；**真实发图未验证**」。不得省略后半句。
+>
+> 「接线已落地」不等于「能发出去」：它只说明**出口存在、且走的是同一道闸门**（预执行策略、
+> 群边界、出站边界都照常跑），不说明某一条消息真的到了 QQ 上。
+
 
 ## 3. 明确「未验证」清单（当前）
 
@@ -167,6 +192,8 @@
 **产品行为**
 
 - 群聊里发图 / 发语音出站、群内自主接话的真实触发。
+- 表情包系统（`companion-expression`）的宿主装载与真实发图：见 §2.6。图库、决策、管理入口只到
+  `offline-test`；GIF 关键帧 / OCR / 向量召回 / QQ 内置 `face` 投递**未实现**。
 - 主动联系（contact）的真实平台发送与回执。
 - 提醒的四条停止线（停机可观测 / 不重复外发 / 空转可见 / 阈值合理）在真机上的验证。
 - 真实 24 小时长稳（只做过模拟时钟）。
@@ -182,6 +209,22 @@
 | `hardware` | 真机跑一次并读回真实数值 | 设备名 + 读数区间 + 时间窗口 |
 
 升级证据时请**改这张表**，不要只在聊天里说「跑通了」。
+
+### 4.1 本机私有配置会让 `npm run verify` 红：那是环境差异，不是回归
+
+`unit` 段用的是**本机** `config/suite.json`。这个文件 gitignore、因人而异，所以下面这类失败
+在不同机器上可以完全不同：
+
+| 现象 | 原因 | 判定它「不是代码坏了」的办法 |
+|---|---|---|
+| `@dsh-companion/foundation` 大量失败（`not configured` / 注入前后不一致） | 本机 `persona.id` 不是 `bot`，而测试夹具写的是 `persona: 'bot'` | `DSH_COMPANION_PERSONA_ID=bot node --test "plugins/companion-foundation/*.test.mjs"` → 全绿 |
+| `@dsh-companion/group` 1 项失败（owner identity） | 同上（`createIdentity` 会读 `config/suite.json` 的 persona id） | 同上环境变量后 `node --test plugins/companion-group/group-isolation.test.mjs` → 全绿 |
+| `@dsh-companion/memory-studio` 1 项失败（`identity.persona` 实际不是 `bot`） | 同上 | 同上 |
+| `@dsh-companion/channel-qq` 1 项失败（`qq-idle-compaction` 默认关） | 本机 `config/suite.json` 里 `qqIdleCompaction: true`，夹具要的是「没配置」 | `DSH_COMPANION_SUITE_ROOT=<空目录> node --test "build/lib-test/test/safe-defaults.test.js"` → 全绿 |
+| `npm run verify` 的 `compose` 里 5 个 `file://` 路径不存在 | 本机生成的 `config/profile/companion.patch.yml` 里写了带查询串的入口（`?v=…`），doctor 按字面路径查 | 删掉/重新生成补丁，或看 `--dump-config` 是否仍 217+ 行 |
+
+> 结论：**这些红不是本发布树的回归**，但也不能因此说「验证通过」。正确措辞是
+> 「在**干净环境变量**下 X 通过；本机私有配置下另有 N 项环境性失败，已定位到具体文件」。
 
 ## 5. 报告验收结论时的措辞模板
 
