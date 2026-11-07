@@ -141,6 +141,7 @@ export function refusingService(): import('./queue.js').SongService {
     status: () => [],
     cancel: async () => false,
     autoQuotaLeft: async () => 0,
+    autoUsedToday: async () => 0,
     noteAutoSent: async () => {},
     load: async () => {},
     autoPickOnce: async () => false,

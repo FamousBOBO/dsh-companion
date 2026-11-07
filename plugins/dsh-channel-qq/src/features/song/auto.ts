@@ -107,6 +107,19 @@ export async function autoPickOnce(
   return await submitAuto(facts, { song, artist, room }, say)
 }
 
+/**
+ * 自主点歌的去重键。
+ *
+ * `n === 0` 时就是老样子 `auto:<日>:<房间>`：**额度没放开（默认 1 首）时键完全不变**，
+ * 所以既有账本、既有测试、既有去重语义都不受影响。
+ * 第 2 首起带**序号**（`n + 1`，所以第二首是 `:2`、与 `-2` 的任务 id 对得上）——
+ * 不限额（`dailyAutoCap=0`）时同一天会有多首，键若恒等，队列的 `alreadyHandled` 会把
+ * 第二首当成"已经发过"直接丢掉，"不限额"就等于"仍只发一首"。
+ */
+export function autoDedupeKey(dayKey: string, room: string, n: number): string {
+  return n === 0 ? `auto:${dayKey}:${room}` : `auto:${dayKey}:${room}:${String(n + 1)}`
+}
+
 /** 选源 + 入队。与私聊入口共用同一套判据：分不出唯一原唱就跳过这一轮（不猜）。 */
 async function submitAuto(
   facts: AutoFacts,
@@ -123,12 +136,15 @@ async function submitAuto(
     }
     // 与私聊入口同一条准则：尽量女声；确定是男声才升八度。
     const keyUp = facts.config.preferFemale ? keyUpFor(selection.gender, facts.config.maleKeyUp) : 0
+    // 今天已经发过几首：不限额时用它把同一天的第 N 首分出不同的去重键与任务 id。
+    const used = await facts.runtime.queue.autoUsedToday(facts.day)
+    const dedupeKey = autoDedupeKey(facts.day, pick.room, used)
     const result = await facts.runtime.queue.enqueue({
-      id: `auto-${facts.day}-${String(facts.ownerId)}`,
+      id: `auto-${facts.day}-${String(facts.ownerId)}${used === 0 ? '' : `-${String(used + 1)}`}`,
       entry: 'auto',
       room: pick.room,
       chatId: facts.ownerId,
-      dedupeKey: `auto:${facts.day}:${pick.room}`,
+      dedupeKey,
       song: pick.song,
       artist: pick.artist,
       bvid: selection.chosen.bvid,

@@ -133,8 +133,17 @@ autoPickOnce（主动联系节拍）─┘
 | `workRoot` | 空 | 任务工作目录（空 = `<dshHome>/channel-qq/song`） |
 | `downloadTimeoutMs` / `chorusTimeoutMs` / `coverTimeoutMs` / `sendTimeoutMs` | 60 s / 30 s / 4 min / 30 s | 四个阶段各给一个上限 |
 | `maxQueue` | 8 | 排太长队的语音条已经过时了 |
-| `dailyAutoCap` | 1 | 自主选歌每日上限 |
+| `dailyAutoCap` | 1 | 自主选歌每日上限；**0 = 不限额**（见下） |
 | `autoSongs` | `[]` | 自主选歌曲目；**空 = 什么都不发** |
+
+**`dailyAutoCap = 0` 是不限额**，但"不限额"必须同时改一处去重键，否则等于没放开：
+自主入口的去重键原本恒为 `auto:<日>:<房间>`，同一天第二首会被队列的 `alreadyHandled`
+判成"已经发过"直接丢掉。所以第 2 首起键里带序号（`auto:<日>:<房间>:2`，任务 id 尾随
+`-2`），序号来自账本里当天已发数与 `queue.autoUsedToday()`。**额度没放开时键完全不变**，
+既有账本与去重语义因此不受影响。
+
+不限额的代价要写明白：**成本不封顶**。一首歌是 1–2 分钟分离 + 推理，且这条链路串行；
+真正兜底的是主动联系那三道闸（免打扰 / 额度 / 冷却）与 `maxQueue`，不是这个字段。
 
 ## 7. 部署形态（一个容易漏的坑）
 

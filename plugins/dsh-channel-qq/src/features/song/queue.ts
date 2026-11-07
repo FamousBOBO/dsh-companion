@@ -82,6 +82,13 @@ export interface SongService {
   autoQuotaLeft(dayKey: string): Promise<number>
   /** 记一次自主发送（成功之后调用；失败不记账）。 */
   noteAutoSent(dayKey: string): Promise<void>
+  /**
+   * 今天（日键）已经自主发了几首。
+   *
+   * 不限额模式下，自主入口要拿它区分"同一天的第 N 首"——去重键里带上序号，
+   * 否则 `auto:<日>:<房间>` 恒等，第二首会被当成重复。
+   */
+  autoUsedToday(dayKey: string): Promise<number>
   /** 载入账本（子插件 apply 时调用一次）。 */
   load(): Promise<void>
   /**
@@ -112,6 +119,9 @@ export function taskIdOf(dedupeKey: string): string {
 function collisionTail(): string {
   return randomBytes(3).toString('hex')
 }
+
+/** "不限额"时报的剩余量：不用 `Infinity`（日志里难看、进 JSON 变 `null`）。 */
+const UNLIMITED_QUOTA = 9999
 
 export class SongQueue implements SongService {
   private ledger: SongLedgerData | null = null
@@ -329,15 +339,28 @@ export class SongQueue implements SongService {
   private inFlight: QueuedTask | null = null
 
   async autoQuotaLeft(dayKey: string): Promise<number> {
-    const config = this.deps.config()
     if (dayKey === '') return 0
-    return Math.max(0, config.dailyAutoCap - autoUsedToday(this.data(), dayKey))
+    // `0` = 不限额（操作员显式选的）。返回一个"永远够用"的数而不是 `Infinity`。
+    const cap = this.deps.config().dailyAutoCap
+    if (cap <= 0) return UNLIMITED_QUOTA
+    return Math.max(0, cap - autoUsedToday(this.data(), dayKey))
   }
 
   async noteAutoSent(dayKey: string): Promise<void> {
     if (dayKey === '') return
     const used = autoUsedToday(this.data(), dayKey)
     await this.write({ autoDay: dayKey, autoCount: used + 1 })
+  }
+
+  /**
+   * 今天（日键）已经自主发了几首。
+   *
+   * 为什么单独暴露它：`dailyAutoCap=0`（不限额）时，**去重键必须靠它区分同一天的
+   * 第二次点歌**——`auto:<日>:<房间>` 这个键在同一天只能存在一次，否则第二首会被
+   * 当成"已经处理过"直接去重掉，"不限额"就等于"一天仍然只有一首"。
+   */
+  async autoUsedToday(dayKey: string): Promise<number> {
+    return dayKey === '' ? 0 : autoUsedToday(this.data(), dayKey)
   }
 
   /** 自主选歌：交给注入的实现（缺省 = 什么都不做，理由在日志里给）。 */

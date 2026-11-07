@@ -74,7 +74,7 @@ export interface SongConfig {
   readonly sendTimeoutMs: number
   /** 队列里最多排几个；超了直接拒（不排长队，长队的语音条已经过时了）。 */
   readonly maxQueue: number
-  /** 自主选歌每天最多发几首（按 `Asia/Shanghai` 的日）。 */
+  /** 自主选歌每天最多发几首（按 `Asia/Shanghai` 的日）；**0 = 不限额**。 */
   readonly dailyAutoCap: number
   /** 自主选歌的曲目（每条 `歌名` 或 `歌名 歌手`）；空 = 自主选歌什么都不做。 */
   readonly autoSongs: readonly string[]
@@ -226,16 +226,20 @@ export const SONG_GROUPS: FieldGroup[] = [
         hot: 'live', min: 1, max: 50, step: 1,
         help: '同时排队的点歌上限，超了直接拒。一首歌两三分钟，排太长的队等于发一条过时的语音条。',
       }),
-      dailyAutoCap: n('自主选歌每日上限（首）', SONG_DEFAULTS.dailyAutoCap, {
-        hot: 'live', min: 1, max: 5, step: 1, unit: '首',
-        help: '自主选歌每天最多发几首，按配置时区的自然日算。默认 1：一天一首已经是"会自己找话说"的上限了。',
+      dailyAutoCap: n('自主选歌每日上限（首，0 = 不限）', SONG_DEFAULTS.dailyAutoCap, {
+        hot: 'live', min: 0, max: 5, step: 1, unit: '首',
+        help: '自主选歌每天最多发几首，按配置时区的自然日算。默认 1：一天一首已经是"会自己找话说"的上限了。'
+          + '**填 0 = 不限额**：同一天可以发多首（去重键与任务 id 会按序号分开），'
+          + '仍然照旧要过主动联系的免打扰/额度/冷却/授权/绑定，以及本段的演练与外发两道闸。'
+          + '注意不限额意味着**成本不封顶**：一首歌要跑 1–2 分钟分离与推理。',
       }),
       autoSongs: list('自主选歌曲目', [...SONG_DEFAULTS.autoSongs], {
         hot: 'live', itemsKind: 'string',
         placeholder: '例如「晴天 周杰伦」',
         help: '自主选歌从那几首里按日期轮换（**空 = 什么都不发**）。每条写「歌名」或「歌名 歌手」。'
           + '默认空：不填写时机器人不会自己找歌——它凭什么替你决定想听什么。'
-          + '填了之后每天最多一首，并且照旧要过免打扰/额度/授权三道闸。',
+          + '填了之后按「每日上限」发（默认每天 1 首，上限填 0 则不限额），'
+          + '并且照旧要过免打扰/额度/授权三道闸。',
       }),
     },
   },

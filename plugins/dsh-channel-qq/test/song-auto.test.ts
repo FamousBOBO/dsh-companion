@@ -60,7 +60,7 @@ function fakeBili(found: readonly SongCandidate[] = [candidate('BV1d4411N7zD', '
 }
 
 /** 假队列：只记 `enqueue` 与 `autoQuotaLeft`。 */
-function fakeQueue(options: { quota?: number; accept?: boolean; note?: string } = {}) {
+function fakeQueue(options: { quota?: number; accept?: boolean; note?: string; used?: number } = {}) {
   const enqueued: SongRequest[] = []
   const quotaCalls: string[] = []
   const service: SongService = {
@@ -74,6 +74,7 @@ function fakeQueue(options: { quota?: number; accept?: boolean; note?: string } 
     status() { return [] },
     async cancel() { return false },
     async noteAutoSent() {},
+    async autoUsedToday() { return options.used ?? 0 },
     async load() {},
     async autoPickOnce() { return false },
   }
@@ -208,6 +209,29 @@ test('B站异常（网络/风控）：不抛，收成一句日志 + false', asyn
   const ok = await autoPickOnce(host as never, fakeClock(), (line) => logs.push(line))
   assert.equal(ok, false, '搜不到不该把整拍打挂')
   assert.ok(logs.some((line) => line.includes('412')), `要把上游原因说出来，实际 ${JSON.stringify(logs)}`)
+})
+
+// ── 2b. 不限额（\`dailyAutoCap=0\`）：同一天能发第二首 ───────────────────────
+
+test('不限额：去重键按序号分开（否则第二首会被当成"已经发过"丢掉）', async () => {
+  const { autoDedupeKey } = await import('../src/features/song/auto.js')
+  assert.equal(autoDedupeKey('2026-11-07', 'dm-1', 0), 'auto:2026-11-07:dm-1', '第一首与旧键完全一致')
+  assert.equal(autoDedupeKey('2026-11-07', 'dm-1', 1), 'auto:2026-11-07:dm-1:2')
+  assert.equal(autoDedupeKey('2026-11-07', 'dm-1', 2), 'auto:2026-11-07:dm-1:3')
+})
+
+test('不限额：当天已发过一首时，第二首的任务 id 与去重键都不再与第一首相同', async () => {
+  const queue = fakeQueue({ quota: 9999, used: 1 })
+  const { host, logs } = fakeHost(configOf(), { queue })
+  const said: string[] = []
+  const ok = await autoPickOnce(host as never, fakeClock(), (line) => said.push(line))
+  assert.equal(ok, true, '不限额时第二首仍应受理')
+  const request = queue.enqueued[0]
+  assert.ok(request !== undefined)
+  assert.ok(request.dedupeKey.endsWith(':2'), '去重键要带序号，实际 ' + request.dedupeKey)
+  assert.ok(request.id.endsWith('-2'), '任务 id 也要带序号，实际 ' + request.id)
+  assert.equal(logs.length, 0)
+  assert.ok(said.some((line) => line.includes('自主选歌入队')))
 })
 
 // ── 3. 轮换：同一天同一首，跨天才换 ────────────────────────────────────────
