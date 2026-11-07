@@ -236,6 +236,24 @@ test('不限额：当天已发过一首时，第二首的任务 id 与去重键�
 
 // ── 3. 轮换：同一天同一首，跨天才换 ────────────────────────────────────────
 
+test('轮换叠加当天已发数：不限额时按顺序走一圈，不再整天循环同一首', async () => {
+  const { poolEntryAt } = await import('../src/features/song/auto.js')
+  const pool = ['A', 'B', 'C', 'D']
+  const day = '2026-11-08'
+  // 每天第一首仍由日期决定（可复现）
+  const first = poolEntryAt(pool, day, 0)
+  assert.equal(poolEntryAt(pool, day, 0), first)
+  // 之后按顺序走，且一轮之内不重复
+  const walk = [0, 1, 2, 3].map((used) => poolEntryAt(pool, day, used))
+  assert.equal(new Set(walk).size, 4, '四首之内不该重复，实际 ' + JSON.stringify(walk))
+  assert.equal(walk[0], first)
+  // 走满一圈回到起点
+  assert.equal(poolEntryAt(pool, day, 4), first)
+  // 空池子 / 脏 used 不该崩
+  assert.equal(poolEntryAt([], day, 0), '')
+  assert.equal(poolEntryAt(pool, day, Number.NaN), first)
+})
+
 test('轮换：同一首曲目池同一天永远给同一首（可复现，不会重试时换歌）', () => {
   const size = 4
   const sameDay = ['2026-11-07', '2026-11-07', '2026-11-07'].map((day) => rotationIndex(day, size))

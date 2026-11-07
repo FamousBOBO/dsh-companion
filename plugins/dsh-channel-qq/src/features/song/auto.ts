@@ -99,12 +99,28 @@ export async function autoPickOnce(
   const facts = await collectFacts(host, clock, say)
   if (facts === null) return false
 
-  // 按日期轮换：同一天永远是同一首（可复现，也不会"重试时换歌"）。
-  const [song, artist] = splitPoolEntry(facts.pool[rotationIndex(facts.day, facts.pool.length)] ?? '')
+  // 今天已经发过几首：它同时决定"轮换到第几首"与"去重键的序号"。
+  const used = await facts.runtime.queue.autoUsedToday(facts.day)
+  const [song, artist] = splitPoolEntry(poolEntryAt(facts.pool, facts.day, used))
   if (song === '') return false
   const room = `dm-${String(facts.ownerId)}`
   say(`song: 自主选歌「${song}${artist === '' ? '' : ` / ${artist}`}」（${facts.day}）`)
-  return await submitAuto(facts, { song, artist, room }, say)
+  return await submitAuto(facts, { song, artist, room, used }, say)
+}
+
+/**
+ * 曲目池里今天要唱第几首。
+ *
+ * 为什么不是单纯的"按日期轮换"：那样**同一天永远是同一首**——每天 1 首时正好，
+ * 额度放开（`dailyAutoCap=0`）之后就变成"一整天循环同一首"（实机真踩到：连发三遍
+ * 同一首歌）。所以轮换要再叠加当天已发数：`(按日期的起点 + 已发数) mod 池长`。
+ * 结果是"同一天照顺序走一圈、跨天换个起点"，而**每天第一首仍然由日期决定**，
+ * 可复现性没丢。
+ */
+export function poolEntryAt(pool: readonly string[], dayKey: string, used: number): string {
+  if (pool.length === 0) return ''
+  const offset = Number.isFinite(used) ? Math.max(0, Math.trunc(used)) : 0
+  return pool[(rotationIndex(dayKey, pool.length) + offset) % pool.length] ?? ''
 }
 
 /**
@@ -123,7 +139,7 @@ export function autoDedupeKey(dayKey: string, room: string, n: number): string {
 /** 选源 + 入队。与私聊入口共用同一套判据：分不出唯一原唱就跳过这一轮（不猜）。 */
 async function submitAuto(
   facts: AutoFacts,
-  pick: { song: string; artist: string; room: string },
+  pick: { song: string; artist: string; room: string; used: number },
   say: (line: string) => void,
 ): Promise<boolean> {
   try {
@@ -136,11 +152,10 @@ async function submitAuto(
     }
     // 与私聊入口同一条准则：尽量女声；确定是男声才升八度。
     const keyUp = facts.config.preferFemale ? keyUpFor(selection.gender, facts.config.maleKeyUp) : 0
-    // 今天已经发过几首：不限额时用它把同一天的第 N 首分出不同的去重键与任务 id。
-    const used = await facts.runtime.queue.autoUsedToday(facts.day)
-    const dedupeKey = autoDedupeKey(facts.day, pick.room, used)
+    // 序号取自"调用时"的当天已发数：从挑歌到入队之间只有一次网络搜索，不会跨天。
+    const dedupeKey = autoDedupeKey(facts.day, pick.room, pick.used)
     const result = await facts.runtime.queue.enqueue({
-      id: `auto-${facts.day}-${String(facts.ownerId)}${used === 0 ? '' : `-${String(used + 1)}`}`,
+      id: `auto-${facts.day}-${String(facts.ownerId)}${pick.used === 0 ? '' : `-${String(pick.used + 1)}`}`,
       entry: 'auto',
       room: pick.room,
       chatId: facts.ownerId,
