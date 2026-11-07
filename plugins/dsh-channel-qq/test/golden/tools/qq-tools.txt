@@ -343,6 +343,30 @@
   }
 }
 {
+  "name": "qq_send_image",
+  "description": "发送一张本地普通图片，例如生图产物。",
+  "parameters": {
+    "type": "object",
+    "properties": {
+      "isGroup": {
+        "type": "boolean"
+      },
+      "target": {
+        "type": "number"
+      },
+      "file": {
+        "type": "string",
+        "description": "本地图片绝对路径"
+      }
+    },
+    "required": [
+      "isGroup",
+      "target",
+      "file"
+    ]
+  }
+}
+{
   "name": "qq_group_kick",
   "description": "将成员移出群聊（踢人）。默认关闭，需要 groupAdmin.dangerous 打开才可用。",
   "parameters": {

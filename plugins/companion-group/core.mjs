@@ -67,7 +67,7 @@ const READ_KEYS = Object.freeze({
 /** 发送类动作的白名单：工具名 → 允许的 action 与允许的参数键。 */
 const SEND_RULES = Object.freeze({
   qq_message: { action: 'send', keys: ['action', 'isGroup', 'target', 'text', 'phase'] },
-  qq_sticker: { action: 'send', keys: ['action', 'isGroup', 'target', 'file'] },
+  qq_sticker: { action: 'send_image', keys: ['action', 'isGroup', 'target', 'file'] },
   qq_voice: { action: 'send_file', keys: ['action', 'isGroup', 'target', 'file'] },
   // 表情包投递：目标必须是当前群，素材只由 assetId 指名（库里的文件路径群聊拿不到）。
   expression_reply: { action: 'send', keys: ['action', 'isGroup', 'target', 'assetId', 'mode', 'text'] },

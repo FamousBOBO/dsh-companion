@@ -15,7 +15,7 @@ const send = (a, over = {}) => ({ agent: a, name: 'qq_message', arguments: { act
 const MEDIA_ROOT = path.resolve('plugins/companion-group', '../..', 'home', 'media');
 const OPTS = { mediaRoot: MEDIA_ROOT };
 const mediaFile = name => path.join(MEDIA_ROOT, 'artifacts', name);
-const sticker = (a, over = {}) => ({ agent: a, name: 'qq_sticker', arguments: { action: 'send', isGroup: true, target: 123, file: mediaFile('image/abc.png'), ...over } });
+const sticker = (a, over = {}) => ({ agent: a, name: 'qq_sticker', arguments: { action: 'send_image', isGroup: true, target: 123, file: mediaFile('image/abc.png'), ...over } });
 const voice = (a, over = {}) => ({ agent: a, name: 'qq_voice', arguments: { action: 'send_file', isGroup: true, target: 123, file: mediaFile('speech/abc.mp3'), ...over } });
 
 test('owner identity refuses group, foreign DM and malformed QQ ids, including old persisted bindings', t => {
@@ -60,7 +60,7 @@ test('media tools are open to the group: draw / speak / job / status never touch
   assert.equal(typeof groupToolDenial({ agent: agent(), name: 'companion_media_draw', arguments: { prompt: 'x' } }, OPTS), 'string', 'unready preset still refuses');
 });
 
-test('image sending: only qq_sticker action=send of a media-layer file inside home/media', () => {
+test('image sending: only qq_sticker action=send_image of a media-layer file inside home/media', () => {
   const a = agent(); markGroupReady(a);
   assert.equal(groupToolDenial(sticker(a), OPTS), undefined);
   assert.equal(groupToolDenial(sticker(a, { file: mediaFile('image/中文 名字.png') }), OPTS), undefined, 'spaces and CJK are fine');

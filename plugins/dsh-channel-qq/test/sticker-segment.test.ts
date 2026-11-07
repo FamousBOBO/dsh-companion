@@ -100,6 +100,28 @@ test('qq_send_emoji（合并面的 send）：发出的段是表情，不是图�
   }
 })
 
+test('qq_send_image（合并面的 send_image）：群聊和私聊均发普通图片', async () => {
+  const s = scratchPng()
+  try {
+    const { api, sent } = fakeApi()
+    const deps = { api, out: fakeOut() } as unknown as QQToolDeps
+    const tool = stickersTools(deps).find(t => t.name === 'qq_send_image')
+    assert.ok(tool)
+    for (const isGroup of [false, true]) {
+      await tool.run({ isGroup, target: 123, file: s.file }, {} as never)
+    }
+    assert.equal(sent.length, 2)
+    for (const { message } of sent) {
+      const segment = firstSegment(message)
+      assert.equal(segment.type, 'image')
+      assert.equal((segment.data as { sub_type?: number }).sub_type, 0)
+      assert.equal((segment.data as { summary?: string }).summary, undefined)
+    }
+  } finally {
+    s.cleanup()
+  }
+})
+
 test('qq_send_sticker（按情绪一步到位）：同样发的是表情', async () => {
   const s = scratchPng()
   try {

@@ -85,6 +85,7 @@ const FILE_TOOLS: readonly string[] = [
   'qq_send_voice',
   'qq_send_sticker',
   'qq_send_emoji',
+  'qq_send_image',
   'qq_get_file_url',
 ]
 

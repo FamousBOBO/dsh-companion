@@ -14,12 +14,12 @@ import type { OneBotMessageSegment } from '../../types.js'
 import type { ToolSpec } from '../../adapters/dsh-host/tools.js'
 import type { QQToolDeps } from '../tool-deps.js'
 
-/** `qq_send_emoji` — 发送一张本地表情包图片（stolen/registered 目录中的文件名）。… */
-function qqSendEmoji(deps: QQToolDeps): ToolSpec {
+/** Share file validation and delivery between the two QQ image segment types. */
+function qqSendLocalImage(deps: QQToolDeps, asSticker: boolean): ToolSpec {
   const { api, out } = deps
   return {
-        name: 'qq_send_emoji',
-        description: '发送一张本地表情包图片（stolen/registered 目录中的文件名）。',
+        name: asSticker ? 'qq_send_emoji' : 'qq_send_image',
+        description: asSticker ? '发送一张本地表情包图片（stolen/registered 目录中的文件名）。' : '发送一张本地普通图片，例如生图产物。',
         parameters: {
           type: 'object',
           properties: {
@@ -30,7 +30,8 @@ function qqSendEmoji(deps: QQToolDeps): ToolSpec {
           required: ['isGroup', 'target', 'file'],
         },
         run: async (args) => {
-          const message: OneBotMessageSegment[] = [stickerSegment(await napcatFileArg(String(args.file)))]
+          const file = await napcatFileArg(String(args.file))
+          const message: OneBotMessageSegment[] = [asSticker ? stickerSegment(file) : { type: 'image', data: { file, sub_type: 0 } }]
           return args.isGroup === true
             ? await out.push(() => api.sendGroupMessage(Number(args.target), message))
             : await out.push(() => api.sendPrivateMessage(Number(args.target), message))
@@ -155,7 +156,8 @@ function qqEmojiStats(deps: QQToolDeps): ToolSpec {
 /** 组装这一组工具。 */
 export function stickersTools(deps: QQToolDeps): ToolSpec[] {
   return [
-    qqSendEmoji(deps),
+    qqSendLocalImage(deps, true),
+    qqSendLocalImage(deps, false),
     qqSendSticker(deps),
     qqListEmojis(deps),
     qqSearchEmojis(deps),

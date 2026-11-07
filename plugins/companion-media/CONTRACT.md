@@ -73,7 +73,7 @@
 ```json
 {
   "tool": "qq_sticker",
-  "action": "send",
+  "action": "send_image",
   "file": "<absolute path>",
   "mime": "image/png",
   "bytes": 123456,
@@ -81,7 +81,7 @@
   "model": "gpt-image-…",
   "ready": true,
   "delivered": false,
-  "mustSend": "调用 qq_sticker action=send 并传 file=…"
+  "mustSend": "调用 qq_sticker action=send_image 并传 file=…"
 }
 ```
 

@@ -394,7 +394,7 @@ export function createMediaService({
         // Producing a file is not delivering it; the channel still has to send.
         handoff: {
           tool: 'qq_sticker',
-          action: 'send',
+          action: 'send_image',
           file: artifact.absolutePath,
           mime: result.mime,
           bytes: artifact.bytes,
@@ -402,7 +402,7 @@ export function createMediaService({
           model: result.meta?.model ?? section.model ?? '',
           ready: true,
           delivered: false,
-          mustSend: `调用 qq_sticker action=send 并传 file=${artifact.absolutePath}`,
+          mustSend: `调用 qq_sticker action=send_image 并传 file=${artifact.absolutePath}`,
         },
         meta: result.meta ?? {},
       };

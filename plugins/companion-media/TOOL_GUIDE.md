@@ -8,7 +8,7 @@
 
 ## 0. 三条铁律
 
-1. **生成 ≠ 投递。** `companion_media_draw` / `companion_media_speak` 只会在本机产出一个文件，返回 `handoff.delivered=false`。要对方真的收到，必须再调用对应通道的发送工具（QQ 场景：`qq_sticker action=send` 发图、`qq_voice action=send_file` 发语音）。**不要**对用户说"已经发给你了"，除非通道工具返回了确认。产物默认在 `<dataRoot>/workspace/media/` 下（通道可读边界内）；如果返回的路径不在 `<dataRoot>/workspace` 或 `<dshHome>/channel-qq` 里，通道会拒绝发送——这时要告诉用户改配置 `paths.artifactsDir`，不要自己搬文件。
+1. **生成 ≠ 投递。** `companion_media_draw` / `companion_media_speak` 只会在本机产出一个文件，返回 `handoff.delivered=false`。要对方真的收到，必须再调用对应通道的发送工具（QQ 场景：`qq_sticker action=send_image` 发图、`qq_voice action=send_file` 发语音）。**不要**对用户说"已经发给你了"，除非通道工具返回了确认。产物默认在 `<dataRoot>/workspace/media/` 下（通道可读边界内）；如果返回的路径不在 `<dataRoot>/workspace` 或 `<dshHome>/channel-qq` 里，通道会拒绝发送——这时要告诉用户改配置 `paths.artifactsDir`，不要自己搬文件。
 2. **失败不要自作主张重试。** 生图是计费能力，本层**不会**自动重试；工具返回 `on:false` + 错误码时，把原因告诉用户，由用户决定是否再来一次。`MEDIA_RATE_LIMITED` 时尤其不要连发。
 3. **默认关闭不是故障。** `MEDIA_DISABLED` 表示用户还没在「媒体能力」里打开这个能力（或用的是"已保存未测试"的配置）。正确回应是告诉用户去哪里开，而不是换个参数硬试。
 
@@ -84,7 +84,7 @@ NovelAI 相关：
                                     → 校验参数（尤其 NAI 尺寸与预设族）
 3. companion_media_draw {prompt}
                                     → 拿到 artifact.absolutePath / handoff.file
-4. qq_sticker action=send {file}    → 只有这一步成功，才算"发出去了"
+4. qq_sticker action=send_image {file}    → 只有这一步成功，才算"发出去了"
 ```
 
 语音同理：`companion_media_speak {text}` → `qq_voice action=send_file {file}`。

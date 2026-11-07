@@ -10,14 +10,21 @@ function harness() {
   const id = 'qq-dm-123';
   const event = (type, data) => hooks.get('session/event')({ id }, { type, data });
   const step = (over = {}) => hooks.get('agent/pre-step')({ agent: { session: { id } }, turn: 1, step: 2, messages: [], ...over }, async () => ({ kind: 'enter' }));
-  const receipt = (isError = false, text = '{"message_id":42}') => {
-    event('tool/call', { turn: 1, name: 'qq_message', callId: 'call1', arguments: JSON.stringify({ action: 'send' }) });
+  const receipt = (isError = false, text = '{"message_id":42}', name = 'qq_message', args = { action: 'send' }) => {
+    event('tool/call', { turn: 1, name, callId: 'call1', arguments: JSON.stringify(args) });
     event('tool/result', { turn: 1, message: { toolCallId: 'call1', isError, content: [{ type: 'text', text }] } });
   };
   return { step, receipt, sections };
 }
 test('successful QQ send ends turn before a second model answer', async () => {
   const h = harness(); h.receipt(); assert.equal((await h.step()).kind, 'reject');
+});
+test('a delivered photo allows follow-up text and the final text closes the turn', async () => {
+  const h = harness();
+  h.receipt(false, '{"message_id":42}', 'qq_sticker', { action: 'send_image' });
+  assert.equal((await h.step()).kind, 'enter');
+  h.receipt(false, '{"message_id":43}', 'qq_message', { action: 'send', phase: 'final' });
+  assert.equal((await h.step({ step: 3 })).kind, 'reject');
 });
 test('failed send and handled error allow model recovery', async () => {
   for (const args of [[true], [false, '{"error":"offline"}']]) {

@@ -301,7 +301,7 @@
 }
 {
   "name": "qq_sticker",
-  "description": "表情包：搜索收藏库（search）、列出全部（list）、按文件名直接发（send）、按情绪一步到位发（send_by_mood）、库统计（stats）、给本地图配上下两行字做成表情包（make，只生成文件）、现做现发（send_made）、给已收藏的表情配一句话再发（caption）。拿不准氛围就先 search 看清楚再决定。\n动作（方括号是平台，括号里是必填字段）：search（query）｜list（无必填）｜send（isGroup、target、file）｜send_by_mood（query、isGroup、target）｜stats（无必填）｜make（image）｜send_made（image、isGroup、target）｜caption（file、text）",
+  "description": "图片与表情包：生图产物和普通照片用 send_image。收藏表情用 send 或 send_by_mood。搜索收藏库（search）、列出全部（list）、库统计（stats）、给本地图配上下两行字做成表情包（make，只生成文件）、现做现发（send_made）、给已收藏的表情配一句话再发（caption）。\n动作（方括号是平台，括号里是必填字段）：search（query）｜list（无必填）｜send（isGroup、target、file）｜send_image（isGroup、target、file）｜send_by_mood（query、isGroup、target）｜stats（无必填）｜make（image）｜send_made（image、isGroup、target）｜caption（file、text）",
   "parameters": {
     "type": "object",
     "properties": {
@@ -311,13 +311,14 @@
           "search",
           "list",
           "send",
+          "send_image",
           "send_by_mood",
           "stats",
           "make",
           "send_made",
           "caption"
         ],
-        "description": "要做的动作：search / list / send / send_by_mood / stats / make / send_made / caption"
+        "description": "要做的动作：search / list / send / send_image / send_by_mood / stats / make / send_made / caption"
       },
       "query": {
         "type": "string",

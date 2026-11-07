@@ -1,9 +1,9 @@
 /** P6d `tools.v2` 的行为测试：关着不动 / 打开换面 / 委派等价 / 档位拒绝 / 切换日说明。
  *
  * 七条不能少的性质：
- *   1. 开关关着：注册的还是今天这 58 个（qq-tools 组），采集口没被武装；
+ *   1. 开关关着：注册的还是今天这 59 个（qq-tools 组），采集口没被武装；
  *   2. 开关打开：宿主上正好 17 个合并工具（与 MAPPING 同序），描述人格中立；
- *   3. 全量收编：89 个旧名每个都有归宿，与合并表双向一致；
+ *   3. 全量收编：90 个旧名每个都有归宿，与合并表双向一致；
  *   4. 对照：每个分支的字段/必填与旧 spec 的 schema 逐条一致（翻译分支例外明写）；
  *   5. 委派：合并工具跑的就是旧实现（发送过闸门、风控写回配置、高危群管报错）；
  *   6. 校验报错点名到动作、字段与 provider；音乐的翻译按旧 shape 生成参数；
@@ -91,7 +91,7 @@ async function registerOtherGroups(ctx: never, config: Resolved, log: (line: str
   for (const [, register, args] of groups) register(ctx, ...(args as never[]))
 }
 
-/** 把全部 89 个旧 spec 从真实注册函数里录一份（v2 关着的路径；先确保采集口没被武装）。 */
+/** 把全部 90 个旧 spec 从真实注册函数里录一份（v2 关着的路径；先确保采集口没被武装）。 */
 async function recordAllLegacy(): Promise<Map<string, Record<string, unknown>>> {
   setToolSpecSink(null)
   const defs = new Map<string, Record<string, unknown>>()
@@ -118,7 +118,7 @@ interface SurfaceHarness {
   call: (name: string, args: Record<string, unknown>) => Promise<unknown>
 }
 
-/** v2 打开的完整注册环境：58 个被收编 + 九组被采集口收编 + 17 个上宿主。 */
+/** v2 打开的完整注册环境：59 个被收编 + 九组被采集口收编 + 17 个上宿主。 */
 async function surfaceHarness(): Promise<SurfaceHarness> {
   const { ctx, definitions } = toolRecorder()
   const client = fakeClient({
@@ -162,11 +162,11 @@ function makeFakeHost(config: Resolved, log: (line: string) => void): ReturnType
 
 // ── 关着：与今天完全一样 ────────────────────────────────────────────────────
 
-test('tools.v2 关着：注册的还是今天这 58 个，采集口没被武装', () => {
+test('tools.v2 关着：注册的还是今天这 59 个，采集口没被武装', () => {
   setToolSpecSink(null)
   const { ctx, definitions } = toolRecorder()
   registerQQTools(ctx, plainConfig(), fakeClient() as never, fakeOut() as never, () => {})
-  assert.equal(definitions.length, 58)
+  assert.equal(definitions.length, 59)
   assert.equal(definitions[0]?.name, 'qq_send_text')
   // 采集口没被武装的判据：旧名照样能注册到宿主（被收编时这里会是 0 条）。
   const probe = toolRecorder()
@@ -198,9 +198,9 @@ test('tools.v2 打开：宿主上正好 17 个合并工具，描述人格中立'
 
 // ── 收编完整性与对照 ────────────────────────────────────────────────────────
 
-test('全量收编：89 个旧名每个都有归宿（与合并表双向一致）', async () => {
+test('全量收编：90 个旧名每个都有归宿（与合并表双向一致）', async () => {
   const defs = await recordAllLegacy()
-  assert.equal(defs.size, 89, '今天的注册面就是 89 个旧工具')
+  assert.equal(defs.size, 90, '今天的注册面就是 90 个旧工具')
   for (const name of LEGACY_TOOL_NAMES) assert.ok(defs.has(name), `合并表引用了不存在的旧工具 ${name}`)
   for (const name of defs.keys()) assert.ok(LEGACY_TOOL_NAMES.has(name), `旧工具 ${name} 在合并表里没有归宿`)
   assert.equal(MERGED_TOOL_NAMES.size, 17)

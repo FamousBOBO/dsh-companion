@@ -154,6 +154,7 @@ const REGISTRATION_ORDER: readonly string[] = [
   'qq_get_msg',
   'qq_delete_msg',
   'qq_send_emoji',
+  'qq_send_image',
   'qq_group_kick',
   'qq_group_whole_ban',
   'qq_set_group_admin',

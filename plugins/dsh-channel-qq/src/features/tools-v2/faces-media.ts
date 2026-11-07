@@ -9,11 +9,12 @@ import type { Face } from './types.js'
 
 export const STICKER_FACE: Face = {
   name: 'qq_sticker',
-  description: '表情包：搜索收藏库（search）、列出全部（list）、按文件名直接发（send）、按情绪一步到位发（send_by_mood）、库统计（stats）、给本地图配上下两行字做成表情包（make，只生成文件）、现做现发（send_made）、给已收藏的表情配一句话再发（caption）。拿不准氛围就先 search 看清楚再决定。',
+  description: '图片与表情包：生图产物和普通照片用 send_image。收藏表情用 send 或 send_by_mood。搜索收藏库（search）、列出全部（list）、库统计（stats）、给本地图配上下两行字做成表情包（make，只生成文件）、现做现发（send_made）、给已收藏的表情配一句话再发（caption）。',
   branches: [
     { action: 'search', legacy: 'qq_search_emojis', required: ['query'], optional: ['limit'] },
     { action: 'list', legacy: 'qq_list_emojis', required: [] },
     { action: 'send', legacy: 'qq_send_emoji', required: ['isGroup', 'target', 'file'] },
+    { action: 'send_image', legacy: 'qq_send_image', required: ['isGroup', 'target', 'file'] },
     { action: 'send_by_mood', legacy: 'qq_send_sticker', required: ['query', 'isGroup', 'target'], optional: ['fallbackRandom'] },
     { action: 'stats', legacy: 'qq_emoji_stats', required: [] },
     { action: 'make', legacy: 'qq_make_meme', required: ['image'], optional: ['top', 'bottom'] },
