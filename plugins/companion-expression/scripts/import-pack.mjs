@@ -13,7 +13,7 @@
  * 用法：
  *   node plugins/companion-expression/scripts/import-pack.mjs \
  *     --pack plugins/companion-expression/packs/qq-232180.json \
- *     --zip "C:/Users/bobo/Documents/Bot/QQ-232180.zip" \
+ *     --zip "<表情包压缩包>.zip" \
  *     [--owner 1429709395] [--group 145326153] [--no-owner] [--dry-run] [--json]
  *
  * 默认给**主人私聊**一行 `approved` 可见性；群默认沿用 `home/expression/config.json` 里
