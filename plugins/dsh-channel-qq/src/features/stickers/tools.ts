@@ -9,6 +9,7 @@
 
 import { napcatFileArg, localPathOf } from '../../local-file.js'
 import { resolveDshHome } from '../../paths.js'
+import { stickerSegment } from '../../core/message/sticker.js'
 import type { OneBotMessageSegment } from '../../types.js'
 import type { ToolSpec } from '../../adapters/dsh-host/tools.js'
 import type { QQToolDeps } from '../tool-deps.js'
@@ -29,7 +30,7 @@ function qqSendEmoji(deps: QQToolDeps): ToolSpec {
           required: ['isGroup', 'target', 'file'],
         },
         run: async (args) => {
-          const message: OneBotMessageSegment[] = [{ type: 'image', data: { file: await napcatFileArg(String(args.file)) } }]
+          const message: OneBotMessageSegment[] = [stickerSegment(await napcatFileArg(String(args.file)))]
           return args.isGroup === true
             ? await out.push(() => api.sendGroupMessage(Number(args.target), message))
             : await out.push(() => api.sendPrivateMessage(Number(args.target), message))
@@ -64,7 +65,7 @@ function qqSendSticker(deps: QQToolDeps): ToolSpec {
           if (hit === undefined) {
             throw new Error(`没搜到跟"${query}"相关的表情包。换个说法，或先用 qq_list_emojis 看库里有什么。`)
           }
-          const message: OneBotMessageSegment[] = [{ type: 'image', data: { file: await napcatFileArg(hit.file) } }]
+          const message: OneBotMessageSegment[] = [stickerSegment(await napcatFileArg(hit.file))]
           const result = args.isGroup === true
             ? await out.push(() => api.sendGroupMessage(Number(args.target), message))
             : await out.push(() => api.sendPrivateMessage(Number(args.target), message))

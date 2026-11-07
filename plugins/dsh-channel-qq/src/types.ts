@@ -2,7 +2,10 @@
 
 export type OneBotMessageSegment =
   | { type: 'text'; data: { text: string } }
-  | { type: 'image'; data: { file: string; url?: string; subtype?: number; summary?: string } }
+  // `sub_type`（下划线）是 QQNT/NapCat 认的那个：0 = 普通图片，1 = 表情。
+  // `subtype`（无下划线）是历史遗留的拼写，发送时 NapCat 不认，只有入站解析会读它。
+  // 见 `core/message/sticker.ts` 的实测表。
+  | { type: 'image'; data: { file: string; url?: string; subtype?: number; sub_type?: number; summary?: string } }
   | { type: 'at'; data: { qq: string } }
   | { type: 'reply'; data: { id: string } }
   | { type: 'face'; data: { id: number } }
