@@ -94,6 +94,9 @@ export const DEFAULTS = Object.freeze({
       activePresetId: '',
       generationPresets: [],
       transport: 'official',
+      queueEnabled: false,
+      queueBaseUrl: '',
+      queueUserId: '',
       baseUrl: '',
       apiKey: '',
       model: 'nai-diffusion-4-5-full',
@@ -631,6 +634,17 @@ export function validateConfig(config) {
     // 两种 transport 的字段面不同，分开校验：一种服务商的专属选项不能误发给另一种。
     const transport = String(nai.transport ?? 'official');
     if (transport === 'official') {
+      if (typeof nai.queueEnabled !== 'boolean') add('image.nai.queueEnabled', Code.CONFIG_INVALID, '排队开关必须是布尔值');
+      if (nai.queueEnabled === true) {
+        let queueUrl;
+        try { queueUrl = typeof nai.queueBaseUrl === 'string' ? new URL(nai.queueBaseUrl) : null; } catch { /* reported below */ }
+        if (!queueUrl || !['https:', 'http:'].includes(queueUrl.protocol) || queueUrl.username || queueUrl.password || queueUrl.search || queueUrl.hash) {
+          add('image.nai.queueBaseUrl', Code.CONFIG_INVALID, '请填写不含账号、查询参数和片段的 HTTP/HTTPS 排队服务器地址');
+        }
+        if (typeof nai.queueUserId !== 'string' || !nai.queueUserId.trim() || nai.queueUserId.length > 128) {
+          add('image.nai.queueUserId', Code.CONFIG_INVALID, '请填写 128 字符以内的排队用户标识');
+        }
+      }
       if (nai.model && !/^nai-diffusion-/i.test(String(nai.model))) {
         add('image.nai.model', Code.CONFIG_INVALID, 'official 直连要求 NovelAI 模型 ID（nai-diffusion-*）；中转站请把 transport 切到 openai-relay');
       }

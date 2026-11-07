@@ -14,6 +14,7 @@ import { imageAdapter, ttsAdapter, adapterCatalog } from './adapters/registry.mj
 import { visionContract, visionRefusal } from './vision.mjs';
 import { readSuiteConfig, resolvePersonaId } from './persona.mjs';
 import { redactText } from './secrets.mjs';
+import { wardrobeDetail } from '../../companion-foundation/wardrobe.mjs';
 
 /**
  * The media service — the single business facade.
@@ -300,7 +301,10 @@ export function createMediaService({
     return cap;
   }
 
-  async function generateImage({ prompt, negative = '', dryRun = false, sessionId = null } = {}) {
+  async function generateImage({
+    prompt, negative = '', subject = '', outfit = '', dryRun = false,
+    requireEnglish = false, sessionId = null, signal = null,
+  } = {}) {
     const loaded = store.load();
     const config = loaded.config;
     if (!config.enabled) return { ok: false, error: { code: Code.DISABLED, message: '媒体插件已停用' } };
@@ -314,6 +318,24 @@ export function createMediaService({
     const section = id === 'nai' ? resolveGenerationSection(imageSection(config, id)) : { ...imageSection(config, id) };
     const record = recordOf('image', id);
 
+    const badInput = message => ({ ok: false, error: { code: Code.BAD_INPUT, message } });
+    if (subject && subject !== 'companion') return badInput('subject 只支持 companion，也可留空');
+    if (subject === 'companion') {
+      const current = wardrobeDetail(dataDir, { scope: 'today', now: now() });
+      if (!current.items.length) return badInput('当前衣柜没有着装，请先设置当前衣物');
+      if (typeof outfit !== 'string' || !outfit.trim()) {
+        if (dryRun) return { ok: true, dryRun: true, provider: id, outfitRequired: true, outfit: {
+          date: current.date, items: current.items, instruction: current.instruction,
+        } };
+        return badInput('请先读取当前衣物，再在 outfit 里直接写出英文衣物细节');
+      }
+      if (!/[a-z]/i.test(outfit) || /[^\x20-\x7e]/u.test(outfit)) return badInput('outfit 必须使用英文衣物短语');
+      prompt = `${String(prompt ?? '').trim()}\nThe companion wears ${outfit.trim().replace(/[.]+$/, '')}.`;
+    }
+    if (requireEnglish && (!/[a-z]/i.test(prompt ?? '') || [prompt, negative].some(value => /[^\x20-\x7e\r\n\t]/u.test(value ?? '')))) {
+      return badInput('请直接使用英文填写 prompt 和 negative，并使用英文标点');
+    }
+
     if (dryRun) {
       const dry = { ok: true, dryRun: true, provider: id, wouldSend: '不发起任何网络请求' };
       if (id === 'nai') {
@@ -321,6 +343,7 @@ export function createMediaService({
         dry.preset = { family: preset.family, applied: preset.applyDefaults, positive: preset.positive, negative: preset.negative, warnings: preset.warnings };
         dry.resolution = previewResolution({ mode: 'fixed', size: `${section.width}x${section.height}` });
         dry.transport = section.transport;
+        dry.queueEnabled = section.transport === 'official' && section.queueEnabled === true;
       } else {
         dry.size = section.size;
         dry.model = section.model;
@@ -344,7 +367,7 @@ export function createMediaService({
         net,
         prompt,
         negative,
-        signal: null,
+        signal,
       });
       const artifact = writeArtifact({ root: artifactLocation(config).artifactRoot, kind: 'image', bytes: result.bytes, extension: result.extension });
       const meta = {
@@ -391,7 +414,7 @@ export function createMediaService({
     }
   }
 
-  async function synthesize({ text, provider = null, sessionId = null } = {}) {
+  async function synthesize({ text, provider = null, instructions = '', sessionId = null, signal = null } = {}) {
     const loaded = store.load();
     const config = loaded.config;
     if (!config.enabled) return { ok: false, error: { code: Code.DISABLED, message: '媒体插件已停用' } };
@@ -405,6 +428,9 @@ export function createMediaService({
     }
     const section = { ...ttsSection(config, id) };
     if (section.enabled !== true) return { ok: false, error: { code: Code.DISABLED, message: `${record.label} 未启用` } };
+    if (typeof instructions !== 'string' || instructions.length > 1000 || (instructions.trim() && id !== 'breeze-tts2')) {
+      return { ok: false, error: { code: Code.BAD_INPUT, message: '表演指令仅适用于 Breeze，长度上限为 1000 字符' } };
+    }
     const validation = validateConfig({ ...config, tts: { ...config.tts, provider: id } });
     if (!validation.ok) {
       return { ok: false, error: { code: validation.errors[0].code, message: validation.errors[0].message }, errors: validation.errors };
@@ -420,7 +446,8 @@ export function createMediaService({
         key: keyFor(id).value,
         net,
         text,
-        signal: null,
+        instruction: instructions.trim(),
+        signal,
       });
       const artifact = writeArtifact({ root: artifactLocation(config).artifactRoot, kind: 'speech', bytes: result.bytes, extension: result.extension });
       const meta = {

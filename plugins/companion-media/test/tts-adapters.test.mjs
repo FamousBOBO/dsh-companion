@@ -48,6 +48,10 @@ test('Breeze：multipart 请求 + audio/pcm 响应封装成 WAV（24 kHz）', as
     const bytes = fs.readFileSync(result.artifact.absolutePath);
     assert.equal(bytes.subarray(0, 4).toString('latin1'), 'RIFF');
     assert.ok(result.artifact.durationSeconds > 0.9);
+    const direct = await service.synthesize({ text: '你好啊', instructions: '稍慢一点，句尾轻一点' });
+    assert.equal(direct.ok, true);
+    assert.ok(Buffer.from(calls[1].body).includes(Buffer.from('稍慢一点，句尾轻一点')));
+    assert.ok(!Buffer.from(calls[1].body).includes(Buffer.from('轻轻说')));
   } finally {
     cleanup();
   }

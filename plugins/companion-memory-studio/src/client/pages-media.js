@@ -767,7 +767,12 @@
       const key = lastSegment(field.path);
       if(provider.kind==='tts' && ['enabled','mediaType'].includes(key))return false;
       if (provider.generationFields && (provider.generationFields.includes(key) || ['activePresetId','generationPresets'].includes(key))) return false;
-      return !(provider.generationFields && key === 'baseUrl' && draft[provider.prefix+'.transport'] === 'official');
+      const official = draft[provider.prefix+'.transport'] === 'official';
+      if (provider.generationFields && key === 'baseUrl' && official) return false;
+      if (provider.generationFields && ['queueEnabled','queueBaseUrl','queueUserId'].includes(key)) {
+        return official && (key === 'queueEnabled' || draft[provider.prefix+'.queueEnabled'] === true);
+      }
+      return true;
     }).sort((a,b) => (lastSegment(a.path)==='transport'?-1:lastSegment(b.path)==='transport'?1:0)).map((field) => {
       const error = errors[field.path];
       if (field.secret) {

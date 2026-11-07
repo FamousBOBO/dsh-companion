@@ -36,15 +36,17 @@
 
 ## 2. `companion_media_draw`
 
-参数：`prompt`（必填）、`negative`（可选）、`dryRun`（可选）。
+参数：`prompt`（必填）、`negative`、`subject`、`outfit`、`dryRun`（可选）。
 
-- `prompt` 用**英文完整句子**，主体与关键要求在前，然后场景、动作、表情、镜头、光线、画风。不要用逗号堆标签（NovelAI 的 V5/4.5 也能读自然语言，但结构化标签更容易出现互相矛盾的描述）。
+- 调用方直接构思英文画面，用完整句子把主体和关键要求放在前半段，再描述场景、动作、镜头、光线和画风。生图服务按原文提交。[NovelAI 官方提示词指南](https://docs.novelai.net/en/image/basics/)
+- 画陪伴角色时传 `subject: "companion"`。先用 `companion_wardrobe_detail` 的 `today` 范围读取当前着装，或先用 `dryRun: true` 且省略 `outfit` 取回衣物。把衣物写成英文短语传到 `outfit`，服务会把它写入实际画面提示词。真跑时缺少衣物会拒绝请求。
 - `negative` 只在需要临时压制某些内容时用；固定反向提示词应放在配置里（`image.nai.negativePrompt` 或按族的预设）。
 - `dryRun: true` 只做参数/分辨率/预设族校验，不发网络请求。**先 dry-run 再真跑**是省额度最有效的习惯。
 - 成功返回 `artifact.absolutePath` 与 `handoff.file`（同一个绝对路径），直接把 `handoff.file` 交给发送工具。
 - 常见错误码：`MEDIA_DISABLED`（没开）、`MEDIA_NOT_CONFIGURED`（缺必填项）、`MEDIA_PARAM_OUT_OF_RANGE`（尺寸/步数越界，**不会**被悄悄改值）、`MEDIA_AUTH_FAILED`、`MEDIA_ENTITLEMENT`（NAI 无订阅）、`MEDIA_RATE_LIMITED`、`MEDIA_TIMEOUT`、`MEDIA_UPSTREAM`、`MEDIA_UNSUPPORTED_TYPE`（上游返回的不是图片）。
 
 NovelAI 相关：
+- 官方连接方式可选「使用排队服务器」。打开后填写已有协调服务器的地址和用户标识，等拿到许可再调用官方生图接口。排队失败会结束本次请求。排队服务器只收到密钥摘要和排队标识，图片提示词与密钥只发给生图服务。
 - 分辨率必须是 64 的倍数，短边 ≥256、长边 ≤2048、面积 ≤3,000,000px；越界是**错误**，不是自动收敛。用 `GET /api/companion-media/preview?mode=auto&aspect=portrait&targetPixels=1011712` 先算好。
 - 预设按模型族分仓：`nai-diffusion-5-*` 用 V5 的预设，`nai-diffusion-4-5-*` 用 4.5 的预设；你不会、也不能把两者混用。
 
@@ -52,9 +54,9 @@ NovelAI 相关：
 
 ## 3. `companion_media_speak`
 
-参数：`text`（必填）、`provider`（可选，默认用配置里的默认后端）。
+参数：`text`（必填）、`provider`（可选，默认用配置里的默认后端）、`instructions`（可选，仅 Breeze 支持）。
 
-- `text` 只放**要朗读的正文**，保留标点，不要放 Markdown、JSON、舞台说明。Breeze 的表演指令写在配置里（`instruction`），不通过本工具传。
+- `text` 只放**要朗读的正文**，保留原语言和自然标点。Breeze 的 `instructions` 可直接描述语气、情绪、速度、停顿和重音，例如「用轻柔、略带笑意的口吻，语速稍慢，在问候后停顿一下」。省略时沿用后端配置。
 - 各后端注意：
   - **Breeze TTS 2**：服务单并发，占用中返回 `MEDIA_BACKEND_BUSY`（等一会儿再试）；参考音频与逐字稿必须同时配置，否则本地就拒绝。
   - **GPT-SoVITS**：`ref_audio_path` 是**服务端的路径**，不是本机文件；`media_type=raw` 不受支持（没有可靠采样率），用 `wav`。

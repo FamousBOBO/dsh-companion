@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { createMediaService } from '../src/service.mjs';
 import { tempDataDir, mockFetch, makePng, makeZip, writeConfig } from './helpers.mjs';
 import { Code } from '../src/errors.mjs';
+import { saveWardrobe } from '../../companion-foundation/wardrobe.mjs';
 
 const KEY = 'pst-nai-0123456789abcdef';
 const PNG = makePng({ width: 832, height: 1216 });
@@ -56,6 +57,64 @@ test('NAI official：ZIP 响应 → 解出 PNG；请求体是 {input, model, act
     assert.equal(body.parameters.width, 832);
     assert.equal(body.parameters.v4_prompt.caption.base_caption, 'a quiet library');
     assert.equal(calls[0].headers.Authorization, `Bearer ${KEY}`);
+  } finally {
+    cleanup();
+  }
+});
+
+test('official queue sends only coordination metadata and forwards the current outfit in the image request', async () => {
+  const { dir, cleanup } = tempDataDir();
+  try {
+    const queue = 'https://queue.example.test';
+    const image = 'https://image.novelai.net/ai/generate-image';
+    configured(dir, { queueEnabled: true, queueBaseUrl: queue, queueUserId: 'operator' });
+    const { fetchImpl, calls } = mockFetch([
+      { match: queue + '/join-queue', response: { status: 200, json: {} } },
+      { match: url => url.startsWith(queue + '/my-turn?'), response: { status: 200, json: { is_my_turn: true, lock_token: 'lease' } } },
+      { match: image, response: { status: 200, json: { image: PNG.toString('base64') } } },
+      { match: queue + '/complete', response: { status: 200, json: {} } },
+    ]);
+    saveWardrobe(dir, { items: [
+      { id: 'blue', name: '蓝色开衫', slot: 'upper' },
+      { id: 'white', name: '白色衬衫', slot: 'upper' },
+    ], current: { date: '2026-11-07', itemIds: ['blue'] } });
+    const service = createMediaService({ dataDir: dir, env: {}, fetchImpl, now: () => new Date('2026-11-07T00:00:00Z') });
+    const args = { subject: 'companion', prompt: 'A woman smiles by a cafe window.', requireEnglish: true };
+    const preview = await service.generateImage({ ...args, dryRun: true });
+    assert.equal(preview.outfitRequired, true);
+    assert.deepEqual(preview.outfit.items.map(item => item.id), ['blue']);
+    assert.equal((await service.generateImage(args)).ok, false);
+    assert.equal((await service.generateImage({ ...args, outfit: '蓝色开衫' })).ok, false);
+    assert.equal(calls.length, 0);
+    const result = await service.generateImage({ ...args, outfit: 'a blue cardigan' });
+    assert.equal(result.ok, true, JSON.stringify(result.error));
+    assert.deepEqual(calls.map(call => new URL(call.url).pathname), ['/join-queue', '/my-turn', '/ai/generate-image', '/complete']);
+    const actual = JSON.parse(calls[2].body);
+    assert.match(actual.input, /The companion wears a blue cardigan/);
+    assert.match(actual.parameters.v4_prompt.caption.base_caption, /blue cardigan/);
+    for (const call of calls.filter(call => call.url.startsWith(queue))) {
+      assert.equal(call.headers.Authorization, undefined);
+      assert.ok(!JSON.stringify(call).includes(KEY));
+      assert.ok(!JSON.stringify(call).includes('blue cardigan'));
+    }
+    assert.equal(JSON.parse(calls[3].body).lock_token, 'lease');
+  } finally {
+    cleanup();
+  }
+});
+
+test('queue refusal releases its request and sends no paid generation', async () => {
+  const { dir, cleanup } = tempDataDir();
+  try {
+    configured(dir, { queueEnabled: true, queueBaseUrl: 'https://queue.example.test', queueUserId: 'operator' });
+    const { fetchImpl, calls } = mockFetch([
+      { match: 'https://queue.example.test/join-queue', response: { status: 503, json: {} } },
+      { match: 'https://queue.example.test/leave-queue', response: { status: 200, json: {} } },
+    ]);
+    const service = createMediaService({ dataDir: dir, env: {}, fetchImpl });
+    const result = await service.generateImage({ prompt: 'A quiet cafe.' });
+    assert.equal(result.ok, false);
+    assert.deepEqual(calls.map(call => new URL(call.url).pathname), ['/join-queue', '/leave-queue']);
   } finally {
     cleanup();
   }

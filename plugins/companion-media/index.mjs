@@ -109,21 +109,30 @@ function registerTools(ctx, service) {
     {}, async () => service.status());
 
   register('companion_media_draw',
-    '生成一张图片（计费）。默认关闭：未在「媒体能力」里显式打开生图、或没选 provider 时直接返回 MEDIA_DISABLED。prompt 用英文完整句子描述画面（OpenAI 兼容后端与 NovelAI 都是英文提示词更稳）。dryRun=true 只做参数与分辨率校验，不发起任何网络请求。本工具不发送图片，只产出本地文件：成功后把 handoff.file 交给当前会话对应的图片发送工具（QQ 场景是 qq_sticker action=send）。失败不会自动重试，避免重复扣费；要重试必须由人显式再次调用。',
+    '生成一张图片（可能计费）。直接构思纯英文画面提示词。按 NovelAI 的自然语言写法使用完整英文句子，把主体放在前半段，再说明动作、人物位置、环境、镜头、光线和画风。只写可见画面。给陪伴角色画自拍或肖像时，先读 companion_wardrobe_detail(scope=today)，用 subject=companion 和 outfit 传当前衣物的英文细节；也可用 subject=companion、dryRun=true 查看当前着装。不要发明衣物或写与当前着装矛盾的描述。dryRun 不发网络请求。成功后按 handoff 交给当前会话的图片发送工具。失败不自动重试。',
     {
-      prompt: { type: 'string', required: true, description: '画面描述。英文完整句子，主体与关键要求在前；写清场景、动作、表情、镜头、光线、画风。' },
-      negative: { type: 'string', description: '可选的反向提示词（NovelAI 使用；与配置里的基础反向提示词合并）。' },
+      prompt: { type: 'string', required: true, description: '直接写英文画面，例如：A young woman rests her hands on a cafe windowsill and looks out at the rain. Frame her from the waist up in soft afternoon light.' },
+      negative: { type: 'string', description: '可选英文反向提示词，例如 blurry background, distorted hands。NovelAI 会合并已配置的反向预设。' },
+      subject: { type: 'string', description: '自拍或以陪伴角色为主体时填 companion；其他图片省略。' },
+      outfit: { type: 'string', description: 'subject=companion 时填写当前衣物的英文名词短语，例如 a pale blue cardigan over a white cotton blouse, and a navy pleated skirt。包含衣物、颜色与可见细节，服务会加进实际提示词。' },
       dryRun: { type: 'boolean', description: 'true 只校验参数（含 NAI 预设族与分辨率），不发起生成。dry-run 成功不代表已产出图片。' },
     },
-    async args => service.generateImage({ prompt: args.prompt, negative: args.negative, dryRun: args.dryRun === true }), 'write');
+    async (args, exec) => service.generateImage({
+      prompt: args.prompt, negative: args.negative, subject: args.subject, outfit: args.outfit,
+      dryRun: args.dryRun === true, requireEnglish: true, sessionId: exec?.agent?.session?.id, signal: exec?.signal,
+    }), 'write');
 
   register('companion_media_speak',
-    '用已配置的 TTS 后端把文本合成为语音文件（可能计费）。默认关闭：未在「媒体能力」里打开语音合成时返回 MEDIA_DISABLED。Index-TTS 尚未接入（缺官方 HTTP 协议），会返回 MEDIA_PROVIDER_NOT_IMPLEMENTED。text 只放要朗读的正文；Breeze 的表演指令请在配置里填写。本工具只产出本地音频文件，不发送；成功后把 handoff.file 交给当前会话的语音发送工具（QQ 场景是 qq_voice action=send_file）。',
+    '用已配置的 TTS 后端合成语音（可能计费）。text 只写角色实际要说的台词，保留原语言和自然标点。使用 Breeze 时，可在 instructions 直接写一句简短、具体、可听出来的表演要求，描述语气、情绪、速度、停顿或重音。本工具只产出本地音频文件，成功后按 handoff 交给当前会话的语音发送工具。',
     {
       text: { type: 'string', required: true, description: '要朗读的完整文本，保留标点，不要放 Markdown 或 JSON。' },
+      instructions: { type: 'string', description: '仅 Breeze 支持。例如：用轻柔、略带笑意的口吻，语速稍慢，在问候后停顿一下，句尾自然收轻。没有特殊要求时可省略，沿用后端配置。' },
       provider: { type: 'string', description: '可选：临时指定已启用且已接入的 TTS provider id（默认用配置里的默认后端）。' },
     },
-    async args => service.synthesize({ text: args.text, provider: args.provider ?? null }), 'write');
+    async (args, exec) => service.synthesize({
+      text: args.text, provider: args.provider, instructions: args.instructions,
+      sessionId: exec?.agent?.session?.id, signal: exec?.signal,
+    }), 'write');
 
   register('companion_media_job',
     '读取媒体作业、产物与失败原因。只含元数据（大小、MIME、时长、错误码），不含提示词正文与媒体内容。',

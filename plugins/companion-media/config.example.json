@@ -39,6 +39,9 @@
     },
     "nai": {
       "transport": "official",
+      "queueEnabled": false,
+      "queueBaseUrl": "",
+      "queueUserId": "",
       "baseUrl": "",
       "apiKey": "",
       "model": "nai-diffusion-4-5-full",

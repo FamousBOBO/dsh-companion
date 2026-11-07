@@ -4,6 +4,7 @@ import { Code, mediaError } from '../errors.mjs';
 import { assertSize, extensionFor, firstImageFromZip, parseNaiSse, sniffImage } from '../media-format.mjs';
 import { resolvePreset } from '../presets.mjs';
 import { IMAGE_PROVIDERS } from '../schema.mjs';
+import { withNaiQueue } from './nai-queue.mjs';
 import { authHeaders, buildNaiParameters, ensureOk, joinUrl, parseJsonBody, probeReachability, remoteFailure } from './shared.mjs';
 
 /**
@@ -66,7 +67,7 @@ export async function generate({ section, limits, key, net, prompt, negative = '
         accept: 'application/json',
       };
 
-  const response = await net.request(request.url, {
+  const response = await withNaiQueue({ section, key, net, signal }, () => net.request(request.url, {
     method: 'POST',
     headers: { 'content-type': 'application/json', accept: request.accept, ...authHeaders(key) },
     body: JSON.stringify(request.body),
@@ -74,7 +75,7 @@ export async function generate({ section, limits, key, net, prompt, negative = '
     maxBytes: limits.maxResponseBytes,
     provider: record.label,
     signal,
-  });
+  }));
   if (!response.ok) throw remoteFailure(response, { provider: record.label, what: 'NovelAI 生成失败' });
 
   const bytes = extractImage(response, { provider: record.label });
