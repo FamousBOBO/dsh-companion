@@ -86,7 +86,7 @@
 | `companion-memory-studio` | **115 通过 / 0 失败** | **✅ 已装载**（C 段：UI 返回 HTTP 200 / 38252 字节） | 未验证 | — | — |
 | `companion-runtime` | **697 通过 / 0 失败** | **✅ 已装载**（C 段） | 未验证 | — | — |
 | `companion-group` | **10 通过 / 0 失败** | **✅ 已装载**（C 段） | — | 未验证 | — |
-| `dsh-channel-qq` | **1208 项 / 1207 通过 / 0 失败 / 1 跳过** | **✅ 2026-11-07**（生产宿主上真实装载并连上 OneBot/NapCat：`data/home/channel-qq/connection-status.json` → `connected:true`；私聊与群会话都在跑） | 未验证 | **✅ 2026-11-07（1 条）** | — |
+| `dsh-channel-qq` | **1266 项 / 1264 通过 / 1 失败 / 1 跳过**（2026-11-07 实测，`npm test`；唯一失败项是 `qq-idle-compaction` 的「默认关」用例，它读的是**本机** `config/suite.json`——本机确实把它打开了，`QQ_IDLE_COMPACTION=0` 时可复现通过，属环境相关而非缺陷） | **✅ 2026-11-07**（生产宿主上真实装载并连上 OneBot/NapCat：`data/home/channel-qq/connection-status.json` → `connected:true`；私聊与群会话都在跑） | 未验证 | **✅ 2026-11-07（1 条）** | — |
 | `companion-expression` | **206 通过 / 0 失败**（`test/*.test.mjs`，含 zip 21 / pack 22 / pack-import 9 / calibration 9 / ingest 15） | **✅ 已装载**（§2.6；主人私聊与群预设都装了它） | — | **✅ 2026-11-07（1 条，经 `qq_sticker` 实发）** | — |
 | `companion-media` | 通过（计数未单独汇总，B 段 `unit` 全绿） | 未验证（验收未启用该模块） | **✅ 2026-11-06**（生图真实出图，见 §2.5） | 未验证（投递仍由通道负责） | — |
 | `companion-health` | 通过（计数未单独汇总，B 段 `unit` 全绿） | 未验证（验收未启用该模块） | 未验证 | — | 未验证 |
