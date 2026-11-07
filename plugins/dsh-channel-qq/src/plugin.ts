@@ -95,10 +95,13 @@ export class ChannelQQ extends Service {
     this.serviceBridge = await loadCompanionBridge(resolveDshHome(), this.log)
     // 日志封顶：启动时各裁一次（见 adapters/log/logger.ts），失败不影响启动。
     await this.logSink.start()
-    // P1-05：文件出站边界（不依赖任何开关）。允许两个根：工作区 + 插件自己的数据目录
-    // （表情库/表情包/点歌临时文件在后者里）。工作区没配时只留数据目录——宁可窄，不可宽。
+    // P1-05：文件出站边界（不依赖任何开关）。允许三个根：工作区 + 插件自己的数据目录
+    // （表情库/表情包/点歌临时文件在后者里）+ 套件的媒体目录（`<dshHome>/media/…`，media 与
+    // expression 的产物都落在这里，且那个位置是群聊侧「只许从 home/media 发图」定的，不能挪）。
+    // 少这个根，模型拿着正确绝对路径也会被「不在允许的目录里」拒掉（2026-11-07 实测）。
+    // 它仍然是一个**目录**边界，不是关掉校验：三个根之外照样拒。
     configureFileBoundary({
-      roots: [config.workspacePath, path.join(resolveDshHome(), 'channel-qq')]
+      roots: [config.workspacePath, path.join(resolveDshHome(), 'channel-qq'), path.join(resolveDshHome(), 'media')]
         .filter((item): item is string => typeof item === 'string' && item !== ''),
     })
     // P2.5-3A-4 补水：找 runtime/foundation 的 agenda 服务。找不到就**诚实降级**（提醒照建、

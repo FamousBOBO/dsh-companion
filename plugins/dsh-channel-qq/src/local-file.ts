@@ -114,7 +114,7 @@ export interface FileBoundary {
 
 let boundary: FileBoundary | null = null
 
-/** 装配侧配置边界（插件 apply 时按"工作区 + 插件数据目录"设置）；`null` = 关掉校验。 */
+/** 装配侧配置边界（插件 apply 时按"工作区 + 插件数据目录 + 套件媒体目录"设置）；`null` = 关掉校验。 */
 export function configureFileBoundary(next: FileBoundary | null): void {
   boundary = next
 }
