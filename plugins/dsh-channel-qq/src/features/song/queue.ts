@@ -10,7 +10,7 @@
  *
  * 四条边界，每条都有对应的验收：
  *
- *   1. **入队只判"队列满/去重"，不判授权**。授权在发送之前现取（见 `pipeline.ts`）。
+ *   1. **入队只判"队列满/去重/每人每日额度"，不判授权**。授权在发送之前现取（见 `pipeline.ts`）。
  *   2. **失败不阻塞后续**。每条任务包在自己的 `catch` 里，一个漏掉的异常不该让队列停摆。
  *   3. **阶段推进立刻写账本**。重启之后账本里能看到"上次卡在哪一步"——这是排查
  *      "为什么没收到语音条"的唯一线索。
@@ -23,9 +23,10 @@ import { randomBytes } from 'node:crypto'
 import type { Clock } from '../../ports/clock.js'
 import type { SongConfig } from '../../config/sections/song.js'
 import {
-  autoUsedToday, countsAsSent, isTerminal, loadLedger, mergeLedger, saveLedger,
+  autoUsedToday, countsAsSent, isTerminal, loadLedger, mergeLedger, queuedRowOf, saveLedger,
   type SongLedgerData, type SongLedgerRow,
 } from './ledger.js'
+import { userQuotaRefusal } from './quota.js'
 import { runTask, type PipelineDeps } from './pipeline.js'
 import type { SongEnqueueResult, SongRequest, SongStage, SongTaskStatus } from './types.js'
 
@@ -58,6 +59,13 @@ export interface SongQueueDeps extends PipelineDeps {
    * 实现必须**不抛**（队列会兜住，但兜住不等于可以抛——一次通知失败不该让下一条任务不跑）。
    */
   readonly onFinish?: (event: SongFinished) => Promise<void> | void
+  /**
+   * 主人与管理员名单（`config.admins`，第一个是主人）。给"每人每天几首"判豁免用。
+   *
+   * 做成注入而不是在队列里读配置：**§song 段里没有 admins**（它是顶层配置），
+   * 只有装配侧拿得到。缺省 = 空数组，于是没接线时**所有人**都受额度限制。
+   */
+  readonly ownerIds?: () => readonly number[]
 }
 
 /** 一条任务结束的现场（通知用；不含路径与凭据）。 */
@@ -186,6 +194,14 @@ export class SongQueue implements SongService {
     }
     const dupe = this.alreadyHandled(request)
     if (dupe !== null) return dupe
+    // 每人每日额度：放在去重之后、队列上限之前——重放该听到"已经处理过"，额度满的人该
+    // 听到"今天点过了"而不是"再等等"。判定与下面的账本写入之间没有 await，并发的两条不会都过。
+    const quota = userQuotaRefusal({ ledger: this.data(), request, cap: config.dailyUserCap,
+      admins: this.deps.ownerIds?.() ?? [] })
+    if (quota !== null) {
+      this.log(`song: 每人每日额度已满，拒绝 ${request.song}（${String(request.requesterId)}：${quota}）`)
+      return { accepted: false, taskId: null, note: quota }
+    }
     if (this.depth >= config.maxQueue) {
       this.log(`song: 队列已满（${String(this.depth)}/${String(config.maxQueue)}），拒绝 ${request.song}`)
       return {
@@ -198,22 +214,7 @@ export class SongQueue implements SongService {
     const id = this.data().tasks.some((task) => task.id === request.id)
       ? `${request.id}-${collisionTail()}`
       : request.id
-    const row: SongLedgerRow = {
-      id,
-      entry: request.entry,
-      room: request.room,
-      song: request.song,
-      artist: request.artist,
-      stage: 'queued',
-      bvid: request.bvid,
-      chorusStart: request.chorusAt,
-      seconds: null,
-      keyUp: request.keyUp,
-      detail: null,
-      createdAt: this.clock.now(),
-      updatedAt: this.clock.now(),
-      messageId: null,
-    }
+    const row = queuedRowOf(request, id, this.clock.now())
     const task: QueuedTask = { request: { ...request, id }, row, controller: new AbortController() }
     this.pending.push(task)
     await this.write({ upsert: [row] })

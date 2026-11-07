@@ -9,11 +9,12 @@
  * 一句没送出去的说明留在日志里就够了。多一次重试只会在 NapCat 不稳的时候
  * 往私聊里灌重复的句子。
  *
- * 与 `voice.ts` 共用同一条发送路径（`out.push` + `send_private_msg` + 速率限制），
- * 所以两者不会绕过同一套限速。
+ * 与 `voice.ts` 共用同一条发送路径（`out.push` + `send_private_msg` / `send_group_msg` +
+ * 速率限制，按 `room` 选哪一个），所以两者不会绕过同一套限速。
  */
 
 import type { OutboundQueue } from '../../outbound.js'
+import { splitRoom } from '../../core/room.js'
 import type { QQApi } from '../../ports/platform.js'
 import type { OneBotMessageSegment } from '../../types.js'
 import type { NoticePort } from '../../features/song/types.js'
@@ -32,8 +33,14 @@ export function createNoticePort(options: NoticePortOptions): NoticePort {
       const body = text.trim()
       if (body === '') return { ok: false, detail: '没有内容可发' }
       const message: OneBotMessageSegment[] = [{ type: 'text', data: { text: body } }]
+      // 与语音条同一条判据：发回**点歌的那个房间**。群里点歌的失败说明要是发到私聊，
+      // 群友永远看不到"为什么没做成"，而那句说明正是这次操作唯一的回执。
+      const split = splitRoom(room)
+      const chatIdOf = split?.chatId ?? chatId
       try {
-        await out.push(() => api.sendPrivateMessage(chatId, message))
+        await out.push(() => split?.isGroup === true
+          ? api.sendGroupMessage(chatIdOf, message)
+          : api.sendPrivateMessage(chatIdOf, message))
         log(`song-notice: ${room} 已发送说明（${String(body.length)} 字）`)
         return { ok: true, detail: '' }
       } catch (error) {

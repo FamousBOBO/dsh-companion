@@ -26,6 +26,13 @@ export interface SongConfig {
   readonly enabled: boolean
   /** 主动联系里"自主选一首歌发过去"；关着只走私聊点歌。 */
   readonly autoPick: boolean
+  /**
+   * 群聊里是否允许点歌（默认关）。
+   *
+   * 为什么默认关：一条语音条会进整个群，而且群里任何人都能触发——这与"私聊里点一首"
+   * 是两种社交后果。打开等于操作员认下"群里可以被点歌"这件事。
+   */
+  readonly groupEnabled: boolean
   /** 演练：全流程照跑（含真实下载与推理），只是不真发语音条。 */
   readonly dryRun: boolean
   /** 第二道闸；与 `dryRun` 是与关系，两者都放开才可能真发。 */
@@ -76,6 +83,13 @@ export interface SongConfig {
   readonly maxQueue: number
   /** 自主选歌每天最多发几首（按 `Asia/Shanghai` 的日）；**0 = 不限额**。 */
   readonly dailyAutoCap: number
+  /**
+   * 每人每天最多点几首（按 `Asia/Shanghai` 的日）；**0 = 不限额**，主人与管理员不受此限。
+   *
+   * 与 `dailyAutoCap` 是两条账：这一条管"人点的"（私聊与群聊都算），那一条管"机器人
+   * 自己想发的"。混在一起会让"机器人昨天自己唱了一首"变成"主人今天少点一次"。
+   */
+  readonly dailyUserCap: number
   /** 自主选歌的曲目（每条 `歌名` 或 `歌名 歌手`）；空 = 自主选歌什么都不做。 */
   readonly autoSongs: readonly string[]
 }
@@ -93,6 +107,7 @@ export interface SongConfig {
 export const SONG_DEFAULTS: SongConfig = {
   enabled: false,
   autoPick: false,
+  groupEnabled: false,
   dryRun: true,
   allowExternalSend: false,
   seconds: 59,
@@ -113,6 +128,7 @@ export const SONG_DEFAULTS: SongConfig = {
   sendTimeoutMs: 30_000,
   maxQueue: 8,
   dailyAutoCap: 1,
+  dailyUserCap: 2,
   autoSongs: [],
 }
 
@@ -139,6 +155,12 @@ export const SONG_GROUPS: FieldGroup[] = [
         help: '打开后，主动联系被允许时会自己挑一首歌做成语音条发给主人（每天最多 '
           + `${String(SONG_DEFAULTS.dailyAutoCap)} 首，按配置时区的自然日算）。`
           + '它同样要过主动联系的免打扰、额度、授权三道闸，任何一道不过就跳过这一轮。',
+      }),
+      groupEnabled: b('群聊里允许点歌', SONG_DEFAULTS.groupEnabled, {
+        hot: 'live',
+        help: '群聊里是否允许点歌，默认关。打开后群友也能点，语音条与失败说明都发在**那个群**里；'
+          + '每人每天的首数由下面的「每人每日上限」管（主人与管理员不受限）。'
+          + '关着时群里点歌会被明确拒绝并说明是哪个开关没开。',
       }),
       dryRun: b('演练模式', SONG_DEFAULTS.dryRun, {
         hot: 'live',
@@ -245,6 +267,14 @@ export const SONG_GROUPS: FieldGroup[] = [
           + '默认空：不填写时机器人不会自己找歌——它凭什么替你决定想听什么。'
           + '填了之后按「每日上限」发（默认每天 1 首，上限填 0 则不限额），'
           + '并且照旧要过免打扰/额度/授权三道闸。',
+      }),
+      dailyUserCap: n('每人每日上限（首，0 = 不限）', SONG_DEFAULTS.dailyUserCap, {
+        hot: 'live', min: 0, max: 20, step: 1, unit: '首',
+        help: '每人每天最多点几首；主人不受此限；0 = 不限额。默认 2。'
+          + '按 `Asia/Shanghai` 的自然日算，私聊与群聊的点歌算同一份额度。'
+          + '已经发出去的与还在排队/在做的都占额度（否则同一个人的两条并发请求会双双通过）；'
+          + '失败、取消、演练过的**不占**，用户可以重新点。'
+          + '自主选歌另有一条账（「自主选歌每日上限」），两者不混。',
       }),
     },
   },

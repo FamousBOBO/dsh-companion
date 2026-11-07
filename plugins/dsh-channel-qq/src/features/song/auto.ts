@@ -163,6 +163,7 @@ async function submitAuto(
     const result = await facts.runtime.queue.enqueue({
       id: `auto-${facts.day}-${String(facts.ownerId)}${pick.used === 0 ? '' : `-${String(pick.used + 1)}`}`,
       entry: 'auto',
+      requesterId: null,
       room: pick.room,
       chatId: facts.ownerId,
       dedupeKey,

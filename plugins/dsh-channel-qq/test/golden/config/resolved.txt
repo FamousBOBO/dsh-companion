@@ -665,6 +665,7 @@
   "song": {
     "enabled": false,
     "autoPick": false,
+    "groupEnabled": false,
     "dryRun": true,
     "allowExternalSend": false,
     "seconds": 59,
@@ -685,7 +686,8 @@
     "sendTimeoutMs": 30000,
     "maxQueue": 8,
     "dailyAutoCap": 1,
-    "autoSongs": []
+    "autoSongs": [],
+    "dailyUserCap": 2
   },
   "presence": {
     "enabled": false,

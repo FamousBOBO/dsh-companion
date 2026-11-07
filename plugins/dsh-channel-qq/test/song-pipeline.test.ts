@@ -51,6 +51,7 @@ function request(overrides: Partial<SongRequest> = {}): SongRequest {
   return {
     id: taskIdOf('msg:42'),
     entry: 'dm',
+    requesterId: 1429709395,
     room: 'dm-1429709395',
     chatId: 1429709395,
     dedupeKey: 'msg:42',
@@ -161,12 +162,12 @@ function fakes(options: FakeOptions = {}): Fakes {
 /** 一份可调的配置（默认是"开着、允许外发、上限 59 秒、每日 1 首"）。 */
 function configOf(overrides: Partial<SongConfig> = {}): () => SongConfig {
   const base: SongConfig = {
-    enabled: true, autoPick: true, dryRun: false, allowExternalSend: true,
+    enabled: true, autoPick: true, groupEnabled: true, dryRun: false, allowExternalSend: true,
     seconds: 59, minConfidence: 0.55, preferFemale: true, maleKeyUp: 12, prefixSeconds: 12,
     pythonPath: '', rvcRoot: '', makeCover: '', chorusPython: '',
     biliCredentialFile: '', workRoot: '', ffmpegPath: 'ffmpeg',
     downloadTimeoutMs: 60_000, chorusTimeoutMs: 30_000, coverTimeoutMs: 240_000,
-    sendTimeoutMs: 30_000, maxQueue: 2, dailyAutoCap: 1, autoSongs: ['晴天 周杰伦'],
+    sendTimeoutMs: 30_000, maxQueue: 2, dailyAutoCap: 1, dailyUserCap: 0, autoSongs: ['晴天 周杰伦'],
     ...overrides,
   }
   return () => base

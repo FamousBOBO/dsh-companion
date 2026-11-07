@@ -17,6 +17,7 @@ import type { SongService } from './queue.js'
 import { stageText, taskIdOf } from './queue.js'
 import { describeCandidate, lookupSong, pickFemaleCover } from './select.js'
 import { femaleCoverQuery, keyUpFor, singerGender, type SingerGender } from './gender.js'
+import { requesterOf } from './quota.js'
 import type { BiliPort, SongCandidate, SongEntry } from './types.js'
 import type { SongConfig } from '../../config/sections/song.js'
 import type { ToolSpec } from '../../adapters/dsh-host/tools.js'
@@ -58,16 +59,15 @@ function textArg(value: unknown): string {
 }
 
 /**
- * 工具调用发生在哪个**私聊**房间里。
+ * 工具调用发生在哪个**QQ 房间**里：`agentId` 形如 `qq-dm-<号>` 或 `qq-group-<号>`，两种都返回房间键。
  *
- * 点歌只在私聊里成立：群聊点歌会把语音条发到群里、排两分钟队、还会被群友反复触发。
- * 所以对群聊/非 QQ 会话一律拒绝并说明原因——比"群里也能点但很吵"更好。
+ * **能不能点**不在这里判：群聊开没开是配置（`groupEnabled`）的事，由 `refuseReason` 说清；
+ * 在这里否决只会让用户听到一句没头没尾的"房间不可用"。拆不出房间键（非 QQ 会话）才返回 `null`。
  */
-export function dmRoomOfContext(agentId: string | undefined): string | null {
+export function roomOfContext(agentId: string | undefined): string | null {
   if (agentId === undefined || !agentId.startsWith('qq-')) return null
   const room = agentId.slice('qq-'.length)
-  const split = splitRoom(room)
-  return split === null || split.isGroup ? null : room
+  return splitRoom(room) === null ? null : room
 }
 
 /** 一次选歌的结果：`chosen === null` 表示要用户自己挑。 */
@@ -83,8 +83,7 @@ export interface Selection {
  * 选源：有 BV 就直接确认它；否则搜 + 打分 + 判定"够不够确定"。失败抛（工具那边兜）。
  *
  * **女声优先**（`preferFemale`）走的是一条两段式搜索，顺序刻意写死：
- *   1. 先按用户给的（`歌名 歌手`）搜一次——**这是最准的一次**，别一上来就加"女声翻唱"，
- *      那会把原唱挤出前几名；
+ *   1. 先按用户给的（`歌名 歌手`）搜一次——**这是最准的一次**，别一上来就加"女声翻唱"，那会把原唱挤出前几名；
  *   2. 若选出来的那条是**男声**，再搜一次 `歌名 女声 翻唱`：找到就用它（女声源等价于
  *      "不用升调"）；找不到就退回原曲，由上层按 `maleKeyUp` 升八度。
  *
@@ -175,7 +174,8 @@ function qqSongCover(deps: SongToolDeps): ToolSpec {
   return {
     name: 'qq_song_cover',
     description: '点歌：去B站找原唱，下载音轨，找出副歌，用机器人的音色翻唱，然后把副歌那一段'
-      + '发成语音条。**只在私聊里可用**。这一步只受理（会立刻回答），做好之后才发语音条；'
+      + '发成语音条。私聊里人人可用；群聊里要先在后台打开「群聊点歌」，而且每人每天有额度。'
+      + '这一步只受理（会立刻回答），做好之后才发语音条；'
       + '同名歌分不出来时会把候选列出来让主人挑。',
     parameters: {
       type: 'object',
@@ -191,6 +191,10 @@ function qqSongCover(deps: SongToolDeps): ToolSpec {
           type: 'string',
           description: '触发这次点歌的那条入站消息 id（用于去重；拿不到就不填）',
         },
+        requesterId: {
+          type: 'number',
+          description: '点歌人的 QQ 号；群聊里必填（从消息发送者读出），私聊可省',
+        },
       },
       required: ['song'],
     },
@@ -201,10 +205,10 @@ function qqSongCover(deps: SongToolDeps): ToolSpec {
       const bvid = textArg(args.bvid)
       if (song === '' && bvid === '') throw new Error('点歌需要歌名或 BV 号')
 
-      const refusal = refuseReason(config.enabled, context?.agentId)
+      const refusal = refuseReason(config, context?.agentId)
       if (refusal !== null) return { accepted: false, note: refusal }
-      const room = dmRoomOfContext(context?.agentId)
-      if (room === null) return { accepted: false, note: '点歌只在私聊里可用' }
+      const room = roomOfContext(context?.agentId)
+      if (room === null) return { accepted: false, note: '这里不能点歌：只支持 QQ 私聊与群聊' }
 
       const found = await pickCandidate(deps, song, artist, bvid)
       if (found.kind === 'error') return { accepted: false, note: found.note }
@@ -223,10 +227,18 @@ function qqSongCover(deps: SongToolDeps): ToolSpec {
 }
 
 /** 能不能做这一步（返回拒收原因；能就 `null`）。 */
-export function refuseReason(enabled: boolean, agentId: string | undefined): string | null {
-  if (!enabled) return '点歌翻唱没有启用（后台「音乐」页打开「启用点歌翻唱」就能用了）'
-  if (dmRoomOfContext(agentId) === null) {
-    return '点歌只在私聊里可用：群里点歌会把语音条发到群里，也太吵了'
+export function refuseReason(
+  config: { readonly enabled: boolean; readonly groupEnabled: boolean },
+  agentId: string | undefined,
+): string | null {
+  if (!config.enabled) return '点歌翻唱没有启用（后台「音乐」页打开「启用点歌翻唱」就能用了）'
+  const room = roomOfContext(agentId)
+  if (room === null) return '这里不能点歌：只支持 QQ 私聊与群聊'
+  const split = splitRoom(room)
+  // 群聊默认关着：一条语音条会进整个群，而且群里任何人都能触发。这是操作员的决定，
+  // 所以拒绝时要说清是哪个开关，而不是笼统地说"这里不行"。
+  if (split !== null && split.isGroup && !config.groupEnabled) {
+    return '群聊点歌没打开（后台「音乐」页的「群聊里允许点歌」），现在只有在私聊里能点'
   }
   return null
 }
@@ -262,7 +274,7 @@ async function pickCandidate(
   return { kind: 'choose', candidates: selection.shortlist }
 }
 
-/** 入队并回答（受理 / 去重 / 队列满都由队列判定）。 */
+/** 入队并回答（受理 / 去重 / 队列满 / 每人每日额度都由队列判定）。 */
 async function submit(
   deps: SongToolDeps,
   facts: { room: string; song: string; artist: string; config: SongConfig },
@@ -272,15 +284,22 @@ async function submit(
   const chosen = picked.chosen
   const split = splitRoom(facts.room)
   if (split === null) return { accepted: false, note: `房间键不可用：${facts.room}` }
+  // 群里缺这个号就没法按人算额度；宁可拒一次并说清要什么，也不要默默变成"不限额"。
+  const requesterId = requesterOf(split, args.requesterId)
+  if (requesterId === null) {
+    const note = '群里点歌要说明是谁点的（把这条消息发送者的 QQ 号给 requesterId），否则算不了每人每天几首'
+    return { accepted: false, note }
+  }
+  const entry: SongEntry = split.isGroup ? 'group' : 'dm'
   const inbound = textArg(args.messageId)
-  // 去重键：入站消息 id 优先（同一条消息被重放时得到同一个任务 id）。
-  // 没有 message_id 时才退回"房间+歌名+毫秒"，那时确实无法判定是不是同一次。
-  const dedupeKey = inbound === '' ? `dm:${facts.room}:${facts.song}:${String(deps.clock.now())}` : `msg:${inbound}`
+  // 去重键：入站消息 id 优先（同一条消息被重放时得到同一个任务 id）；没有 message_id 时才退回"入口+房间+歌名+毫秒"。
+  const dedupeKey = inbound === '' ? `${entry}:${facts.room}:${facts.song}:${String(deps.clock.now())}` : `msg:${inbound}`
   // 男声源升八度（`preferFemale` 关掉时也不升——那是操作员选的"别动我的音高"）。
   const keyUp = facts.config.preferFemale ? keyUpFor(picked.gender, facts.config.maleKeyUp) : 0
   const result = await deps.queue.enqueue({
     id: taskIdOf(dedupeKey),
-    entry: 'dm' as SongEntry,
+    entry,
+    requesterId,
     room: facts.room,
     chatId: split.chatId,
     dedupeKey,
@@ -325,6 +344,8 @@ function qqSongStatus(deps: SongToolDeps): ToolSpec {
         tasks: rows.map((row) => ({
           taskId: row.id,
           entry: row.entry,
+          // 谁点的：诊断"这条是群友点的还是主人点的"靠它（模型读到的号，未必可信）。
+          requesterId: row.requesterId,
           song: row.song,
           artist: row.artist,
           stage: row.stage,

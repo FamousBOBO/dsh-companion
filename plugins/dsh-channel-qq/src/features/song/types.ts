@@ -35,17 +35,31 @@ export type SongStage =
   | 'unknown-send'
   | 'cancelled'
 
-/** 入口：私聊点歌（模型调用）或主动联系自主选歌。 */
-export type SongEntry = 'dm' | 'auto'
+/**
+ * 入口：私聊点歌 / 群聊点歌（都是模型调用）或主动联系自主选歌。
+ *
+ * `dm` 与 `group` 只差"语音条发到哪个房间"，**判据完全同义**：都是对用户刚说出口的
+ * 请求的回应。所以发送闸门把两者当同一档（见 `index.ts::buildGate`），而"每人每天几首"
+ * 的额度只认 `requesterId`，不看房间。
+ */
+export type SongEntry = 'dm' | 'group' | 'auto'
 
 /** 一次点歌请求（进队列时的快照）。 */
 export interface SongRequest {
   /** 稳定任务 id：`s-<毫秒>-<随机>`；目录名、日志、回执都用它。 */
   readonly id: string
   readonly entry: SongEntry
-  /** 房间键：`dm-<QQ号>`（与 contact / sent-log 同一套拼法）。 */
+  /**
+   * 点歌人 QQ 号（群聊必填；私聊缺省时取房间键里那个号；`auto` 入口为 `null`）。
+   *
+   * 它的**可信度有限**：群聊里这个号是模型从渲染文本的行标 `(QQ号)` 读出来的，
+   * 不是宿主侧强事实（同一条消息里引用别人的话就能把它写错）。因此它只用于"每人每天
+   * 几首"这种**成本**判定，绝不参与授权/身份判定——身份只认 `core/trust.ts`。
+   */
+  readonly requesterId: number | null
+  /** 房间键：`dm-<QQ号>` 或 `group-<群号>`（与 contact / sent-log 同一套拼法）。 */
   readonly room: string
-  /** 接收方 QQ 号（群号不适用于点歌：只发私聊）。 */
+  /** 接收方号码：私聊是 QQ 号，群聊是群号（由 `splitRoom(room)` 得出）。 */
   readonly chatId: number
   /** 去重键：私聊入口用入站 `message_id`，自主入口用 `auto:<日期>:<房间>`。 */
   readonly dedupeKey: string
@@ -232,6 +246,8 @@ export interface SongTaskStatus {
   readonly id: string
   readonly entry: SongEntry
   readonly room: string
+  /** 点歌人 QQ 号（诊断用：这是谁点的）；`auto` 与拿不到时是 `null`。 */
+  readonly requesterId: number | null
   readonly song: string
   readonly artist: string
   readonly stage: SongStage
@@ -276,8 +292,9 @@ export interface SendGatePort {
    * 现在能不能往这个房间发一条语音条。
    *
    * `entry` 决定问哪一套判据——这是**故意分开**的：
-   *   - `dm`：用户刚刚点了这首歌，所以免打扰/额度不该拦它（回话不是插话）。
+   *   - `dm` / `group`：用户刚刚点了这首歌，所以免打扰/额度不该拦它（回话不是插话）。
    *     但仍要过「演练模式 / 允许真实外发」这两道配置闸与房间绑定校验。
+   *     群聊与私聊在这一道闸上**同义**：差别只在语音条发到哪个房间（`voice.ts` 按 `room` 选）。
    *   - `auto`：机器人自己想发，必须**再问一次**主动消息那套门控（免打扰、额度、
    *     冷却、授权、会话绑定）。一句话：用户点的要发，自己想发的要问。
    */

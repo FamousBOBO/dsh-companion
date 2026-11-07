@@ -14,11 +14,12 @@
  *
  * 实现上刻意**不复用** `qq_send_voice` 工具函数：那个工具是模型面的（参数是
  * `Record<string, unknown>`、返回值是裸 `SendResult`），这里需要的是端口。
- * 两者走同一条路径——`napcatFileArg` + `out.push` + `send_private_msg`——
- * 所以行为一致，但这里多了一层超时与回执分类。
+ * 两者走同一条路径——`napcatFileArg` + `out.push` + `send_private_msg` / `send_group_msg`
+ * （按 `room` 选哪一个）——所以行为一致，但这里多了一层超时与回执分类。
  */
 
 import { napcatFileArg } from '../../local-file.js'
+import { splitRoom } from '../../core/room.js'
 import type { OutboundQueue } from '../../outbound.js'
 import type { QQApi, SendResult } from '../../ports/platform.js'
 import type { OneBotMessageSegment } from '../../types.js'
@@ -82,6 +83,62 @@ function reasonOf(error: unknown): string {
   return String(error)
 }
 
+/** 一次发送需要的东西：三个端口 + 目标房间 + 已经拼好的消息 + 等待上限。 */
+interface SendAttempt {
+  readonly api: QQApi
+  readonly out: OutboundQueue
+  readonly log: (line: string) => void
+  readonly room: string
+  readonly chatId: number
+  readonly toGroup: boolean
+  readonly message: OneBotMessageSegment[]
+  readonly timeoutMs: number
+}
+
+/**
+ * 发一次，并把结果分成三态。**恰好一次 `out.push`**：失败也不重排——重排就是重复语音条。
+ *
+ * 单独成函数只因为 `createVoicePort` 要压在函数行数上限之内；判据仍与文件头一致。
+ */
+async function sendOnce(attempt: SendAttempt): Promise<VoiceSendResult> {
+  const { api, out, log, room, chatId, toGroup, message, timeoutMs } = attempt
+  try {
+    const pending = out.push(() => toGroup
+      ? api.sendGroupMessage(chatId, message)
+      : api.sendPrivateMessage(chatId, message))
+    const outcome = await raceOutcome<SendResult>(pending, timeoutMs)
+
+    if (outcome.kind === 'timeout') {
+      // 回执未知：不重试、不再 push。上层据此记 `unknown-send` 并停手。
+      const detail = `回执未知：超过 ${String(timeoutMs)}ms 没收到发送结果`
+      log(`song-voice: ${room} unknown（${detail}）`)
+      return { ok: false, messageId: null, unknown: true, detail }
+    }
+    if (outcome.kind === 'error') {
+      // 平台明确报错（`retcode != 0`、连接被拒、参数被拒）。这是**确定**的失败，
+      // 消息没出去，也不重试：上层会按策略决定要不要给用户说一声。
+      const detail = `发送失败：${reasonOf(outcome.error)}`
+      log(`song-voice: ${room} failed（${detail}）`)
+      return { ok: false, messageId: null, unknown: false, detail }
+    }
+    const messageId = outcome.value.message_id
+    if (typeof messageId !== 'number') {
+      // 平台说"成功"却没给 id：同样按回执未知处理。宁可少一条记录，
+      // 也不能因为"没 id 就当失败"再发一次。
+      const detail = '回执未知：平台没有返回 message_id'
+      log(`song-voice: ${room} unknown（${detail}）`)
+      return { ok: false, messageId: null, unknown: true, detail }
+    }
+    log(`song-voice: ${room} 已发送（message_id=${String(messageId)}）`)
+    return { ok: true, messageId, unknown: false, detail: '' }
+  } catch (error) {
+    // 走到这里是 `out.push` 自己**同步**抛错（队列已坏）。同样是确定失败。
+    const detail = `发送失败：${reasonOf(error)}`
+    log(`song-voice: ${room} failed（${detail}）`)
+    return { ok: false, messageId: null, unknown: false, detail }
+  }
+}
+
 export function createVoicePort(options: VoicePortOptions): VoicePort {
   const { api, out, log } = options
   const timeoutMs = options.timeoutMs ?? DEFAULT_TIMEOUT_MS
@@ -102,40 +159,17 @@ export function createVoicePort(options: VoicePortOptions): VoicePort {
 
       const message: OneBotMessageSegment[] = [{ type: 'record', data: { file: arg } }]
 
-      // 第二步：**恰好一次** `out.push`。失败也不重排——重排就是重复语音条。
-      try {
-        const pending = out.push(() => api.sendPrivateMessage(chatId, message))
-        const outcome = await raceOutcome<SendResult>(pending, timeoutMs)
-
-        if (outcome.kind === 'timeout') {
-          // 回执未知：不重试、不再 push。上层据此记 `unknown-send` 并停手。
-          const detail = `回执未知：超过 ${String(timeoutMs)}ms 没收到发送结果`
-          log(`song-voice: ${room} unknown（${detail}）`)
-          return { ok: false, messageId: null, unknown: true, detail }
-        }
-        if (outcome.kind === 'error') {
-          // 平台明确报错（`retcode != 0`、连接被拒、参数被拒）。这是**确定**的失败，
-          // 消息没出去，也不重试：上层会按策略决定要不要给用户说一声。
-          const detail = `发送失败：${reasonOf(outcome.error)}`
-          log(`song-voice: ${room} failed（${detail}）`)
-          return { ok: false, messageId: null, unknown: false, detail }
-        }
-        const messageId = outcome.value.message_id
-        if (typeof messageId !== 'number') {
-          // 平台说"成功"却没给 id：同样按回执未知处理。宁可少一条记录，
-          // 也不能因为"没 id 就当失败"再发一次。
-          const detail = '回执未知：平台没有返回 message_id'
-          log(`song-voice: ${room} unknown（${detail}）`)
-          return { ok: false, messageId: null, unknown: true, detail }
-        }
-        log(`song-voice: ${room} 已发送（message_id=${String(messageId)}）`)
-        return { ok: true, messageId, unknown: false, detail: '' }
-      } catch (error) {
-        // 走到这里是 `out.push` 自己**同步**抛错（队列已坏）。同样是确定失败。
-        const detail = `发送失败：${reasonOf(error)}`
-        log(`song-voice: ${room} failed（${detail}）`)
-        return { ok: false, messageId: null, unknown: false, detail }
-      }
+      // 发到哪个房间由 `room` 决定，不由调用方另开一个参数决定：房间键是这条链路上
+      // 唯一"这条语音条属于谁"的事实（`dm-<号>` / `group-<群号>`）。拆不出来时按私聊发、
+      // 用调用方给的 `chatId`，并且**不崩**——看不懂的房间键不该让语音条连发都发不出去。
+      const split = splitRoom(room)
+      return await sendOnce({
+        api, out, log, room,
+        chatId: split?.chatId ?? chatId,
+        toGroup: split?.isGroup === true,
+        message,
+        timeoutMs,
+      })
     },
   }
 }

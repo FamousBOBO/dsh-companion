@@ -21,7 +21,7 @@ import { promises as fs } from 'node:fs'
 import * as path from 'node:path'
 import { atomicWriteJson } from '../../adapters/fs-store/atomic.js'
 import type { Clock } from '../../ports/clock.js'
-import type { SongEntry, SongStage, SongTaskStatus } from './types.js'
+import type { SongEntry, SongRequest, SongStage, SongTaskStatus } from './types.js'
 
 /** 账本里一条记录。与 `SongTaskStatus` 同形（对外就暴露它）。 */
 export type SongLedgerRow = SongTaskStatus
@@ -100,7 +100,9 @@ function toRow(value: unknown): SongLedgerRow | null {
     'dry-run', 'failed', 'unknown-send', 'cancelled',
   ]
   if (!stages.includes(stage)) return null
-  const entry = row['entry'] === 'auto' ? 'auto' : 'dm'
+  // `group` 必须原样读回来：它决定重启后"每人今日额度"还认不认这一行（`auto` 不算额度，
+  // 而 `group` 与 `dm` 一样算）。读成 `dm` 虽然不改变计数，但台账上会张冠李戴。
+  const entry = row['entry'] === 'auto' ? 'auto' : row['entry'] === 'group' ? 'group' : 'dm'
   const num = (key: string): number | null => {
     const raw = row[key]
     return typeof raw === 'number' && Number.isFinite(raw) ? raw : null
@@ -109,6 +111,8 @@ function toRow(value: unknown): SongLedgerRow | null {
     id,
     entry: entry as SongEntry,
     room: typeof row['room'] === 'string' ? row['room'] : '',
+    // 类型不对就是 `null`：宁可少算一个人的额度，也不要把 `"555"` 这种字符串当成数字身份。
+    requesterId: num('requesterId'),
     song: typeof row['song'] === 'string' ? row['song'] : '',
     artist: typeof row['artist'] === 'string' ? row['artist'] : '',
     stage: stage as SongStage,
@@ -190,4 +194,31 @@ export function rowOf(
   clock: Clock,
 ): SongLedgerRow {
   return { ...base, ...patch, updatedAt: clock.now() }
+}
+
+/**
+ * 一条新任务的初始账本行（`queued`）。
+ *
+ * 为什么放在账本这一侧：它是"请求快照 → 账本行"的唯一映射，字段一多（`requesterId`
+ * 就是新加的那个）就非常容易漏抄一列；漏了的结果是**额度静默失效**，而那正是新加
+ * 这个字段要防的事。队列只在入队时调它一次。
+ */
+export function queuedRowOf(request: SongRequest, id: string, now: number): SongLedgerRow {
+  return {
+    id,
+    entry: request.entry,
+    room: request.room,
+    requesterId: request.requesterId,
+    song: request.song,
+    artist: request.artist,
+    stage: 'queued',
+    bvid: request.bvid,
+    chorusStart: request.chorusAt,
+    seconds: null,
+    keyUp: request.keyUp,
+    detail: null,
+    createdAt: now,
+    updatedAt: now,
+    messageId: null,
+  }
 }

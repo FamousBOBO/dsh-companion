@@ -668,6 +668,7 @@ override = {}
  "song": {
   "enabled": false,
   "autoPick": false,
+  "groupEnabled": false,
   "dryRun": true,
   "allowExternalSend": false,
   "seconds": 59,
@@ -688,7 +689,8 @@ override = {}
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
   "dailyAutoCap": 1,
-  "autoSongs": []
+  "autoSongs": [],
+  "dailyUserCap": 2
  },
  "presence": {
   "enabled": false,
@@ -1379,6 +1381,7 @@ override = {}
  "song": {
   "enabled": false,
   "autoPick": false,
+  "groupEnabled": false,
   "dryRun": true,
   "allowExternalSend": false,
   "seconds": 59,
@@ -1399,7 +1402,8 @@ override = {}
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
   "dailyAutoCap": 1,
-  "autoSongs": []
+  "autoSongs": [],
+  "dailyUserCap": 2
  },
  "presence": {
   "enabled": false,
@@ -2088,6 +2092,7 @@ override = {"batching":{"windowMs":20000}}
  "song": {
   "enabled": false,
   "autoPick": false,
+  "groupEnabled": false,
   "dryRun": true,
   "allowExternalSend": false,
   "seconds": 59,
@@ -2108,7 +2113,8 @@ override = {"batching":{"windowMs":20000}}
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
   "dailyAutoCap": 1,
-  "autoSongs": []
+  "autoSongs": [],
+  "dailyUserCap": 2
  },
  "presence": {
   "enabled": false,
@@ -2797,6 +2803,7 @@ override = {"admin":{"port":8790}}
  "song": {
   "enabled": false,
   "autoPick": false,
+  "groupEnabled": false,
   "dryRun": true,
   "allowExternalSend": false,
   "seconds": 59,
@@ -2817,7 +2824,8 @@ override = {"admin":{"port":8790}}
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
   "dailyAutoCap": 1,
-  "autoSongs": []
+  "autoSongs": [],
+  "dailyUserCap": 2
  },
  "presence": {
   "enabled": false,
@@ -3506,6 +3514,7 @@ override = {"imageGen":{"model":"flux"}}
  "song": {
   "enabled": false,
   "autoPick": false,
+  "groupEnabled": false,
   "dryRun": true,
   "allowExternalSend": false,
   "seconds": 59,
@@ -3526,7 +3535,8 @@ override = {"imageGen":{"model":"flux"}}
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
   "dailyAutoCap": 1,
-  "autoSongs": []
+  "autoSongs": [],
+  "dailyUserCap": 2
  },
  "presence": {
   "enabled": false,
@@ -4215,6 +4225,7 @@ override = {"tts":{"voice":"b"}}
  "song": {
   "enabled": false,
   "autoPick": false,
+  "groupEnabled": false,
   "dryRun": true,
   "allowExternalSend": false,
   "seconds": 59,
@@ -4235,7 +4246,8 @@ override = {"tts":{"voice":"b"}}
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
   "dailyAutoCap": 1,
-  "autoSongs": []
+  "autoSongs": [],
+  "dailyUserCap": 2
  },
  "presence": {
   "enabled": false,
@@ -4924,6 +4936,7 @@ override = {"flood":{"windowSec":30}}
  "song": {
   "enabled": false,
   "autoPick": false,
+  "groupEnabled": false,
   "dryRun": true,
   "allowExternalSend": false,
   "seconds": 59,
@@ -4944,7 +4957,8 @@ override = {"flood":{"windowSec":30}}
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
   "dailyAutoCap": 1,
-  "autoSongs": []
+  "autoSongs": [],
+  "dailyUserCap": 2
  },
  "presence": {
   "enabled": false,
@@ -5640,6 +5654,7 @@ override = {}
  "song": {
   "enabled": false,
   "autoPick": false,
+  "groupEnabled": false,
   "dryRun": true,
   "allowExternalSend": false,
   "seconds": 59,
@@ -5660,7 +5675,8 @@ override = {}
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
   "dailyAutoCap": 1,
-  "autoSongs": []
+  "autoSongs": [],
+  "dailyUserCap": 2
  },
  "presence": {
   "enabled": false,
@@ -6349,6 +6365,7 @@ override = {"keywordTriggers":[]}
  "song": {
   "enabled": false,
   "autoPick": false,
+  "groupEnabled": false,
   "dryRun": true,
   "allowExternalSend": false,
   "seconds": 59,
@@ -6369,7 +6386,8 @@ override = {"keywordTriggers":[]}
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
   "dailyAutoCap": 1,
-  "autoSongs": []
+  "autoSongs": [],
+  "dailyUserCap": 2
  },
  "presence": {
   "enabled": false,
@@ -7065,6 +7083,7 @@ override = {"rss":{"pollIntervalMin":5}}
  "song": {
   "enabled": false,
   "autoPick": false,
+  "groupEnabled": false,
   "dryRun": true,
   "allowExternalSend": false,
   "seconds": 59,
@@ -7085,7 +7104,8 @@ override = {"rss":{"pollIntervalMin":5}}
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
   "dailyAutoCap": 1,
-  "autoSongs": []
+  "autoSongs": [],
+  "dailyUserCap": 2
  },
  "presence": {
   "enabled": false,
@@ -7774,6 +7794,7 @@ override = {"groupEnabled":false}
  "song": {
   "enabled": false,
   "autoPick": false,
+  "groupEnabled": false,
   "dryRun": true,
   "allowExternalSend": false,
   "seconds": 59,
@@ -7794,7 +7815,8 @@ override = {"groupEnabled":false}
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
   "dailyAutoCap": 1,
-  "autoSongs": []
+  "autoSongs": [],
+  "dailyUserCap": 2
  },
  "presence": {
   "enabled": false,
@@ -8483,6 +8505,7 @@ override = {}
  "song": {
   "enabled": false,
   "autoPick": false,
+  "groupEnabled": false,
   "dryRun": true,
   "allowExternalSend": false,
   "seconds": 59,
@@ -8503,7 +8526,8 @@ override = {}
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
   "dailyAutoCap": 1,
-  "autoSongs": []
+  "autoSongs": [],
+  "dailyUserCap": 2
  },
  "presence": {
   "enabled": false,
@@ -9192,6 +9216,7 @@ override = {"groupEnabled":true}
  "song": {
   "enabled": false,
   "autoPick": false,
+  "groupEnabled": false,
   "dryRun": true,
   "allowExternalSend": false,
   "seconds": 59,
@@ -9212,7 +9237,8 @@ override = {"groupEnabled":true}
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
   "dailyAutoCap": 1,
-  "autoSongs": []
+  "autoSongs": [],
+  "dailyUserCap": 2
  },
  "presence": {
   "enabled": false,
@@ -9901,6 +9927,7 @@ override = {"admin":{"host":"127.0.0.1"}}
  "song": {
   "enabled": false,
   "autoPick": false,
+  "groupEnabled": false,
   "dryRun": true,
   "allowExternalSend": false,
   "seconds": 59,
@@ -9921,7 +9948,8 @@ override = {"admin":{"host":"127.0.0.1"}}
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
   "dailyAutoCap": 1,
-  "autoSongs": []
+  "autoSongs": [],
+  "dailyUserCap": 2
  },
  "presence": {
   "enabled": false,
@@ -10610,6 +10638,7 @@ override = {}
  "song": {
   "enabled": false,
   "autoPick": false,
+  "groupEnabled": false,
   "dryRun": true,
   "allowExternalSend": false,
   "seconds": 59,
@@ -10630,7 +10659,8 @@ override = {}
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
   "dailyAutoCap": 1,
-  "autoSongs": []
+  "autoSongs": [],
+  "dailyUserCap": 2
  },
  "presence": {
   "enabled": false,
@@ -11319,6 +11349,7 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
  "song": {
   "enabled": false,
   "autoPick": false,
+  "groupEnabled": false,
   "dryRun": true,
   "allowExternalSend": false,
   "seconds": 59,
@@ -11339,7 +11370,8 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
   "dailyAutoCap": 1,
-  "autoSongs": []
+  "autoSongs": [],
+  "dailyUserCap": 2
  },
  "presence": {
   "enabled": false,

@@ -164,7 +164,7 @@ function row(
   extra: Partial<SongLedgerRow> = {},
 ): SongLedgerRow {
   return {
-    id, entry: 'dm', room: 'dm-1', song: '晴天', artist: '', stage,
+    id, entry: 'dm', room: 'dm-1', requesterId: null, song: '晴天', artist: '', stage,
     bvid: 'BV1aaaaaaaaa', chorusStart: null, seconds: null, detail: null,
     keyUp: null,
     createdAt: updatedAt, updatedAt, messageId: null, ...extra,

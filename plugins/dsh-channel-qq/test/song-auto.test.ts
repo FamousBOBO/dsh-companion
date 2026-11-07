@@ -22,12 +22,12 @@ const { rotationIndex } = await import('../src/features/song/day.js')
 /** 一份可调的配置（默认：开着、自主选歌开着、曲目一首、每天 1 首）。 */
 function configOf(overrides: Partial<SongConfig> = {}): SongConfig {
   return {
-    enabled: true, autoPick: true, dryRun: false, allowExternalSend: true,
+    enabled: true, autoPick: true, groupEnabled: false, dryRun: false, allowExternalSend: true,
     seconds: 25, minConfidence: 0.55, preferFemale: true, maleKeyUp: 12, prefixSeconds: 12,
     pythonPath: '', rvcRoot: '', makeCover: '', chorusPython: '',
     biliCredentialFile: '', workRoot: '', ffmpegPath: 'ffmpeg',
     downloadTimeoutMs: 60_000, chorusTimeoutMs: 30_000, coverTimeoutMs: 240_000,
-    sendTimeoutMs: 30_000, maxQueue: 8, dailyAutoCap: 1,
+    sendTimeoutMs: 30_000, maxQueue: 8, dailyAutoCap: 1, dailyUserCap: 2,
     autoSongs: ['晴天 周杰伦'],
     ...overrides,
   }

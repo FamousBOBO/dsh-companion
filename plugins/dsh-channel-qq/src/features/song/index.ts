@@ -13,8 +13,8 @@
  *      挂载、工具也照样注册（模型看得到这段功能，诊断看得到"没配"），只是入队一律拒绝。
  *      构造一半的适配器更糟：那会把"没配置"变成"第一次点歌时才炸"。
  *   2. **闸门接 contact 的共享门控**，不另写一套。免打扰/额度/冷却/通道本来就在那里判；
- *      点歌再抄一份就是两套账。私聊入口（用户刚点了歌）只过配置两道闸；
- *      自主入口（机器人自己想发）**再加一道** `outboundBudget`。
+ *      点歌再抄一份就是两套账。私聊与群聊入口（用户刚点了歌）只过配置两道闸——房间只
+ *      决定语音条发哪里；自主入口（机器人自己想发）**再加一道** `outboundBudget`。
  *   3. **自主选歌不起定时器，也不挂在别人的节拍上**：`auto.ts::autoPickOnce` 只由
  *      计划/后台显式调用一次（历史：它曾挂在主动联系的 `afterTick` 上，等于"到点就发歌"，
  *      实机每约 2 分钟一条 55 秒语音，已拆掉）。自己再起一个 `setInterval` 同样不行——
@@ -102,7 +102,8 @@ export function resolveSongPaths(config: SongConfig, dshHome: string): SongPaths
 /**
  * 发送闸。
  *
- * 私聊入口只过配置两道闸（与 `contact/gate.ts::authorizeOutbound` 同义同序）；
+ * 私聊与群聊入口只过配置两道闸（与 `contact/gate.ts::authorizeOutbound` 同义同序）：
+ * 两者都是"对用户刚说出口的请求的回应"，房间只决定语音条发到哪里，不改变判据。
  * 自主入口再加 `contact.outboundBudget()`。`contact` 没装时自主入口**一律拒绝**：
  * 主动消息的闸门不存在，就不该有第二条外发路径自己判断"现在能不能发"。
  */
@@ -115,7 +116,7 @@ export function buildGate(
     async authorize(room: string, entry: SongEntry): Promise<SendVerdict> {
       if (config().dryRun) return { verdict: 'dry-run', reason: 'dry-run' }
       if (!config().allowExternalSend) return { verdict: 'denied', reason: 'external-send-denied' }
-      if (entry === 'dm') return { verdict: 'allowed', reason: 'ok' }
+      if (entry !== 'auto') return { verdict: 'allowed', reason: 'ok' }
       let decision: { allowed: boolean; reason: string }
       try {
         decision = await budget(room)
@@ -159,7 +160,7 @@ export function unavailableBili(): import('./types.js').BiliPort {
   }
 }
 
-/** 终态 → 私聊里的一句话。**成功与演练不说话**（语音条本身就是回答）。 */
+/** 终态 → 点歌那个房间里的一句话。**成功与演练不说话**（语音条本身就是回答）。 */
 export function finishText(
   stage: 'sent' | 'dry-run' | 'failed' | 'unknown-send' | 'cancelled',
   detail: string | null,
@@ -258,7 +259,7 @@ function buildAdapters(host: SubHost, wiring: Wiring): {
   return { bili, chorus, cover, voice, notice }
 }
 
-/** 终态通知：私聊要说明卡在哪一步；自主入口成功要记一次日额度。 */
+/** 终态通知：点歌的房间要说明卡在哪一步（群聊也发在群里）；自主入口成功要记一次日额度。 */
 function buildOnFinish(
   queueOf: () => SongQueue,
   notice: ReturnType<typeof createNoticePort>,
@@ -269,7 +270,7 @@ function buildOnFinish(
       const day = (await import('./day.js')).songDayKey(clock.now())
       if (day !== null) await queueOf().noteAutoSent(day)
     }
-    if (event.request.entry !== 'dm') return
+    if (event.request.entry === 'auto') return
     const text = finishText(event.stage, event.detail)
     if (text === null) return
     await notice.sendText(event.request.room, event.request.chatId, text)
@@ -291,6 +292,8 @@ function wire(host: SubHost, wiring: Wiring): () => void {
     gate, clock, config, log,
     workRoot: paths.workRoot,
     ledgerFile: path.join(dshHome, 'channel-qq', 'song-ledger.json'),
+    // "每人每天几首"的豁免名单：§song 段里没有 admins（它是顶层配置），只有这里拿得到。
+    ownerIds: () => host.config.admins,
     onFinish: buildOnFinish(() => queue, adapters.notice, clock),
     // 自主选歌实现注入到队列：主动联系经服务面调它，因此不必 import 这个目录。
     autoPick: async () => await autoPickOnce(host, clock, log),
