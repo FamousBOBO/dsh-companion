@@ -87,7 +87,7 @@
 | `companion-runtime` | **697 通过 / 0 失败** | **✅ 已装载**（C 段） | 未验证 | — | — |
 | `companion-group` | **10 通过 / 0 失败** | **✅ 已装载**（C 段） | — | 未验证 | — |
 | `dsh-channel-qq` | **1266 项 / 1264 通过 / 1 失败 / 1 跳过**（2026-11-07 实测，`npm test`；唯一失败项是 `qq-idle-compaction` 的「默认关」用例，它读的是**本机** `config/suite.json`——本机确实把它打开了，`QQ_IDLE_COMPACTION=0` 时可复现通过，属环境相关而非缺陷） | **✅ 2026-11-07**（生产宿主上真实装载并连上 OneBot/NapCat：`data/home/channel-qq/connection-status.json` → `connected:true`；私聊与群会话都在跑） | 未验证 | **✅ 2026-11-07（1 条）** | — |
-| `companion-expression` | **206 通过 / 0 失败**（`test/*.test.mjs`，含 zip 21 / pack 22 / pack-import 9 / calibration 9 / ingest 15） | **✅ 已装载**（§2.6；主人私聊与群预设都装了它） | — | **✅ 2026-11-07（1 条，经 `qq_sticker` 实发）** | — |
+| `companion-expression` | **206 通过 / 0 失败**（`test/*.test.mjs`，含 zip 21 / pack 22 / pack-import 9 / calibration 9 / ingest 15） | **✅ 已装载**（§2.6；主人私聊与群预设都装了它） | — | **✅ 2026-11-07（2 条，经 `qq_sticker` 实发；第 2 条回读 `sub_type=1` 才是真正的表情）** | — |
 | `companion-media` | 通过（计数未单独汇总，B 段 `unit` 全绿） | 未验证（验收未启用该模块） | **✅ 2026-11-06**（生图真实出图，见 §2.5） | 未验证（投递仍由通道负责） | — |
 | `companion-health` | 通过（计数未单独汇总，B 段 `unit` 全绿） | 未验证（验收未启用该模块） | 未验证 | — | 未验证 |
 | `sidecars/huawei-health-cn` | 待汇总（含 `test_protocol_contract.py` / `test_redact.py`） | — | **未验证**（需要真实华为账号；代码路径与 MIT 许可已就位） | — | — |
@@ -156,17 +156,22 @@
 | 宿主装载 | **`host-load` 已达成（2026-11-07）** | 两次独立达成：① `npm run check:hostload --workspace=@dsh-companion/expression`：临时 `DSH_HOME` + 临时数据目录、`modules.expression=1`、只开 `expression` 补丁块；② 生产切换（`dsh-ops`，`expressions` 分支 `0278264`）真宿主启动后日志三行齐全（`已发布入站端口 dsh.companion.expression.v1` / `已注册 4 个工具（defineTool=host）` / `[companion-expression-http] 已注册 10 条管理路由`），且无 `did not activate`。裸 `fetch` 回 **401**（宿主 token 换会话的行为，浏览器里才有 cookie），因此判据不拿 200 作数 |
 | 补丁渲染与合成 | **`host-load` 的一部分（仅渲染+合成，未装载）** | `npm run check:patch --workspace=@dsh-companion/expression`：把模板按「四个可选块全开」渲染后送宿主 `--dump-config`，**217 个 loader 行**、`expression` 与 `expression-http` 两行都在（2026-11-07） |
 | 整包导入（生产图库） | `offline-test` 的代码 + 真库上跑过 | 2026-11-07 实际导入 `QQ-232180.zip`（16 张 126×126 PNG）到生产库：**16/16 成功**、审核态 `approved`、可见性写「主人私聊」+「群 145326153」各一行。证据 `data/logs/expression-import-qq-232180.json`。图库现在 `assets=20`、`cards=20`、`sources=20`、`approved 可见性=32` |
-| **真实平台发图** | **`real-send` 已达成（1 条，2026-11-07）** | 操作者显式触发的「开心」表情：`deliveries` 一行 `status='confirmed'` + `provider_message_id=988995366`（plan `plan_d30fa8748a1d1fce2ee5`，asset `ast_1072c1beb14bcfd8545a`）。**只证明这一条走通全链路**；批量、群聊、连续发图仍未验证。失败路径同样留了真实证据（首条 `status='failed'` / `reason_code='tool-error'`） |
+| **真实平台发图（且是「表情」而非图片）** | **`real-send` 已达成（2 条，2026-11-07）** | ① 首条「开心」`status='confirmed'` + `provider_message_id=988995366`——但回读 `sub_type=0`，QQ 上显示成**一张图片**（用户当场指出）。② 修复后重发「生日快乐」`status='confirmed'` + `provider_message_id=1005706362`，回读 `sub_type=1` / `summary=[表情]`，这才是表情。差别只有 `image` 段的 `sub_type` 字段（0=图片，1=表情）。**只证明这两条走通全链路**；批量、群聊、连续发图仍未验证。失败路径同样留了真实证据（首条 `status='failed'` / `reason_code='tool-error'`） |
 | GIF 关键帧理解 / OCR / embedding 向量召回 | **未实现** | 代码里是 `NOT_IMPLEMENTED` 常量，不是「待验证」 |
 | QQ 内置 `face` 表情投递 | **未实现** | 现有通道没有可复核的 face 发送入口，不凭空构造 |
+| 「表情 vs 图片」的显示形态 | `real-send` 侧证（回读报文） | `image` 段的 `sub_type`：0=图片、1=表情。NapCat 4.18.19 实测四种写法后确认只有 `sub_type:1` 生效（`summary` 只影响占位文字）。现在 `qq_send_emoji` / `qq_send_sticker` 统一走 `core/message/sticker.ts` 的 `stickerSegment()`；生图与配字表情包**故意不带**这个标记 |
 
 > 结论措辞只能用：「表情包系统的采集、检索、决策、宿主接线、投递与反馈在**离线测试**层面通过（206 项），
-> 两行插件在真宿主上**装载成功**，并且**已经有一条真实 QQ 发图回执**；批量、群聊与连续发图仍未验证」。
+> 两行插件在真宿主上**装载成功**，并且**已经有 2 条真实 QQ 发图回执（其中 1 条回读确认是表情）**；
+> 批量、群聊与连续发图仍未验证」。
 >
-> 「接线已落地」不等于「能发出去」，「有一条回执」也不等于「不会再失败」：同一次验收里第一次发图
-> **是真的失败**的（`tool-error`）。根因是 `dsh-channel-qq` 的出站文件边界只放行工作区与 `channel-qq`
-> 两个根，而待投递的图落在 `home/media/expression-out/`（这个位置由群聊侧「只许从 `home/media`
-> 发图」的硬要求定下，不能挪）。边界补上 `home/media` 这一根、重启后重发，才拿到上面那条 `confirmed`。
+> 「接线已落地」不等于「能发出去」，「有一条回执」也不等于「做对了」：这次验收里踩到三个坑，
+> 每一个都是「回执 200 但用户看到的不对」：① 第一次发图**真的失败**（`tool-error`）——出站文件
+> 边界只放行工作区与 `channel-qq`，而待投递的图在 `home/media/expression-out/`（位置由群聊侧
+> 「只许从 `home/media` 发图」定下，不能挪），补上这个根才有回执；② 回执有了，但 QQ 上显示成
+> **一张图片**——`image` 段少了 `sub_type:1`，那是 QQNT 区分「图片/表情」的唯一字段；③ 顺带发现
+> 采集配额与投递配额共用一个桶，群里收两张图就把每小时发图额度占满（`abstain-hourly-quota`），
+> 采集侧已改 `capture:` 前缀分桶。三条都有回归测试与真实回读证据。
 > 边界仍然是**目录**边界：`home/expression/assets/`（图库原文件）与系统其它路径照样拒。
 
 
