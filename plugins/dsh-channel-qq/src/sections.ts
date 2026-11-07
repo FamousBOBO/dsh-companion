@@ -84,8 +84,8 @@ export const SECTION_PLUGINS: readonly SubPlugin[] = [
   learnPlugin,
   musicPlugin,
   // 点歌翻唱：工具面紧挨着「音乐」那一段（同一件事的两种形态：报歌名点歌 / 做成语音条），
-  // 但它要 `platform`（出站队列）才能发语音条，所以排在 platform 之后；`contact` 的
-  // 收尾钩子会在自己那一拍调它的 `autoPickOnce()`（经服务袋，不 import）。
+  // 但它要 `platform`（出站队列）才能发语音条，所以排在 platform 之后。
+  // 它**不起定时器**：`autoPickOnce()` 只由计划/后台显式调用（见 `features/song/auto.ts`）。
   songPlugin,
   skillsPlugin,
   kbPlugin,

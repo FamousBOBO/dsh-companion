@@ -44,8 +44,8 @@ export interface SongQueueDeps extends PipelineDeps {
    *
    * 为什么做成注入而不是在队列里直接写：挑歌要用 B站搜索、主人 QQ、日期这些
    * "装配期才知道"的东西，而队列只该知道"串行、去重、额度、清理"。
-   * 注入之后 `autoPickOnce()` 成为服务面上的一个方法，主动联系因此不必 import 点歌模块
-   * （`features/` 之间不互相 import 的约定）。
+   * 注入之后 `autoPickOnce()` 成为服务面上的一个方法，**计划/后台**可以不 import
+   * 点歌模块就让它唱一首（`features/` 之间不互相 import 的约定）。注意它**没有定时器**。
    */
   readonly autoPick?: () => Promise<boolean>
   /**
