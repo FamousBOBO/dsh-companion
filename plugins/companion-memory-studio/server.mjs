@@ -11,6 +11,7 @@ import { chatSettings } from './lib/chat-settings.mjs';
 import * as read from './lib/read.mjs';
 import * as write from './lib/write.mjs';
 import * as health from './lib/health.mjs';
+import { collectorTerminals } from './lib/collector-terminals.mjs';
 import { companionDashboard } from './lib/companion-dashboard.mjs';
 // The health service is owned by a sibling plugin row; `resolveHealthService` is the one place that
 // knows how to reach it (ctx → process registry → service bridge).
@@ -30,6 +31,8 @@ export const HEALTH_API_PREFIX = health.HEALTH_PREFIX;
 
 // 精确路径匹配；参数走 query string / JSON body。
 export const ROUTES = Object.freeze([
+  { name: 'collector-terminals', method: 'GET', path: `${API_PREFIX}/collector-terminals`, handler: collectorTerminals },
+  { name: 'collector-terminal-control', method: 'POST', path: `${API_PREFIX}/collector-terminals`, handler: collectorTerminals },
   {name:'chat-settings',method:'GET',path:`${API_PREFIX}/chat-settings`,handler:chatSettings},
   {name:'chat-settings-save',method:'POST',path:`${API_PREFIX}/chat-settings`,handler:chatSettings},
   {name:'restart-status',method:'GET',path:`${API_PREFIX}/restart-status`,handler:operator.pendingRestart},

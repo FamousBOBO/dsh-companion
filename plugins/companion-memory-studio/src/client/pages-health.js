@@ -18,6 +18,9 @@
 
   P.css(`
     .cpxp-hl-stack { display:flex; flex-direction:column; gap:var(--cpx-s5,24px); min-width:0; }
+    .cpxp-collector-row { display:flex; flex-wrap:wrap; align-items:center; justify-content:space-between; gap:8px 18px; padding:10px 0; }
+    .cpxp-collector-row + .cpxp-collector-row { border-top:1px solid var(--dsw-alias-border-l1); }
+    .cpxp-collector-title { display:flex; flex-wrap:wrap; align-items:center; gap:8px; }
     .cpxp-hl-toolbar { display:flex; align-items:center; justify-content:space-between; gap:var(--cpx-s3,12px); flex-wrap:wrap; min-width:0; }
     .cpxp-hl-tools { display:flex; align-items:center; gap:var(--cpx-s2,8px); flex-wrap:wrap; min-width:0; }
     .cpxp-hl-tools-label { color:var(--dsw-alias-label-secondary, inherit); font-size:var(--cpx-fs-small, 12.5px); white-space:nowrap; }
@@ -1541,6 +1544,69 @@
     { id: '30', label: '近 30 天' },
   ];
 
+  function CollectorTerminals({ onChange }) {
+    const query = P.useApi(() => P.api.get('collector-terminals'), []);
+    const [busy, setBusy] = P.useState(null);
+    const [error, setError] = P.useState(null);
+    const available = query.data?.available;
+    P.useEffect(() => {
+      if (!available || busy) return undefined;
+      const timer = setInterval(() => { if (!document.hidden) query.reload(); }, 5000);
+      return () => clearInterval(timer);
+    }, [available, busy]);
+
+    async function control(row, action, enabled) {
+      setBusy(row.key);
+      setError(null);
+      try {
+        await P.api.post('collector-terminals', { key: row.key, action, enabled });
+        onChange();
+      } catch (failure) {
+        setError(failure);
+      } finally {
+        query.reload();
+        setBusy(null);
+      }
+    }
+
+    const states = {
+      running: ['运行中', 'ok'], starting: ['启动中', 'warn'], stopped: ['已停止', 'neutral'],
+      occupied: ['端口被占用', 'warn'], unresponsive: ['服务未就绪', 'warn'], failed: ['终端已退出或启动失败', 'danger'],
+    };
+    const content = query.error
+      ? h(ui.ErrorBox, { error: query.error, onRetry: query.reload })
+      : !query.data ? h(ui.Skeleton, { rows: 2 })
+        : !available ? h('p', { className: 'cpx-muted' }, '当前实例未加载采集器持久终端。')
+          : query.data.collectors.map(row => {
+            const label = row.key === 'cloud' ? '华为健康云' : '蓝牙心率';
+            const [state, tone] = states[row.state] || ['状态未知', 'neutral'];
+            const startDisabled = !!busy || !row.enabled || row.state === 'occupied';
+            return h('div', { key: row.key, className: 'cpxp-collector-row' },
+              h('div', { className: 'cpxp-collector-title' },
+                h('strong', null, label),
+                h(ui.Badge, { tone }, row.configured ? state : '未配置'),
+                row.terminalId && h('span', { className: 'cpx-muted' }, row.terminalId)),
+              h('div', { className: 'cpxp-hl-tools', role: 'group', 'aria-label': label },
+                h('button', {
+                  type: 'button', className: 'cpxp-enable', role: 'switch', 'aria-checked': row.enabled,
+                  'aria-label': label + '随 DSH 启动', disabled: !!busy || !row.configured,
+                  onClick: () => control(row, 'set-enabled', !row.enabled),
+                }, h('span', { className: 'cpxp-switch-track' }), '启用'),
+                h(ui.Button, { size: 'sm', variant: 'primary', disabled: startDisabled || ['running', 'starting', 'unresponsive'].includes(row.state),
+                  onClick: () => control(row, 'start') }, '启动'),
+                h(ui.Button, { size: 'sm', variant: 'ghost', disabled: startDisabled || !row.managed,
+                  onClick: () => control(row, 'restart') }, '重启'),
+                h(ui.Button, { size: 'sm', variant: 'danger', disabled: !!busy || !row.managed,
+                  onClick: () => control(row, 'stop') }, '终止')));
+          });
+    return h(ui.Band, {
+      title: '采集器持久终端',
+      hint: '启用后随 DSH 启动。终止只停止本次运行，关闭启用会同时停止采集。',
+      actions: h(ui.Button, { size: 'sm', variant: 'ghost', onClick: query.reload, disabled: !!busy }, '刷新状态'),
+    }, error && h(ui.Callout, { tone: 'danger', title: '采集器操作失败' }, P.failText(error)),
+    busy && h('p', { role: 'status', className: 'cpx-muted' }, '正在操作终端…'), content);
+  }
+
   function HealthPage() {
     const [section, setSection] = P.useState('overview');
     const [days, setDays] = P.useState(7);
@@ -1605,8 +1671,7 @@
         ? h(ui.Timestamp, { at: sourceFreshness.newestSampleAt, prefix: '最新样本' })
         : h('span', null, '最新样本 —'),
       h(ui.Badge, { tone: auth ? (AUTH_TONE[auth.status] || 'neutral') : 'neutral' },
-        auth ? (AUTH_LABEL[auth.status] || String(auth.status)) : '鉴权未知'),
-      h('span', { className: 'cpxp-hl-note' }, '只读页面'));
+        auth ? (AUTH_LABEL[auth.status] || String(auth.status)) : '鉴权未知'));
 
     const toolbar = h('div', { className: 'cpxp-hl-toolbar' },
       h(ui.Segmented, {
@@ -1701,7 +1766,7 @@
       lead: '华为运动健康回传的身体数据。',
       status: statusLine,
       actions,
-    }, body);
+    }, h('div', { className: 'cpxp-hl-stack' }, h(CollectorTerminals, { onChange: query.reload }), body));
   }
 
   // 二级 tab 的容器是 core.js 的 NAV 常量（'life' 原本没有 tabs）。这里只把本页挂进
