@@ -51,7 +51,6 @@ export function toFailure(error, fallback = Code.UNKNOWN) {
     return { code: error.code, message: error.message, ...(error.details ? { details: error.details } : {}) };
   }
   if (error?.name === 'AbortError') return { code: Code.CANCELLED, message: 'request aborted' };
-  if (error?.name === 'TimeoutError') return { code: Code.TIMEOUT, message: 'request budget exceeded' };
   const message = error instanceof Error ? error.message : String(error);
   const code = typeof error?.code === 'string' && error.code.startsWith('MEDIA_') ? error.code : fallback;
   return { code, message: String(message).slice(0, 500) };

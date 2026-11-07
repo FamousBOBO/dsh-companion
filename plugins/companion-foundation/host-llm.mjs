@@ -10,15 +10,6 @@ import { pathToFileURL } from 'node:url';
 
 const DEFAULT_TIMEOUT_MS = 120000;
 
-function isUnsupportedOption(error) {
-  const description = `${error?.code ?? ''} ${error?.message ?? ''} ${error?.failure?.code ?? ''} ${error?.failure?.message ?? ''}`;
-  return /unsupported[_ -]?(option|parameter)|(?:reasoning|effort).*(?:unsupported|not supported)|(?:unsupported|not supported).*(?:reasoning|effort)/i.test(description);
-}
-
-function isContextOverflow(failure) {
-  return /context[_ -]?(length|window|limit).*(exceed|overflow|too|limit)|context[_ -]?(overflow|exceeded)|maximum context/i.test(`${failure?.code ?? ''} ${failure?.message ?? ''}`);
-}
-
 function joinSignals(signals) {
   const active = signals.filter(signal => signal instanceof AbortSignal);
   if (!active.length) return undefined;

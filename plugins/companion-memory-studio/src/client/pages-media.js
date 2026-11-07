@@ -710,7 +710,6 @@
   }
   function FieldControl({ entry, value, disabled, error, onChange }) {
     const controlId = `media-${entry.path}`;
-    if(entry.type==='boolean'&&/^(image\.pipeline|tts\.director)\./.test(entry.path))return h(ui.Field,{label:entry.label,info:entry.hint},h('button',{type:'button',className:'cpxp-enable',style:{padding:'10px 16px',border:'1px solid var(--dsw-alias-border-primary)',borderRadius:'10px',width:'100%',minHeight:'46px'},role:'switch','aria-label':entry.label,'aria-checked':value===true,disabled,onClick:()=>onChange(value!==true)},h('span',{className:'cpxp-switch-track'}),'启用'));
     if(lastSegment(entry.path)==='refAudioPath')return h(ReferenceAudio,{entry,value,disabled,error,onChange});
     if (entry.type === 'boolean') {
       return h('div', null,

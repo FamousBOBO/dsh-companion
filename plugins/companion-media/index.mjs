@@ -13,7 +13,6 @@ import { resolvePreset, presetFamilyFor } from './src/presets.mjs';
 import { redactText, sanitize, maskSecret } from './src/secrets.mjs';
 import { Code, toFailure } from './src/errors.mjs';
 import { ADAPTERS, adapterCatalog, imageAdapter, ttsAdapter } from './src/adapters/registry.mjs';
-import { createMediaHost } from './src/host-llm.mjs';
 
 /**
  * companion-media — DSH bundle plugin entry.
@@ -110,24 +109,21 @@ function registerTools(ctx, service) {
     {}, async () => service.status());
 
   register('companion_media_draw',
-    '生成一张图片（计费）。默认关闭：未在「媒体能力」里显式打开生图、或没选 provider 时直接返回 MEDIA_DISABLED。prompt 描述画面；开启提示词生成管线后，NovelAI 可将中文要求编排为英文标签。dryRun=true 只做参数与分辨率校验，不发起任何网络请求。本工具不发送图片，只产出本地文件：成功后把 handoff.file 交给当前会话对应的图片发送工具（QQ 场景是 qq_sticker action=send）。失败不会自动重试，避免重复扣费；要重试必须由人显式再次调用。',
+    '生成一张图片（计费）。默认关闭：未在「媒体能力」里显式打开生图、或没选 provider 时直接返回 MEDIA_DISABLED。prompt 用英文完整句子描述画面（OpenAI 兼容后端与 NovelAI 都是英文提示词更稳）。dryRun=true 只做参数与分辨率校验，不发起任何网络请求。本工具不发送图片，只产出本地文件：成功后把 handoff.file 交给当前会话对应的图片发送工具（QQ 场景是 qq_sticker action=send）。失败不会自动重试，避免重复扣费；要重试必须由人显式再次调用。',
     {
       prompt: { type: 'string', required: true, description: '画面描述。英文完整句子，主体与关键要求在前；写清场景、动作、表情、镜头、光线、画风。' },
       negative: { type: 'string', description: '可选的反向提示词（NovelAI 使用；与配置里的基础反向提示词合并）。' },
-      context: { type: 'string', description: '可选：本轮画面要求的相关上下文，不传入其他会话或私人记忆。' },
       dryRun: { type: 'boolean', description: 'true 只校验参数（含 NAI 预设族与分辨率），不发起生成。dry-run 成功不代表已产出图片。' },
     },
-    async (args,exec) => service.generateImage({ prompt: args.prompt, negative: args.negative, context:args.context??'',sessionId:exec?.agent?.session?.id??null,signal:exec?.signal, dryRun: args.dryRun === true }), 'write');
+    async args => service.generateImage({ prompt: args.prompt, negative: args.negative, dryRun: args.dryRun === true }), 'write');
 
   register('companion_media_speak',
-    '用已配置的 TTS 后端把文本合成为语音文件（可能计费）。默认关闭：未在「媒体能力」里打开语音合成时返回 MEDIA_DISABLED。Index-TTS 尚未接入（缺官方 HTTP 协议），会返回 MEDIA_PROVIDER_NOT_IMPLEMENTED。text 只放要朗读的正文；Breeze 可使用语音导演结合 context 生成表演指令，失败则回退到原台词与已有指令。本工具只产出本地音频文件，不发送；成功后把 handoff.file 交给当前会话的语音发送工具（QQ 场景是 qq_voice action=send_file）。',
+    '用已配置的 TTS 后端把文本合成为语音文件（可能计费）。默认关闭：未在「媒体能力」里打开语音合成时返回 MEDIA_DISABLED。Index-TTS 尚未接入（缺官方 HTTP 协议），会返回 MEDIA_PROVIDER_NOT_IMPLEMENTED。text 只放要朗读的正文；Breeze 的表演指令请在配置里填写。本工具只产出本地音频文件，不发送；成功后把 handoff.file 交给当前会话的语音发送工具（QQ 场景是 qq_voice action=send_file）。',
     {
       text: { type: 'string', required: true, description: '要朗读的完整文本，保留标点，不要放 Markdown 或 JSON。' },
-      context: { type: 'string', description: '可选：当前台词的语境、说话意图与角色表达习惯，供语音导演使用。' },
-      instructions: { type: 'string', description: '可选：直接提供 Breeze 的表演指令。语音导演关闭或失败时使用。' },
       provider: { type: 'string', description: '可选：临时指定已启用且已接入的 TTS provider id（默认用配置里的默认后端）。' },
     },
-    async (args,exec) => service.synthesize({ text: args.text, provider: args.provider ?? null, context:args.context??'',instructions:args.instructions??'',sessionId:exec?.agent?.session?.id??null,signal:exec?.signal }), 'write');
+    async args => service.synthesize({ text: args.text, provider: args.provider ?? null }), 'write');
 
   register('companion_media_job',
     '读取媒体作业、产物与失败原因。只含元数据（大小、MIME、时长、错误码），不含提示词正文与媒体内容。',
@@ -313,7 +309,6 @@ export async function mountMedia(ctx, options = {}) {
       suiteRoot: SUITE_ROOT,
       env: process.env,
       log,
-      host: options?.host ?? createMediaHost(ctx),
       ...(options?.fetchImpl ? { fetchImpl: options.fetchImpl } : {}),
     });
     if (!existing) shareMedia(SUITE_ROOT, service);
