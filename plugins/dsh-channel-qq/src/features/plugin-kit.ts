@@ -2,19 +2,18 @@
  *
  * 每个 `features/<名字>/index.ts` 导出一个 `SubPlugin`：名字、关心的配置路径、
  * 装配逻辑，以及可选的就地热更新/启动钩子。`src/plugin.ts`（根服务）把每个子插件
- * 包成真正的 cordis fiber（生命周期归 fiber：卸载时跑 apply 返回的 disposer），
- * 本文件提供中间层：
+ * 包成真正的 cordis fiber（生命周期归 fiber：卸载时跑 apply 返回的 disposer）。
  *
- *   - `SubHost` 是子插件能看到的全部世界：活动配置、根日志、**服务袋**（互相协作
- *     只经服务名与 `provide`/`get`/`need`）、后台资源注册表与宿主桥；
- *   - 为什么不在 features 里直接用 cordis 的 `Service`/`inject`：那会把
- *     `@deepseek-ai/*` 的 import 散进每个功能目录（R2 棘轮与 04 §16 都要求宿主
- *     形状只出现在 `adapters/dsh-host/`）。这里用结构化的服务袋等价替代：
- *     `requires` 在挂载时断言（相当于 inject 的"未就绪不启动"），装载顺序由根的表
- *     决定；子插件之间不互相 import，只经服务袋或事件；
- *   - `SectionHost` 按声明顺序装载、逆序卸载；配置保存后按"补丁命中了哪些点路径"
- *     只重载对应的子插件：声明了 `reload` 的走就地钩子（保住实例身份：登录会话、
- *     socket、store），没有的 dispose 后按新配置重挂（A8 意义上的真重载）。
+ * `SubHost` 是子插件能看到的全部世界：活动配置、根日志、**服务袋**（互相协作只经服务名
+ * 与 `provide`/`get`/`need`）、后台资源注册表与宿主桥。为什么不在 features 里直接用
+ * cordis 的 `Service`/`inject`：那会把 `@deepseek-ai/*` 的 import 散进每个功能目录
+ * （R2 棘轮与 04 §16 都要求宿主形状只出现在 `adapters/dsh-host/`）。这里用结构化的
+ * 服务袋等价替代：`requires` 在挂载时断言（相当于 inject 的"未就绪不启动"），
+ * 装载顺序由根的表决定；子插件之间不互相 import，只经服务袋或事件。
+ *
+ * `SectionHost` 按声明顺序装载、逆序卸载；配置保存后按"补丁命中了哪些点路径"只重载
+ * 对应的子插件：声明了 `reload` 的走就地钩子（保住实例身份：登录会话、socket、store），
+ * 没有的 dispose 后按新配置重挂（A8 意义上的真重载）。
  *
  * 本文件不碰 IO、时钟与宿主包。
  */
@@ -60,6 +59,8 @@ import type { AccessService } from './access/service.js'
 import type { ChatLogRecorder } from './chatlog/index.js'
 import type { ContactService } from './contact/types.js'
 import type { SharePort } from './contact/share-port.js'
+import type { SongService } from './song/queue.js'
+export type { SongService } from './song/queue.js'
 
 /** platform 子插件提供的四件套（传输对象 + 端口 + 出站队列）。 */
 export interface PlatformParts {
@@ -166,19 +167,14 @@ export interface ServiceBag {
   /** 原话簿（chatlog 提供；入站消息原样记录）。 */
   chatlog?: ChatLogRecorder
   /**
-   * 主动消息的候选与投递账本（contact 提供）。
-   *
-   * 只暴露 propose/cancel/setPaused/status——**没有**"立刻发一条"的直通口：
-   * 发送必须经过 worker 的门控，否则"最终授权由代码强制"就只是注释。
+   * 主动消息的候选与投递账本（contact 提供）。只暴露 propose/cancel/setPaused/status
+   * ——**没有**"立刻发一条"的直通口，发送必须经过 worker 的门控。
    */
   contact?: ContactService
-  /**
-   * 分享候选的**唯一**入口（P2.5-3B）：由 contact 子插件 provide，根插件再 `ctx.provide` 给宿主。
-   *
-   * 为什么两个方法名：foundation 的 `contactSharePort()` 实际探测的是
-   * `service.submitShareCandidate`，而任务书里写的是 `submitShare`；两个都给，谁都不用改。
-   */
+  /** 分享候选的唯一入口；两种方法名都给（foundation 探测 `submitShareCandidate`，任务书写 `submitShare`）。 */
   contactShare?: SharePort
+  /** 点歌翻唱的服务面（song 提供；工具面、后台与自主入口共用，没有 sendNow 直通口）。 */
+  song?: SongService
 }
 
 /** 根转交进来的宿主能力；这里也是 cordis `ctx` 唯一被"窄化"的地方。 */

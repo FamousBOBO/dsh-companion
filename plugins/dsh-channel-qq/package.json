@@ -22,10 +22,12 @@
     }
   },
   "scripts": {
-    "build": "npm run build:admin && npm run build:lib",
+    "build": "npm run build:admin && npm run build:lib && npm run build:tools",
     "build:lib": "tsc -p tsconfig.json",
     "build:admin": "node scripts/build-admin-html.mjs",
     "build:tests": "tsc -p tsconfig.test.json",
+    "build:tools": "node scripts/build-tools.mjs",
+    "check:tools": "node scripts/build-tools.mjs --check",
     "typecheck": "tsc -p tsconfig.json --noEmit",
     "typecheck:tests": "tsc -p tsconfig.verify.local.json",
     "test": "npm run build:tests && node --test \"build/lib-test/test/*.test.js\"",

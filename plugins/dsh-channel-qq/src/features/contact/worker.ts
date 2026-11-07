@@ -75,6 +75,17 @@ export interface ContactWorkerDeps {
   readonly maxSendAttempts?: number
   /** 卸载时等多久让在途发送走到安全点。 */
   readonly disposeWaitMs?: number
+  /**
+   * 每一轮 tick **收尾之后**调一次的钩子（点歌的"自主选歌"挂在这里）。
+   *
+   * 为什么挂在 contact 的节拍上而不是自己起定时器：主动联系已经有免打扰、额度、冷却与
+   * 会话绑定校验（`evaluateOutboundBudget`），而且它已经知道"这个房间刚说过话"。
+   * 再起一个定时器就是第二套节拍，两套节拍互相不知道对方刚发过什么。
+   *
+   * 语义：**尽力而为**。它失败/抛错只记一行日志，绝不影响这一轮的联系候选投递
+   * （两条路径的成本完全不同：点歌要跑两三分钟，联系是发一句话）。
+   */
+  readonly afterTick?: (now: number) => Promise<void>
 }
 
 function describe(error: unknown): string {
@@ -247,6 +258,13 @@ export class ContactWorker {
       await this.consider(candidate, now, epoch, config).catch(async (error: unknown) => {
         this.deps.log(`contact: 候选 ${candidate.id} 处理失败：${describe(error)}`)
         await this.deps.store.noteReason(`${candidate.id} error:${describe(error)}`, now, epoch).catch(() => false)
+      })
+    }
+    // 收尾钩子（点歌自主选歌）：放在最后，**尽力而为**——它花的是分钟级的钱
+    // （下载 + 分离 + 推理），绝不能挡住或拖慢联系候选的投递。
+    if (this.deps.afterTick !== undefined && !this.paused && !this.stopped) {
+      await this.deps.afterTick(now).catch((error: unknown) => {
+        this.deps.log(`contact: afterTick 失败：${describe(error)}`)
       })
     }
   }

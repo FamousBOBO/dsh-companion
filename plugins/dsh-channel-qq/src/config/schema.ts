@@ -30,6 +30,7 @@ import { SESSION_RESET_GROUPS } from './sections/session-reset.js'
 import { KB_GROUPS } from './sections/kb.js'
 import { CONTACT_GROUPS } from './sections/contact.js'
 import { PRESENCE_GROUPS } from './sections/presence.js'
+import { SONG_GROUPS } from './sections/song.js'
 
 export type {
   ConfigSchema, FieldGroup, FieldKind, FieldSpec, HotLevel, SectionFieldSpec,
@@ -56,6 +57,8 @@ export const SCHEMA: ConfigSchema = {
     ...KB_GROUPS,
     // A2 主动消息（门控）：追加在末尾，与 root.ts 里的段入口同一序位。
     ...CONTACT_GROUPS,
+    // 点歌翻唱：插在 `presence` 之前（`presence-config.test.ts` 钉着"presence 是最后一个段"）。
+    ...SONG_GROUPS,
     // 群聊旁听与自主接话：同样**只追加在末尾**（段顺序 = 线上配置键顺序）。
     ...PRESENCE_GROUPS,
   ],

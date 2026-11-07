@@ -49,6 +49,7 @@ import { kbPlugin } from './features/kb/index.js'
 import { sessionResetPlugin } from './features/session-reset/index.js'
 import { stickersPlugin } from './features/stickers/index.js'
 import { voicePlugin } from './features/voice/index.js'
+import { songPlugin } from './features/song/index.js'
 import type { SubPlugin } from './features/plugin-kit.js'
 
 export const SECTION_PLUGINS: readonly SubPlugin[] = [
@@ -82,6 +83,10 @@ export const SECTION_PLUGINS: readonly SubPlugin[] = [
   floodPlugin,
   learnPlugin,
   musicPlugin,
+  // 点歌翻唱：工具面紧挨着「音乐」那一段（同一件事的两种形态：报歌名点歌 / 做成语音条），
+  // 但它要 `platform`（出站队列）才能发语音条，所以排在 platform 之后；`contact` 的
+  // 收尾钩子会在自己那一拍调它的 `autoPickOnce()`（经服务袋，不 import）。
+  songPlugin,
   skillsPlugin,
   kbPlugin,
   proactivePlugin,

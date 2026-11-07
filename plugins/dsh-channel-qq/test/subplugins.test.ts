@@ -114,7 +114,7 @@ test('P5.1/P5.2：装载表顺序与热重载声明被锁住（行为对齐旧 a
   assert.deepEqual(SECTION_PLUGINS.map((p) => p.name), [
     'persona', 'observers', 'platform', 'channel-health', 'access', 'interaction', 'metrics', 'history', 'reliability', 'daily-report', 'inbound', 'session-reset', 'stickers', 'memory', 'affection',
     'qq-tools', 'people', 'social', 'capabilities', 'chatlog', 'links', 'meme', 'voice', 'quotes', 'reminders', 'rss', 'imagegen',
-    'flood', 'learn', 'music', 'skills', 'kb', 'proactive', 'contact', 'admin',
+    'flood', 'learn', 'music', 'song', 'skills', 'kb', 'proactive', 'contact', 'admin',
   ])
   const watched = SECTION_PLUGINS
     .filter((p) => p.watches !== '*' && p.watches.length > 0)
@@ -143,6 +143,9 @@ test('P5.1/P5.2：装载表顺序与热重载声明被锁住（行为对齐旧 a
     ['people', ['people']],
     ['chatlog', ['chatlog']],
     ['learn', ['learn']],
+    // 点歌翻唱：启用 / 自主选歌开关 / 自主选歌曲目三个点路径决定"注册哪些工具 + 自主候选池"，
+    // 所以要重挂；其余字段（秒数、路径、超时）都是每次任务现取，改完立刻生效。
+    ['song', ['song.enabled', 'song.autoPick', 'song.autoSongs']],
     // P6f：事件书开关或书改了都要重挂（实现选型与书的校验都在装配期完成）。
     // 技能：段开关/目录/脚本/导入四个旋钮变了要重挂 provider（可见范围在技能自己身上，不需要）。
     ['skills', ['skills']],

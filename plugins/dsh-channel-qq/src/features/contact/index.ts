@@ -130,6 +130,9 @@ function buildWorker(
     // 起草上下文的取数面（P2.5-3D）：惰性服务袋 + 宿主预设 + 账本里的投递/未回复计数。
     // 装配只负责"往哪里取"，六个分区怎么读、怎么裁、缺了怎么记都在 `draft-context.ts`。
     draftContext: createHostDrafts(host, store, roomFacts, clock, log).source,
+    // 点歌的"自主选歌"挂在这一拍的收尾：它经服务袋拿 `song`（不 import 那个目录），
+    // 且自带免打扰/额度/授权三道闸（见 `features/song/auto.ts`）。这里只负责"到点了叫它一次"。
+    afterTick: async () => { await host.get('song')?.autoPickOnce() },
   })
 }
 

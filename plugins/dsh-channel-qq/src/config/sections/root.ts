@@ -139,6 +139,10 @@ export const ROOT_ENTRIES: ReadonlyArray<readonly [string, FieldSpec | SectionFi
   ['groupAgentPreset', s('群聊人格预设', null, { hot: 'restart', page: 'persona' })],
   ['groupPermissionPreset', s('群聊权限预设', null, { hot: 'restart', page: 'persona' })],
   ['groupWorkspacePath', s('群聊工作区', null, { hot: 'restart', page: 'connection' })],
+  // 点歌翻唱（B站 → 三月七 → 语音条）：插在 `presence` **之前**——`presence` 的测试钉着
+  // "它必须是最后一个段"（那条不变式的意思是"新段追加在它之后会打乱它自己的键位记录"）。
+  // 放在它前面，尾部仍然只有"多一段"这一处 diff，不重排既有键。
+  ['song', section('点歌翻唱', 'song')],
   // 群聊旁听与自主接话：**追加在末尾**——键顺序就是线上配置键顺序，往中间插一行
   // 会让 golden 快照的 diff 面从"尾部多一段"变成"整份重排"。
   ['presence', section('群聊旁听与接话', 'presence')],
