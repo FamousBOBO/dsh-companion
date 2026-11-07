@@ -18,7 +18,6 @@ import path from 'node:path';
 import fs from 'node:fs';
 import { fileURLToPath } from 'node:url';
 import { createMediaService } from './src/service.mjs';
-import { createMediaHost } from './src/host-llm.mjs';
 import { resolveDataDir } from './src/persona.mjs';
 import { registerMediaApi } from './src/http-api.mjs';
 
@@ -27,7 +26,7 @@ export const name = 'companion-media-http';
 const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
 const SUITE_ROOT = path.resolve(PLUGIN_ROOT, '..', '..');
 
-function serviceFor(ctx) {
+function serviceFor() {
   const dataRoot = resolveDataDir({ env: process.env, suiteRoot: SUITE_ROOT });
   const dir = dataRoot?.dir || path.join(SUITE_ROOT, 'data');
   const logDir = path.join(dir, 'media', 'logs');
@@ -39,13 +38,13 @@ function serviceFor(ctx) {
       /* logging must never take the plugin down */
     }
   };
-  return { service: createMediaService({ dataDir: dir, suiteRoot: SUITE_ROOT, env: process.env, log, host: createMediaHost(ctx) }), dataDir: dir, log };
+  return { service: createMediaService({ dataDir: dir, suiteRoot: SUITE_ROOT, env: process.env, log }), dataDir: dir, log };
 }
 
 export async function apply(ctx) {
   let built;
   try {
-    built = serviceFor(ctx);
+    built = serviceFor();
   } catch (error) {
     // Report it instead of throwing: a broken data root must not stop the whole app from booting.
     console.log(`[companion-media-http] could not build the media service: ${error?.message ?? error}`);

@@ -19,7 +19,6 @@ import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { existsSync, readFileSync, writeFileSync } from 'node:fs'
 import * as path from 'node:path'
-import { withLock } from '../src/adapters/fs-store/mutex.js'
 import type { AdminResource } from '../src/admin/types.js'
 import type { ContactConfig } from '../src/config/sections/contact.js'
 import type { QQChannelConfig } from '../src/config.js'
@@ -493,23 +492,18 @@ test('F1d 插件级：起草期间候选被修订（外部改账本）→ 零外
     const ticking = rig.tick()
     await waitUntil(() => rig.queue.pending() === 1, 5_000)
     // 起草已经完成、消息还挂在出站队列里：这时"证据被修订 / 候选被推进过一版"。
-    // 与真实 store 使用同一事务键：pending 出站任务出现时，前一笔落盘可能仍在完成。
-    await withLock(rig.ledgerFile, async () => {
-      const ledger = JSON.parse(readFileSync(rig.ledgerFile, 'utf-8')) as {
-        candidates: Record<string, { updatedAt: number; version: number; evidenceIds: string[] }>
-      }
-      for (const row of Object.values(ledger.candidates)) {
-        row.updatedAt = Date.now() + 1_000
-        row.version += 1
-        row.evidenceIds = [...row.evidenceIds, 'chat:qq-dm-10001:1730000123']
-      }
-      writeFileSync(rig.ledgerFile, JSON.stringify(ledger))
-    })
+    const ledger = JSON.parse(readFileSync(rig.ledgerFile, 'utf-8')) as {
+      candidates: Record<string, { updatedAt: number; version: number; evidenceIds: string[] }>
+    }
+    for (const row of Object.values(ledger.candidates)) {
+      row.updatedAt = Date.now() + 1_000
+      row.version += 1
+      row.evidenceIds = [...row.evidenceIds, 'chat:qq-dm-10001:1730000123']
+    }
+    writeFileSync(rig.ledgerFile, JSON.stringify(ledger))
     rig.queue.hold = false
     await rig.queue.release()
     await ticking
-    // 首拍可能由插件后台启动；等待拒绝原因落盘，而不是依赖机器 I/O 调度顺序。
-    await waitUntil(() => rig.reasons().some((line) => line.includes('draft:stale')), 5_000)
     assert.equal(rig.platform.count(), 0, `旧草稿不许发出去：${rig.logs().join('\n')}`)
     assert.ok(rig.reasons().some((line) => line.includes('draft:stale')), `诊断里要有 draft:stale：${rig.reasons().join(' | ')}`)
   } finally {
