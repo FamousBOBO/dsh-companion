@@ -134,7 +134,7 @@ node plugins/companion-expression/scripts/import-pack.mjs \
 
 ```bash
 cd plugins/companion-expression
-node --test "test/*.test.mjs"          # 205 项，全离线、不联网、不碰 data/
+node --test "test/*.test.mjs"          # 206 项，全离线、不联网、不碰 data/
 ```
 
 两条**真宿主**证据（都用一个临时 `DSH_HOME` + 临时数据目录，跑完删掉，不写仓库）：

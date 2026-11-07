@@ -87,7 +87,7 @@
 | `companion-runtime` | **697 通过 / 0 失败** | **✅ 已装载**（C 段） | 未验证 | — | — |
 | `companion-group` | **10 通过 / 0 失败** | **✅ 已装载**（C 段） | — | 未验证 | — |
 | `dsh-channel-qq` | **1208 项 / 1207 通过 / 0 失败 / 1 跳过** | **✅ 2026-11-07**（生产宿主上真实装载并连上 OneBot/NapCat：`data/home/channel-qq/connection-status.json` → `connected:true`；私聊与群会话都在跑） | 未验证 | **✅ 2026-11-07（1 条）** | — |
-| `companion-expression` | **205 通过 / 0 失败**（`test/*.test.mjs`，含 zip 21 / pack 22 / pack-import 9 / calibration 9） | **✅ 已装载**（§2.6） | — | **✅ 2026-11-07（1 条，经 `qq_sticker` 实发）** | — |
+| `companion-expression` | **206 通过 / 0 失败**（`test/*.test.mjs`，含 zip 21 / pack 22 / pack-import 9 / calibration 9 / ingest 15） | **✅ 已装载**（§2.6；主人私聊与群预设都装了它） | — | **✅ 2026-11-07（1 条，经 `qq_sticker` 实发）** | — |
 | `companion-media` | 通过（计数未单独汇总，B 段 `unit` 全绿） | 未验证（验收未启用该模块） | **✅ 2026-11-06**（生图真实出图，见 §2.5） | 未验证（投递仍由通道负责） | — |
 | `companion-health` | 通过（计数未单独汇总，B 段 `unit` 全绿） | 未验证（验收未启用该模块） | 未验证 | — | 未验证 |
 | `sidecars/huawei-health-cn` | 待汇总（含 `test_protocol_contract.py` / `test_redact.py`） | — | **未验证**（需要真实华为账号；代码路径与 MIT 许可已就位） | — | — |
@@ -143,7 +143,7 @@
 
 | 项 | 级别 | 说明 |
 |---|---|---|
-| 采集授权判定、作用域隔离、sha256 物理去重 | `offline-test` | `node --test plugins/companion-expression/test/*.test.mjs` → **205 项通过 / 0 失败**（2026-11-07 实测 205/205/0）；未授权来源 0 下载、0 入库（用例钉住） |
+| 采集授权判定、作用域隔离、sha256 物理去重 | `offline-test` | `node --test plugins/companion-expression/test/*.test.mjs` → **206 项通过 / 0 失败**（2026-11-07 实测 206/206/0）；未授权来源 0 下载、0 入库（用例钉住） |
 | 下载安全（魔数判型 / 体积与像素上限 / SSRF / 重定向 / 文件名穿越） | `offline-test` | 全部用注入的假 `http`，**没有一次真实网络请求** |
 | 检索、决策、冷却与配额、回复计划、幂等投递 | `offline-test` | 假 `qqSender`；`unknown` 不重投的用例在其中 |
 | 反馈学习（`reject` 立刻抑制重发） | `offline-test` | — |
@@ -160,7 +160,7 @@
 | GIF 关键帧理解 / OCR / embedding 向量召回 | **未实现** | 代码里是 `NOT_IMPLEMENTED` 常量，不是「待验证」 |
 | QQ 内置 `face` 表情投递 | **未实现** | 现有通道没有可复核的 face 发送入口，不凭空构造 |
 
-> 结论措辞只能用：「表情包系统的采集、检索、决策、宿主接线、投递与反馈在**离线测试**层面通过（205 项），
+> 结论措辞只能用：「表情包系统的采集、检索、决策、宿主接线、投递与反馈在**离线测试**层面通过（206 项），
 > 两行插件在真宿主上**装载成功**，并且**已经有一条真实 QQ 发图回执**；批量、群聊与连续发图仍未验证」。
 >
 > 「接线已落地」不等于「能发出去」，「有一条回执」也不等于「不会再失败」：同一次验收里第一次发图
