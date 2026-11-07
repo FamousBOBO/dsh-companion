@@ -169,24 +169,56 @@ pageDescriptor(config, status) -> {
 ## 6. 入站旁路端口（`process[Symbol.for('dsh.companion.expression.v1')]`）
 
 `dsh-channel-qq` 的 observers 把每一条 QQ 消息的**元数据**递给这里，采集与唤醒彻底分离。
-这一格的形状是**实际发布的样子**（不是早期设计稿里的 `offers` / `ingest` 两个方法）：
+这一格的形状是**实际发布的样子**：
 
 ```js
 process[Symbol.for('dsh.companion.expression.v1')] = {
   version: 1,
   service,            // 本模块的 service 句柄
+  offers(route),      // 同步、永不抛：{kind:'dm'|'group', chatId, isOwner} → boolean
   observe(event),     // 同步、非阻塞、永不抛；只入队（授权判定在服务内部做）
   status(),           // 三行统计，供诊断
 }
 ```
 
+- **先问后发**：`channel-qq` 侧先调 `offers(route)`，返回**不是 `true`** 就整段跳过；只有
+  `true` 才继续 `observe()`。两处用的是**同一个判定**（`scopesFor().capture`），所以不会
+  出现「端口说收、入库说没授权」的两套口径。
 - **只转发元数据**：`{messageId, at, kind:'dm'|'group', chatId, isOwner, senderId, images:[{url,subType?,summary?,emojiId?,emojiPackageId?,key?}], text?}`。
-  不含字节、不下载、不 `await`。`channel-qq` 侧先问一遍「要不要这条」（拿不到就整段跳过），
-  再同步 `observe()`；端口抛错一律吞掉并记一行，**绝不拖慢消息路径、绝不唤醒 Agent**。
+  不含字节、不下载、不 `await`。端口抛错一律吞掉并记一行，**绝不拖慢消息路径、绝不唤醒 Agent**。
+- **`observe()` 的回话是适配器自己说的**：`{ok:true, queued:N}`（这条消息有几张图入了队）或
+  `{ok:false, queued:0, reasonCode}`（`no-image-url` / `ingest-not-injected` / `ingest-threw`）。
+  「接了」与「收了」不是同一件事，消费端要能看出区别。
 - **懒探测**：`companion-expression` 常常比 channel-qq 的 observers 段晚挂载，所以消费端
   每次现取、取不到就立刻返回（只在 `apply` 时探一次会永远接不上）。
 - **两处都不在时**：没有端口 = 零开销、零副作用；`modules.expression=false` 时本模块根本不
   发布这一格，通道侧的行为与没有装本模块完全一致。
+
+---
+
+## 6.1 宿主接线（`src/host-wiring.mjs`）：函数型依赖只能从 `ctx` 取
+
+补丁行只能给配置数据（`JSON_SCHEMA` 解析，唯一能带代码的节点是 `!!js`，本仓库不用），
+而 cordis 调的是 `runtime.callback(this.ctx, this.config)` —— 所以 `apply(ctx, options)`
+的 `options` 里**永远不会有函数**。四样东西因此必须在 `apply` 里从 `ctx` 现取：
+
+| 依赖 | 来源 | 缺了会怎样 |
+|---|---|---|
+| `qqSender` | `ctx.tools` 的 `qq_message` / `qq_sticker`（旧名 `qq_send_text` / `qq_send_emoji` 亦可）执行器，经 `tools.execute()` 调用 | 不注入 ⇒ `expression_reply` 回 `sender-unavailable`，`delivery.enabled=true` 也只是「闸门开着、没有出口」 |
+| `http` | `security.createGuardedHttp({fetchImpl: fetch})` | 入站图片不下载（SSRF 白名单/字节上限/每跳重判都在那里面，本模块不自建 fetch） |
+| `ingest` | `ingest.createIngest({db, library, config, http})` + 元数据适配 | `observe()` 回 `ingest-not-injected` |
+| `isOwner` | `home/companion/identity.json` 的 `owner.id`（只读，不写） | 主人私聊按 `peer` 处理（宁可不认，也不把陌生人算成主人） |
+
+两条**不变**的性质：
+
+1. **发送仍然是一次真实工具调用**，不是绕过通道自己发请求。因此预执行策略、群边界、
+   出站边界、`policy.v2` 全部照常生效；这里只做参数搬运与结果解读。
+2. **显式注入优先**。`apply` 的 `options` 里已经给了 `qqSender` / `http` / `ingest` /
+   `isOwner` 时，宿主接线**不覆盖**（测试与运维脚本仍可自己接）。一条都没接上时，
+   日志里逐条写清缺哪一路，能力本身如实报不可用。
+
+`real-send` 仍**未验证**：接线只证明「有出口且走的是同一道闸门」，「QQ 上真的收到了」
+必须由操作者显式触发一次，见 `docs/07-verification-status.md` §2.6。
 
 ---
 

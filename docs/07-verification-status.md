@@ -142,20 +142,24 @@
 
 | 项 | 级别 | 说明 |
 |---|---|---|
-| 采集授权判定、作用域隔离、sha256 物理去重 | `offline-test` | `node --test plugins/companion-expression/test/*.test.mjs` → **119 项通过 / 0 失败**（2026-11-07）；未授权来源 0 下载、0 入库（用例钉住） |
+| 采集授权判定、作用域隔离、sha256 物理去重 | `offline-test` | `node --test plugins/companion-expression/test/*.test.mjs` → **141 项通过 / 0 失败**（2026-11-07）；未授权来源 0 下载、0 入库（用例钉住） |
 | 下载安全（魔数判型 / 体积与像素上限 / SSRF / 重定向 / 文件名穿越） | `offline-test` | 全部用注入的假 `http`，**没有一次真实网络请求** |
 | 检索、决策、冷却与配额、回复计划、幂等投递 | `offline-test` | 假 `qqSender`；`unknown` 不重投的用例在其中 |
 | 反馈学习（`reject` 立刻抑制重发） | `offline-test` | — |
+| **宿主接线**（从 `ctx` 取发送器 / 采集 `http` / 入库适配 / 主人判定） | `offline-test` | `test/host-wiring.test.mjs` **18 项** + `test/apply-wiring.test.mjs` **4 项**。证明：① `apply` 能从 `ctx.tools` 把 `qq_message`/`qq_sticker` 接成 `qqSender`（发送走 `tools.execute()`，不绕过通道闸门）；② 接上后 `expression_reply` 不再回 `sender-unavailable`（此时拦住它的才是 `delivery.enabled`）；③ 接上后入站端口 `observe()` 不再回 `ingest-not-injected`，`offers()` 与入库用同一个 `scopesFor().capture`；④ 拿不到工具表时仍注册四个工具、照常发端口，并**如实**报 `sender-unavailable`。全程假工具表 + 假 `fetch`，**零网络、零 QQ** |
 | Studio 管理入口（图库 / 收集规则 / 实验室 / 习惯） | `offline-test` | 页面片段在最小 `P` 桩与 `smoke-client.mjs` 下渲染通过（**表情包相关失败 0 项**），`test/expression-page.test.mjs` **16 项通过**；**没有在真实浏览器里点过** |
 | Studio 管理 API（12 条路由 / 10 个 path） | `offline-test` | `test/http-api.test.mjs` **12 项通过**：路由表、Origin 守卫、只认 `assetId`、`/thumb` realpath 越界 403、未启用态 200+启用片段、`/simulate` 恒 `sending:false` |
-| 宿主装载 | **`host-load` 已达成（2026-11-07）** | `npm run check:hostload --workspace=@dsh-companion/expression`：临时 `DSH_HOME` + 临时数据目录、`modules.expression=1`、只开 `expression` 补丁块，真启动宿主 → 拿到启动 URL、日志**没有 `did not activate`**，且有三行自有记录：`已发布入站端口 dsh.companion.expression.v1` / `已注册 4 个工具（defineTool=host）` / `[companion-expression-http] 已注册 10 条管理路由`。裸 `fetch` 回 **401**（宿主 token 换会话的行为，浏览器里才有 cookie），因此判据不拿 200 作数 |
+| 宿主装载 | **`host-load` 已达成（2026-11-07）** | 两次独立达成：① `npm run check:hostload --workspace=@dsh-companion/expression`：临时 `DSH_HOME` + 临时数据目录、`modules.expression=1`、只开 `expression` 补丁块；② 生产切换（`dsh-ops`，`expressions` 分支 `0278264`）真宿主启动后日志三行齐全（`已发布入站端口 dsh.companion.expression.v1` / `已注册 4 个工具（defineTool=host）` / `[companion-expression-http] 已注册 10 条管理路由`），且无 `did not activate`。裸 `fetch` 回 **401**（宿主 token 换会话的行为，浏览器里才有 cookie），因此判据不拿 200 作数 |
 | 补丁渲染与合成 | **`host-load` 的一部分（仅渲染+合成，未装载）** | `npm run check:patch --workspace=@dsh-companion/expression`：把模板按「四个可选块全开」渲染后送宿主 `--dump-config`，**217 个 loader 行**、`expression` 与 `expression-http` 两行都在（2026-11-07） |
-| 真实平台发图 | **未验证** | `delivery.enabled=false` + 需要真实 NapCat；本仓库没有这次发送的任何回执证据 |
+| 真实平台发图 | **未验证** | `delivery.enabled=true` 已在生产打开，且发送器**已经接到** `qq_message`/`qq_sticker`（2026-11-07 接线落地后），但**没有任何一条真实 QQ 回执证据**。要达成 `real-send` 必须由操作者显式触发一次发送并留存回执（`deliveries` 表一行 `status='sent'`）。`assets`/`deliveries`/`expression_feedback` 当前均为 0 行 |
 | GIF 关键帧理解 / OCR / embedding 向量召回 | **未实现** | 代码里是 `NOT_IMPLEMENTED` 常量，不是「待验证」 |
 | QQ 内置 `face` 表情投递 | **未实现** | 现有通道没有可复核的 face 发送入口，不凭空构造 |
 
-> 结论措辞只能用：「表情包系统的采集、检索、决策、投递与反馈在**离线测试**层面通过，
+> 结论措辞只能用：「表情包系统的采集、检索、决策、**宿主接线**、投递与反馈在**离线测试**层面通过，
 > 两行插件在真宿主上**装载成功**；**真实发图未验证**」。不得省略后半句。
+>
+> 「接线已落地」不等于「能发出去」：它只说明**出口存在、且走的是同一道闸门**（预执行策略、
+> 群边界、出站边界都照常跑），不说明某一条消息真的到了 QQ 上。
 
 
 ## 3. 明确「未验证」清单（当前）

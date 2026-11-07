@@ -26,6 +26,7 @@ import { plan as buildPlan, partJobs } from './planner.mjs';
 import { deliver } from './delivery.mjs';
 import { createFeedback, feedbackScoreOf, isSuppressed } from './feedback.mjs';
 import { createToolHandlers, parametersToJsonSchema, TOOL_SPECS } from './tools.mjs';
+import { createHostWiring, withToolAgent } from './host-wiring.mjs';
 
 export const name = 'companion-expression';
 export const inject = ['tools'];
@@ -33,7 +34,10 @@ export const version = '0.1.0';
 export const PORT_SYMBOL = Symbol.for('dsh.companion.expression.v1');
 export const MODULE_ENV = 'DSH_COMPANION_MODULES_EXPRESSION';
 
-const PLUGIN_ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
+const PLUGIN_SRC = path.resolve(path.dirname(fileURLToPath(import.meta.url)));
+const PLUGIN_ROOT = path.resolve(PLUGIN_SRC, '..');
+// 套件根 = `<suite>/plugins/companion-expression` 往上两级。注意 `import.meta.url` 在 `src/` 里：
+// 这里曾经只往上两级（算到 `<suite>/plugins`），于是永远读不到 `config/suite.json`。
 const SUITE_ROOT = path.resolve(PLUGIN_ROOT, '..', '..');
 
 let singleton = null;
@@ -189,21 +193,34 @@ function libraryStats(state, { limit = 10 } = {}) {
   }
 }
 
-/** 入站旁路：同步入队，绝不 await、绝不抛。没有注入 ingest/http 就只计数。 */
+/**
+ * 入站旁路：同步入队，绝不 await、绝不抛。
+ *
+ * 返回值是**采集适配器自己说的话**（接了几张图 / 为什么没收），不是笼统的 `true`：
+ * 「接了」和「收了」不是同一件事，端口的使用者要能看出区别。
+ * 没有注入 ingest/http 时才回 `ingest-not-injected`。
+ */
 function observeInbound(state, event = {}) {
   state.events.observed += 1;
   state.events.lastAt = Math.trunc(state.clock());
   if (typeof state.options.ingest !== 'function' || !state.options.http) {
     state.events.dropped += 1;
-    return { ok: false, queued: false, reasonCode: 'ingest-not-injected' };
+    return { ok: false, queued: 0, reasonCode: 'ingest-not-injected' };
   }
   try {
-    state.events.queued += 1;
-    Promise.resolve(state.options.ingest(event)).catch(() => { state.events.dropped += 1; });
-    return { ok: true, queued: true };
+    const result = state.options.ingest(event);
+    const queued = Number(result?.queued ?? 0);
+    if (result?.ok === false) {
+      state.events.dropped += 1;
+      return { ok: false, queued: 0, reasonCode: String(result.reasonCode ?? 'ingest-refused') };
+    }
+    state.events.queued += queued > 0 ? queued : 1;
+    // 适配器是同步的；万一某个实现回了 promise，只兜错误、不 await（入站路径不许等）。
+    if (result && typeof result.then === 'function') result.then(null, () => { state.events.dropped += 1; });
+    return { ok: true, queued: queued > 0 ? queued : 1 };
   } catch {
     state.events.dropped += 1;
-    return { ok: false, queued: false, reasonCode: 'ingest-threw' };
+    return { ok: false, queued: 0, reasonCode: 'ingest-threw' };
   }
 }
 
@@ -226,18 +243,63 @@ export function createService(options = {}) {
     return { ok: false, disabled: true, reason: `db-open-failed: ${String(error?.message ?? error).slice(0, 160)}`, config, warnings: loaded.warnings };
   }
   const library = createLibrary({ db, assetsDir: paths.assets, now: clock });
+  const salt = saltOf(db);
+  const explicitOwner = typeof options.isOwner === 'function';
+  let ownerWired = explicitOwner;
+  /** 入站端口 `offers()` 的实现：`apply` 接到宿主后用**同一个作用域判定**覆盖默认值。 */
+  const offersRef = { fn: null };
   const state = {
-    config, dataRoot, paths, db, clock, options, library,
+    config, dataRoot, paths, db, clock, options, library, salt,
     feedback: createFeedback({ db, library, config, now: clock }),
     events: { observed: 0, dropped: 0, queued: 0, lastAt: 0 },
     warnings: [...(loaded.warnings ?? [])],
-    isOwnerFor: typeof options.isOwner === 'function' ? options.isOwner : () => false,
+    isOwnerFor: explicitOwner ? options.isOwner : () => false,
   };
   return {
     ok: true, config, warnings: state.warnings, library: state.library, db, paths, events: state.events,
+    /** 作用域盐（宿主接采集管线要用同一份；`scopesFor` 与 `ingestOne` 必须一致）。 */
+    salt: state.salt,
+    /** 数据根：`apply` 接宿主时要用同一个（不重新推导，避免 env 与 options 走岔）。 */
+    dataRoot,
+    /**
+     * 「这条消息要不要」。默认用**本模块自己的作用域判定**（与入库同一个口径）；
+     * `apply` 接上宿主后可以换成带 identity 的版本（见 `attach`）。
+     * 通道的入站旁路先问这一句，不是 `true` 就整段跳过——所以它不能默认返回 `true`。
+     */
+    offers: offer => (typeof offersRef.fn === 'function'
+      ? offersRef.fn(offer) === true
+      : scopesFor({
+        kind: offer?.kind === 'group' ? 'group' : 'dm',
+        chatId: Number(offer?.chatId) || 0,
+        isOwner: state.isOwnerFor({ chatId: Number(offer?.chatId) || 0, isGroup: offer?.kind === 'group' }) === true,
+        salt: state.salt, config: state.config,
+      }).capture === true),
     /** 反馈句柄（Studio 用：summary / clearSuppression 之类）。 */
     feedbackHandle: state.feedback,
     observe: event => observeInbound(state, event),
+    /**
+     * 挂上宿主接线（发送器 / 采集 http / 入站适配 / 主人判定）。由 `apply` 在拿到 `ctx` 后调用；
+     * 已经显式传入的东西**不被覆盖**（测试与运维脚本仍可以自己注入）。
+     * @returns {{qqSender: boolean, http: boolean, ingest: boolean, owner: boolean}}
+     */
+    attach(deps = {}) {
+      const next = { ...state.options };
+      if (deps.qqSender && !next.qqSender) next.qqSender = deps.qqSender;
+      if (deps.http && !next.http) next.http = deps.http;
+      if (typeof deps.ingest === 'function' && typeof next.ingest !== 'function') next.ingest = deps.ingest;
+      state.options = next;
+      if (typeof deps.isOwner === 'function' && !explicitOwner) {
+        state.isOwnerFor = deps.isOwner;
+        ownerWired = true;
+      }
+      if (typeof deps.offers === 'function') offersRef.fn = deps.offers;
+      return {
+        qqSender: Boolean(state.options.qqSender),
+        http: Boolean(state.options.http),
+        ingest: typeof state.options.ingest === 'function',
+        owner: ownerWired,
+      };
+    },
     // 下面四个就是 tools.mjs 的 service 门面（名字与那边对齐，工具只认这四个）。
     candidates: input => listCandidates(state, input),
     reply: input => replyWithSticker(state, input),
@@ -289,7 +351,9 @@ function registerTools(register, service, defineTool, log) {
         description: spec.description,
         parameters: spec.parameters,
         output: { schema: { type: 'string' }, render: (_args, value) => [{ type: 'text', text: value }] },
-        execute: async (args, exec) => JSON.stringify(await handlers[spec.name](args ?? {}, exec)),
+        // `withToolAgent`：工具执行期间把 `exec.agent` 放进 AsyncLocalStorage，
+        // 发送器据此把「这次投递」挂到正确会话上（群/私聊路由与守卫都靠它）。
+        execute: async (args, exec) => withToolAgent(exec?.agent, async () => JSON.stringify(await handlers[spec.name](args ?? {}, exec))),
         presentCall: () => ({ card: 'generic', title: spec.name, kind: spec.kind }),
       };
       const tool = typeof defineTool === 'function' ? defineTool(definition) : definition;
@@ -307,7 +371,8 @@ function registerTools(register, service, defineTool, log) {
 function publishPort(service, log) {
   let released = false;
   const port = Object.freeze({
-    version: 1, service, observe: service.observe, status: () => service.stats({ limit: 3 }),
+    version: 1, service, observe: service.observe, offers: service.offers,
+    status: () => service.stats({ limit: 3 }),
   });
   try {
     process[PORT_SYMBOL] = port;
@@ -332,6 +397,20 @@ function acquireService(options, env) {
     return { service: null, reused: false };
   }
   return { service: singleton, reused: false };
+}
+
+/**
+ * **仅供测试**：把进程级单例放下（含关库），并把世代号推进一步，让旧 disposer 彻底失效。
+ *
+ * 生产代码不需要它：一个宿主进程只有一个 dataRoot，单例就是要跨 apply 复用。
+ * 但离线测试要在同一进程里依次覆盖「各种配置 / 各种 ctx」，不复位就测不出第二组。
+ */
+export function resetServiceForTests() {
+  epoch += 1;
+  ownerEpoch = epoch;
+  const previous = singleton;
+  singleton = null;
+  try { previous?.close?.(); } catch { /* 已经关了 */ }
 }
 
 /**
@@ -364,6 +443,35 @@ export async function apply(ctx, options = {}) {
   let release = () => {};
   try { release = publishPort(service, note); } catch (error) { note(`publish 失败：${String(error?.message ?? error).slice(0, 160)}`); }
 
+  // 宿主接线：补丁给不了函数，所以在这里从 `ctx` 现取发送器 / 采集 http / 入库适配 / 主人判定。
+  // 显式 options 优先（测试与运维脚本仍可自己注入）；一条都没接上就如实说，不假装能发。
+  if (service.ok !== false && typeof service.attach === 'function') {
+    try {
+      const wiring = createHostWiring({
+        ctx,
+        dataRoot: service.dataRoot,
+        db: service.db,
+        library: service.library,
+        config: service.config,
+        salt: service.salt,
+        env,
+        // `fetchImpl` 只走 `options`（补丁给不了函数）：测试与运维脚本可以用它把网络换成假的。
+        ...(typeof options.fetchImpl === 'function' ? { fetchImpl: options.fetchImpl } : {}),
+        log: note,
+      });
+      const attached = service.attach(wiring);
+      const missing = Object.entries(attached).filter(([, ok]) => ok !== true).map(([key]) => key);
+      note(
+        `宿主接线：发送器=${attached.qqSender ? '有' : '无'}、采集http=${attached.http ? '有' : '无'}、`
+        + `入库=${attached.ingest ? '有' : '无'}、主人判定=${attached.owner ? '有' : '无'}`
+        + (missing.length ? `；缺 ${missing.join('/')}（对应能力会如实报不可用）` : '。'),
+      );
+      for (const line of wiring.notes ?? []) note(line);
+    } catch (error) {
+      note(`宿主接线失败（模块其余能力不受影响）：${String(error?.message ?? error).slice(0, 200)}`);
+    }
+  }
+
   const defineTool = await resolveDefineTool(env, note);
   const register = toolRegisterOf(ctx);
   if (register) {
@@ -394,4 +502,7 @@ export async function apply(ctx, options = {}) {
 }
 
 export { createService as createExpressionService };
-export default { name, inject, version, PORT_SYMBOL, apply, createService, moduleGate, parametersToJsonSchema };
+export default {
+  name, inject, version, PORT_SYMBOL, apply, createService, moduleGate, parametersToJsonSchema,
+  resetServiceForTests,
+};
