@@ -126,7 +126,34 @@ test('没有工具表 / 工具表缺必需方法：发送器返回 null（调用
   assert.equal(createQqSender({ tools: null }), null);
   assert.equal(createQqSender({ tools: { get() {} } }), null, '缺 execute 不算能用');
   assert.equal(createQqSender({ tools: { execute() {} } }), null, '缺 get 不算能用');
-  assert.equal(createQqSender({ tools: fakeTools({ names: ['qq_send_group_notice'] }) }), null, '没有发送类工具就是没有');
+});
+
+test('工具名在**发送那一刻**按作用域解析：这次会话里看不到就如实报 tool-not-visible', async () => {
+  const tools = fakeTools({ names: ['qq_send_group_notice'] });
+  const sender = createQqSender({ tools });
+
+  // 发送器本身还在（工具表可用），但两个名字都不在这个作用域里 ⇒ 这一次不发，并说清原因。
+  const out = await sender.sendText({ kind: 'dm', target: '1000000001', text: 'x' }, {});
+  assert.equal(out.ok, false);
+  assert.equal(out.code, 'tool-not-visible');
+  assert.match(sender.counters.lastError, /qq_message\|qq_send_text/);
+  assert.equal(tools.calls.length, 0, '看不到工具就一次也不调用');
+});
+
+test('作用域里只有旧名时用旧名：qq_send_text 也能发（不把能用的判成不能用）', async () => {
+  // QQ 工具挂在 preset 作用域；不带 scope 的 get() 只看全局层，所以必须按 agent 再问一次。
+  const calls = [];
+  const scoped = {
+    calls,
+    get: (name, agent) => (agent?.id === 'qq-dm-1000000001' && name === 'qq_send_text' ? { name } : undefined),
+    execute: async exec => { calls.push(exec); return { isError: false, value: { message_id: 1 } }; },
+  };
+  const sender = createQqSender({ tools: scoped });
+  const agent = { id: 'qq-dm-1000000001' };
+  const out = await withToolAgent(agent, () => sender.sendText({ kind: 'dm', target: '1000000001', text: 'x' }));
+  assert.deepEqual(out, { ok: true, messageId: 1 });
+  assert.equal(calls[0].name, 'qq_send_text');
+  assert.deepEqual(calls[0].agent, agent);
 });
 
 test('sendText 走 qq_message 的 send 分支：参数形状与工具契约一致，结果映射成 messageId', async () => {
