@@ -150,33 +150,49 @@ export function createQqSender({ tools, signal, log = () => {} } = {}) {
     return new AbortController().signal;
   };
 
-  /** 工具在不在册。`tools.get(name)` 返回的是定义对象（不在册时是 `undefined`）。 */
-  const hasTool = name => {
-    try { return tools.get(name) !== undefined; } catch { return false; }
-  };
+  /**
+   * 同一个动作对应合并面与旧工具名两套；**运行时**按可见性挑一个。
+   *
+   * 为什么不能在构造时就挑：QQ 工具挂在 **preset 作用域**里（`ctx.tools.register` 由预设内的
+   * channel-qq 调用），而不带 scope 的 `tools.get(name)` 只看全局层 —— 于是「构造时探不到」
+   * 会把一个其实能用的发送器判成没有。作用域是**按 agent 解析**的，所以必须等到真正发送那一刻、
+   * 手里有 `exec.agent` 时再问一次。
+   */
+  const TEXT_CANDIDATES = [
+    { name: 'qq_message', args: a => ({ action: 'send', ...a }) },
+    { name: 'qq_send_text', args: a => ({ ...a }) },
+  ];
+  const STICKER_CANDIDATES = [
+    { name: 'qq_sticker', args: a => ({ action: 'send', ...a }) },
+    { name: 'qq_send_emoji', args: a => ({ ...a }) },
+  ];
 
-  /** 同一个动作可能对应合并面或旧工具名；按存在性挑一个。 */
-  function pickText() {
-    if (hasTool('qq_message')) return { name: 'qq_message', args: (a) => ({ action: 'send', ...a }) };
-    if (hasTool('qq_send_text')) return { name: 'qq_send_text', args: (a) => ({ ...a }) };
+  /** 在**这次调用所属 agent 的作用域**里找可见的那个名字；都没有就 `null`。 */
+  function resolveVisible(candidates, agent) {
+    for (const entry of candidates) {
+      try {
+        if (tools.get(entry.name, agent) !== undefined) return entry;
+      } catch {
+        /* 读不到这个作用域就试下一个名字 */
+      }
+    }
     return null;
   }
-  function pickSticker() {
-    if (hasTool('qq_sticker')) return { name: 'qq_sticker', args: (a) => ({ action: 'send', ...a }) };
-    if (hasTool('qq_send_emoji')) return { name: 'qq_send_emoji', args: (a) => ({ ...a }) };
-    return null;
-  }
 
-  const textTool = pickText();
-  const stickerTool = pickSticker();
-  if (!textTool && !stickerTool) return null;
-  // 文本能力缺失时不要假装有：投递层会按 `sendText` 是否函数来判「sender-unavailable」。
-  if (!textTool || !stickerTool) log(`QQ 发送器只接上一半（文本=${textTool ? '有' : '无'}，图片=${stickerTool ? '有' : '无'}）。`);
-
-  async function invoke(entry, args) {
-    const agent = TOOL_AGENT.getStore();
+  async function invoke(candidates, args, agent) {
+    const entry = resolveVisible(candidates, agent);
     seq += 1;
     counters.calls += 1;
+    if (!entry) {
+      counters.failures += 1;
+      counters.lastError = `tool-not-visible: ${candidates.map(c => c.name).join('|')}`
+        + (agent === undefined ? '（本次调用没有 agent 作用域）' : '');
+      return {
+        ok: false,
+        code: 'tool-not-visible',
+        message: '这次投递的会话里看不到 QQ 发送工具（作用域未包含它）：本轮不发。',
+      };
+    }
     try {
       const result = await tools.execute({
         callId: `expression-delivery:${seq}`,
@@ -203,7 +219,6 @@ export function createQqSender({ tools, signal, log = () => {} } = {}) {
 
   /** 地址不合法就直接失败：宁可这一条不发，也不能因为 `NaN` 发进别的会话。 */
   const refuseTarget = (kind, target) => {
-    const id = targetIdOf(target);
     counters.calls += 1;
     counters.failures += 1;
     counters.lastError = `target-invalid: ${String(kind)} ${JSON.stringify(target)}`.slice(0, 240);
@@ -211,20 +226,17 @@ export function createQqSender({ tools, signal, log = () => {} } = {}) {
   };
 
   const sender = { counters };
-  if (textTool) {
-    sender.sendText = ({ kind, target, text }) => {
-      const id = targetIdOf(target);
-      if (id === null) return refuseTarget(kind, target);
-      return invoke(textTool, { isGroup: kind === 'group', target: id, text: String(text ?? '') });
-    };
-  }
-  if (stickerTool) {
-    sender.sendSticker = ({ kind, target, file }) => {
-      const id = targetIdOf(target);
-      if (id === null) return refuseTarget(kind, target);
-      return invoke(stickerTool, { isGroup: kind === 'group', target: id, file: String(file ?? '') });
-    };
-  }
+  sender.sendText = ({ kind, target, text }) => {
+    const id = targetIdOf(target);
+    if (id === null) return refuseTarget(kind, target);
+    return invoke(TEXT_CANDIDATES, { isGroup: kind === 'group', target: id, text: String(text ?? '') }, TOOL_AGENT.getStore());
+  };
+  sender.sendSticker = ({ kind, target, file }) => {
+    const id = targetIdOf(target);
+    if (id === null) return refuseTarget(kind, target);
+    return invoke(STICKER_CANDIDATES, { isGroup: kind === 'group', target: id, file: String(file ?? '') }, TOOL_AGENT.getStore());
+  };
+  log('QQ 发送器已接：具体用哪个工具名在**发送那一刻**按会话作用域决定（qq_message/qq_sticker 优先，旧名兜底）。');
   return sender;
 }
 
@@ -333,8 +345,19 @@ export function createHostWiring({
   const notes = [];
   let tools = null;
   try {
-    const toolsService = typeof ctx?.get === 'function' ? ctx.get('tools') : ctx?.tools;
-    if (toolsService && typeof toolsService.get === 'function' && typeof toolsService.execute === 'function') tools = toolsService;
+    const direct = ctx?.tools;
+    const viaGet = typeof ctx?.get === 'function' ? ctx.get('tools') : undefined;
+    const toolsService = (direct && typeof direct.execute === 'function') ? direct : viaGet;
+    if (toolsService && typeof toolsService.get === 'function' && typeof toolsService.execute === 'function') {
+      tools = toolsService;
+    } else {
+      // 拿不到就把「看到了什么」写出来：排查「明明注入了 tools 却说没有」时，这一行是唯一线索。
+      const shape = value => (value === undefined || value === null
+        ? String(value)
+        : `${typeof value}{${Object.getOwnPropertyNames(Object.getPrototypeOf(value) ?? {}).slice(0, 8).join(',')}}`);
+      notes.push(`ctx.tools 形状不对：ctx.tools=${shape(direct)}，ctx.get('tools')=${shape(viaGet)}；`
+        + '需要同时有 get() 与 execute()。');
+    }
   } catch (error) {
     notes.push(`读 ctx.tools 失败：${String(error?.message ?? error).slice(0, 120)}`);
   }
