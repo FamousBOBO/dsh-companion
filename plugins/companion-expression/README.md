@@ -13,7 +13,8 @@
 
 | 做 | 不做 |
 |---|---|
-| 按来源授权被动收集图片，同字节只存一份文件 | 主动爬取、批量抓图、扫描磁盘上的表情包目录 |
+| 按来源授权被动收集图片，同字节只存一份文件 | 主动爬取、在别人的群里批量抓图、扫描磁盘上的表情包目录 |
+| 整包导入：操作者给一张**手工语义卡清单** + 一个 zip，脚本按清单逐张入库（见 §4.1） | 从图片里猜语义：OCR / 视觉模型 / embedding 都不做（合同级未实现） |
 | 给每张图生成语义卡（字面 / 意图 / 情绪 / 语气 / 场景 / 忌讳） | GIF 关键帧理解、OCR、embedding 向量召回（都是合同级未实现） |
 | 检索 + 决策 + 生成 `ResponsePlan`（本轮要不要发图） | 保证一定发得出去：投递失败一律 fail-closed 退回纯文字 |
 | 经 QQ 通道把**已授权、已审核**的图发出去，并记录回执 | 用 QQ 内置表情、发别人没授权的图、跨房间复用（默认禁止） |
@@ -87,6 +88,34 @@
 
 ---
 
+## 4.1 整包导入（把一个表情包变成能用的图库）
+
+图库唯一的写入口是 `library.receive()`，它只认字节、格式和审核态；而**语义卡是人写的判断**，
+不是能从 PNG 字节里算出来的（本模块不做 OCR、不做视觉理解）。所以导入的形状是
+「操作者手写的清单 + 压缩包」两样东西对上号：
+
+```bash
+# 1. 先预演：只验字节、只报计划，绝不写库、绝不落文件
+node plugins/companion-expression/scripts/import-pack.mjs \
+  --pack plugins/companion-expression/packs/qq-232180.json \
+  --zip  <你的表情包.zip> --dry-run
+
+# 2. 确认无误再真导（默认给主人私聊 + config 里 use:true 的群各写一行 approved）
+node plugins/companion-expression/scripts/import-pack.mjs \
+  --pack plugins/companion-expression/packs/qq-232180.json \
+  --zip  <你的表情包.zip> --group 145326153
+```
+
+- 清单格式见 `packs/qq-232180.json`；字段白名单与上限在 `src/pack.mjs`（`file` / `literal` /
+  `intents` / `emotions` / `tone` / `scenes` / `avoidWhen` / `aggression` / `description`）。
+- 审核态写成 `approved`：`retrieval.mjs` 的硬门只放行 `approved`，导入给 `review` 等于
+  「导进去了但永远发不出来」。
+- 导入必须至少有一个可见作用域；一张谁都看不见的图入库等于没导入。
+- 重跑幂等：同字节只落一份文件、一行来源，卡是 upsert 不是插第二条。
+- 证据写到 `<dataDir>/logs/expression-import-<packId>.json`。
+
+---
+
 ## 5. 挂载方式
 
 两个补丁块，和 `companion-media` 同一个原因：
@@ -105,7 +134,7 @@
 
 ```bash
 cd plugins/companion-expression
-node --test "test/*.test.mjs"          # 119 项，全离线、不联网、不碰 data/
+node --test "test/*.test.mjs"          # 205 项，全离线、不联网、不碰 data/
 ```
 
 两条**真宿主**证据（都用一个临时 `DSH_HOME` + 临时数据目录，跑完删掉，不写仓库）：

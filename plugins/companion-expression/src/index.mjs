@@ -20,7 +20,7 @@ import { expressionPaths } from './paths.mjs';
 import { openExpressionDb } from './db.mjs';
 import { makeScopeSalt, scopesFor } from './scopes.mjs';
 import { createLibrary } from './library.mjs';
-import { fromLibrary, retrieve } from './retrieval.mjs';
+import { contextFromDraft, fromLibrary, retrieve } from './retrieval.mjs';
 import { decide, quotaBucketFor } from './decision.mjs';
 import { plan as buildPlan, partJobs } from './planner.mjs';
 import { deliver } from './delivery.mjs';
@@ -96,7 +96,8 @@ function contextOf(state, { chatId = 0, isGroup = false } = {}) {
 function searchFor(state, { usable, scope, query, limit = 5 }) {
   return retrieve({
     library: fromLibrary(state.library), usable, scope,
-    context: { query: String(query ?? ''), intents: [], scenes: [] },
+    // 上下文从草稿本身派生：图库里的卡片是按情绪/意图打的，空着这两项就等于永远只比字面。
+    context: contextFromDraft(query),
     limit, minFitScore: 0, now: state.clock(),
     feedbackScore: ({ assetId, scope: scopeKey }) => feedbackScoreOf({ db: state.db, assetId, scope: scopeKey }),
     isSuppressed: ({ assetId, scope: scopeKey }) => isSuppressed({ db: state.db, assetId, scope: scopeKey }),

@@ -6,6 +6,9 @@
  *   2. **FTS5 召回**：由注入的 library 门面负责（本层不直接写 SQL）。
  *   3. **加权重排**：语义 0.30 / 语用意图 0.20 / 语气关系 0.15 / 语境 0.10 / 正反馈 0.10 /
  *      角色风格 0.10 / 新鲜度 0.05，再减去「重复」与「场景风险」两项惩罚。
+ *      归一化口径：**只有真的有信号的维度才计入分母**（`activeWeights` 是实际在用的权重和），
+ *      而不是给缺席维度记一个 0.5 的中性分。理由：固定中性分会变成隐藏天花板——七维全开时
+ *      完美命中最多只有 0.675 < `minFitScore` 0.72，于是任何候选都发不出去，阈值形同虚设。
  *   4. **只返回 3–5 个 `{assetId, summary, intents, avoidWhen}`**：给模型的候选是窄结构，
  *      没有路径、没有字节、没有原始 URL。
  *
@@ -33,6 +36,7 @@
  *   personaStyle(assetId, card) → 0..1（缺省 0.5）        —— 角色贴合度，暂由调用方给
  */
 import { visibilityGate } from './scopes.mjs';
+import { analyzeWithHeuristics } from './analyzer.mjs';
 
 /** 可以发出去的格式。`kind` 之外的 mime 一律硬门拒绝（不发未知容器）。 */
 export const SENDABLE_KINDS = Object.freeze(['png', 'jpeg', 'gif', 'webp']);
@@ -127,14 +131,46 @@ export function freshnessScore(createdAt, now = Date.now()) {
   return clamp01(1 - age / (30 * day));
 }
 
+/** 草稿进入分析器前的截断上限，与 `tokens()` 同一个数：分析看的那段话就是打分看的那段话。 */
+const DRAFT_LIMIT = 2000;
+
+/**
+ * 从草稿文本派生检索上下文。**全模块只有这一处推导**：工具、HTTP 实验室、测试都调它，
+ * 所以「真实回合会怎么判」与「实验室说会怎么判」不可能走成两套口径。
+ *
+ * `avoidWhen` 直接当 `riskTags` 用：草稿落在冲突/道歉语境里时，愤怒类素材自带的
+ * `serious-conflict`/`apology` 标签就该命中并吃场景风险罚分，而不是照样发出去。
+ * 这里只用 `analyzer.mjs` 现成的线索表，不另造一套。
+ *
+ * @param {string} text 草稿（用户这句话 / 待发的文字）
+ * @returns {{query: string, intents: string[], emotions: string[], tone: string[], scenes: string[], riskTags: string[]}}
+ */
+export function contextFromDraft(text = '') {
+  const query = String(text ?? '').slice(0, DRAFT_LIMIT);
+  const cues = analyzeWithHeuristics({ literal: query });
+  return {
+    query,
+    intents: cues.intents,
+    emotions: cues.emotions,
+    tone: cues.tone,
+    scenes: cues.scenes,
+    riskTags: cues.avoidWhen,
+  };
+}
+
 /**
  * 单个候选的打分（纯函数，便于测试）。
+ *
+ * 归一化规则：**缺席的信号不计入分母**。`parts` 照旧按原公式算（没有信号的维度仍是 0.5），
+ * 但 `fitScore` 只用 `activeWeights`（真的有信号的那几个维度的权重和）作分母。反过来给缺席
+ * 维度记 0.5 分会变成隐藏天花板——七维全开时完美命中最多 0.675，而 `minFitScore` 是 0.72，
+ * 阈值就成了任何候选都够不到的装饰。
  *
  * @param {{
  *   candidate: object, context: object, scope: string, now?: number,
  *   feedbackScore?: number, personaScore?: number, repeated?: boolean,
  * }} input
- * @returns {{fitScore: number, parts: object}}
+ * @returns {{fitScore: number, parts: object, activeWeights: object, penalties: object, scope: string}}
  */
 export function scoreCandidate({
   candidate, context = {}, scope = '', now = Date.now(),
@@ -144,14 +180,21 @@ export function scoreCandidate({
   const queryTokens = tokens(context.query ?? '');
   const literalTokens = tokens([card.literal, card.ocr].join(' '));
   const intentTokens = setOf(card.intents);
+  const emotionTokens = setOf(card.emotions);
   const toneTokens = setOf(card.tone);
   const sceneTokens = setOf(card.scenes);
   const wantedIntents = setOf(context.intents);
+  const wantedEmotions = setOf(context.emotions);
   const wantedTone = setOf(context.tone);
   const wantedScenes = setOf(context.scenes);
 
   const semantic = Math.max(overlap(literalTokens, queryTokens), overlap(intentTokens, queryTokens) * 0.8);
-  const intent = wantedIntents.size === 0 ? 0.5 : overlap(intentTokens, wantedIntents);
+  // 情绪并入「意图」这一维：表情包是情绪优先的素材，草稿的情绪才是卡片的情绪真正对上的东西。
+  // 卡片常常没有 intents（heuristics 只从文字里抽意图），若只比 intents，情绪再准也是中性 0.5；
+  // 两个想头都空才算「没有信号」，不白送分也不白扣分。
+  const intent = (wantedIntents.size === 0 && wantedEmotions.size === 0)
+    ? 0.5
+    : Math.max(overlap(intentTokens, wantedIntents), overlap(emotionTokens, wantedEmotions));
   const tone = wantedTone.size === 0 ? 0.5 : Math.max(overlap(toneTokens, wantedTone), overlap(toneTokens, wantedTone) * 0.9);
   const sceneHit = wantedScenes.size === 0 ? 0.5 : overlap(sceneTokens, wantedScenes);
   const contextScore = Math.max(sceneHit, intent * 0.6);
@@ -161,10 +204,30 @@ export function scoreCandidate({
     feedback: clamp01(feedbackScore), persona: clamp01(personaScore),
     freshness: freshnessScore(candidate?.createdAt, now),
   };
-  const weighted =
-    parts.semantic * WEIGHTS.semantic + parts.intent * WEIGHTS.intent + parts.tone * WEIGHTS.tone +
-    parts.context * WEIGHTS.context + parts.feedback * WEIGHTS.feedback +
-    parts.persona * WEIGHTS.persona + parts.freshness * WEIGHTS.freshness;
+  // 哪些维度真的有信号：语义永远是（草稿本身就是查询），正反馈/角色风格/新鲜度永远有值，
+  // 另外三维只在调用方真的给了对应的「想要什么」时才算数。空集不是「中性」，是「没问」。
+  const riskTags = setOf(context.riskTags);
+  const active = {
+    semantic: true,
+    intent: wantedIntents.size > 0 || wantedEmotions.size > 0,
+    tone: wantedTone.size > 0,
+    context: wantedScenes.size > 0 || riskTags.size > 0,
+    feedback: true,
+    persona: true,
+    freshness: true,
+  };
+
+  // 分母是实际在用的权重和。semantic/feedback/persona/freshness 恒在，最小 0.55，不会除零。
+  const activeWeights = {};
+  let weighted = 0;
+  let weightSum = 0;
+  for (const key of Object.keys(parts)) {
+    if (active[key] !== true) continue;
+    activeWeights[key] = WEIGHTS[key];
+    weighted += parts[key] * WEIGHTS[key];
+    weightSum += WEIGHTS[key];
+  }
+  const normalised = weighted / weightSum;
 
   // 场景风险：素材自己的 avoidWhen 命中当前场景标签（严重求助/现实争执/道歉…），重罚但不硬砍，
   // 硬砍留给 decision 的禁忌硬门（那里有明确原因码）。aggression 高的素材同样收一点风险。
@@ -174,8 +237,11 @@ export function scoreCandidate({
   const scenePenalty = risky ? PENALTIES.sceneRisk : aggression * PENALTIES.sceneRisk * 0.5;
   const repeatPenalty = repeated ? PENALTIES.repeat : 0;
 
-  const fitScore = clamp01(weighted - scenePenalty - repeatPenalty);
-  return { fitScore, parts, penalties: { scene: scenePenalty, repeat: repeatPenalty }, scope };
+  // 用**归一化后的分**再扣惩罚：分母是这次真的在用的权重和。若用 Σ权重·分（固定分母 1.0），
+  // 缺席的维度就是一个隐形天花板 —— 草稿不带语气/场景时天花板只有 0.675，低于默认门槛 0.72，
+  // 于是「一张图都发不出去」。缺席不是「中性」，是「这次没问」，不该计入分母。
+  const fitScore = clamp01(normalised - scenePenalty - repeatPenalty);
+  return { fitScore, parts, activeWeights, penalties: { scene: scenePenalty, repeat: repeatPenalty }, scope };
 }
 
 function summarize(card) {
@@ -334,5 +400,5 @@ export function fromLibrary(library, { poolLimit = 60 } = {}) {
 
 export default {
   SENDABLE_KINDS, CANDIDATE_MIN, CANDIDATE_MAX, WEIGHTS, PENALTIES,
-  tokens, overlap, hardGate, freshnessScore, scoreCandidate, publicCandidate, retrieve, fromLibrary,
+  tokens, overlap, hardGate, freshnessScore, contextFromDraft, scoreCandidate, publicCandidate, retrieve, fromLibrary,
 };

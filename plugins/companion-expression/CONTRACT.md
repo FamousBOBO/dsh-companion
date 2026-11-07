@@ -163,6 +163,13 @@ pageDescriptor(config, status) -> {
 检索阶段不提前按 `minFitScore` 剪候选（`simulate` 传 `minFitScore: 0`），这样阈值的效果由
 `decision` 表现为 `text-only-low-fit`，页面才说得清「为什么这次不发」。
 
+关于 `minFitScore` 的三条口径，改分数时不要绕开：**归一化**——`scoreCandidate()` 只在
+「真的有信号」的维度上做加权平均（分母是 `activeWeights` 的和），缺席的意图/语气/语境维度
+不进分母，也不记中性 0.5，因为固定中性分会变成隐藏天花板，把阈值变成任何候选都够不到的装饰；
+**可达性**——完美匹配的上限是 0.90，高于默认 0.72（修复前它是 0.675，低于 0.72，模块因此永远
+发不出图），这条不变量由 `test/calibration.test.mjs` 的「阈值必须够得着」守着；**同一处推导**
+——`/simulate` 与真实回合都调 `contextFromDraft()`，实验室说的「会不会发」和线上判的是同一件事。
+
 
 ---
 

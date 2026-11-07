@@ -29,7 +29,7 @@ import { expressionPaths } from './src/paths.mjs';
 import { openExpressionDb } from './src/db.mjs';
 import { createLibrary } from './src/library.mjs';
 import { describeScope, CURATED_PUBLIC, groupScope } from './src/scopes.mjs';
-import { fromLibrary, retrieve } from './src/retrieval.mjs';
+import { contextFromDraft, fromLibrary, retrieve } from './src/retrieval.mjs';
 import { decide } from './src/decision.mjs';
 import { plan as buildPlan } from './src/planner.mjs';
 import { feedbackRows, feedbackScoreOf, feedbackSummary, isSuppressed } from './src/feedback.mjs';
@@ -572,7 +572,9 @@ export function createService({ dataDir, paths, db, stageRoot, log, ctx }) {
           library: fromLibrary(library),
           usable,
           scope: usable[0] ?? '',
-          context: { query: String(input.text ?? '') },
+          // 实验室必须按真实回合的同一套上下文推导：否则页面上的「会不会发」与线上判的
+          // 不是同一件事，这个数字就没有意义（也就是一句真话都没有）。
+          context: contextFromDraft(input.text),
           limit: Number(input.limit ?? 5),
           // 实验室要把阈值的效果**展示出来**，所以这里不提前按 minFitScore 剪掉候选：
           // 让 decision 用配置里的阈值给出 `text-only-low-fit`，页面才说得清"为什么不发"。

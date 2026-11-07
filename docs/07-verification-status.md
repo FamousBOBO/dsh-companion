@@ -86,7 +86,8 @@
 | `companion-memory-studio` | **115 通过 / 0 失败** | **✅ 已装载**（C 段：UI 返回 HTTP 200 / 38252 字节） | 未验证 | — | — |
 | `companion-runtime` | **697 通过 / 0 失败** | **✅ 已装载**（C 段） | 未验证 | — | — |
 | `companion-group` | **10 通过 / 0 失败** | **✅ 已装载**（C 段） | — | 未验证 | — |
-| `dsh-channel-qq` | **1208 项 / 1207 通过 / 0 失败 / 1 跳过** | 未验证（验收未启用通道：没有 OneBot 服务） | 未验证 | **未验证** | — |
+| `dsh-channel-qq` | **1208 项 / 1207 通过 / 0 失败 / 1 跳过** | **✅ 2026-11-07**（生产宿主上真实装载并连上 OneBot/NapCat：`data/home/channel-qq/connection-status.json` → `connected:true`；私聊与群会话都在跑） | 未验证 | **✅ 2026-11-07（1 条）** | — |
+| `companion-expression` | **205 通过 / 0 失败**（`test/*.test.mjs`，含 zip 21 / pack 22 / pack-import 9 / calibration 9） | **✅ 已装载**（§2.6） | — | **✅ 2026-11-07（1 条，经 `qq_sticker` 实发）** | — |
 | `companion-media` | 通过（计数未单独汇总，B 段 `unit` 全绿） | 未验证（验收未启用该模块） | **✅ 2026-11-06**（生图真实出图，见 §2.5） | 未验证（投递仍由通道负责） | — |
 | `companion-health` | 通过（计数未单独汇总，B 段 `unit` 全绿） | 未验证（验收未启用该模块） | 未验证 | — | 未验证 |
 | `sidecars/huawei-health-cn` | 待汇总（含 `test_protocol_contract.py` / `test_redact.py`） | — | **未验证**（需要真实华为账号；代码路径与 MIT 许可已就位） | — | — |
@@ -136,31 +137,37 @@
 
 **仍未验证**：图片投递到 QQ（`real-send`）、`openai-relay` 中转站形态、非 Windows 平台。
 
-### 2.6 表情包系统（`companion-expression`）：`offline-test` + 一条 `host-load`（2026-11-07）
+### 2.6 表情包系统（`companion-expression`）：`offline-test` + `host-load` + **一条 `real-send`（2026-11-07）**
 
-按 §1 的五级词汇，**真实平台发图仍未验证**。下面这张表是它现在的真实状态，不要读成「可用」：
+按 §1 的五级词汇，**真实平台发图已经有过一条回执**（见「真实平台发图」一行）。其余各项级别照旧，不要读成「批量可用」：
 
 | 项 | 级别 | 说明 |
 |---|---|---|
-| 采集授权判定、作用域隔离、sha256 物理去重 | `offline-test` | `node --test plugins/companion-expression/test/*.test.mjs` → **144 项通过 / 0 失败**（2026-11-07）；未授权来源 0 下载、0 入库（用例钉住） |
+| 采集授权判定、作用域隔离、sha256 物理去重 | `offline-test` | `node --test plugins/companion-expression/test/*.test.mjs` → **205 项通过 / 0 失败**（2026-11-07 实测 205/205/0）；未授权来源 0 下载、0 入库（用例钉住） |
 | 下载安全（魔数判型 / 体积与像素上限 / SSRF / 重定向 / 文件名穿越） | `offline-test` | 全部用注入的假 `http`，**没有一次真实网络请求** |
 | 检索、决策、冷却与配额、回复计划、幂等投递 | `offline-test` | 假 `qqSender`；`unknown` 不重投的用例在其中 |
 | 反馈学习（`reject` 立刻抑制重发） | `offline-test` | — |
+| **检索阈值可达性（`minFitScore` 不再是装饰）** | `offline-test` | `test/calibration.test.mjs` **9 项**。修复前 `searchFor()` 硬写 `{intents: [], scenes: []}`，意图/语气/语境三维恒为中性 0.5，完美语义匹配的天花板只有 **0.675 < 默认 0.72** —— 任何图库都发不出去。现在上下文由 `contextFromDraft()` 从草稿推导（情绪并入意图维、`avoidWhen` 当 `riskTags`），且**只有真的有信号的维度进分母**；完美匹配上限 **0.90**。用例钉住：真实卡 + 真实草稿判 `send`、无关草稿 abstain、稀释（`我好困啊` 0.6381）如实记录并 abstain |
+| **整包导入（zip + 手工语义卡清单）** | `offline-test` | `src/zip.mjs`（零依赖只读解包：坏名字/超限/zip64/加密/分卷按原因码整包拒收）、`src/pack.mjs`（清单白名单与上限）、`src/pack-import.mjs`（只走 library 公开方法；`dryRun` 不写库不落文件；重跑幂等；无可见作用域拒绝导入）。`test/zip.test.mjs` **21 项** + `test/pack.test.mjs` **22 项** + `test/pack-import.test.mjs` **9 项** |
 | **宿主接线**（从 `ctx` 取发送器 / 采集 `http` / 入库适配 / 主人判定） | `offline-test` | `test/host-wiring.test.mjs` **21 项** + `test/apply-wiring.test.mjs` **4 项**。证明：① `apply` 能从 `ctx.tools` 把 `qq_message`/`qq_sticker` 接成 `qqSender`（发送走 `tools.execute()`，不绕过通道闸门）；② 接上后 `expression_reply` 不再回 `sender-unavailable`（此时拦住它的才是 `delivery.enabled`）；③ 接上后入站端口 `observe()` 不再回 `ingest-not-injected`，`offers()` 与入库用同一个 `scopesFor().capture`；④ 拿不到工具表时仍注册四个工具、照常发端口，并**如实**报 `sender-unavailable`；⑤ 工具名在**发送那一刻**按会话作用域解析（QQ 工具挂在 preset 作用域里，不带 scope 的 `get()` 只看全局层），看不到就回 `tool-not-visible` 且 0 次调用。全程假工具表 + 假 `fetch`，**零网络、零 QQ** |
-| 生产宿主上的接线诊断行 | `host-load` 的观测（不是端到端验收） | 2026-11-07 重启段日志：`[companion-expression] 宿主接线：发送器=有、采集http=有、入库=有、主人判定=有。` 这一行只说明**四路依赖都取到了**，不代表发过图；`isOwner` 读的是 `data/home/companion/identity.json` |
+| 生产宿主上的接线诊断行 | `host-load` 的观测（不是端到端验收） | 2026-11-07 重启段日志：`[companion-expression] 宿主接线：发送器=有、采集http=有、入库=有、主人判定=有。` 这一行只说明**四路依赖都取到了**；`isOwner` 读的是 `data/home/companion/identity.json` |
 | Studio 管理入口（图库 / 收集规则 / 实验室 / 习惯） | `offline-test` | 页面片段在最小 `P` 桩与 `smoke-client.mjs` 下渲染通过（**表情包相关失败 0 项**），`test/expression-page.test.mjs` **16 项通过**；**没有在真实浏览器里点过** |
 | Studio 管理 API（12 条路由 / 10 个 path） | `offline-test` | `test/http-api.test.mjs` **12 项通过**：路由表、Origin 守卫、只认 `assetId`、`/thumb` realpath 越界 403、未启用态 200+启用片段、`/simulate` 恒 `sending:false` |
 | 宿主装载 | **`host-load` 已达成（2026-11-07）** | 两次独立达成：① `npm run check:hostload --workspace=@dsh-companion/expression`：临时 `DSH_HOME` + 临时数据目录、`modules.expression=1`、只开 `expression` 补丁块；② 生产切换（`dsh-ops`，`expressions` 分支 `0278264`）真宿主启动后日志三行齐全（`已发布入站端口 dsh.companion.expression.v1` / `已注册 4 个工具（defineTool=host）` / `[companion-expression-http] 已注册 10 条管理路由`），且无 `did not activate`。裸 `fetch` 回 **401**（宿主 token 换会话的行为，浏览器里才有 cookie），因此判据不拿 200 作数 |
 | 补丁渲染与合成 | **`host-load` 的一部分（仅渲染+合成，未装载）** | `npm run check:patch --workspace=@dsh-companion/expression`：把模板按「四个可选块全开」渲染后送宿主 `--dump-config`，**217 个 loader 行**、`expression` 与 `expression-http` 两行都在（2026-11-07） |
-| 真实平台发图 | **未验证** | `delivery.enabled=true` 已在生产打开，且发送器**已经接到** `qq_message`/`qq_sticker`（2026-11-07 接线落地后），但**没有任何一条真实 QQ 回执证据**。要达成 `real-send` 必须由操作者显式触发一次发送并留存回执（`deliveries` 表一行 `status='sent'`）。`assets`/`deliveries`/`expression_feedback` 当前均为 0 行 |
+| 整包导入（生产图库） | `offline-test` 的代码 + 真库上跑过 | 2026-11-07 实际导入 `QQ-232180.zip`（16 张 126×126 PNG）到生产库：**16/16 成功**、审核态 `approved`、可见性写「主人私聊」+「群 145326153」各一行。证据 `data/logs/expression-import-qq-232180.json`。图库现在 `assets=20`、`cards=20`、`sources=20`、`approved 可见性=32` |
+| **真实平台发图** | **`real-send` 已达成（1 条，2026-11-07）** | 操作者显式触发的「开心」表情：`deliveries` 一行 `status='confirmed'` + `provider_message_id=988995366`（plan `plan_d30fa8748a1d1fce2ee5`，asset `ast_1072c1beb14bcfd8545a`）。**只证明这一条走通全链路**；批量、群聊、连续发图仍未验证。失败路径同样留了真实证据（首条 `status='failed'` / `reason_code='tool-error'`） |
 | GIF 关键帧理解 / OCR / embedding 向量召回 | **未实现** | 代码里是 `NOT_IMPLEMENTED` 常量，不是「待验证」 |
 | QQ 内置 `face` 表情投递 | **未实现** | 现有通道没有可复核的 face 发送入口，不凭空构造 |
 
-> 结论措辞只能用：「表情包系统的采集、检索、决策、**宿主接线**、投递与反馈在**离线测试**层面通过，
-> 两行插件在真宿主上**装载成功**；**真实发图未验证**」。不得省略后半句。
+> 结论措辞只能用：「表情包系统的采集、检索、决策、宿主接线、投递与反馈在**离线测试**层面通过（205 项），
+> 两行插件在真宿主上**装载成功**，并且**已经有一条真实 QQ 发图回执**；批量、群聊与连续发图仍未验证」。
 >
-> 「接线已落地」不等于「能发出去」：它只说明**出口存在、且走的是同一道闸门**（预执行策略、
-> 群边界、出站边界都照常跑），不说明某一条消息真的到了 QQ 上。
+> 「接线已落地」不等于「能发出去」，「有一条回执」也不等于「不会再失败」：同一次验收里第一次发图
+> **是真的失败**的（`tool-error`）。根因是 `dsh-channel-qq` 的出站文件边界只放行工作区与 `channel-qq`
+> 两个根，而待投递的图落在 `home/media/expression-out/`（这个位置由群聊侧「只许从 `home/media`
+> 发图」的硬要求定下，不能挪）。边界补上 `home/media` 这一根、重启后重发，才拿到上面那条 `confirmed`。
+> 边界仍然是**目录**边界：`home/expression/assets/`（图库原文件）与系统其它路径照样拒。
 
 
 ## 3. 明确「未验证」清单（当前）

@@ -1,0 +1,158 @@
+{
+  "packId": "qq-232180",
+  "name": "QQ 表情包 232180（三月七 16 款）",
+  "note": "操作者手工整理：每张图的 literal 写的是「她能用来检索的说法 + 封面文字」，不是 OCR 结果（本模块不做 OCR）。intents/emotions/tone/scenes/avoidWhen 是人写的判断。",
+  "entries": [
+    {
+      "file": "01-吃糖.png",
+      "literal": "吃糖 吃糖糖 棒棒糖 甜 好甜 甜甜的 零食 吃个糖 好吃",
+      "description": "闭眼咬着棒棒糖，一脸满足；用在轻松、甜甜的日常小瞬间。",
+      "intents": ["laugh", "comfort"],
+      "emotions": ["joy", "affection"],
+      "tone": ["warm", "playful"],
+      "scenes": ["meal", "comfort"]
+    },
+    {
+      "file": "02-Biu.png",
+      "literal": "Biu Biu biu 比心 笔芯 爱你 喜欢你 心动的感觉 向你开枪 发射爱心",
+      "description": "比心 + 眨眼，配上「Biu」的拟声；用于表达喜欢、撒娇、戳一下对方。",
+      "intents": ["comfort", "tease"],
+      "emotions": ["affection", "joy"],
+      "tone": ["warm", "playful"],
+      "scenes": []
+    },
+    {
+      "file": "03-点赞.png",
+      "literal": "点赞 点个赞 赞 厉害 好棒 你最棒 牛 干得好 大拇指 夸你",
+      "description": "竖大拇指眨眼；用于肯定对方、附和、给正反馈。",
+      "intents": ["agree", "encourage"],
+      "emotions": ["joy", "smug"],
+      "tone": ["playful", "warm"],
+      "scenes": ["work", "study"]
+    },
+    {
+      "file": "04-生日快乐.png",
+      "literal": "生日快乐 生日 蛋糕 吹蜡烛 祝你生日快乐 生日蛋糕 又长大一岁",
+      "description": "捧着插蜡烛的蛋糕；只在对方生日/纪念日这类明确喜事上用。",
+      "intents": ["greet", "encourage"],
+      "emotions": ["joy", "affection"],
+      "tone": ["warm"],
+      "scenes": []
+    },
+    {
+      "file": "05-悄悄话.png",
+      "literal": "悄悄话 悄悄跟你说 小秘密 保密 偷偷讲 告诉你个事 凑近点",
+      "description": "捂着嘴凑近窃窃私语；用于卖关子、说小秘密、拉近距离。",
+      "intents": ["tease"],
+      "emotions": ["affection"],
+      "tone": ["playful", "warm"],
+      "scenes": [],
+      "avoidWhen": ["serious-conflict"]
+    },
+    {
+      "file": "06-生气.png",
+      "literal": "生气 气了 生气了 哼 不理你了 火大 生气气 有小情绪 不高兴",
+      "description": "气鼓鼓嘟嘴举牌；撒娇式生气，不是真吵架。严肃争执与道歉场合禁用。",
+      "intents": ["refuse"],
+      "emotions": ["anger"],
+      "tone": ["cold", "playful"],
+      "scenes": [],
+      "avoidWhen": ["serious-conflict", "apology"],
+      "aggression": 0.35
+    },
+    {
+      "file": "07-盯.png",
+      "literal": "盯 盯着你 看着你 一直在看你 盯—— 注目 看你 监视",
+      "description": "双手撑脸、目光钉住；用于盯梢式撒娇或等待对方回复。",
+      "intents": ["tease"],
+      "emotions": ["smug", "affection"],
+      "tone": ["playful"],
+      "scenes": [],
+      "avoidWhen": ["serious-conflict"]
+    },
+    {
+      "file": "08-骄傲.png",
+      "literal": "骄傲 得意 骄傲了 厉害吧 我厉害吧 求表扬 夸我 快夸我 小得意",
+      "description": "闭眼仰着小骄傲；用于求表扬、拿自己逗趣。",
+      "intents": ["tease", "agree"],
+      "emotions": ["smug", "joy"],
+      "tone": ["playful", "warm"],
+      "scenes": []
+    },
+    {
+      "file": "09-加油.png",
+      "literal": "加油 冲 你可以的 你最棒 打气 鼓劲 努力 干巴爹 奥利给 别放弃",
+      "description": "举彩球、拿大喇叭喊加油；用于鼓励对方、打气。",
+      "intents": ["encourage"],
+      "emotions": ["joy"],
+      "tone": ["warm", "playful"],
+      "scenes": ["work", "study"]
+    },
+    {
+      "file": "10-尴尬.png",
+      "literal": "尴尬 好尴尬 汗 汗颜 社死 无语了 挠头 有点窘 抬不起头",
+      "description": "冒汗咧嘴的窘迫脸；用于自嘲式尴尬，不用于指摘别人的失误。",
+      "intents": ["apologize"],
+      "emotions": ["surprise"],
+      "tone": ["playful", "cold"],
+      "scenes": [],
+      "avoidWhen": ["serious-conflict"]
+    },
+    {
+      "file": "11-开心.png",
+      "literal": "开心 高兴 快乐 好开心 度假 夏天 悠闲 晒太阳 放假 心情好",
+      "description": "草帽、墨镜、冰饮的海边放松；用于心情好、放假、闲聊轻快场景。",
+      "intents": ["laugh"],
+      "emotions": ["joy"],
+      "tone": ["warm", "playful"],
+      "scenes": ["morning", "meal"]
+    },
+    {
+      "file": "12-哭.png",
+      "literal": "哭 大哭 哭了 呜呜 委屈 难过 伤心 泪目 掉眼泪 想哭",
+      "description": "涕泪横流的大哭；用于表达委屈难过。明确喜事场合禁用（会顶掉对方的好心情）。",
+      "intents": ["comfort"],
+      "emotions": ["sadness"],
+      "tone": ["warm"],
+      "scenes": ["comfort"],
+      "avoidWhen": ["celebration"]
+    },
+    {
+      "file": "13-无语.png",
+      "literal": "无语 无语了 无语子 无话可说 沉默 服了 呵呵 震惊 说不出话",
+      "description": "面无表情的沉默脸；用于吐槽式无语。严肃争执与道歉场合禁用。",
+      "intents": ["refuse"],
+      "emotions": ["tired", "surprise"],
+      "tone": ["cold", "ironic"],
+      "scenes": [],
+      "avoidWhen": ["serious-conflict", "apology"]
+    },
+    {
+      "file": "14-暗中观察.png",
+      "literal": "暗中观察 观察 围观 潜水 探头 悄悄看 偷看 看看你在干嘛",
+      "description": "举着相机从边上探头；用于围观、插科打诨式存在感。",
+      "intents": ["tease"],
+      "emotions": ["smug"],
+      "tone": ["playful"],
+      "scenes": []
+    },
+    {
+      "file": "15-困.png",
+      "literal": "困 好困 困了 想睡 睡觉 睡着了 疲惫 累 打哈欠 晚安 睡啦",
+      "description": "抱着相机打瞌睡、飘着 Z；用于困、累、道晚安。",
+      "intents": ["greet"],
+      "emotions": ["tired"],
+      "tone": ["warm"],
+      "scenes": ["bedtime", "night"]
+    },
+    {
+      "file": "16-买买买.png",
+      "literal": "买买买 购物 剁手 买东西 种草 血拼 想要 我也想买 逛街 手痒",
+      "description": "提着大包小包兴奋到眼睛发光；用于购物话题、种草、想买点什么。",
+      "intents": ["agree", "tease"],
+      "emotions": ["joy", "surprise"],
+      "tone": ["playful"],
+      "scenes": []
+    }
+  ]
+}

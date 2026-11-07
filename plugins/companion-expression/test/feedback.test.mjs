@@ -18,7 +18,7 @@ import {
   FEEDBACK_SIGNALS, WRITABLE_SIGNALS, createFeedback, feedbackRowOf, feedbackScoreOf,
   feedbackSummary, isSuppressed, suppressionKey,
 } from '../src/feedback.mjs';
-import { retrieve } from '../src/retrieval.mjs';
+import { contextFromDraft, retrieve } from '../src/retrieval.mjs';
 
 const SALT = 'test-salt-0123456789abcdef';
 const OWNER_SCOPE = privateScope({ kind: 'owner_private', chatId: 10001, salt: SALT });
@@ -113,7 +113,7 @@ test('抑制立刻反映到检索：reject 过的图不会再出现在候选里'
       ],
     };
     const found = retrieve({
-      library, usable: [OWNER_SCOPE], scope: OWNER_SCOPE, context: { query: '猫', intents: [], scenes: [] },
+      library, usable: [OWNER_SCOPE], scope: OWNER_SCOPE, context: contextFromDraft('猫'),
       now: NOW, isSuppressed: ({ assetId, scope }) => isSuppressed({ db, assetId, scope }),
     });
     assert.equal(found.filtered.suppressed, 1, '被 suppress 的候选在硬门后被计入');
