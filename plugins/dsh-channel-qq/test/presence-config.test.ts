@@ -25,6 +25,9 @@ const CONTRACT: PresenceConfig = {
   ambientMaxEntries: 40,
   ambientTtlMs: 600_000,
   ambientMaxChars: 6_000,
+  // P3 §7.3 拆出来的两个调度参数（合批等待 / 饥饿告警阈值）。
+  batchQuietMs: 6_000,
+  judgeMaxWaitMs: 25_000,
   judgeIntervalMs: 50_000,
   judgeMaxEntries: 15,
   judgeMaxChars: 1_200,
@@ -32,6 +35,9 @@ const CONTRACT: PresenceConfig = {
   judgeMaxTokens: 320,
   speakMinIntervalMs: 300_000,
   speakMaxPerHour: 3,
+  // P2 §6.5 的引用时间窗与 P1 §5.4 的记忆预算。
+  replyWindowMs: 600_000,
+  memoryBudgetChars: 800,
   replyMaxChars: 70,
 }
 
@@ -87,7 +93,8 @@ test('presence：每个字段都有中文 label / help，且 hot 全为 live、p
 test('presence：数值字段都带 min/max/step 与 unit', () => {
   const group = presenceGroup()
   const numeric = FIELDS.filter((key) => group.fields[key]?.kind === 'number')
-  assert.equal(numeric.length, 11, '除 enabled（开关）与 groups（列表）外都应是数值字段')
+  // 15 = 原有 11 个 + P3 的 batchQuietMs/judgeMaxWaitMs + P2 的 replyWindowMs + P1 的 memoryBudgetChars
+  assert.equal(numeric.length, 15, '除 enabled（开关）与 groups（列表）外都应是数值字段')
   for (const key of numeric) {
     const spec = group.fields[key]
     assert.ok(spec !== undefined)

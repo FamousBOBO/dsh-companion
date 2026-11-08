@@ -31,7 +31,11 @@ export interface PresenceConfig {
   ambientTtlMs: number
   /** 每群旁听缓冲的总字数上限（与条数上限**双**淘汰）。 */
   ambientMaxChars: number
-  /** 两次兴趣判断之间的最小间隔（毫秒）：短时间内的消息合成一批再判。 */
+  /** 合批静默窗口（毫秒）：一批消息攒这么久再判断。 */
+  batchQuietMs: number
+  /** 一批消息等待判断的上限（毫秒）：只用于饥饿告警。 */
+  judgeMaxWaitMs: number
+  /** 两次兴趣判断之间的最小间隔（毫秒）。 */
   judgeIntervalMs: number
   /** 送进一次判断的旁听条数上限。 */
   judgeMaxEntries: number
@@ -47,6 +51,10 @@ export interface PresenceConfig {
   speakMaxPerHour: number
   /** 自主发言的字数上限（一至两句，不截断：超了按"这轮不说"处理）。 */
   replyMaxChars: number
+  /** 允许引用的时间窗（毫秒）：比这更老的消息不许 reply。 */
+  replyWindowMs: number
+  /** 群记忆注入的字数预算（§5.4 建议 600–800）。 */
+  memoryBudgetChars: number
 }
 
 export const PRESENCE_GROUPS: FieldGroup[] = [
@@ -101,6 +109,27 @@ export const PRESENCE_GROUPS: FieldGroup[] = [
         help: '每群旁听的总字数上限，与条数上限**双**淘汰（谁先到就按谁淘汰最老的）。'
           + '它防的是"40 条全是长文"，那时按条数限制根本不够。默认 6000 字是工程建议。',
       }),
+      batchQuietMs: n('合批静默窗口', 6_000, {
+        hot: 'live',
+        page: 'groups',
+        min: 1_000,
+        max: 60_000,
+        step: 1_000,
+        unit: 'ms',
+        help: '往上数消息安静这么久才把这一批送去判断（毫秒）。它管的是"读得懂上下文"：'
+          + '太短会把一句话拆成两批，太长会让她对着过时的话题接话。默认 6 秒。'
+          + '**与判断间隔分开**：那个管省钱，这个管读得懂。',
+      }),
+      judgeMaxWaitMs: n('一批消息等待判断的上限', 25_000, {
+        hot: 'live',
+        page: 'groups',
+        min: 5_000,
+        max: 300_000,
+        step: 5_000,
+        unit: 'ms',
+        help: '持续活跃的群里，一批消息已经等了这么久还没被判，就写一条**饥饿告警**日志'
+          + '（通常是限频、失败退避或同群在途造成的）。它不改变调度，只保证问题看得见。默认 25 秒。',
+      }),
       judgeIntervalMs: n('两次判断的最小间隔', 50_000, {
         hot: 'live',
         page: 'groups',
@@ -108,9 +137,8 @@ export const PRESENCE_GROUPS: FieldGroup[] = [
         max: 600_000,
         step: 5_000,
         unit: 'ms',
-        help: '两次兴趣判断之间至少隔这么久（毫秒），这段时间里来的消息合进下一批。'
-          + '它是**省钱的闸**：默认 50 秒 ≈ 每个活跃群每小时最多一次判断，'
-          + '再密只会让模型调用变成按消息计费。',
+        help: '两次判断之间至少隔这么久（毫秒）。它是**省钱的闸**：默认 50 秒 ≈ 每个活跃群'
+          + '每小时最多一次判断，再密只会让模型调用变成按消息计费。',
       }),
       judgeMaxEntries: n('送进判断的条数上限', 15, {
         hot: 'live',
@@ -170,6 +198,27 @@ export const PRESENCE_GROUPS: FieldGroup[] = [
         unit: '次/小时',
         help: '硬额度：一个群一小时内最多自己开口几次（成功的才计数，判断失败不算）。'
           + '默认 3 次是工程建议；想让她更安静就调小它，而不是关掉接话。',
+      }),
+      replyWindowMs: n('允许引用的时间窗', 600_000, {
+        hot: 'live',
+        page: 'groups',
+        min: 30_000,
+        max: 3_600_000,
+        step: 30_000,
+        unit: 'ms',
+        help: 'reply 只能引用时间窗以内的消息（毫秒）：引一条十分钟前的消息等于答非所问。'
+          + '默认 10 分钟。超出窗口的引用会被代码拦下，这一轮就不说话。',
+      }),
+      memoryBudgetChars: n('群记忆注入预算', 800, {
+        hot: 'live',
+        page: 'groups',
+        min: 100,
+        max: 4_000,
+        step: 100,
+        unit: '字',
+        help: '一次判断里"群体记忆 + 成员记忆"总共允许多少字（中文按字符算）。'
+          + '默认 800 字（计划建议 600～800）：再多会把这一轮真正要说的话挤掉；'
+          + '超预算时先丢推测、再丢成员记忆，最后才动群体记忆。',
       }),
       replyMaxChars: n('自主发言字数上限', 70, {
         hot: 'live',

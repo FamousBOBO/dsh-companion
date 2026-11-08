@@ -695,6 +695,8 @@
     "ambientMaxEntries": 40,
     "ambientTtlMs": 600000,
     "ambientMaxChars": 6000,
+    "batchQuietMs": 6000,
+    "judgeMaxWaitMs": 25000,
     "judgeIntervalMs": 50000,
     "judgeMaxEntries": 15,
     "judgeMaxChars": 1200,
@@ -702,6 +704,8 @@
     "judgeMaxTokens": 320,
     "speakMinIntervalMs": 300000,
     "speakMaxPerHour": 3,
+    "replyWindowMs": 600000,
+    "memoryBudgetChars": 800,
     "replyMaxChars": 70
   }
 }

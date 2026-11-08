@@ -698,6 +698,8 @@ override = {}
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "batchQuietMs": 6000,
+  "judgeMaxWaitMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -705,6 +707,8 @@ override = {}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
   "replyMaxChars": 70
  }
 }
@@ -1411,6 +1415,8 @@ override = {}
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "batchQuietMs": 6000,
+  "judgeMaxWaitMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -1418,6 +1424,8 @@ override = {}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
   "replyMaxChars": 70
  }
 }
@@ -2122,6 +2130,8 @@ override = {"batching":{"windowMs":20000}}
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "batchQuietMs": 6000,
+  "judgeMaxWaitMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -2129,6 +2139,8 @@ override = {"batching":{"windowMs":20000}}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
   "replyMaxChars": 70
  }
 }
@@ -2833,6 +2845,8 @@ override = {"admin":{"port":8790}}
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "batchQuietMs": 6000,
+  "judgeMaxWaitMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -2840,6 +2854,8 @@ override = {"admin":{"port":8790}}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
   "replyMaxChars": 70
  }
 }
@@ -3544,6 +3560,8 @@ override = {"imageGen":{"model":"flux"}}
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "batchQuietMs": 6000,
+  "judgeMaxWaitMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -3551,6 +3569,8 @@ override = {"imageGen":{"model":"flux"}}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
   "replyMaxChars": 70
  }
 }
@@ -4255,6 +4275,8 @@ override = {"tts":{"voice":"b"}}
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "batchQuietMs": 6000,
+  "judgeMaxWaitMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -4262,6 +4284,8 @@ override = {"tts":{"voice":"b"}}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
   "replyMaxChars": 70
  }
 }
@@ -4966,6 +4990,8 @@ override = {"flood":{"windowSec":30}}
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "batchQuietMs": 6000,
+  "judgeMaxWaitMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -4973,6 +4999,8 @@ override = {"flood":{"windowSec":30}}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
   "replyMaxChars": 70
  }
 }
@@ -5684,6 +5712,8 @@ override = {}
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "batchQuietMs": 6000,
+  "judgeMaxWaitMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -5691,6 +5721,8 @@ override = {}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
   "replyMaxChars": 70
  }
 }
@@ -6395,6 +6427,8 @@ override = {"keywordTriggers":[]}
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "batchQuietMs": 6000,
+  "judgeMaxWaitMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -6402,6 +6436,8 @@ override = {"keywordTriggers":[]}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
   "replyMaxChars": 70
  }
 }
@@ -7113,6 +7149,8 @@ override = {"rss":{"pollIntervalMin":5}}
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "batchQuietMs": 6000,
+  "judgeMaxWaitMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -7120,6 +7158,8 @@ override = {"rss":{"pollIntervalMin":5}}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
   "replyMaxChars": 70
  }
 }
@@ -7824,6 +7864,8 @@ override = {"groupEnabled":false}
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "batchQuietMs": 6000,
+  "judgeMaxWaitMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -7831,6 +7873,8 @@ override = {"groupEnabled":false}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
   "replyMaxChars": 70
  }
 }
@@ -8535,6 +8579,8 @@ override = {}
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "batchQuietMs": 6000,
+  "judgeMaxWaitMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -8542,6 +8588,8 @@ override = {}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
   "replyMaxChars": 70
  }
 }
@@ -9246,6 +9294,8 @@ override = {"groupEnabled":true}
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "batchQuietMs": 6000,
+  "judgeMaxWaitMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -9253,6 +9303,8 @@ override = {"groupEnabled":true}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
   "replyMaxChars": 70
  }
 }
@@ -9957,6 +10009,8 @@ override = {"admin":{"host":"127.0.0.1"}}
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "batchQuietMs": 6000,
+  "judgeMaxWaitMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -9964,6 +10018,8 @@ override = {"admin":{"host":"127.0.0.1"}}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
   "replyMaxChars": 70
  }
 }
@@ -10668,6 +10724,8 @@ override = {}
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "batchQuietMs": 6000,
+  "judgeMaxWaitMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -10675,6 +10733,8 @@ override = {}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
   "replyMaxChars": 70
  }
 }
@@ -11379,6 +11439,8 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "batchQuietMs": 6000,
+  "judgeMaxWaitMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -11386,6 +11448,8 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
   "replyMaxChars": 70
  }
 }

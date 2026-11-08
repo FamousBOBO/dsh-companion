@@ -218,7 +218,7 @@ function renderBackground(entries: readonly JudgeEntry[]): string[] {
       ? '你（自己）'
       : (entry.name.trim() === '' ? `QQ ${String(entry.userId)}` : `${entry.name.trim()} / QQ ${String(entry.userId)}`)
     const head = `[${messageTagOf(entry)}] [成员 ${who}] [时间 ${clockOf(entry.atMs)}]`
-    const body = bodyOf(entry)
+    const body = entryBodyOf(entry)
     return body === '' ? [`${head} （无正文）`] : [head, body]
   })
 }
@@ -245,7 +245,7 @@ function clockOf(atMs: number): string {
  * 那段 `时间 昵称(QQ号) #消息号：` 剥掉——不剥就会在渲染出的身份下面再出现一遍身份，
  * 退回就成了"照旧重复"，而这次改动正是为了消掉它。
  */
-function bodyOf(entry: JudgeEntry): string {
+export function entryBodyOf(entry: JudgeEntry): string {
   const raw = typeof entry.body === 'string' ? entry.body : stripSenderPrefix(entry.text)
   return raw.replace(/\s+/g, ' ').trim()
 }
