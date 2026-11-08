@@ -88,15 +88,36 @@ async function send(
   const message = decision.action === 'reply'
     ? [{ type: 'reply' as const, data: { id: String(decision.targetMessageId) } }, { type: 'text' as const, data: { text: decision.text } }]
     : [{ type: 'text' as const, data: { text: decision.text } }]
+  // P9-A3：发送耗时**只量平台调用本身**（P5 那版量的是整轮，把模型时间也算进去了）。
+  const sendStartedAt = deps.clock.now()
   try {
     const receipt = await platform.api.sendGroupMessage(input.groupId, message)
     const id = receipt?.message_id
+    const latencyMs = Math.max(0, deps.clock.now() - sendStartedAt)
     if (typeof id !== 'number') {
+      // 尝试过但没回执：**算一次发送尝试**（失败也要计入，否则"发送很稳"是假象）。
+      noteSend(input, deps, latencyMs, false)
       return { kind: 'failed', outcome: failed(input, deps, '自主发言没有 message_id 回执（不记成功、不重试）') }
     }
+    noteSend(input, deps, latencyMs, true)
     return { kind: 'sent', messageId: id, selfId: platform.selfId }
   } catch (error) {
+    noteSend(input, deps, Math.max(0, deps.clock.now() - sendStartedAt), false)
     return { kind: 'failed', outcome: failed(input, deps, `自主发言发送失败（不重试）：${describe(error)}`) }
+  }
+}
+
+/**
+ * 记一次**真实的平台发送尝试**（成功或失败都算），连同它自己的耗时。
+ *
+ * 与 `CycleOutcome` 分开记：`failed` 里既有"模型输出不可用"也有"发出去了但没回执"，
+ * 后者才是发送尝试。混在一起会让 `sendAttempts` / `sendLatencyMs` 两个数字都失去意义。
+ */
+function noteSend(input: CycleInput, deps: CycleDeps, latencyMs: number, ok: boolean): void {
+  try {
+    deps.noteSend?.({ groupId: input.groupId, latencyMs, ok })
+  } catch (error) {
+    deps.log(`presence: 群 ${String(input.groupId)} 发送计时记账失败（已忽略）：${describe(error)}`)
   }
 }
 

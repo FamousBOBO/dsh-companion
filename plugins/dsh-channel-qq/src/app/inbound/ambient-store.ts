@@ -10,10 +10,14 @@
  */
 
 import { AmbientRing, type AmbientLimits } from '../../core/ambient.js'
+import { modeRuns, resolveMode } from '../../core/presence-mode.js'
 
 /** 只取本模块要用的那几个配置项（结构类型：不把整份 config 拖进来）。 */
 export interface PresenceSettings {
+  /** 旧口径的总开关；`mode` 缺席时才用它推断（见 `presenceRuns`）。 */
   readonly enabled: boolean
+  /** 运行模式（P5-B）：`''` / `off` / `shadow` / `live`；缺省按 `enabled` 推断。 */
+  readonly mode?: string
   readonly groups: readonly unknown[]
   readonly ambientMaxEntries: number
   readonly ambientTtlMs: number
@@ -44,10 +48,28 @@ export function presenceGroupsOf(settings: PresenceSettings): number[] {
   return out
 }
 
-/** 这个群在不在旁听白名单里（总开关关着时永远 false）。 */
+/**
+ * 这个群要不要收旁听/跑判断。
+ *
+ * **P9-A2 之后判据是运行模式，不再是 `enabled`**（这是热切换能生效的前提）：
+ *   - `mode`（P5-B）是唯一权威：`off` 不跑，`shadow` / `live` 都跑；
+ *   - `mode` 没写时 `resolveMode` 退回 `enabled` 口径，所以旧配置行为逐字节不变；
+ *   - 每次都现取：后台把 `off` 改成 `shadow` 之后**下一条群消息就开始跑**，不必重启。
+ *
+ * 只写 `enabled` 的历史原因：P5-B 之前没有 mode，`enabled` 就是总开关。现在它仍然有用
+ * （mode 缺席时的推断），但**不再是这里的分岔点**——否则 `mode:shadow` + `enabled:false`
+ * 的配置会连旁听都不记，影子模式就没东西可观察了。
+ */
 export function presenceAppliesTo(settings: PresenceSettings | null, groupId: number | null): boolean {
-  if (settings === null || settings.enabled !== true || groupId === null) return false
+  if (settings === null || groupId === null) return false
+  if (!presenceRuns(settings)) return false
   return presenceGroupsOf(settings).includes(groupId)
+}
+
+/** 这套能力现在要不要跑（`off` / 缺配置 → false）。纯函数，配置每次都现取。 */
+export function presenceRuns(settings: PresenceSettings | null): boolean {
+  if (settings === null) return false
+  return modeRuns(resolveMode(settings as { enabled?: boolean; mode?: string }))
 }
 
 /** 缓冲上限（配置值原样传下去，环自己夹安全值）。 */

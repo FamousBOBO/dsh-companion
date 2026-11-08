@@ -78,6 +78,8 @@ export interface CycleContext {
   readonly selfId: () => number
   /** 语义复核档位（P6-B）：`off` / `warn` / `enforce`。 */
   readonly guardMode: () => string
+  /** 记一次真实的平台发送尝试（P9-A3）：成功失败都记。 */
+  readonly noteSend: (input: { groupId: number; latencyMs: number; ok: boolean }) => void
   /** 影子日志（`shadow` 下"本来想发什么"）；缺省 = 不记。 */
   readonly recordShadow?: (decision: {
     groupId: number
@@ -238,6 +240,8 @@ function depsOf(ctx: CycleContext, groupId: number) {
     selfId: () => ctx.selfId(),
     // 语义复核档位（P6-B）：每次现取，后台改完立即生效。
     guardMode: () => ctx.guardMode(),
+    // 真实的平台发送尝试（P9-A3）：成功失败都记，耗时只含平台调用本身。
+    noteSend: (input: { groupId: number; latencyMs: number; ok: boolean }) => ctx.noteSend(input),
     recordEvent: (event: { kind: 'proactive_message' | 'agent_reply'; messageId: number; text: string; atMs: number }) => {
       try {
         ctx.timelines.recordSelf(groupId, event)
@@ -268,13 +272,8 @@ function recordOutcome(
     batchStartedAtMs: 0,
     batchCount: 0,
     ...(outcome.kind === 'spoke' ? { spoken: current.spoken + 1 } : {}),
-    // 模型调用与发送的分段耗时：`spoke` 说明这一轮既有调用也有成功发送。
-    ...(outcome.kind === 'spoke'
-      ? {
-        sendLatencyMs: current.sendLatencyMs + Math.max(0, ctx.clock.now() - startedAt),
-        sendAttempts: current.sendAttempts + 1,
-      }
-      : {}),
+    // 发送的分段耗时**不在这里**（P9-A3）：这里只有整轮耗时，含模型与合批等待。
+    // 真实发送尝试由 `presence-send.ts` 在平台调用前后单独记（见 `noteSend`）。
   }))
   if (outcome.kind !== 'spoke') return
   ctx.noteSpoken(groupId, outcome.text)

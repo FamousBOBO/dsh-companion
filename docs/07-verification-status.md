@@ -182,6 +182,10 @@ P5–P8 交付见 `docs/10a-group-baseline-audit.md`（P5 基线与停发控制�
 （灰度验收与运维手册）。**证据级别与 P0–P4 相同：只有 `offline-test`**；真实模型与真实 QQ
 发送（§5.1 的 B/C/D/E）**一项都没跑**。
 
+P9-A（上线前兼容性与可靠性审计）见 `docs/11-group-social-runtime-p9-acceptance.md`：修掉了
+四个真实缺陷（旧配置被静默停用、`off` 不热切换、发送耗时混入模型时间、文档描述与实现不符），
+**仍然是 `offline-test`**；P9 的 B/C/D/E/F 全部未执行。
+
 | 项 | 证据 | 说明 |
 |---|---|---|
 | 停发控制（`presence.mode`） | `presence-mode-core.test.ts` 8 例 + `presence-mode.test.ts` 7 例 | 显式 mode 优先于 `enabled`；闸门**每次发送前现取**，在途模型结果也会被拦下 |
@@ -200,7 +204,7 @@ P5–P8 交付见 `docs/10a-group-baseline-audit.md`（P5 基线与停发控制�
 ### 2.8 群聊社交运行时 P0–P4（2026-11-08）：只有 `offline-test`
 
 按 `docs/09-group-social-runtime-p1-p4.md` 落地了人格快照（P0）、群体/成员记忆（P1）、
-五动作决策器（P2）、统一事件时间线与调度（P3）、表达约定与表情/反馈层（P4），外加 41 条离线
+五动作决策器（P2）、统一事件时间线与调度（P3）、表达约定与表情/反馈层（P4），外加 41 条离线（P6 补到 52 条）
 评测集。**证据级别只到 `offline-test`**：
 
 | 项 | 证据 | 说明 |

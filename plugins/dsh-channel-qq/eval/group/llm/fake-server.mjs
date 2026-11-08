@@ -2,7 +2,7 @@
  * **本地假 OpenAI 服务**（只给 `--selftest` 用；监听 127.0.0.1，绝不联网）。
  *
  * 它存在的理由不是"省一次模型调用"，而是**证明整条通道真的跑通了**：
- * 提示词真的被发到 http 上、响应真的被解析、41 条用例真的走完了
+ * 提示词真的被发到 http 上、响应真的被解析、整份语料真的走完了
  * `runPresenceCycle` → `parseSocialDecision` → `validateSocialDecision`。用假补全端口
  * （离线的 `fakeComplete`）可以证明解析，但证明不了"这条 URL 真的能通"。
  *

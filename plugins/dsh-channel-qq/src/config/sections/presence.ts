@@ -22,9 +22,12 @@ import { b, e, list, n, type FieldGroup } from '../dsl.js'
 /** `presence` 段的形状；字段定义与默认值见下面 `PRESENCE_GROUPS`（唯一来源）。 */
 export interface PresenceConfig {
   /**
-   * 运行模式（P5-B）：`off` / `shadow` / `live`。
+   * 运行模式（P5-B）：`''`（未指定，按 `enabled` 推断）/ `off` / `shadow` / `live`。
    *
-   * 缺席时按 `enabled` 推断（`enabled:true` → `live`），所以旧配置升级后行为不变。
+   * **默认值必须是空串**（P9-A1）：`DEFAULT_CONFIG` 由 schema 生成，若默认写 `'off'`，
+   * 合成器会给每一份旧配置补上 `mode:'off'`，于是 `enabled:true` 的老部署升级后被静默停用。
+   * 空串让 `resolveMode` 退回 `enabled` 口径，旧配置行为逐字节不变。
+   *
    * 显式写了 `mode` 之后它**优先于** `enabled`：写了 `shadow` 就不会发消息。
    */
   mode: string
@@ -81,16 +84,22 @@ export const PRESENCE_GROUPS: FieldGroup[] = [
       + '不记旁听、不调用模型、不发任何一条自主消息。只对白名单群生效。',
     fields: {
       // 读法：装配侧每次现取（live）；最后一道发送闸门**每次发送前**再读一次。
-      mode: e('运行模式', 'off', [
+      //
+      // **默认值是空串，不是 'off'**（P9-A1 修的真 bug）：`DEFAULT_CONFIG` 由 schema 生成，
+      // 所以这里写 'off' 会让**每一份旧配置在合成后都带一个 mode:'off'** —— resolveMode
+      // 看到显式值就照办，于是旧用户明明配了 enabled:true，升级后被静默停用。空串表示
+      // '没指定'，resolveMode 才会退回 enabled 口径（旧行为逐字节不变）。
+      mode: e('运行模式', '', [
+        ['', '按总开关推断（旧配置口径：enabled 开着就是 live）'],
         ['off', '关闭：不判断、不发'],
         ['shadow', '影子：真判断、真校验、只记不发'],
         ['live', '线上：真的会发（白名单 + 限频）'],
       ], {
         hot: 'live',
         page: 'groups',
-        help: '三档语义见 README 与 docs/10c：off 什么都不做；shadow 收消息、调模型、走完所有校验，'
-          + '但**一条都不发**，只把"本来想发什么、为什么"记进本地影子日志；live 才会真的发到群里。'
-          + '留空 / 不写这一项时按下面的总开关推断（enabled:true 视为 live），旧配置行为不变。'
+        help: '三档语义见 docs/10a 与 docs/10b：off 什么都不做；shadow 收消息、调模型、走完所有校验，'
+          + '但**一条都不发**，只把「本来想发什么、为什么」记进本地影子日志；live 才会真的发到群里。'
+          + '留空（默认）时按下面的总开关推断：enabled:true 视为 live —— 旧配置升级后行为不变。'
           + '**停发请改这一项，不要用 speakMaxPerHour=0**：那个只停自主发言，停不了表情包。',
       }),
       // 读法：入站流水线与判断执行器每包/每次判断前经 config() 现取（live）。

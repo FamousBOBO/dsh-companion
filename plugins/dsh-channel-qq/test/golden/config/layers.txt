@@ -693,7 +693,7 @@ override = {}
   "dailyUserCap": 2
  },
  "presence": {
-  "mode": "off",
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
@@ -1415,7 +1415,7 @@ override = {}
   "dailyUserCap": 2
  },
  "presence": {
-  "mode": "off",
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
@@ -2135,7 +2135,7 @@ override = {"batching":{"windowMs":20000}}
   "dailyUserCap": 2
  },
  "presence": {
-  "mode": "off",
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
@@ -2855,7 +2855,7 @@ override = {"admin":{"port":8790}}
   "dailyUserCap": 2
  },
  "presence": {
-  "mode": "off",
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
@@ -3575,7 +3575,7 @@ override = {"imageGen":{"model":"flux"}}
   "dailyUserCap": 2
  },
  "presence": {
-  "mode": "off",
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
@@ -4295,7 +4295,7 @@ override = {"tts":{"voice":"b"}}
   "dailyUserCap": 2
  },
  "presence": {
-  "mode": "off",
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
@@ -5015,7 +5015,7 @@ override = {"flood":{"windowSec":30}}
   "dailyUserCap": 2
  },
  "presence": {
-  "mode": "off",
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
@@ -5742,7 +5742,7 @@ override = {}
   "dailyUserCap": 2
  },
  "presence": {
-  "mode": "off",
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
@@ -6462,7 +6462,7 @@ override = {"keywordTriggers":[]}
   "dailyUserCap": 2
  },
  "presence": {
-  "mode": "off",
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
@@ -7189,7 +7189,7 @@ override = {"rss":{"pollIntervalMin":5}}
   "dailyUserCap": 2
  },
  "presence": {
-  "mode": "off",
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
@@ -7909,7 +7909,7 @@ override = {"groupEnabled":false}
   "dailyUserCap": 2
  },
  "presence": {
-  "mode": "off",
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
@@ -8629,7 +8629,7 @@ override = {}
   "dailyUserCap": 2
  },
  "presence": {
-  "mode": "off",
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
@@ -9349,7 +9349,7 @@ override = {"groupEnabled":true}
   "dailyUserCap": 2
  },
  "presence": {
-  "mode": "off",
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
@@ -10069,7 +10069,7 @@ override = {"admin":{"host":"127.0.0.1"}}
   "dailyUserCap": 2
  },
  "presence": {
-  "mode": "off",
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
@@ -10789,7 +10789,7 @@ override = {}
   "dailyUserCap": 2
  },
  "presence": {
-  "mode": "off",
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
@@ -11509,7 +11509,7 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
   "dailyUserCap": 2
  },
  "presence": {
-  "mode": "off",
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,

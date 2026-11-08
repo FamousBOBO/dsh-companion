@@ -20,8 +20,9 @@ import { hotOf } from '../src/config/meta.js'
 
 /** §0.1 的权威默认值表（顺序即段内字段顺序，与 schema 一致）。 */
 const CONTRACT: PresenceConfig = {
-  // P5-B：运行模式。`off` 默认 + `enabled:false` 升级后行为完全不变。
-  mode: 'off',
+  // P5-B：运行模式。**默认空串**（P9-A1）：写成 'off' 会被合成器补进每一份旧配置，
+  // 于是 enabled:true 的老部署升级后被静默停用。空串 = 未指定，按 enabled 推断。
+  mode: '',
   enabled: false,
   groups: [],
   ambientMaxEntries: 40,

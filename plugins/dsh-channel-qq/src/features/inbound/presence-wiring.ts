@@ -259,11 +259,10 @@ export function wirePresence(
   const mode = modeNow()
   const modeNote = modeNoteOf(host.config.presence ?? null)
   if (modeNote !== '') host.log(`presence: ${modeNote}`)
-  if (!modeRuns(mode)) {
-    // `off`: 连旁听都不记（旧 `enabled:false` 的行为逐字节一致）。
-    host.log(`presence: 关（mode=${mode}）——不记旁听、不调模型判断、不发自主消息`)
-    return { ambient, dispose: () => {} }
-  }
+  // P9-A2：**`off` 也照样建执行器**（几个 Map，不起定时器、不读盘）。原来的"off 直接
+  // return"会让 off→shadow 必须重启才生效，与 P5-B 承诺的热切换矛盾。现在跑不跑由
+  // `presenceAppliesTo` 每次现取模式决定：off 一条都不记，改回 off 下一条消息就停。
+  if (!modeRuns(mode)) host.log(`presence: mode=${mode}——不记旁听、不判断、不发（改配置即可开始，不必重启）`)
   // 说完之后的附加动作（表情包 / 弱反馈 / 话题落地）。装配一次，内部自带每群额度账本。
   const afterSpeak = afterSpeakHandler(host, () => host.config.presence ?? null)
   // 影子日志（`shadow` 模式的全部意义）：一行 JSON 落本地文件，供人工盲评。
@@ -278,6 +277,7 @@ export function wirePresence(
     memory: memoryRecall(host),
     afterSpeak,
     // 每次现取：后台把 live 改成 shadow 时，在途的模型结果也必须被拦下。
+    // 同一个函数也决定"要不要跑"（off → 不记旁听），所以热切换不需要重建执行器。
     mode: modeNow,
     // 语义复核档位（P6-B）：配错/取不到按 warn（只记不拦）。
     guardMode: guardModeOf(host),

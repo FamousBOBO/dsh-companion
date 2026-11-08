@@ -281,6 +281,8 @@ export class GroupPresence {
           return 'off'
         }
       },
+      // 真实的平台发送尝试（P9-A3）：耗时只含平台调用本身，失败也计入。
+      noteSend: (input: { groupId: number; latencyMs: number; ok: boolean }) => this.scheduler.noteSend(input),
       // 语义复核档位（P6-B）+ 她自己的号（P6-A）：两个都每次现取。
       guardMode: () => this.deps.guardMode?.() ?? 'warn',
       selfId: () => {

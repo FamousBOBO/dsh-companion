@@ -131,7 +131,7 @@ export async function runComposed({ c, settings, persona, state, complete, ctx }
  * 跑一批示例。
  *
  * @param {object} options
- * @param {object[]} [options.cases] 语料（默认全部 41 条）
+ * @param {object[]} [options.cases] 语料（默认全部语料，条数由 corpus.mjs 决定）
  * @param {object} options.config `readConfig()` 的 config
  * @param {object} options.persona `loadPersona()` 的结果
  * @param {{mode: string, detail: string}} options.channel

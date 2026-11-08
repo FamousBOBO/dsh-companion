@@ -214,6 +214,13 @@ export interface CycleDeps {
    * 默认拦会把"她少说话了"变成没人能解释的现象。见 `core/group-social-guard.ts`。
    */
   readonly guardMode?: () => string
+  /**
+   * 记一次**真实的平台发送尝试**（P9-A3）：成功与失败都算，耗时只含平台调用本身。
+   *
+   * 为什么与 `recordEvent` 分开：那个只在**成功**时记时间线；这个要看"尝试了几次、每次多慢"，
+   * 失败也是数据。缺省 = 不记（旧装配/单测）。
+   */
+  readonly noteSend?: (input: { groupId: number; latencyMs: number; ok: boolean }) => void
 }
 
 /**

@@ -105,7 +105,7 @@ export function caseRecord({
   const usage = modelRequest?.usage ?? { promptTokens: null, completionTokens: null, totalTokens: null }
   return {
     version: RECORD_VERSION,
-    /** 匿名场景 ID（语料里的 G01–G41；语料本身不含真实群号）。 */
+    /** 匿名场景 ID（语料里的 G01–G52；语料本身不含真实群号）。 */
     sceneId: caseId,
     scene,
     /** 语料标注的类别：决定"偏差算 FAIL 还是 WARN"的只有离线通道，这里只用来对照。 */

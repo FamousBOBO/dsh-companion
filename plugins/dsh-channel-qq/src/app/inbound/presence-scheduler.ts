@@ -48,6 +48,8 @@ export interface GroupSchedulerStats {
   readonly modelCalls: number
   readonly sendLatencyMs: number
   readonly sendAttempts: number
+  /** 失败（抛错 / 无回执）的发送尝试数（P9-A3）：与 `sendAttempts` 一起看才有意义。 */
+  readonly sendFailures: number
   /** 最近一次"这批等了多久才开始判"（毫秒；0 = 还没有批次）。 */
   readonly lastBatchWaitMs: number
   /**
@@ -79,6 +81,7 @@ export function emptyStats(): GroupSchedulerStats {
     modelCalls: 0,
     sendLatencyMs: 0,
     sendAttempts: 0,
+    sendFailures: 0,
     lastBatchWaitMs: 0,
     eventContextInjected: 0,
     eventContextDenied: 0,
@@ -101,6 +104,23 @@ export class GroupSchedulerBook {
   /** 改（不可变更新，方便日志里对比前后）。 */
   update(groupId: number, change: (stats: GroupSchedulerStats) => GroupSchedulerStats): void {
     this.stats.set(groupId, change(this.of(groupId)))
+  }
+
+  /**
+   * 记一次**真实的平台发送尝试**（P9-A3）：成功与失败都进 `sendAttempts`，
+   * 耗时只含平台调用本身（不含模型、不含合批等待）。
+   *
+   * 为什么失败也要计：只统计成功会让"发送成功率"永远是 100%，而"尝试 5 次成功 1 次"
+   * 才是真相——那是排障时第一个要看的东西。
+   */
+  noteSend(input: { groupId: number; latencyMs: number; ok: boolean }): void {
+    const latency = Number.isFinite(input.latencyMs) && input.latencyMs >= 0 ? input.latencyMs : 0
+    this.update(input.groupId, (stats) => ({
+      ...stats,
+      sendAttempts: stats.sendAttempts + 1,
+      sendLatencyMs: stats.sendLatencyMs + latency,
+      sendFailures: stats.sendFailures + (input.ok ? 0 : 1),
+    }))
   }
 
   /**

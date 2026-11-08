@@ -164,7 +164,7 @@ async function runCase(c) {
       complete,
       recordSent: async () => {},
       // 语义复核（P6-B）：评测里用 **enforce**，这样报告能回答"如果线上切成 enforce，
-      // 这 41 条里有几条会被拦、被哪一条拦"。线上默认是 warn（只记不拦），
+      // 这批用例里有几条会被拦、被哪一条拦"。线上默认是 warn（只记不拦），
       // 两档的口径差别单独印在报告里，不能被读成"线上已经拦了"。
       guardMode: () => 'enforce',
       selfId: () => 1000000002,
@@ -568,6 +568,8 @@ async function main() {
       version: 1,
       mode: 'offline-replay',
       generatedAt: new Date().toISOString(),
+      // 语料条数**动态**给出（P9-A4）：文档里写死过的"41 条"就是靠这类硬编码慢慢烂掉的。
+      corpus: { cases: CASES.length, ids: CASES.map((c) => c.id) },
       impl: { ...IMPL },
       defaults: { ...DEFAULTS },
       suites,
@@ -581,6 +583,7 @@ async function main() {
         '证据级别：offline-test（docs/07 的五级口径）。不构成 real-api / real-send 的任何证据，也不证明"线上她说话得体"。',
         'model-judgment 用例的偏差记 WARN 并单列在 gaps：代码侧不判语义，靠提示词兜，不许当已验证。',
         '零网络、零模型调用、零真实 QQ：complete 是假端口，platform 是假端口，clock 是冻结的假时钟。',
+        '语料条数以 report.corpus.cases 为准（不要在任何文档里写死条数）。',
       ],
     }
     report.reportFile = path.relative(process.cwd(), REPORT_FILE) || 'eval/group/last-report.json'

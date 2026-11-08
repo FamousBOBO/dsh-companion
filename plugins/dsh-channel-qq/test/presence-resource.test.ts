@@ -35,6 +35,7 @@ function stats(over: Partial<GroupSchedulerStats> = {}): GroupSchedulerStats {
     modelCalls: 4,
     sendLatencyMs: 240,
     sendAttempts: 2,
+    sendFailures: 0,
     lastBatchWaitMs: 6_000,
     eventContextInjected: 3,
     eventContextDenied: 1,

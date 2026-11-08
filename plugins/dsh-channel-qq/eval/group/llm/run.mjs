@@ -123,7 +123,7 @@ function hardFailsOf({ trips, records, tripwireOk }) {
 /**
  * 选通道：默认按探测结果自动选；`--channel` 可以强制（诊断用）。
  *
- * 强制成 `presence-cycle` 而闸门不在，运行器会**拒绝**：那等于让 41 条用例各踩一次绊线。
+ * 强制成 `presence-cycle` 而闸门不在，运行器会**拒绝**：那等于让每条用例各踩一次绊线。
  */
 function resolveChannel(requested, gateProbe) {
   const auto = gateProbe.supported
