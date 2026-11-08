@@ -28,6 +28,17 @@ try {
   console.log(`[companion-foundation] cognitive runtime not available: ${error instanceof Error ? error.message : String(error)}`);
 }
 
+// The prompt engine is optional the same way, and for the same reason: a module that
+// fails to evaluate must degrade to "no prompt text this turn", never to a chat that
+// refuses to answer. It is off (`mode: 'off'`) unless the data root opts in, so a
+// missing config file changes nothing at all.
+let createPromptEngine = null;
+try {
+  ({ createPromptEngine } = await import('./prompt-engine.mjs?v=0.1.0'));
+} catch (error) {
+  console.log(`[companion-foundation] prompt engine not available: ${error instanceof Error ? error.message : String(error)}`);
+}
+
 const runtime = process.env.DSH_COMPANION_MODULE_ROOT;
 if (!runtime) throw new Error('DSH_COMPANION_MODULE_ROOT is not set. Start the suite with `npm run start` (or set it to the DSH module root that provides @deepseek-ai/dsh-tools).');
 const { defineTool } = await import(pathToFileURL(path.join(runtime, '@deepseek-ai/dsh-tools/lib/index.js')).href);
@@ -210,6 +221,44 @@ export function mountCompanion(ctx, root, options = {}) {
     interpolate: false,
     text: '【心跳能力】只有出现【心跳读数】段落时，你才有他的真实心率数据；没有这一段就说明设备没在读数，不要说“听见你的心跳”，也不要编造或回忆具体数值。数字只能来自那一段，不夸大，不做医学判断。',
   });
+
+  // Prompt Engine (P0/P1 of the modular cognition task). Created here, once per mount, and
+  // deliberately **inert**: `prompt-engine.config.json` defaults to `enabled: false`, in which
+  // case nothing below runs, no section is registered and no message content is added. The
+  // engine owns only routing/composition state; every failure degrades to "no prompt text".
+  let promptEngine = null;
+  if (createPromptEngine) {
+    try {
+      promptEngine = createPromptEngine({ root, ctx });
+    } catch (error) {
+      console.log(`[companion-foundation] prompt engine unavailable: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  const promptEngineMode = () => {
+    try { return promptEngine?.mode ?? 'off'; } catch { return 'off'; }
+  };
+  // `companion:prompt-contract` is a static section that only explains how the dynamic
+  // modules are to be read. It is registered **only** when the engine is not off, and it
+  // turns itself empty if the config is switched off at runtime, so an off engine really
+  // leaves the system prompt byte-identical.
+  if (promptEngineMode() !== 'off') {
+    try {
+      const contract = promptEngine.contractSection();
+      if (contract?.text) {
+        ctx.systemPrompt.section({
+          name: contract.name,
+          order: contract.order,
+          interpolate: false,
+          text: () => {
+            try { return promptEngineMode() === 'off' ? '' : contract.text; } catch { return ''; }
+          },
+        });
+      }
+    } catch (error) {
+      console.log(`[companion-foundation] prompt contract section skipped: ${error instanceof Error ? error.message : String(error)}`);
+    }
+  }
+  ctx.on('dispose', () => { try { promptEngine?.dispose(); } catch { /* never surface */ } });
 
   // Cognitive continuity (P1). The runtime mounts inert unless
   // home/companion/runtime.config.json sets `enabled: true` (and a non-off mode), so
@@ -424,12 +473,38 @@ export function mountCompanion(ctx, root, options = {}) {
       careText = typeof prompt?.text === 'string' ? prompt.text : '';
     } catch { careText = ''; }
     const injectedWithCare = injected + (careText ? '\n' + careText : '');
-    return { ...decision, messages: [...decision.messages, createUserMessage({ content: [{ type: 'text', text: injectedWithCare }],
+    // Prompt Engine (P0 §9). Runs inside the **existing** first-step snapshot: it reads the
+    // same user message, the same memory text and the same working memory, and returns one more
+    // section. It has its own char budget, so the memory (2400) and runtime (320) budgets above
+    // are untouched. `off` returns an empty text and changes nothing; `shadow` routes and
+    // composes without changing the message; any throw is swallowed into "no prompt text".
+    let promptText = '';
+    let promptSections = [];
+    if (promptEngine) {
+      try {
+        const snapshot = await promptEngine.snapshot({
+          sessionId,
+          message: query,
+          history: promptEngine.historyFromSession(agent, 12),
+          persona,
+          memoryContext: memoryText,
+          workingMemory: cognitiveText,
+          signal,
+        });
+        if (snapshot?.text) {
+          promptText = snapshot.text;
+          promptSections = [{ name: 'companion-prompt-profile', text: snapshot.text }];
+        }
+      } catch { promptText = ''; promptSections = []; }
+    }
+    const finalInjected = injectedWithCare + (promptText ? '\n' + promptText : '');
+    return { ...decision, messages: [...decision.messages, createUserMessage({ content: [{ type: 'text', text: finalInjected }],
       source: { kind: 'companion-memory', form: 'snapshot', sections: [{ name: 'companion-identity', text: identityText },
         ...(memoryText ? [{ name: 'companion-memory', text: memoryText }] : []),
         ...(cognitiveText ? [{ name: 'companion-working-memory', text: cognitiveText }] : []),
         ...(pulseText ? [{ name: 'companion-pulse', text: pulseText }] : []),
-        ...(careText ? [{ name: 'companion-care', text: careText }] : [])] } })],
+        ...(careText ? [{ name: 'companion-care', text: careText }] : []),
+        ...promptSections] } })],
     };
   }, { prepend: true });
 
@@ -449,6 +524,18 @@ export function mountCompanion(ctx, root, options = {}) {
           const at = Number(event.time ?? event.at ?? Date.now());
           cognitive.observeSessionEvent({ sessionId: session.id, type: event.type, at: Number.isFinite(at) ? at : Date.now() });
         } catch { /* cognitive observation never breaks the turn */ }
+      }
+      // Prompt Engine style audit (§12): detection only. It never rewrites the reply, never
+      // stores the text, and never makes a model call — the report holds counts and reason
+      // codes only, and it is reachable through `promptEngine.status()` diagnostics.
+      if (promptEngine && event.type === 'assistant/message') {
+        try {
+          const content = event.data?.content ?? event.data?.message?.content ?? [];
+          const reply = Array.isArray(content)
+            ? content.filter(block => block?.type === 'text' && typeof block.text === 'string').map(block => block.text).join('')
+            : '';
+          if (reply.trim()) promptEngine.auditReply({ sessionId: session.id, text: reply });
+        } catch { /* lint never breaks the turn */ }
       }
     } catch { /* a capture failure must never surface in the chat turn */ }
   });
@@ -739,6 +826,7 @@ export function mountCompanion(ctx, root, options = {}) {
   }
   return {
     store, identity, memory, engine, cognitive,
+    promptEngine,
     backend: sqliteBackend ? 'sqlite' : 'legacy',
     agenda: agendaPort,
   };

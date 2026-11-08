@@ -81,7 +81,7 @@
 
 | 模块 | `offline-test` | `host-load` | `real-api` | `real-send` | `hardware` |
 |---|---|---|---|---|---|
-| `companion-foundation` | **213 项 / 204 通过 / 0 失败 / 9 跳过** | **✅ 已装载**（C 段：无 `did not activate`；日志出现它的 identity 初始化行） | 未验证 | — | — |
+| `companion-foundation` | **360 项 / 351 通过 / 0 失败 / 9 跳过**（2026-11-08；其中 Prompt Engine 新增 **146 项**，其余 214 项为原有测试，见 §2.8） | **✅ 已装载**（C 段：无 `did not activate`；日志出现它的 identity 初始化行） | 未验证 | — | — |
 | `companion-memory` | **268 通过 / 0 失败** | **✅ 已装载**（C 段） | 未验证 | — | — |
 | `companion-memory-studio` | **115 通过 / 0 失败** | **✅ 已装载**（C 段：UI 返回 HTTP 200 / 38252 字节） | 未验证 | — | — |
 | `companion-runtime` | **697 通过 / 0 失败** | **✅ 已装载**（C 段） | 未验证 | — | — |
@@ -256,6 +256,33 @@
 - 主动联系（contact）的真实平台发送与回执。
 - 提醒的四条停止线（停机可观测 / 不重复外发 / 空转可见 / 阈值合理）在真机上的验证。
 - 真实 24 小时长稳（只做过模拟时钟）。
+
+### 2.8 Prompt Engine（模块化认知与写作引擎，2026-11-08）：`offline-test` + `host-load`
+
+设计说明见 `docs/08-prompt-engine.md`，接口合同见 `plugins/companion-foundation/PROMPT-ENGINE-CONTRACT.md`。
+**这一节只证明"代码按设计工作"，不证明"模型写得更好"**——后者需要真实模型输出与人工评分，本仓库没做。
+
+| 项 | 级别 | 证据 |
+|---|---|---|
+| 配置读取/校验/安全回退（默认关闭、非法 JSON、非法枚举、越界预算、不创建不覆盖文件） | `offline-test` | `prompt-config.test.mjs` **15 项** |
+| 场景路由（三层判断、显式优先、单条消息不得 immersive、抽象情绪不判 RP、逐轮降档、resume、session 隔离） | `offline-test` | `prompt-router.test.mjs` **23 项** |
+| 模块目录与写作档边界（chat 不含白描、companion 不含报告腔、implicit 轻量、roleplay 才注入叙事、task 无扮演；anti-deepseek 只降频不禁词） | `offline-test` | `prompt-modules.test.mjs` **17 项** |
+| 组合与预算（稳定排序、两种去重、整模块裁剪不截断、`MAX_MODULES=10`、五档字数上限） | `offline-test` | `prompt-compose.test.mjs` **17 项**；实测 chat **512/600 字**、companion **578/800**、task **473/500**、implicit **623/1300**、immersive **657/1300**，五档均未触发预算裁剪 |
+| 结构化规划（schema 校验、超长截断、坏 JSON 提取、planner 提示词不超输入上限、渲染 ≤900 字） | `offline-test` | `prompt-plan.test.mjs` **19 项** |
+| 文风检测（只统计+理由码、不回传原文、正常中文不误伤、chat 档不检测白描） | `offline-test` | `prompt-lint.test.mjs` **14 项** |
+| 引擎编排（关闭惰性、shadow 不改消息、预算、LRU、黑名单、planner 缺失降级、配置热更新、dispose） | `offline-test` | `prompt-engine.test.mjs` **29 项**；其中 7 项用**假宿主 LLM** 跑通 Planner 路径：合法规划进 Writer 指导、purpose=`companion-prompt-plan` 且 sessionId 独立、`allowFallback:false`（一次预算=一次物理生成）、坏 JSON 一次修复、两次失败降级、字段越界截断、Guided 档零调用 |
+| 与 foundation 现有 Hook 集成（默认关闭不注册 Section、开启独立 `companion-prompt-profile`、原有身份/记忆注入逐字节不变、只在 step 1、reject/aborted 不变、群聊与私聊互不串档、引擎崩溃不影响聊天、不写记忆） | `offline-test` + **`host-load`** | `prompt-engine-mount.test.mjs` **12 项**；其中一轮用**已安装桌面的真实宿主模组**（`DSH_COMPANION_MODULE_ROOT` 指向桌面 `node_modules`）跑通，与 `cognitive-mount.test.mjs` 的 8 项一起 20/20 通过 |
+| `companion-foundation` 合计 | `offline-test` | **360 项 / 351 通过 / 0 失败 / 9 跳过**（Prompt Engine 新增 146 项：15+23+17+17+19+14+29+12；其余 214 项为原有测试） |
+| 整仓 `npm run verify` | `offline-test` | `unit` **9 模块全绿**（`dsh-paste-search` 无测试）；`compose` 仍为 SKIPPED（本 worktree 没跑 `npm run setup`，CI 正常现象） |
+| **真实模型调用**（Planner / Strict 审查 / 修正） | **未验证** | Planner 代码路径只有"不可用时降级"这一半被断言；真实 provider 调用、超时、Token 计数**都没跑过** |
+| **真实场景质量验收**（四组固定测试集 × 四条对照） | **未验证** | 需要真实模型输出与人工评分，且要用操作者自己的 Persona 与历史 |
+
+> 结论措辞只能用：「Prompt Engine 的配置、路由、模块组合、预算、schema 校验与文风检测在**离线测试**上通过，
+> 并且能以关闭/开启两种状态真实挂在 foundation 的 `agent/pre-step` 上，原有的身份、记忆、运行时注入与心跳/关怀注入**逐字节不变**；
+> 规划器的真实模型调用与真实场景质量验收**都没有做**」。
+
+> 关于 `static` 段那一项 `✗ author-name — README.md:197`：它在本 worktree 的父提交（`052943f`，即 `origin/main`）
+> 上**同样失败**，是既有问题，不是本次改动引入的。
 
 ## 4. 怎么把某条证据从「未验证」升一级
 

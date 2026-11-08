@@ -38,11 +38,20 @@
     "./share-diagnostics.mjs": "./share-diagnostics.mjs",
     "./share-producer.mjs": "./share-producer.mjs",
     "./wardrobe.mjs": "./wardrobe.mjs",
+    "./prompt-engine.mjs": "./prompt-engine.mjs",
+    "./prompt-config.mjs": "./prompt-config.mjs",
+    "./prompt-router.mjs": "./prompt-router.mjs",
+    "./prompt-modules.mjs": "./prompt-modules.mjs",
+    "./prompt-compose.mjs": "./prompt-compose.mjs",
+    "./prompt-plan.mjs": "./prompt-plan.mjs",
+    "./prompt-lint.mjs": "./prompt-lint.mjs",
+    "./PROMPT-ENGINE-CONTRACT.md": "./PROMPT-ENGINE-CONTRACT.md",
     "./package.json": "./package.json"
   },
   "files": [
     "*.mjs",
     "qq-autonomy-policy.txt",
+    "PROMPT-ENGINE-CONTRACT.md",
     "test-fixtures/",
     "test/",
     "README.md"

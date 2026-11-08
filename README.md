@@ -327,6 +327,7 @@ Windows 验证环境：
 | [05 · 升级与回滚](docs/05-upgrade-rollback.md) | 版本升级与数据兼容 |
 | [06 · 故障排查](docs/06-troubleshooting.md) | 常见问题与诊断方法 |
 | [07 · 验证状态](docs/07-verification-status.md) | 测试记录与实际验证依据 |
+| [08 · 提示词引擎](docs/08-prompt-engine.md) | 模块化认知与写作引擎：场景路由、算子、风格档与预算（默认关闭） |
 
 如果希望让 DSH 自行阅读仓库并执行部署，可以从 [AGENTS.md](AGENTS.md) 开始。
 
