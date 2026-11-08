@@ -127,7 +127,7 @@ export function selftestChecksOf({ records, wanted, trips, files }) {
       ok: Boolean(files.reportJson && files.reportMd && files.casesJsonl),
       detail: `${files.reportJson} · ${files.reportMd} · ${files.casesJsonl}`,
     },
-    { name: '覆盖本次要跑的示例（默认全部 41 条）', ok: scenes.size === wanted.length, detail: `${String(scenes.size)} 条示例` },
+    { name: '覆盖本次要跑的示例（默认全部语料）', ok: scenes.size === wanted.length, detail: `${String(scenes.size)} 条示例` },
   ]
 }
 
