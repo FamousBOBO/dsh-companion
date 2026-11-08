@@ -1,5 +1,15 @@
 import path from 'node:path';
 import { groupIdOf, groupToolDenial, markGroupReady, GROUP_ALLOWED_TOOLS } from './core.mjs?v=group-media-20261102-restrict3';
+import {
+  GROUP_CHAT_CONDUCT,
+  GROUP_CONTINUITY_EMPTY,
+  GROUP_CONTINUITY_ORDER,
+  GROUP_CONTINUITY_SECTION_NAME,
+  GROUP_CONTINUITY_SERVICE_NAME,
+  buildGroupContinuitySection,
+  groupContinuityInputOf,
+  hasGroupContinuityService,
+} from './group-continuity.mjs';
 import { resolveDataRoot } from '../companion-foundation/suite-paths.mjs';
 
 export const name = 'companion-group-persona';
@@ -36,6 +46,38 @@ export function apply(ctx) {
   // Preset validation can run before the asynchronous QQ channel has registered
   // its tools. Bind the restriction at the first real step, before model entry.
   const restricted = new WeakSet();
+  // P3 §7.2 / P4 §8.1：让**被 @ 的回合**也看得到「她自己刚说过什么 / 这个群刚发生过什么」，
+  // 并把群聊表达口径钉成短句口语、沉默合法、不重复自己（见 group-continuity.mjs）。
+  //
+  // 三个刻意的选择：
+  //   1. **懒取**：text 是函数，每次装配现取——时间线每轮都在变，注册时算一次没有意义
+  //      （与 companion-foundation 的 companion:life 同一写法）。
+  //   2. **可选服务**：ctx.get('companionGroupEvents') 由群事件时间线提供，可能根本没挂
+  //      （P3 之前、或 QQ 通道关闭）。拿不到 / 形状不对 / 抛错一律降级成「还没有记录」，
+  //      绝不把提示词装配打掉——少一份背景可以，整轮聊天挂掉不行。
+  //   3. **interpolate: false**：段里含群友可能写出的原文，`{{…}}` 一旦被当成变量引用会
+  //      严格报错（未知引用即失败），所以整段按字面保留。
+  //
+  // 注册顺序与提示词顺序无关（提示词按 order 排）：这里先注册连续性段（order 51），
+  // 人格段（order 50）仍是最后一次注册。
+  ctx.systemPrompt.section({
+    name: GROUP_CONTINUITY_SECTION_NAME,
+    order: GROUP_CONTINUITY_ORDER,
+    interpolate: false,
+    text: () => {
+      try {
+        const service = typeof ctx.get === 'function' ? ctx.get(GROUP_CONTINUITY_SERVICE_NAME) : undefined;
+        const input = hasGroupContinuityService(service)
+          ? groupContinuityInputOf(service)
+          : { recentSelf: [], topic: null, recentlyMentioned: [] };
+        return GROUP_CHAT_CONDUCT + '\n\n' + buildGroupContinuitySection(input);
+      } catch {
+        // 行为约定不依赖任何数据，任何失败都保留它；「最近记录」换成明确的"还没有记录"，
+        // 而不是留白——留白只会让模型自己凭印象补一句"我刚才说过…"。
+        return GROUP_CHAT_CONDUCT + '\n\n' + GROUP_CONTINUITY_EMPTY;
+      }
+    },
+  });
   ctx.systemPrompt.section({ name: 'companion:group-persona', order: 50, interpolate: false, text: GROUP_PERSONA });
   const calls = new Map();
   const delivered = new Map();
