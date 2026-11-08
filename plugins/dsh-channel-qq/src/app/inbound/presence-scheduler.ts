@@ -1,4 +1,4 @@
-/** 每群的**调度观测**（P3 §7.4）：谁被判过、等了多久、为什么没判。
+﻿/** 每群的**调度观测**（P3 §7.4）：谁被判过、等了多久、为什么没判。
  *
  * 为什么单独一个文件：这些数字要进后台页面与日志，而"记账"和"调度"是两件事——
  * 混在 `presence-runtime.ts` 里时，一个 60 行的 `noteSkip` 会把定时器与限频的代码隔开，
@@ -29,7 +29,7 @@ export interface GroupSchedulerStats {
   readonly judgments: number
   /** 真正发出消息的条数。 */
   readonly spoken: number
-  /** 出现过"待判消息比 judgeMaxWaitMs 还老"的次数（§7.4 的饥饿告警）。 */
+  /** 出现过"待判消息比 starvationWarnMs 还老"的次数（§7.4 的饥饿告警）。 */
   readonly starvationWarnings: number
   /**
    * `shadow` 下"本来要发"的次数（P5-B / §7.3）。
@@ -85,7 +85,7 @@ export class GroupSchedulerBook {
    * 记一次"跳过判断"（限频、暂停、同群在途、没有上下文），并在真的饿着时告警。
    *
    * "持续活跃的群不会无限期得不到判断"这条要求由两件事保证：定时器**不重排**（等待上限天然
-   * 成立），以及这条告警——如果一批消息比 `judgeMaxWaitMs` 还老还没被判，那就是真的饿了
+   * 成立），以及这条告警——如果一批消息比 `starvationWarnMs` 还老还没被判，那就是真的饿了
    * （限频/暂停/失败退避导致），必须在日志里看得出来，而不是被读成"群里没人说话"。
    *
    * @returns 是否发出了饥饿告警（调用方据此决定要不要再写日志）

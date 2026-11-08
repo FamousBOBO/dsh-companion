@@ -59,6 +59,15 @@ export interface JudgeEntry {
    * 认不出来就整行当正文（退化成"身份出现两次"），绝不因为格式不认识就把内容丢掉。
    */
   readonly body?: string
+  /**
+   * 平台 reply 段的引用目标（P6-A）：**只**用来拼社交场景，不参与渲染。
+   *
+   * 为什么不在提示词里直接渲染成一行：模型已经能从背景里看到"消息 711"的形状，
+   * 再加一行"这条回了 710"会让同一件事出现两次；结构化的引用关系我们单独汇总成一段。
+   */
+  readonly replyToMessageId?: number | null
+  /** 平台 at 段的真实 @ 目标（P6-A）；**不含**自己与 @全体。 */
+  readonly atIds?: readonly number[]
 }
 
 /** 一次判断的全部输入。 */

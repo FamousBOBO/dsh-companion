@@ -37,6 +37,15 @@ export interface AmbientEntry {
   readonly atMs: number
   /** 她自己发的（回显 / 自主接话）。判断与背景都要能区分。 */
   readonly self: boolean
+  /**
+   * 这条消息**真实引用**了哪一条（平台 reply 段；没有就是 `null` / 缺省）。
+   *
+   * 为什么要一路带到缓冲里：P6 的"谁在回谁"只认平台结构（`core/group-scene.ts`
+   * 的文件头第 1 条）。等到判断时再回查要重新走一遍平台，而这里本来就在解析现场。
+   */
+  readonly replyToMessageId?: number | null
+  /** 这条消息**真实 @** 了谁（平台 at 段；**不含**自己与 @全体）。正文里的"@某某"不算。 */
+  readonly atIds?: readonly number[]
 }
 
 /** 三重上限。 */

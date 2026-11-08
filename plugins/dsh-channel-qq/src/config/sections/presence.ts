@@ -40,8 +40,10 @@ export interface PresenceConfig {
   ambientMaxChars: number
   /** 合批静默窗口（毫秒）：一批消息攒这么久再判断。 */
   batchQuietMs: number
+  /** 语义复核档位（P6-B）：`off` / `warn` / `enforce`；默认 `warn`（只记不拦）。 */
+  socialGuard: string
   /** 一批消息等待判断的上限（毫秒）：只用于饥饿告警。 */
-  judgeMaxWaitMs: number
+  starvationWarnMs: number
   /** 两次兴趣判断之间的最小间隔（毫秒）。 */
   judgeIntervalMs: number
   /** 送进一次判断的旁听条数上限。 */
@@ -135,6 +137,17 @@ export const PRESENCE_GROUPS: FieldGroup[] = [
         help: '每群旁听的总字数上限，与条数上限**双**淘汰（谁先到就按谁淘汰最老的）。'
           + '它防的是"40 条全是长文"，那时按条数限制根本不够。默认 6000 字是工程建议。',
       }),
+      socialGuard: e('语义复核', 'warn', [
+        ['off', '不做语义复核（连日志都不记）'],
+        ['warn', '只记日志与影子日志，不拦（默认）'],
+        ['enforce', '真的拦下（这一轮不说话）'],
+      ], {
+        hot: 'live',
+        page: 'groups',
+        help: 'P6-B 的四条事实型复核（复读自己 / 争执不掺和 / 定向对话不加入 / 重复抢答）。'
+          + '默认 warn：重叠阈值（≥90%）与 40 分钟窗没有在真实群聊上校准过，'
+          + '先观测「语义复核命中」的条数与理由，再决定是否切 enforce。',
+      }),
       batchQuietMs: n('合批静默窗口', 6_000, {
         hot: 'live',
         page: 'groups',
@@ -146,15 +159,17 @@ export const PRESENCE_GROUPS: FieldGroup[] = [
           + '太短会把一句话拆成两批，太长会让她对着过时的话题接话。默认 6 秒。'
           + '**与判断间隔分开**：那个管省钱，这个管读得懂。',
       }),
-      judgeMaxWaitMs: n('一批消息等待判断的上限', 25_000, {
+      starvationWarnMs: n('一批消息的最长等待', 25_000, {
         hot: 'live',
         page: 'groups',
         min: 5_000,
         max: 300_000,
         step: 5_000,
         unit: 'ms',
-        help: '持续活跃的群里，一批消息已经等了这么久还没被判，就写一条**饥饿告警**日志'
-          + '（通常是限频、失败退避或同群在途造成的）。它不改变调度，只保证问题看得见。默认 25 秒。',
+        help: '一批消息**最多**等这么久就必须（在允许判断的前提下）判一次（毫秒），默认 25 秒。'
+          + '它只在"允许判断"之后起作用：冷却中、失败退避中、同群在途时仍然不会判断，'
+          + '所以不会为了低延迟去撞硬限频。作用范围只在**持续有流量的群**——被冷落的批次'
+          + '靠它不会被无限顺延。达到上限但被硬门槛挡住时，会记一条饥饿告警。',
       }),
       judgeIntervalMs: n('两次判断的最小间隔', 50_000, {
         hot: 'live',

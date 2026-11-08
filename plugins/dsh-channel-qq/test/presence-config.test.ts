@@ -28,8 +28,10 @@ const CONTRACT: PresenceConfig = {
   ambientTtlMs: 600_000,
   ambientMaxChars: 6_000,
   // P3 §7.3 拆出来的两个调度参数（合批等待 / 饥饿告警阈值）。
+  // P6-B：语义复核档位。默认 warn（只记不拦），理由见 core/group-social-guard.ts。
+  socialGuard: 'warn',
   batchQuietMs: 6_000,
-  judgeMaxWaitMs: 25_000,
+  starvationWarnMs: 25_000,
   judgeIntervalMs: 50_000,
   judgeMaxEntries: 15,
   judgeMaxChars: 1_200,
@@ -99,7 +101,7 @@ test('presence：每个字段都有中文 label / help，且 hot 全为 live、p
 test('presence：数值字段都带 min/max/step 与 unit', () => {
   const group = presenceGroup()
   const numeric = FIELDS.filter((key) => group.fields[key]?.kind === 'number')
-  // 17 = 原有 11 + P3 的 batchQuietMs/judgeMaxWaitMs + P2 的 replyWindowMs/memoryBudgetChars
+  // 17 = 原有 11 + P3 的 batchQuietMs/starvationWarnMs + P2 的 replyWindowMs/memoryBudgetChars
   //      + P4 的 stickerMinIntervalMs/stickerMaxPerHour（stickers 是开关，不是数值）
   assert.equal(numeric.length, 17, '除开关与列表外都应是数值字段')
   for (const key of numeric) {

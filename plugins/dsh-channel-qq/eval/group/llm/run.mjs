@@ -139,6 +139,36 @@ function resolveChannel(requested, gateProbe) {
   return { mode: requested, detail: requested === auto.mode ? gateProbe.detail : `--channel 强制为 ${requested}` }
 }
 
+
+/**
+ * `--selftest` 的断言跑完再判：四条结构性断言 + 绊线端到端 + 异常路径。
+ *
+ * @returns {Promise<number>} 失败的断言条数（0 = 自测通过）
+ */
+async function runSelftestAsserts({ checks, config, toStderr }) {
+  const write = toStderr ? (line) => console.error(line) : (line) => console.log(line)
+  write('')
+  write('自测断言：')
+  for (const check of checks) write(`  ${check.ok ? 'PASS' : 'FAIL'}  ${check.name} — ${check.detail}`)
+  const trip = await selftestTripSafety()
+  write('')
+  write('绊线端到端自测（子进程里故意让模型输出一个"要发"的决策，并去掉影子闸门）：')
+  write(`  退出码 ${String(trip.code)}（期望 1）· ${trip.summary}`)
+  const errorChecks = await selftestErrorPaths({ config })
+  write('')
+  write('异常路径自测：')
+  for (const check of errorChecks) write(`  ${check.ok ? 'PASS' : 'FAIL'}  ${check.name} — ${check.detail}`)
+  const failed = [...checks, ...errorChecks].filter((check) => !check.ok)
+  if (trip.code !== 1) {
+    console.error(`group-llm-eval: 绊线端到端自测没通过（子进程退出码 ${String(trip.code)}，期望 1）`)
+    return failed.length + 1
+  }
+  if (failed.length > 0) {
+    console.error('group-llm-eval: 自测没通过（失败的断言 ' + String(failed.length) + ' 条）')
+  }
+  return failed.length
+}
+
 /** 报告里的"已知边界"（照 `eval/group/README.md` 的口径，不自创证据级别）。 */
 const NOTES = Object.freeze([
   '这是 real-api 证据：提示词、解析、校验、限频都是线上那一份；但它**不是** real-send（平台端口是绊线，一次都没放行）。',
@@ -323,24 +353,12 @@ async function main() {
         console.log('本次自测证明的是"通道能跑通、绊线拦得住、报告生成得出来"，**不是**模型表现。')
       }
       console.log(human)
-      if (selftestHead !== null) {
-        console.log('')
-        console.log('自测断言：')
-        for (const check of selftestChecks) console.log(`  ${check.ok ? 'PASS' : 'FAIL'}  ${check.name} — ${check.detail}`)
-        const trip = await selftestTripSafety()
-        console.log('')
-        console.log('绊线端到端自测（子进程里故意让模型输出一个"要发"的决策，并去掉影子闸门）：')
-        console.log(`  退出码 ${String(trip.code)}（期望 1）· ${trip.summary}`)
-        const errorChecks = await selftestErrorPaths({ config })
-        console.log('')
-        console.log('异常路径自测：')
-        for (const check of errorChecks) console.log(`  ${check.ok ? 'PASS' : 'FAIL'}  ${check.name} — ${check.detail}`)
-        const failedChecks = [...selftestChecks, ...errorChecks].filter((check) => !check.ok)
-        if (trip.code !== 1 || failedChecks.length > 0) {
-          console.error('group-llm-eval: 自测没通过（绊线端到端退出码 ' + String(trip.code) + '，期望 1；失败的断言 ' + String(failedChecks.length) + ' 条）')
-          return 1
-        }
-      }
+    }
+    // 自测断言在两种输出模式下都跑：`--json` 只是换个输出格式，不能顺手把断言绕过去。
+    // 断言失败一律退出码 1（JSON 模式下说明写到 stderr，stdout 保持纯 JSON）。
+    if (selftestHead !== null) {
+      const failures = await runSelftestAsserts({ checks: selftestChecks, config, toStderr: values.json === true })
+      if (failures > 0) return 1
     }
     if (fakeServer !== null) await fakeServer.close()
 

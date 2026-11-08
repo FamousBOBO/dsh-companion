@@ -35,6 +35,13 @@ export interface SocialPromptInput {
   readonly nowLabel: string
   /** 记忆段的字数预算（§5.4 建议 600–800 中文字符）。 */
   readonly memoryBudgetChars: number
+  /**
+   * 这一批的社交结构（P6-A）：已渲染成一段话，空串 = 没有这一段。
+   *
+   * 为什么传**渲染好的文本**而不是 `SocialScene` 对象：这一层的输入已经全是渲染好的段
+   * （背景、记忆、她说过的话），传对象会让"这一段怎么写"散到两个文件里。
+   */
+  readonly scene?: string
 }
 
 /** 每群背景最多渲染多少条（提示词不能被背景撑爆）。 */
@@ -198,6 +205,9 @@ export function buildSocialPrompt(input: SocialPromptInput): string {
     '',
     ...BOUNDARY_LINES,
     '',
+    // 社交结构（P6-A）放在边界之后、格式之前：它是"判断素材"，不是"规则"也不是"输出要求"。
+    // 空串（没有可用事实）时整段不出现，提示词与 P2 逐字节一致。
+    ...(input.scene === undefined || input.scene === '' ? [] : [input.scene, '']),
     ...GUARD_LINES,
     '',
     ...formatLines(cap),

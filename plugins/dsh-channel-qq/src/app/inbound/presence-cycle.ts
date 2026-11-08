@@ -74,6 +74,10 @@ export interface CycleContext {
    * 也必须被拦下（计划 §7.1 点名的最高风险）。
    */
   readonly modeOf: () => string
+  /** 她自己的 QQ 号（P6-A）；取不到给 0（场景会保守地判"没人 @ 我"）。 */
+  readonly selfId: () => number
+  /** 语义复核档位（P6-B）：`off` / `warn` / `enforce`。 */
+  readonly guardMode: () => string
   /** 影子日志（`shadow` 下"本来想发什么"）；缺省 = 不记。 */
   readonly recordShadow?: (decision: {
     groupId: number
@@ -189,10 +193,27 @@ function inputOf(ctx: CycleContext, groupId: number, settings: PresenceView, bac
     state: ctx.stateOf(groupId),
     background,
     sentLines: ctx.sentLines(groupId),
+    // 复读复核（G30）要**真实时间**：sentLines 是给提示词的纯文本，这里另带一份带时刻的。
+    selfSaid: selfSaidOf(ctx, groupId),
     nowLabel: nowLabelOf(ctx.clock.date()),
     persona: ctx.persona(groupId),
     memory: recallFor(ctx, groupId, memberIds, background),
   }
+}
+
+/**
+ * 她说过的话（带时刻）。时间线优先（那里有真实 atMs）；退回 sentLines 时按"刚刚"算——
+ * 保守方向是**多拦**，而默认档位只记不拦，所以退回也不会误伤。
+ */
+function selfSaidOf(ctx: CycleContext, groupId: number): Array<{ text: string; atMs: number }> {
+  try {
+    const recent = ctx.timelines.scopedView().recentSelf(groupId, TIMELINE_SELF_LIMIT)
+    if (recent.length > 0) return recent.map((row) => ({ text: row.text, atMs: row.atMs }))
+  } catch {
+    /* 时间线坏了就走下面的兜底 */
+  }
+  const nowMs = ctx.clock.now()
+  return ctx.sentLines(groupId).map((text) => ({ text, atMs: nowMs }))
 }
 
 /** 一次判断能碰到的外部世界（全部现取）。 */
@@ -205,6 +226,10 @@ function depsOf(ctx: CycleContext, groupId: number) {
     recordSent: ctx.recordSent,
     // 最后一道闸门：**每次要发之前**现取模式（参考 `CycleDeps.sendGate` 的注释）。
     sendGate: () => ctx.modeOf(),
+    // 她自己的号（P6-A）：场景要判"有没有人真的 @ 了我"。
+    selfId: () => ctx.selfId(),
+    // 语义复核档位（P6-B）：每次现取，后台改完立即生效。
+    guardMode: () => ctx.guardMode(),
     recordEvent: (event: { kind: 'proactive_message' | 'agent_reply'; messageId: number; text: string; atMs: number }) => {
       try {
         ctx.timelines.recordSelf(groupId, event)
@@ -331,6 +356,9 @@ function windowOf(entries: readonly AmbientEntry[], maxEntries: number, maxChars
     ...(entry.body === undefined ? {} : { body: entry.body }),
     self: entry.self,
     atMs: entry.atMs,
+    // 平台结构原样带给判断层（P6-A）：场景摘要只认这些事实。
+    ...(entry.replyToMessageId === undefined ? {} : { replyToMessageId: entry.replyToMessageId }),
+    ...(entry.atIds === undefined ? {} : { atIds: entry.atIds }),
   }))
 }
 

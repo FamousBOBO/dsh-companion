@@ -20,11 +20,23 @@ import type { Clock } from '../../ports/clock.js'
 /** 每群的时间线：条数与时间窗双上限（短期上下文，不是记忆）。 */
 const TIMELINE_LIMITS = { maxEvents: 200, ttlMs: 1_800_000 } as const
 
-/** 给兄弟插件行看的视图（形状与 `companion-group/group-continuity.mjs` 的读取一致）。 */
+/** 旧视图（唯一活跃群降级）。@deprecated 用 {@link GroupEventsScopedView}。 */
 export interface GroupEventsView {
   recentSelf: (limit?: number) => Array<{ text: string; atMs: number; kind: string }>
   topic: () => string | null
   detail: () => { groups: number; ambiguous: boolean }
+}
+
+/**
+ * **按群号**查询的视图（P7-A）。
+ *
+ * 形状刻意是"每个方法第一个参数都是 groupId"：调用方必须**自己**把群号拿出来。
+ * 想省掉这个参数就得猜，而猜群号正是跨群复用的起点（§8.4）。
+ */
+export interface GroupEventsScopedView {
+  recentSelf: (groupId: number, limit?: number) => Array<{ text: string; atMs: number; kind: string }>
+  topic: (groupId: number) => string | null
+  detail: (groupId: number) => { valid: boolean; events: number }
 }
 
 /** 一条"她自己发的"事件（由拿到回执的那一层传进来）。 */
@@ -108,12 +120,55 @@ export class GroupTimelineBook {
   }
 
   /**
-   * 给**兄弟插件行**看的视图。
+   * **按群号**查询的视图（P7-A：多群连续性）。
    *
-   * 为什么是"唯一活跃群"而不是"按群号查"：那个提示词段拿不到群号（宿主不把会话身份传给
-   * `systemPrompt.section` 的 text 回调），而**猜一个群号**正是"把 A 群的梗搬到 B 群"的起点
-   * （§8.4 明确禁止跨群复用）。所以口径是 fail-closed：只有一个群有活跃事件才给数据，
-   * 零个或多个都返回空——消费方渲染成"还没有记录"，比给错群的数据诚实。
+   * 这是唯一正确的形状：每个群回合只能读自己那个群的事件与话题。群号由调用方从
+   * 宿主路由里拿（`conversation.chatId`），**不许**从提示词原文、群昵称、自称里推断。
+   *
+   * 三条 fail-closed：
+   *   1. 群号不是安全正整数 → 返回空（不猜、不退回"最近活跃的那个群"）；
+   *   2. 这个群没有时间线 → 返回空（不是错误，只是"还没有记录"）；
+   *   3. 任何内部异常 → 返回空。
+   *
+   * 历史说明：上一版是"唯一活跃群时给数据"（`view()`），那是**拿不到群号时的降级**，
+   * 不是多群方案——两个群同时活跃就两边都读不到。P7 把查询改成显式带群号之后，
+   * 那个降级不再需要，这里一并删掉（见 `docs/10b-group-multi-room.md`）。
+   */
+  scopedView(): GroupEventsScopedView {
+    const timelineOf = (groupId: number): GroupTimeline | null => {
+      if (!Number.isSafeInteger(groupId) || groupId <= 0) return null
+      return this.timelines.get(groupId) ?? null
+    }
+    return {
+      recentSelf: (groupId, limit = 6) => {
+        const timeline = timelineOf(groupId)
+        if (timeline === null) return []
+        const cap = Number.isSafeInteger(limit) && limit > 0 ? Math.min(limit, 6) : 6
+        return timeline
+          .recentSelf(this.clock.now(), cap)
+          .map((event) => ({ text: event.content, atMs: event.timestamp, kind: event.kind }))
+      },
+      topic: (groupId) => {
+        const timeline = timelineOf(groupId)
+        return timeline === null ? null : (timeline.recentTopic(this.clock.now()) ?? null)
+      },
+      detail: (groupId) => {
+        const timeline = timelineOf(groupId)
+        return {
+          valid: timeline !== null,
+          events: timeline === null ? 0 : timeline.size(this.clock.now()),
+        }
+      },
+    }
+  }
+
+  /**
+   * 给**兄弟插件行**看的旧视图（唯一活跃群降级）。
+   *
+   * **不要在新代码里用**：计划 §4.1 要求"每个 Agent 群回合只能读取自身 groupId 的事件和话题"，
+   * 而这个视图拿不到群号。保留它只是为了旧装配在热重载期间不至于报错。
+   *
+   * @deprecated 用 {@link scopedView}（显式带群号）。
    */
   view(): GroupEventsView {
     const activeGroups = (): number[] => {

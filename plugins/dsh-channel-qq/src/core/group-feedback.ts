@@ -118,12 +118,23 @@ export class GroupFeedbackBook {
  * 双字重叠对这两种都敏感，而且不会因为标点不同就判成不重复。
  */
 export function overlaps(original: string, reply: string): boolean {
+  return overlapRatio(original, reply) >= 0.6
+}
+
+/**
+ * 双字重叠率（0–1）。`overlaps` 是它的布尔版本（阈值 0.6）。
+ *
+ * 为什么单独暴露比例：P6 的复读复核要**自己定阈值**（那里取 0.9，几乎是同一句才拦），
+ * 而"接话是不是复读"用的是 0.6。两个场景的代价不对称——误判"她复读了"会让她少说话，
+ * 误判"有人接上话了"只是诊断数字难看。
+ */
+export function overlapRatio(original: string, reply: string): number {
   const a = bigrams(original)
   const b = bigrams(reply)
-  if (a.size === 0 || b.size === 0) return false
+  if (a.size === 0 || b.size === 0) return 0
   let shared = 0
   for (const gram of b) if (a.has(gram)) shared += 1
-  return shared / Math.min(a.size, b.size) >= 0.6
+  return shared / Math.min(a.size, b.size)
 }
 
 /** 双字集合（去空白与标点）。 */

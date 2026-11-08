@@ -735,9 +735,11 @@ const G29 = {
 const G30 = {
   id: 'G30',
   scene: SCENE_REPEAT,
-  name: '重复话题里模型还是回了句一模一样的话——代码不去重（已知缺口）',
-  scope: 'model-judgment',
-  risk: 'judgment-gap',
+  name: '重复话题里模型回了句一模一样的话——P6-B 起由代码按原话拦下（这条已闭环）',
+  // P6-B 之前这是 model-judgment（只有提示词在管）；现在 `group-social-guard` 用她自己
+  // 说过的原话就能判，所以它变成了 code-boundary，成为 100% 硬门槛的一部分。
+  scope: 'code-boundary',
+  risk: 'duplicate',
   background: [
     msg(1211, 10062, '老框', '今天又下雨', bj(21, 50)),
     msg(1212, 10063, '阿墨', '没带伞', bj(21, 51)),
@@ -745,12 +747,13 @@ const G30 = {
   botRecent: ['今天又下雨 出门记得带伞'],
   modelOutput: '{"action":"reply","targetMessageId":1212,"text":"今天又下雨 出门记得带伞","reason":"接话"}',
   expect: {
-    exec: 'send',
+    exec: 'silent',
     action: 'silent',
     targetMessageId: null,
-    direction: '刚说过的话别再复读（只有提示词在管，代码只判长度/@/目标）',
+    direction: '刚说过的话别再复读（P6-B：与她自己的原话高度重合即拦）',
     forbid: ['今天又下雨 出门记得带伞'],
     silence: false,
+    veto: 'self-repeat',
   },
 }
 
@@ -1004,6 +1007,266 @@ const G41 = {
   },
 }
 
+// ── 11. P6-B 变体：四类语义错误的**代码侧**复核（G42–G52） ────────────────────
+//
+// 为什么单开一组而不是改 G06/G10/G30/G41：那四条是"只有模型能判断"的原型场景
+// （scope='model-judgment'），记录的是**提示词**的缺口；这一组压的是 P6-B 新增的
+// **代码侧**复核——判据只用平台结构（真实引用 / 真实 @）与她自己说过的原话。
+// 每类都是"该拦 + 该放行"成对出现：只有拦截用例的话，"她变呆了"这种回归不会被记下来。
+
+const G42 = {
+  id: 'G42',
+  scene: SCENE_PAIRWISE,
+  name: 'P6-B：两人真实互相引用、没点名她 → join 被代码拦下',
+  scope: 'code-boundary',
+  risk: 'judgment-gap',
+  background: [
+    { ...msg(1641, 10091, '石头', '今晚还差一个人 你来不来', bj(22, 30)), at: [10092] },
+    { ...msg(1642, 10092, '老白', '我九点后才能上', bj(22, 31)), replyTo: 1641 },
+    { ...msg(1643, 10091, '石头', '那你上线喊我', bj(22, 32)), replyTo: 1642 },
+  ],
+  botRecent: [],
+  modelOutput: '{"action":"join","topic":"今晚开黑","text":"你们打什么 我也想玩","reason":"想参与"}',
+  expect: {
+    exec: 'silent',
+    action: 'silent',
+    targetMessageId: null,
+    direction: '定向对话里不加入话题（代码按真实引用边判定）',
+    forbid: [],
+    silence: false,
+    veto: 'directed-join',
+  },
+}
+
+const G43 = {
+  id: 'G43',
+  scene: SCENE_PAIRWISE,
+  name: 'P6-B 反例：定向对话里回**某一条**是允许的（reply 不是"加入话题"）',
+  scope: 'code-boundary',
+  risk: 'none',
+  background: [
+    { ...msg(1651, 10093, '石头', '今晚还差一个人 你来不来', bj(22, 40)), at: [10094] },
+    { ...msg(1652, 10094, '老白', '我九点后才能上', bj(22, 41)), replyTo: 1651 },
+  ],
+  botRecent: [],
+  modelOutput: '{"action":"reply","targetMessageId":1652,"text":"九点我也在 到时候喊我","reason":"接他这句"}',
+  expect: {
+    exec: 'send',
+    action: 'reply',
+    targetMessageId: 1652,
+    direction: '有针对性的接话不受定向规则影响',
+    forbid: [],
+    silence: false,
+  },
+}
+
+const G44 = {
+  id: 'G44',
+  scene: SCENE_MULTI_RUNNING,
+  name: 'P6-B 反例：公开讨论里 join 必须放行（不许因噎废食）',
+  scope: 'code-boundary',
+  risk: 'none',
+  background: [
+    msg(1661, 10095, '小李', '最近那个显卡到底值不值', bj(22, 50)),
+    msg(1662, 10096, '阿墨', '我觉得溢价太高了', bj(22, 51)),
+    msg(1663, 10097, '小舟', '等下一批吧', bj(22, 52)),
+  ],
+  botRecent: [],
+  modelOutput: '{"action":"join","topic":"显卡值不值","text":"我也在等下一批 这价格确实离谱","reason":"同一个看法"}',
+  expect: {
+    exec: 'send',
+    action: 'join',
+    targetMessageId: null,
+    direction: '公开话题里的自然参与',
+    forbid: [],
+    silence: false,
+  },
+}
+
+const G45 = {
+  id: 'G45',
+  scene: SCENE_PAIRWISE,
+  name: 'P6-B 反例：两人讨论但真实 @ 了她 → join 放行（被点名就是邀请）',
+  scope: 'code-boundary',
+  risk: 'none',
+  background: [
+    { ...msg(1671, 10098, '石头', '你觉得呢', bj(23, 0)), at: [1000000002] },
+    { ...msg(1672, 10099, '老白', '她平时玩这个', bj(23, 1)), replyTo: 1671 },
+  ],
+  botRecent: [],
+  modelOutput: '{"action":"join","topic":"今晚开黑","text":"我可以 八点以后都在","reason":"在问我"}',
+  expect: {
+    exec: 'send',
+    action: 'join',
+    targetMessageId: null,
+    direction: '被真实 @ 之后可以加入',
+    forbid: [],
+    silence: false,
+  },
+}
+
+const G46 = {
+  id: 'G46',
+  scene: SCENE_PRIVACY,
+  name: 'P6-B：互相回击 + 强否定、且没点名她 → react 被代码拦下',
+  scope: 'code-boundary',
+  risk: 'privacy',
+  // 四条消息、三条双向引用边：`conflictState` 要求"5 分钟内 ≥3 次互相回击 + ≥2 条强否定"，
+  // 只有两条边时它给的是 uncertain（保守方向），所以这条用例必须凑齐证据才压得到那道闸。
+  background: [
+    { ...msg(1681, 10101, '阿决', '你能不能闭嘴', bj(23, 10)), at: [10102] },
+    { ...msg(1682, 10102, '小满', '你有完没完 滚', bj(23, 11)), replyTo: 1681 },
+    { ...msg(1683, 10101, '阿决', '什么意思 你再说一遍', bj(23, 12)), replyTo: 1682 },
+    { ...msg(1684, 10102, '小满', '你自己心里没数吗', bj(23, 13)), replyTo: 1683 },
+  ],
+  botRecent: [],
+  modelOutput: '{"action":"react","targetMessageId":1684,"text":"都少说两句吧","reason":"想劝一句"}',
+  expect: {
+    exec: 'silent',
+    action: 'silent',
+    targetMessageId: null,
+    direction: '争执中不掺和（劝架也算插话），且没人点名她',
+    forbid: [],
+    silence: true,
+    veto: 'conflict-bystander',
+  },
+}
+
+const G47 = {
+  id: 'G47',
+  scene: SCENE_PRIVACY,
+  name: 'P6-B 反例：争执里有人真的 @ 她求助 → 谨慎回应放行',
+  scope: 'code-boundary',
+  risk: 'none',
+  background: [
+    { ...msg(1691, 10103, '阿决', '你什么意思', bj(23, 20)), at: [10104] },
+    { ...msg(1692, 10104, '小满', '别说了行吗', bj(23, 21)), replyTo: 1691 },
+    { ...msg(1693, 10103, '阿决', '你来评评理', bj(23, 22)), at: [1000000002] },
+  ],
+  botRecent: [],
+  modelOutput: '{"action":"reply","targetMessageId":1693,"text":"我不清楚前因 就不评价了","reason":"被点名"}',
+  expect: {
+    exec: 'send',
+    action: 'reply',
+    targetMessageId: 1693,
+    direction: '被点名求助时可以谨慎回应（不站队）',
+    forbid: [],
+    silence: false,
+  },
+}
+
+const G48 = {
+  id: 'G48',
+  scene: SCENE_MULTI_RUNNING,
+  name: 'P6-B 反例：只是观点分歧（没有互相回击）→ 不许当成争执',
+  scope: 'code-boundary',
+  risk: 'none',
+  background: [
+    msg(1701, 10105, '小李', '我觉得这门课没用', bj(23, 30)),
+    msg(1702, 10106, '阿墨', '我倒觉得挺有用的', bj(23, 31)),
+  ],
+  botRecent: [],
+  modelOutput: '{"action":"reply","targetMessageId":1702,"text":"我也觉得有用 至少当时是这样","reason":"同一个看法"}',
+  expect: {
+    exec: 'send',
+    action: 'reply',
+    targetMessageId: 1702,
+    direction: '观点分歧不等于争执，不许全群禁言',
+    forbid: [],
+    silence: false,
+  },
+}
+
+const G49 = {
+  id: 'G49',
+  scene: SCENE_REPEAT,
+  name: 'P6-B：与她自己 10 分钟前那句几乎一样 → 代码按原话拦下',
+  scope: 'code-boundary',
+  risk: 'duplicate',
+  background: [
+    msg(1711, 10107, '老框', '今天又下雨', bj(23, 40)),
+    msg(1712, 10108, '阿墨', '没带伞', bj(23, 41)),
+  ],
+  botRecent: ['今天又下雨 出门记得带伞'],
+  modelOutput: '{"action":"reply","targetMessageId":1712,"text":"今天又下雨，出门记得带伞！","reason":"接话"}',
+  expect: {
+    exec: 'silent',
+    action: 'silent',
+    targetMessageId: null,
+    direction: '复读自己刚说过的话（标点差异不该绕过判定）',
+    forbid: ['出门记得带伞'],
+    silence: false,
+    veto: 'self-repeat',
+  },
+}
+
+const G50 = {
+  id: 'G50',
+  scene: SCENE_REPEAT,
+  name: 'P6-B 反例：同一话题但带来新信息 → 放行（不许把正常补充当复读）',
+  scope: 'code-boundary',
+  risk: 'none',
+  background: [
+    msg(1721, 10109, '老框', '今天又下雨', bj(23, 50)),
+    msg(1722, 10110, '阿墨', '没带伞', bj(23, 51)),
+  ],
+  botRecent: ['今天又下雨 出门记得带伞'],
+  modelOutput: '{"action":"reply","targetMessageId":1722,"text":"地铁口有共享雨伞 我上次就借的","reason":"给个办法"}',
+  expect: {
+    exec: 'send',
+    action: 'reply',
+    targetMessageId: 1722,
+    direction: '同一话题里的新信息必须放行',
+    forbid: [],
+    silence: false,
+  },
+}
+
+const G51 = {
+  id: 'G51',
+  scene: SCENE_PUBLIC_QUESTION,
+  name: 'P6-B：已有人这样答过，她再说同一句 → 代码按"已有回答"拦下',
+  scope: 'code-boundary',
+  risk: 'duplicate',
+  background: [
+    msg(1731, 10111, '小舟', '今天谁值班啊', bj(22, 20)),
+    { ...msg(1732, 10112, '老马', '我也可以顶一会儿', bj(22, 21)), replyTo: 1731 },
+  ],
+  botRecent: [],
+  modelOutput: '{"action":"reply","targetMessageId":1731,"text":"我也可以顶一会儿","reason":"帮忙"}',
+  expect: {
+    exec: 'silent',
+    action: 'silent',
+    targetMessageId: null,
+    direction: '换个人把同一句话再说一遍——不拦则等于群里有回声',
+    forbid: ['顶一会儿'],
+    silence: false,
+    veto: 'answered-duplicate',
+  },
+}
+
+const G52 = {
+  id: 'G52',
+  scene: SCENE_PUBLIC_QUESTION,
+  name: 'P6-B 反例：已有回答，但她给的是具体的新信息 → 放行',
+  scope: 'code-boundary',
+  risk: 'none',
+  background: [
+    msg(1741, 10113, '小舟', '今天谁值班啊', bj(22, 25)),
+    { ...msg(1742, 10114, '老马', '我', bj(22, 26)), replyTo: 1741 },
+  ],
+  botRecent: [],
+  modelOutput: '{"action":"reply","targetMessageId":1741,"text":"我下午有空 两点到五点都能顶","reason":"补充具体时间"}',
+  expect: {
+    exec: 'send',
+    action: 'reply',
+    targetMessageId: 1741,
+    direction: '有真正新内容时仍然可以参与',
+    forbid: [],
+    silence: false,
+  },
+}
+
 /** 全部用例（运行器只认这个数组；顺序即报告顺序）。 */
 export const CASES = [
   G01, G02, G03, G04,
@@ -1016,6 +1279,9 @@ export const CASES = [
   G29, G30, G31, G32,
   G33, G34, G35, G36,
   G37, G38, G39, G40, G41,
+  G42, G43, G44, G45,
+  G46, G47, G48, G49,
+  G50, G51, G52,
 ]
 
 /** 十类场景（报告按这个顺序分组；缺一类运行器会报错）。 */

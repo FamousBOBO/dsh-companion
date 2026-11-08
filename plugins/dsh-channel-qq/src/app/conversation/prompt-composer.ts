@@ -53,6 +53,13 @@ export interface GroupPacketV2Input {
    * 切行会把"正在被问的那句"的一部分错误地标成"仅供参考"。
    */
   readonly pending: string
+  /**
+   * 本群近期上下文（P7-A）：这个群刚发生过什么、现在在聊什么。
+   *
+   * 与 `background` 分开：那个是"等回复之前的那几条"，这个是"这个群自己的时间线"。
+   * 空串 = 不渲染这一段（组包产物与 P6 逐字节一致，golden 盯着这一点）。
+   */
+  readonly continuity?: string
   /** 当前消息：队列里最后一条**整条**原文（含它自己的换行；空串 = 这一包没有当前消息）。 */
   readonly current: string
   readonly room: string
@@ -193,6 +200,11 @@ export class PromptComposer {
     // 只有被叫到（`called`）的包才可能带背景——流水线只在 @ 那条上取值。
     if ((input.background ?? '') !== '') {
       out.push(BACKGROUND_TITLE, untrustedEnvelope(input.roomKey, input.background ?? ''))
+    }
+    // 本群连续性（P7-A）紧跟在旁听背景之后、待回块之前：先"这个群在聊什么"，再"攒着等你回的"，
+    // 最后"当前这条"。它也是不可信资料（里面可能有群友写的原文），所以同样进信封。
+    if ((input.continuity ?? '') !== '') {
+      out.push(untrustedEnvelope(input.roomKey, input.continuity ?? ''))
     }
     if (input.pending !== '') {
       out.push(PENDING_TITLE, untrustedEnvelope(input.roomKey, input.pending))

@@ -208,6 +208,9 @@ function createRuntime(deps: RuntimeDeps): ChannelRuntime {
     ...(deps.memoryEvidence === undefined ? {} : { memoryEvidence: deps.memoryEvidence }),
     ...(deps.kbEvidence === undefined ? {} : { kbEvidence: deps.kbEvidence }),
     sentBlockFor: (room: string) => turns.sentBlockFor(room),
+    // 本群连续性（P7-A）：**每次现取**——执行器可能还没建好、也可能被热重载换掉；
+    // 关着（`presence.mode='off'`）时返回 null，组包产物与 P6 逐字节一致。
+    continuityView: () => deps.presence?.scopedEventsView?.() ?? null,
   }, createPolicyScreening({
     enabled: () => policyEnabled(deps.config),
     scanner: () => deps.screen?.scanner ?? null,

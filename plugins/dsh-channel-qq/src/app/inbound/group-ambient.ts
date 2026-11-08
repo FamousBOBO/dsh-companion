@@ -17,10 +17,19 @@ import type { OneBotEvent } from '../../types.js'
 import {
   ambientLimitsOf, type AmbientStore, type PresenceSettings,
 } from './ambient-store.js'
+import type { GroupEventsScopedView } from './presence-timeline.js'
 
 /** 自主接话执行器（可缺省）：流水线只通知"这个群又有一条新的旁听"。 */
 export interface PresenceObserver {
   observe(groupId: number): void
+  /**
+   * **按群号**查询的时间线视图（P7-A）：组包时用它渲染"这个群刚发生过什么"。
+   *
+   * 为什么挂在执行器上而不另开一个服务：这块数据本来就只有执行器有（它自己维护时间线），
+   * 而组包路径已经拿着 `presence` 这个观察者了——再走一次跨插件服务解析只会多一条会坏的路径。
+   * 执行器关着（`presence.mode='off'`）时这里是 `undefined`，组包自然没有这一段。
+   */
+  scopedEventsView?(): GroupEventsScopedView
 }
 
 /** 本模块要用的 `presence` 配置项（判断与背景共用同一组投射上限）。 */
@@ -108,6 +117,9 @@ export function captureAmbient(input: CaptureInput): void {
     ...(body === null ? {} : { body }),
     atMs: input.nowMs,
     self,
+    // 平台结构原样带走（P6-A）：判断时"谁回了谁、谁 @ 了谁"要用真事实，不能靠正文猜。
+    replyToMessageId: input.parsed.replyToMessageId,
+    atIds: input.parsed.atIds,
   })
   if (outcome !== 'added' || self) return
   input.presence?.observe(input.groupId)

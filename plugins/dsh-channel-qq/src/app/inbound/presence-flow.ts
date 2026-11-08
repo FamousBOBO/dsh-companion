@@ -29,6 +29,7 @@ import {
   type SocialDecision,
 } from './group-social-decision.js'
 import { buildSocialPrompt } from './group-social-prompt.js'
+import { renderScene, runSocialGuard } from './presence-scene.js'
 import { EMPTY_RECALL, type GroupMemoryRecall } from './group-memory-contract.js'
 import { failed, silent, speak } from './presence-send.js'
 
@@ -69,7 +70,7 @@ export interface PresenceView extends PresenceSettings {
   /** 合批静默窗口（毫秒）：一批消息攒这么久再判断。缺省走 {@link DEFAULTS.batchQuietMs}。 */
   readonly batchQuietMs?: number
   /** 一批消息等待判断的上限（毫秒）：只用于饥饿告警，不改变调度。 */
-  readonly judgeMaxWaitMs?: number
+  readonly starvationWarnMs?: number
   readonly judgeIntervalMs: number
   readonly judgeMaxEntries: number
   readonly judgeMaxChars: number
@@ -100,7 +101,7 @@ export const DEFAULTS = {
    */
   batchQuietMs: 6_000,
   /** 活跃群里允许一批消息等待判断的最长时间（§7.3）；超过就记一次饥饿告警。 */
-  judgeMaxWaitMs: 25_000,
+  starvationWarnMs: 25_000,
   judgeIntervalMs: 50_000,
   judgeMaxEntries: 15,
   judgeMaxChars: 1_200,
@@ -142,7 +143,22 @@ export interface CycleInput {
   readonly persona: GroupPersonaSnapshot | null
   /** 这一轮召回的记忆（P1）。缺省 = 没有（`EMPTY_RECALL`）。 */
   readonly memory?: GroupMemoryRecall
-}
+  /**
+   * 她最近说过的话**带时间**（P6-B 的复读复核要用真实间隔）。
+   *
+   * 与 {@link sentLines} 分开：那个是**给提示词看的纯文本**（提示词不需要时间），
+   * 这个是给判定看的。缺省时退回 `sentLines` 并假定"刚刚说的"——保守方向是**多拦**，
+   * 而 warn 档又不拦，所以缺省不会误伤。
+   */
+  readonly selfSaid?: ReadonlyArray<{ text: string; atMs: number }>
+  /**
+   * 这条想回的消息上**已有的回答**（P6-B 的"重复抢答"复核）。
+   *
+   * 由调用方从时间线里取（引用了那条问句、或直接回到提问者的消息）。缺省 = 没有，
+   * 于是 G10 那条规则不生效——它只拦"换个人把同一句再说一遍"，不拦真正的新信息。
+   */
+  readonly existingAnswers?: readonly string[]
+ }
 
 /** 这一次流程能碰到的外部世界（全部注入，测试里全是假件）。 */
 export interface CycleDeps {
@@ -184,6 +200,20 @@ export interface CycleDeps {
     atMs: number
     blockedBy: string
   }) => void
+  /**
+   * 她自己的 QQ 号（P6-A）：社交场景要判"有没有人真的 @ 了我"。
+   *
+   * 缺省 = `undefined`：`buildSocialScene` 会把 `askedMe` 保守地判成 false，
+   * 而不是拿 0 或别人的号顶替——那种"猜一个自己"的错误会直接变成"以为在叫她"。
+   */
+  readonly selfId?: () => number
+  /**
+   * 语义复核的档位（P6-B）：`off` / `warn` / `enforce`。
+   *
+   * 缺省 = `warn`（只记不拦）：这一层是 P6 新增的，阈值未经真实样本校准，
+   * 默认拦会把"她少说话了"变成没人能解释的现象。见 `core/group-social-guard.ts`。
+   */
+  readonly guardMode?: () => string
 }
 
 /**
@@ -226,6 +256,9 @@ export type CycleOutcome =
  * 分档：模型正常回答"沉默/观察"是**成功**；输出形状不对（坏 JSON / 空正文 / 超长 / 带 @）
  * 或目标不合格（编造的消息号）算**失败**——连续失败会触发暂停，这样"模型一直胡说"
  * 不会变成"每 50 秒花一次钱"。
+ *
+ * 社交场景（P6-A）与语义复核（P6-B）在 `presence-scene.ts`：它们共用同一批事实，
+ * 但一个负责"让模型看懂"，一个负责"这一句能不能发"。
  */
 export async function runPresenceCycle(input: CycleInput, deps: CycleDeps): Promise<CycleOutcome> {
   const replyMaxChars = positiveOr(input.settings.replyMaxChars, DEFAULTS.replyMaxChars)
@@ -241,6 +274,8 @@ export async function runPresenceCycle(input: CycleInput, deps: CycleDeps): Prom
     replyMaxChars,
     nowLabel: input.nowLabel,
     memoryBudgetChars: positiveOr(input.settings.memoryBudgetChars ?? DEFAULTS.memoryBudgetChars, DEFAULTS.memoryBudgetChars),
+    // 社交结构（P6-A）：只给**事实**，不给结论；判不准就是 uncertain。
+    scene: renderScene(input, deps),
   })
   const result = await deps.complete.complete({
     prompt,
@@ -269,6 +304,10 @@ export async function runPresenceCycle(input: CycleInput, deps: CycleDeps): Prom
   }
   const checked = validateSocialDecision(decision, ctx)
   if (!checked.ok) return failed(input, deps, `决策被代码拦下（${checked.reason}）`)
+  // 语义复核（P6-B）：四条"代码能判的事实"规则。`warn` 档只记不拦（默认档，
+  // 理由见 `core/group-social-guard.ts` 的模式注释：阈值未经真实样本校准）。
+  const guard = runSocialGuard(input, deps, decision as SpeakingDecision)
+  if (!guard.ok) return silent(input, deps, `语义复核拦下（${guard.reason}）：${guard.detail}`, 'silent')
   return await speak(input, deps, decision as SpeakingDecision)
 }
 

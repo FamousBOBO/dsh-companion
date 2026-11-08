@@ -1,13 +1,9 @@
 /** 群聊旁听的**状态机**：合批定时器、每群游标、限频记账、卸载。
  *
- * 分层（这个文件的边界就是这几层的边界）：
- *   - `core/ambient.ts`      : 背景缓冲（旁听 ≠ 发言；**唯一的写入者是流水线**）；
- *   - `core/presence.ts`     : 限频记账（能不能判、能不能说，纯函数、不可变状态）；
- *   - `presence-timeline.ts` : 统一事件时间线的簿记（P3；她说过什么、群里发生过什么）；
- *   - `presence-scheduler.ts`: 调度观测的簿记（§7.4；谁等了多久、为什么没判）；
- *   - `presence-cycle.ts`    : **一次**判断的编排（取批次 → 跑流程 → 记账）；
- *   - `presence-flow.ts`     : 流程本身（模型 → 解析 → 校验 → 发送 → 记账）；
- *   - **本文件**              : 常驻状态与定时器，把这些接到"入站那一刻"与"到点那一刻"上。
+ * 分层（这个文件的边界就是这几层的边界）：`core/ambient.ts` 背景缓冲、`core/presence.ts`
+ * 限频记账、`presence-timeline.ts` 事件时间线、`presence-scheduler.ts` 调度观测、
+ * `presence-cycle.ts` 一次判断的编排、`presence-scene.ts` 社交场景与语义复核、
+ * `presence-flow.ts` 流程本身、**本文件** 常驻状态与定时器。
  *
  * 六条硬约束（每一条都对应一个会出事的地方）：
  *   1. **`observe` 非阻塞**：入站路径上不能等模型。这里只（可能）武装一个合批定时器。
@@ -15,13 +11,13 @@
  *      自己的 `judgedSeq`（两个写者会让"这条到底算不算看过"变成猜测）。
  *   3. **每次现取 platform / persona / memory**：热加载后旧对象会被换掉（2026-11 的私聊事故
  *      就是闭包抓着死掉的客户端）。缓存等于把"重连"变成"静默失败"。
- *   4. **热加载不补发**：`emptyPresenceState(now)` 把上次判断/发言时刻置成"现在"，每群游标首见时
- *      落在"此刻最新的那条"上，于是只有她"上线"之后的新消息才会被判断。
+ *   4. **热加载不补发**：`emptyPresenceState(now)` 把上次判断/发言时刻置成"现在"，游标首见时
+ *      落在最新那条上，于是只有她"上线"之后的新消息才会被判断。
  *   5. **同群不并发**：一个群同时只跑一次判断（`inflight`），避免"两句连着发出去"。
  *   6. **调度参数各管一件事**（P3 §7.3）：`batchQuietMs` 管合批等待、`judgeIntervalMs` 管
  *      判断间隔、`speakMinIntervalMs`/`speakMaxPerHour` 管发言。**不重排**已武装的定时器：
  *      重排会让热闹的群无限往后推（这是"判断饥饿"的老根因），所以等待上限由"首条消息起算"
- *      天然成立；`judgeMaxWaitMs` 只用来**报警**（见 `noteSkip`）。
+ *      天然成立；`starvationWarnMs` 只用来**报警**（见 `noteSkip`）。
  *
  * 这里不碰盘、不建会话、不给工具：自主发言由通道直接发，不经过群 agent（§0.8）。
  */
@@ -30,9 +26,11 @@ import { emptyPresenceState, judgeVerdict, type PresenceState } from '../../core
 import type { AmbientEntry } from '../../core/ambient.js'
 import { ambientLimitsOf, presenceAppliesTo, type AmbientStore } from './ambient-store.js'
 import { DEFAULTS, limitsOf, positiveOr, type CompletePort, type PresenceView } from './presence-flow.js'
-import { GroupTimelineBook, type GroupEventsView } from './presence-timeline.js'
+import { GroupTimelineBook, type GroupEventsScopedView, type GroupEventsView } from './presence-timeline.js'
 import { GroupSchedulerBook, type GroupSchedulerStats } from './presence-scheduler.js'
 import { runCycleFor, SENT_MEMORY, TIMELINE_SELF_LIMIT, type CycleContext } from './presence-cycle.js'
+import { quietWaitMs, starvationWarnMs } from './presence-cadence.js'
+import { personaSnapshotOf, sentLinesOf, starvationLine } from './presence-reads.js'
 import type { Clock, TimerHandle } from '../../ports/clock.js'
 import type { ChatPlatform } from '../../ports/platform.js'
 import type { JudgeEntry } from './presence-judge.js'
@@ -97,6 +95,8 @@ export interface PresenceDeps {
    */
   readonly mode?: () => string
   /** 影子日志（`shadow` 下"本来想发什么"）；缺省 = 只写普通日志。 */
+  /** 语义复核档位（P6-B）：`off` / `warn` / `enforce`；缺省 = `warn`。 */
+  readonly guardMode?: () => string
   readonly recordShadow?: (decision: {
     groupId: number
     action: 'reply' | 'join' | 'react'
@@ -109,11 +109,10 @@ export interface PresenceDeps {
 
 /** 群聊旁听的执行器。一个实例管所有白名单群（每群一份状态，互不影响）。 */
 export class GroupPresence {
+  /** 每群的限频状态 / 判断游标 / 定时器 / 在途 / 自述缓存（全部按群分，互不影响）。 */
   private readonly states = new Map<number, PresenceState>()
-  /** 每群"已经判到哪一条"（`AmbientRing` 的 seq）。 */
   private readonly judgedSeq = new Map<number, number>()
   private readonly timers = new Map<number, TimerHandle>()
-  /** 正在跑判断的群（同群不并发、不连发）。 */
   private readonly inflight = new Set<number>()
   private readonly sent = new Map<number, readonly string[]>()
   /** 每群的统一事件时间线（P3 §7.1）与调度观测（§7.4）。 */
@@ -173,7 +172,16 @@ export class GroupPresence {
     return this.timelines.of(groupId)
   }
 
-  /** 给**兄弟插件行**（`companion-group` 的系统提示词段）看的时间线视图。 */
+  /**
+   * **按群号**查询的时间线视图（P7-A）：群回合只能读自己那个群。
+   *
+   * 群号由调用方从宿主路由（`conversation.chatId`）拿到后传进来；这里不做任何推断。
+   */
+  scopedEventsView(): GroupEventsScopedView {
+    return this.timelines.scopedView()
+  }
+
+  /** @deprecated 用 {@link scopedEventsView}：这个视图拿不到群号，两个群同时活跃时两边都读不到。 */
   eventsView(): GroupEventsView & { detail: () => { groups: number; ambiguous: boolean } } {
     return this.timelines.view()
   }
@@ -183,8 +191,11 @@ export class GroupPresence {
   /**
    * 满足条件就武装一个合批定时器，**已经武装的绝不重排**。
    *
-   * 重排会让热闹的群把窗口无限往后推——这正是"判断饥饿"的老根因（§7.4）。所以等待上限
-   * 由"首条消息起算 + batchQuietMs"天然成立；`judgeMaxWaitMs` 只用来在**跳过**发生时报警。
+   * 重排会让热闹的群把窗口无限往后推——这正是"判断饥饿"的老根因。所以"最多等多久"
+   * 是**结构上**成立的（一次武装只判一次），不靠某个上限去算。
+   *
+   * 硬门槛优先：暂停中、同群在途、没有待判内容、还不到判断间隔时**不判断**，只记一次
+   * 跳过原因（等也没用，而且不能为了低延迟去撞限频）。等待时长见 `quietWaitMs`。
    */
   private arm(groupId: number, settings: PresenceView): void {
     if (this.timers.has(groupId)) return
@@ -193,26 +204,39 @@ export class GroupPresence {
       return
     }
     const nowMs = this.deps.clock.now()
-    const pending = [...this.pendingOf(groupId, settings)].length
-    const verdict = judgeVerdict(this.stateOf(groupId), nowMs, limitsOf(settings), pending)
+    const pending = this.pendingOf(groupId, settings).length
+    const startedAt = this.batchStartOf(groupId, nowMs, pending)
+    const state = this.stateOf(groupId)
+    const verdict = judgeVerdict(state, nowMs, limitsOf(settings), pending)
     if (!verdict.ok) {
       this.noteSkip(groupId, String(verdict.reason ?? 'unknown'), nowMs, pending)
       return
     }
-    const wait = positiveOr(settings.batchQuietMs ?? settings.judgeIntervalMs, DEFAULTS.batchQuietMs)
+    this.scheduleCycle(groupId, quietWaitMs(settings))
+  }
+
+  /** 这一批的起点（首次武装时记，判完由 `recordOutcome` 清零）。 */
+  private batchStartOf(groupId: number, nowMs: number, pending: number): number {
+    const stats = this.scheduler.of(groupId)
+    const startedAt = stats.batchStartedAtMs === 0 ? nowMs : stats.batchStartedAtMs
+    this.scheduler.update(groupId, (current) => ({
+      ...current,
+      batchStartedAtMs: startedAt,
+      batchCount: pending,
+    }))
+    return startedAt
+  }
+
+  /** 武装一个 `waitMs` 之后跑一次判断的定时器（`waitMs <= 0` 表示下一个微任务就判）。 */
+  private scheduleCycle(groupId: number, waitMs: number): void {
     const handle = this.deps.clock.setTimeout(() => {
       this.timers.delete(groupId)
       void this.runCycle(groupId).catch((error: unknown) => {
         this.deps.log(`presence: 群 ${String(groupId)} 判断流程抛错（已忽略）：${describe(error)}`)
       })
-    }, wait)
+    }, Math.max(0, Math.trunc(waitMs)))
     handle.unref?.()
     this.timers.set(groupId, handle)
-    this.scheduler.update(groupId, (stats) => ({
-      ...stats,
-      batchStartedAtMs: stats.batchStartedAtMs === 0 ? nowMs : stats.batchStartedAtMs,
-      batchCount: pending,
-    }))
   }
 
   /** 定时器到点：交给 {@link runCycleFor}（一次流程的全部细节在那里）。 */
@@ -262,6 +286,16 @@ export class GroupPresence {
           return 'off'
         }
       },
+      // 语义复核档位（P6-B）+ 她自己的号（P6-A）：两个都每次现取。
+      guardMode: () => this.deps.guardMode?.() ?? 'warn',
+      selfId: () => {
+        try {
+          const id = this.deps.platform().selfId
+          return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? id : 0
+        } catch {
+          return 0
+        }
+      },
       ...(this.deps.recordShadow === undefined ? {} : { recordShadow: this.deps.recordShadow }),
       ...(this.deps.afterSpeak === undefined ? {} : {
         onSpoken: (input: { groupId: number; action: 'reply' | 'join' | 'react'; text: string; messageId: number; atMs: number }) => {
@@ -291,28 +325,32 @@ export class GroupPresence {
     if (last !== undefined) this.timelines.markInbound(groupId, last)
   }
 
-  /** 她最近说过的话：时间线优先（P3 之后"说过什么"只有一个来源），旁听环兜底。 */
+  /** 她最近说过的话（时间线优先、旁听环兜底；细节见 `presence-reads.ts`）。 */
   private sentLinesOf(groupId: number): readonly string[] {
-    try {
-      const fromTimeline = this.timelines.recentSelfLines(groupId, TIMELINE_SELF_LIMIT)
-      if (fromTimeline.length > 0) return fromTimeline.slice(-SENT_MEMORY)
-    } catch {
-      /* 时间线坏了就退回旁听环里的记录 */
-    }
-    return this.sent.get(groupId) ?? []
+    return sentLinesOf({
+      groupId,
+      fromTimeline: () => this.timelines.recentSelfLines(groupId, TIMELINE_SELF_LIMIT),
+      fallback: this.sent.get(groupId) ?? [],
+      limit: SENT_MEMORY,
+    })
   }
 
-  /** 跳过判断的记账 + 饥饿告警（"持续活跃的群不会无限期得不到判断"）。 */
+  /**
+   * 跳过判断的记账 + 饥饿告警。
+   *
+   * `starvationWarnMs` **只用来报警**，不改变调度（P7-B 走的就是保守方案，理由见
+   * `presence-cadence.ts` 的文件头：把上限真的接进调度会在特定配置下静默缩短合批窗口，
+   * 那种偏差没人能从日志里看出来）。
+   *
+   * 告警本身仍然必要：它把"限频/暂停/失败退避导致的安静"与"群里没人说话"分开——
+   * 否则运维看到的现象只是"她今天一句话没说"。
+   */
   private noteSkip(groupId: number, reason: string, nowMs: number, pending: number): void {
-    const settings = this.settings()
-    const maxWait = positiveOr(settings?.judgeMaxWaitMs ?? DEFAULTS.judgeMaxWaitMs, DEFAULTS.judgeMaxWaitMs)
-    const starved = this.scheduler.noteSkip({ groupId, reason, nowMs, pending, maxWaitMs: maxWait })
+    const warnMs = starvationWarnMs(this.settings())
+    const starved = this.scheduler.noteSkip({ groupId, reason, nowMs, pending, maxWaitMs: warnMs })
     if (!starved) return
     const stats = this.scheduler.of(groupId)
-    this.deps.log(
-      `presence: 群 ${String(groupId)} 判断饥饿告警——${String(pending)} 条消息已等待 `
-      + `${String(nowMs - stats.batchStartedAtMs)}ms 仍未判断（原因 ${reason}）`,
-    )
+    this.deps.log(starvationLine({ groupId, pending, waitedMs: nowMs - stats.batchStartedAtMs, reason }))
   }
 
   /**
@@ -322,17 +360,7 @@ export class GroupPresence {
    * "快照到底有没有接上"。
    */
   private personaSnapshot(groupId: number): GroupPersonaSnapshot | null {
-    try {
-      const snapshot = this.deps.persona()
-      if (snapshot === null) {
-        this.deps.log(`presence: 群 ${String(groupId)} 人格快照不可用，这一轮用降级人格`)
-        return null
-      }
-      return snapshot
-    } catch (error) {
-      this.deps.log(`presence: 群 ${String(groupId)} 取人格快照抛错（已降级）：${describe(error)}`)
-      return null
-    }
+    return personaSnapshotOf({ groupId, persona: this.deps.persona, log: this.deps.log })
   }
 
   private settings(): PresenceView | null {

@@ -163,6 +163,11 @@ async function runCase(c) {
       platform: () => platform,
       complete,
       recordSent: async () => {},
+      // 语义复核（P6-B）：评测里用 **enforce**，这样报告能回答"如果线上切成 enforce，
+      // 这 41 条里有几条会被拦、被哪一条拦"。线上默认是 warn（只记不拦），
+      // 两档的口径差别单独印在报告里，不能被读成"线上已经拦了"。
+      guardMode: () => 'enforce',
+      selfId: () => 1000000002,
     },
   )
 

@@ -169,6 +169,35 @@ function shadowLogger(host: SubHost): (decision: {
 }
 
 /**
+ * sent-log 写入（每群一份，按群号分文件）。
+ *
+ * 为什么失败只记日志：这条日志是"她说过什么"的持久化副本，写坏了不该让一次成功的发言
+ * 变成失败（时间线里还有一份，重启之后按时间线为准）。
+ */
+function sentLogWriter(host: SubHost, hub: SentLogHub): (groupId: number, messageId: number | null, text: string) => Promise<void> {
+  return async (groupId, messageId, text) => {
+    try {
+      const log = await hub.for(`group-${groupId}`)
+      await log.add({ messageId, quotedId: null, text, time: systemClock.now() })
+    } catch (error) {
+      host.log(`presence: sent-log 写入失败：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+}
+
+/**
+ * 语义复核档位（P6-B）：每次现取；配错/取不到按 `warn`（只记不拦）。
+ *
+ * 为什么配错要退回 warn 而不是 enforce：一个手滑的字符串不该让整条链路突然沉默。
+ */
+function guardModeOf(host: SubHost): () => string {
+  return () => {
+    const raw = (host.config.presence ?? null)?.socialGuard
+    return typeof raw === 'string' && raw !== '' ? raw : 'warn'
+  }
+}
+
+/**
  * 记忆写入（P1 §5.3）：逐条落库，失败只记一行。
  *
  * 为什么打日志要"只在真写了东西时"：顺利时每轮都会有一条候选，逐轮打会把群里
@@ -228,6 +257,8 @@ export function wirePresence(
     afterSpeak,
     // 每次现取：后台把 live 改成 shadow 时，在途的模型结果也必须被拦下。
     mode: modeNow,
+    // 语义复核档位（P6-B）：配错/取不到按 warn（只记不拦）。
+    guardMode: guardModeOf(host),
     recordShadow: shadowLog,
     remember: memoryWriter(host),
     ambient,
@@ -236,14 +267,7 @@ export function wirePresence(
       clock: systemClock,
       log: host.log,
     }),
-    recordSent: async (groupId, messageId, text) => {
-      try {
-        const log = await sentLogHub.for(`group-${groupId}`)
-        await log.add({ messageId, quotedId: null, text, time: systemClock.now() })
-      } catch (error) {
-        host.log(`presence: sent-log 写入失败：${error instanceof Error ? error.message : String(error)}`)
-      }
-    },
+    recordSent: sentLogWriter(host, sentLogHub),
   })
   const releaseEvents = publishEvents(host, presence)
   host.log(`presence: 已启用（白名单群 ${JSON.stringify(host.config.presence.groups)}；`

@@ -132,6 +132,10 @@ export function judgeEntries(background) {
     self: entry.self === true,
     atMs: entry.atMs,
     body: entry.text,
+    // 平台结构（P6-A）：语料里写了就原样传下去，没写就是「没有引用 / 没有 @」。
+    // 不从正文里的 @ 字样推断：那正是 group-scene.ts 文件头第 1 条禁止的事。
+    replyToMessageId: entry.replyTo ?? null,
+    ...(Array.isArray(entry.at) ? { atIds: entry.at } : {}),
   }))
 }
 

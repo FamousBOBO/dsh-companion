@@ -17,6 +17,8 @@
 import { compactContext, type CompactResult } from '../../core/text/budget.js'
 import { timeContext } from '../../core/schedule/stamp.js'
 import { envelopeKey } from '../../core/instruction/envelope.js'
+import { groupContinuityBlock } from './group-continuity-block.js'
+import type { GroupEventsScopedView } from './presence-timeline.js'
 import type { Clock } from '../../ports/clock.js'
 import type { InjectionSignal } from '../../ports/injection.js'
 import type { ConversationRecord } from '../conversation/registry.js'
@@ -41,6 +43,14 @@ export interface ComposeInput {
    * 缺省 = 没有这一段，组包输出与旧版逐字节一致（golden 盯着这一点）。
    */
   readonly background?: string
+  /**
+   * 本群近期上下文（P7-A）：**这个群**刚发生过什么、现在在聊什么。
+   *
+   * 与 `background` 的区别：那个是"这一批等待回复之前的消息"，这个是"她不在场时这个群
+   * 的时间线"（来自 P3 的统一事件时间线，按 `conversation.chatId` 查）。
+   * 缺省 = 没有这一段，组包输出与 P6 逐字节一致（golden 盯着这一点）。
+   */
+  readonly continuity?: string
 }
 
 /**
@@ -91,6 +101,13 @@ export interface PacketComposerDeps {
   }) => Promise<string>
   /** 这个房间"她最近说过什么"。 */
   readonly sentBlockFor: (room: string) => Promise<string>
+  /**
+   * 本群时间线视图（P7-A）；缺省 = 没有（组包产物与 P6 逐字节一致）。
+   *
+   * 返回的视图**按群号查**（`GroupEventsScopedView`）：组包时用 `conversation.chatId`
+   * 现查，所以两个群同时活跃也各读各的。没有群号可查时调用方返回 `null`。
+   */
+  readonly continuityView?: () => GroupEventsScopedView | null
 }
 
 export class PacketComposer {
@@ -99,6 +116,15 @@ export class PacketComposer {
   /** `context.v2` 开着吗（每包现取，后台改完立即生效）。 */
   private v2(): boolean {
     return this.deps.config().context?.v2 === true
+  }
+
+  /** 本群时间线视图（P7-A）；没装就是 null（组包产物与 P6 逐字节一致）。 */
+  private continuityView(): GroupEventsScopedView | null {
+    try {
+      return this.deps.continuityView?.() ?? null
+    } catch {
+      return null
+    }
   }
 
   /** 信封的 room 属性（`group:1000000003` / `dm:1000000002`）。 */
@@ -261,10 +287,16 @@ export class PacketComposer {
     // 旁听背景（只有被叫到的那一包才可能非空）：v2 单独成块，v1 只能并进正文——
     // 关着 v2 的部署仍然看得见"刚才在聊什么"，只是没有独立信封。
     const background = input.background ?? ''
+    // 本群连续性块（P7-A）：**只在这一包是群聊时**渲染，且只看这个群自己的时间线。
+    // 群号来自 `conversation.chatId`（宿主路由），不猜、不从正文推断。
+    const continuity = conversation.isGroup
+      ? groupContinuityBlock({ groupId: conversation.chatId, view: this.continuityView() })
+      : ''
     const text = v2
       ? this.deps.prompts.groupPacketV2({
           called,
           background,
+          continuity,
           pending: compacted.text,
           current,
           room,
