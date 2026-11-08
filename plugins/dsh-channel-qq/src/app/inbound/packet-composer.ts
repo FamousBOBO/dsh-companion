@@ -108,6 +108,8 @@ export interface PacketComposerDeps {
    * 现查，所以两个群同时活跃也各读各的。没有群号可查时调用方返回 `null`。
    */
   readonly continuityView?: () => GroupEventsScopedView | null
+  /** 记一次连续性上下文的注入结果（P7-C）；缺省 = 不记（旧装配/测试）。 */
+  readonly noteContinuity?: (groupId: number, outcome: 'injected' | 'denied') => void
 }
 
 export class PacketComposer {
@@ -125,6 +127,28 @@ export class PacketComposer {
     } catch {
       return null
     }
+  }
+
+  /**
+   * 本群连续性块（P7-A）+ 注入结果回报（P7-C）。
+   *
+   * 群号来自 `conversation.chatId`（宿主路由）——不猜、不从正文推断、不从昵称推。
+   * 只在群聊里做：私聊没有"本群"。
+   */
+  private continuityOf(conversation: ConversationRecord): string {
+    if (!conversation.isGroup) return ''
+    const groupId = conversation.chatId
+    return groupContinuityBlock({
+      groupId,
+      view: this.continuityView(),
+      onOutcome: (outcome) => {
+        try {
+          this.deps.noteContinuity?.(groupId, outcome)
+        } catch {
+          /* 诊断不该影响组包 */
+        }
+      },
+    })
   }
 
   /** 信封的 room 属性（`group:1000000003` / `dm:1000000002`）。 */
@@ -289,9 +313,7 @@ export class PacketComposer {
     const background = input.background ?? ''
     // 本群连续性块（P7-A）：**只在这一包是群聊时**渲染，且只看这个群自己的时间线。
     // 群号来自 `conversation.chatId`（宿主路由），不猜、不从正文推断。
-    const continuity = conversation.isGroup
-      ? groupContinuityBlock({ groupId: conversation.chatId, view: this.continuityView() })
-      : ''
+    const continuity = this.continuityOf(conversation)
     const text = v2
       ? this.deps.prompts.groupPacketV2({
           called,

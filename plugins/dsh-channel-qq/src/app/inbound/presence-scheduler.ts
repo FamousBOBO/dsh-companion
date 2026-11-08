@@ -1,4 +1,4 @@
-﻿/** 每群的**调度观测**（P3 §7.4）：谁被判过、等了多久、为什么没判。
+/** 每群的**调度观测**（P3 §7.4）：谁被判过、等了多久、为什么没判。
  *
  * 为什么单独一个文件：这些数字要进后台页面与日志，而"记账"和"调度"是两件事——
  * 混在 `presence-runtime.ts` 里时，一个 60 行的 `noteSkip` 会把定时器与限频的代码隔开，
@@ -38,6 +38,26 @@ export interface GroupSchedulerStats {
    * `shadowWouldSend > 0` 且 `spoken === 0`；出现 `spoken > 0` 就说明闸门漏了。
    */
   readonly shadowWouldSend: number
+  /**
+   * 分段耗时（P7-C / §4.3）：按群累计，用来回答"慢在哪一段"。
+   *
+   * 为什么分开记而不是一个总耗时：**模型调用**是供应商的锅、**发送**是平台的锅、
+   * **合批等待**是我们自己的调度。三件事混成一个数，任何一次变慢都只能靠猜。
+   */
+  readonly modelLatencyMs: number
+  readonly modelCalls: number
+  readonly sendLatencyMs: number
+  readonly sendAttempts: number
+  /** 最近一次"这批等了多久才开始判"（毫秒；0 = 还没有批次）。 */
+  readonly lastBatchWaitMs: number
+  /**
+   * 上下文注入的命中/拒绝计数（P7-C）。
+   *
+   * `denied` 只在**真的不该给**时加一：群号非法、这个群没有时间线、视图抛错。
+   * 两个数字放在一起才能看出"没有连续性"是因为没数据还是因为被拒绝了。
+   */
+  readonly eventContextInjected: number
+  readonly eventContextDenied: number
 }
 
 /** 零值（新群的起点）。 */
@@ -55,6 +75,13 @@ export function emptyStats(): GroupSchedulerStats {
     spoken: 0,
     starvationWarnings: 0,
     shadowWouldSend: 0,
+    modelLatencyMs: 0,
+    modelCalls: 0,
+    sendLatencyMs: 0,
+    sendAttempts: 0,
+    lastBatchWaitMs: 0,
+    eventContextInjected: 0,
+    eventContextDenied: 0,
   }
 }
 
@@ -74,6 +101,20 @@ export class GroupSchedulerBook {
   /** 改（不可变更新，方便日志里对比前后）。 */
   update(groupId: number, change: (stats: GroupSchedulerStats) => GroupSchedulerStats): void {
     this.stats.set(groupId, change(this.of(groupId)))
+  }
+
+  /**
+   * 记一次连续性上下文的注入结果（P7-C）。
+   *
+   * 两个计数器分开：`denied` 只在**真的不该给**时加一（群号非法 / 没时间线 / 视图抛错）。
+   * 合成一个数会让"这个群刚上线，还没有记录"看起来像"上下文注入坏了"。
+   */
+  noteContinuity(groupId: number, outcome: 'injected' | 'denied'): void {
+    this.update(groupId, (stats) => ({
+      ...stats,
+      eventContextInjected: stats.eventContextInjected + (outcome === 'injected' ? 1 : 0),
+      eventContextDenied: stats.eventContextDenied + (outcome === 'denied' ? 1 : 0),
+    }))
   }
 
   /** 诊断导出（按群号，不含正文）。 */

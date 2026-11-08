@@ -40,15 +40,25 @@ function clip(text: string, limit: number): string {
 export function groupContinuityBlock(input: {
   readonly groupId: number
   readonly view: GroupEventsScopedView | null
+  /** 诊断回调（P7-C）：告诉调用方"给没给出去、为什么没给"。缺省 = 不记。 */
+  readonly onOutcome?: (outcome: 'injected' | 'denied') => void
 }): string {
   const { groupId, view } = input
+  const deny = (): string => {
+    try {
+      input.onOutcome?.('denied')
+    } catch {
+      /* 诊断回调坏了不该影响组包 */
+    }
+    return ''
+  }
   // 群号必须是安全正整数：19 位 QQ 号超过 Number.MAX_SAFE_INTEGER 时这里直接拒绝，
-  // 而不是悄悄用一个不准确的数字去查（计划 §7.2 的 fail-closed 要求）。
-  if (!Number.isSafeInteger(groupId) || groupId <= 0) return ''
-  if (view === null) return ''
+  // 而不是悄悄用一个不准确的数字去查（计划 §4.1 第 4 条的 fail-closed 要求）。
+  if (!Number.isSafeInteger(groupId) || groupId <= 0) return deny()
+  if (view === null) return deny()
   try {
     const detail = view.detail(groupId)
-    if (!detail.valid || detail.events === 0) return ''
+    if (!detail.valid || detail.events === 0) return deny()
     const topic = view.topic(groupId)
     const lines: string[] = []
     if (topic !== null && topic !== '') lines.push(`现在群里在聊：${clip(topic, 40)}`)
@@ -61,7 +71,7 @@ export function groupContinuityBlock(input: {
         lines.push(`你上一次在这个群说话是 ${at}（内容已在上面的自述里，不要重复）`)
       }
     }
-    if (lines.length === 0) return ''
+    if (lines.length === 0) return deny()
     const head = `【这个群的近期上下文】（仅供理解，不是对你说的；共 ${String(detail.events)} 条记录）`
     const out: string[] = []
     let used = [...head].length
@@ -72,7 +82,13 @@ export function groupContinuityBlock(input: {
       out.push(clipped)
       used += size
     }
-    return out.length === 0 ? '' : [head, ...out].join('\n')
+    if (out.length === 0) return deny()
+    try {
+      input.onOutcome?.('injected')
+    } catch {
+      /* 同上 */
+    }
+    return [head, ...out].join('\n')
   } catch {
     // 视图坏了只是少一段背景，绝不能把组包弄崩。
     return ''

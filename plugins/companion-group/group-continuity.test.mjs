@@ -116,39 +116,31 @@ test('service shape: absent, malformed or throwing degrades to an empty section 
   assert.equal(groupContinuityInputOf({ recentSelf: () => [], topic: () => null }, 999).recentSelf.length, 0);
 });
 
-test('the section is companion:group-continuity at order 51, lazily read and failure-proof', () => {
+test('the section is companion:group-continuity at order 51 and holds ONLY static conduct (P7-A)', () => {
   for (const ctxExtra of [
     {},
     { get: () => undefined },
     { get: () => ({ recentSelf: 'nope' }) },
     { get: () => { throw new Error('registry exploded'); } },
+    // 即使服务**完全可用**，这一段也不许去读它——群身份只能来自宿主路由。
+    { get: () => ({ recentSelf: () => [item('不该出现在系统段里', 19, 0)], topic: () => '也不该出现' }) },
   ]) {
     const { continuity } = mount(ctxExtra);
     assert.equal(continuity.name, GROUP_CONTINUITY_SECTION_NAME);
     assert.equal(continuity.order, GROUP_CONTINUITY_ORDER);
-    assert.equal(continuity.interpolate, false, 'literal text: group content must not be interpolated');
-    assert.equal(typeof continuity.text, 'function', 'lazy: text is a callback');
+    assert.equal(continuity.interpolate, false, 'literal text');
+    assert.equal(typeof continuity.text, 'function');
     const text = continuity.text();
     assert.ok(text.includes(GROUP_CHAT_CONDUCT), 'conduct survives any service failure');
-    assert.ok(text.includes(GROUP_CONTINUITY_EMPTY), 'no fabricated continuity');
+    // P7-A 的核心断言：系统段里**没有**任何来自时间的记录。
+    // 旧实现靠"唯一活跃群"降级给数据；那会让两个群同时活跃时两边都读不到，
+    // 也违反"每个回合只读自己 groupId"的要求。现在它只留静态约定。
+    assert.equal(text.includes(GROUP_CONTINUITY_EMPTY), false, 'no dynamic "recent records" block any more');
+    assert.equal(text.includes('不该出现在系统段里'), false, 'the section must not read the events service');
+    assert.equal(text.includes('也不该出现'), false, 'the section must not read the events service');
+    // 每次装配都返回同一份（它是常量，不是"现算"的东西）。
+    assert.equal(continuity.text(), text);
   }
-  // 服务可用：每次调用都重新问一次服务，拿到的是当下这一份。
-  let calls = 0;
-  const store = { rows: [item('上次说过的', 19, 0)], topic: '在聊电影' };
-  const { continuity } = mount({
-    get(name) {
-      assert.equal(name, GROUP_CONTINUITY_SERVICE_NAME);
-      calls++;
-      return { recentSelf: limit => store.rows.slice(-limit), topic: () => store.topic };
-    },
-  });
-  assert.ok(continuity.text().includes('19:00 回复：上次说过的'));
-  assert.ok(continuity.text().includes('当前话题：在聊电影'));
-  store.rows = [item('第二轮新说的', 19, 30)];
-  const second = continuity.text();
-  assert.ok(second.includes('第二轮新说的'));
-  assert.equal(second.includes('上次说过的'), false, 'lazy: recomputed per assembly');
-  assert.equal(calls, 3);
   assert.equal(GROUP_CONTINUITY_ORDER, 51);
   assert.equal(GROUP_CONTINUITY_SECTION_NAME, 'companion:group-continuity');
 });

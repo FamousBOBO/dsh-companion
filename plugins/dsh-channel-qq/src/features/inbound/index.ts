@@ -211,6 +211,8 @@ function createRuntime(deps: RuntimeDeps): ChannelRuntime {
     // 本群连续性（P7-A）：**每次现取**——执行器可能还没建好、也可能被热重载换掉；
     // 关着（`presence.mode='off'`）时返回 null，组包产物与 P6 逐字节一致。
     continuityView: () => deps.presence?.scopedEventsView?.() ?? null,
+    // 注入结果回报（P7-C）：区分"这个群没数据"与"这个群没资格拿"，两个数字放在一起才有用。
+    noteContinuity: (groupId, outcome) => deps.presence?.noteContinuity?.(groupId, outcome),
   }, createPolicyScreening({
     enabled: () => policyEnabled(deps.config),
     scanner: () => deps.screen?.scanner ?? null,

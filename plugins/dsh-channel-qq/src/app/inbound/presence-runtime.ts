@@ -5,19 +5,13 @@
  * `presence-cycle.ts` 一次判断的编排、`presence-scene.ts` 社交场景与语义复核、
  * `presence-flow.ts` 流程本身、**本文件** 常驻状态与定时器。
  *
- * 六条硬约束（每一条都对应一个会出事的地方）：
- *   1. **`observe` 非阻塞**：入站路径上不能等模型。这里只（可能）武装一个合批定时器。
- *   2. **旁听环不归我写**：流水线的 `captureAmbient` 负责 `add`；这里只 `peekAfter` 读并推进
- *      自己的 `judgedSeq`（两个写者会让"这条到底算不算看过"变成猜测）。
- *   3. **每次现取 platform / persona / memory**：热加载后旧对象会被换掉（2026-11 的私聊事故
- *      就是闭包抓着死掉的客户端）。缓存等于把"重连"变成"静默失败"。
- *   4. **热加载不补发**：`emptyPresenceState(now)` 把上次判断/发言时刻置成"现在"，游标首见时
- *      落在最新那条上，于是只有她"上线"之后的新消息才会被判断。
- *   5. **同群不并发**：一个群同时只跑一次判断（`inflight`），避免"两句连着发出去"。
- *   6. **调度参数各管一件事**（P3 §7.3）：`batchQuietMs` 管合批等待、`judgeIntervalMs` 管
- *      判断间隔、`speakMinIntervalMs`/`speakMaxPerHour` 管发言。**不重排**已武装的定时器：
- *      重排会让热闹的群无限往后推（这是"判断饥饿"的老根因），所以等待上限由"首条消息起算"
- *      天然成立；`starvationWarnMs` 只用来**报警**（见 `noteSkip`）。
+ * 六条硬约束：1) **`observe` 非阻塞**——入站不等模型，只（可能）武装一个合批定时器；
+ * 2) **旁听环不归我写**——`captureAmbient` 负责 `add`，这里只读并推进自己的游标；
+ * 3) **每次现取 platform / persona / memory**——热加载会换掉旧对象，缓存等于把"重连"变成静默失败；
+ * 4) **热加载不补发**——`emptyPresenceState(now)` 把上次判断时刻置成"现在"，只有上线之后的新消息才判；
+ * 5) **同群不并发**——一个群同时只跑一次判断（`inflight`），避免"两句连着发出去"；
+ * 6) **不重排已武装的定时器**——重排会让热闹的群无限往后推（"判断饥饿"的老根因）；
+ * `starvationWarnMs` 只用来**报警**（见 `noteSkip`）。
  *
  * 这里不碰盘、不建会话、不给工具：自主发言由通道直接发，不经过群 agent（§0.8）。
  */
@@ -162,7 +156,7 @@ export class GroupPresence {
     this.scheduler.clear()
   }
 
-  /** 诊断快照（§7.4：调度耗时可观测）。只暴露数字与布尔，**不含任何消息正文**。 */
+  /** 诊断快照（§7.4）：只暴露数字与布尔，**不含任何消息正文**。 */
   diagnostics(): { groups: Array<{ groupId: number } & GroupSchedulerStats>; pending: number } {
     return { groups: this.scheduler.snapshot(), pending: this.timers.size + this.inflight.size }
   }
@@ -172,16 +166,17 @@ export class GroupPresence {
     return this.timelines.of(groupId)
   }
 
-  /**
-   * **按群号**查询的时间线视图（P7-A）：群回合只能读自己那个群。
-   *
-   * 群号由调用方从宿主路由（`conversation.chatId`）拿到后传进来；这里不做任何推断。
-   */
+  /** **按群号**查询的时间线视图（P7-A）：群号由调用方从宿主路由拿到，这里不做任何推断。 */
   scopedEventsView(): GroupEventsScopedView {
     return this.timelines.scopedView()
   }
 
-  /** @deprecated 用 {@link scopedEventsView}：这个视图拿不到群号，两个群同时活跃时两边都读不到。 */
+  /** 记一次连续性上下文注入结果（P7-C）：`denied` 只在真的不该给时加一（见 `noteContinuity`）。 */
+  noteContinuity(groupId: number, outcome: 'injected' | 'denied'): void {
+    this.scheduler.noteContinuity(groupId, outcome)
+  }
+
+  /** @deprecated 用 {@link scopedEventsView}（这个视图拿不到群号，两个群同时活跃时两边都读不到）。 */
   eventsView(): GroupEventsView & { detail: () => { groups: number; ambiguous: boolean } } {
     return this.timelines.view()
   }

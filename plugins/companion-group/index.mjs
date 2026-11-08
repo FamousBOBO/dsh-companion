@@ -1,14 +1,12 @@
 import path from 'node:path';
 import { groupIdOf, groupToolDenial, markGroupReady, GROUP_ALLOWED_TOOLS } from './core.mjs?v=group-media-20261102-restrict3';
+// P7-A 之后这里只需要常量：动态内容（"这个群刚发生过什么"）搬到了组包路径，
+// 群号来自宿主路由，不再从全局端口推测。GROUP_CONTINUITY_SERVICE_NAME 与三个读取
+// 函数仍由 group-continuity.mjs 导出（构造/测试用），但本文件不再消费。
 import {
   GROUP_CHAT_CONDUCT,
-  GROUP_CONTINUITY_EMPTY,
   GROUP_CONTINUITY_ORDER,
   GROUP_CONTINUITY_SECTION_NAME,
-  GROUP_CONTINUITY_SERVICE_NAME,
-  buildGroupContinuitySection,
-  groupContinuityInputOf,
-  hasGroupContinuityService,
 } from './group-continuity.mjs';
 import { resolveDataRoot } from '../companion-foundation/suite-paths.mjs';
 
@@ -46,37 +44,21 @@ export function apply(ctx) {
   // Preset validation can run before the asynchronous QQ channel has registered
   // its tools. Bind the restriction at the first real step, before model entry.
   const restricted = new WeakSet();
-  // P3 §7.2 / P4 §8.1：让**被 @ 的回合**也看得到「她自己刚说过什么 / 这个群刚发生过什么」，
-  // 并把群聊表达口径钉成短句口语、沉默合法、不重复自己（见 group-continuity.mjs）。
+  // P7-A（§4.1 第 1 条）：这个系统段**只留静态的群聊表达约定**，不再从全局端口推测群身份。
   //
-  // 三个刻意的选择：
-  //   1. **懒取**：text 是函数，每次装配现取——时间线每轮都在变，注册时算一次没有意义
-  //      （与 companion-foundation 的 companion:life 同一写法）。
-  //   2. **可选服务**：ctx.get('companionGroupEvents') 由群事件时间线提供，可能根本没挂
-  //      （P3 之前、或 QQ 通道关闭）。拿不到 / 形状不对 / 抛错一律降级成「还没有记录」，
-  //      绝不把提示词装配打掉——少一份背景可以，整轮聊天挂掉不行。
-  //   3. **interpolate: false**：段里含群友可能写出的原文，`{{…}}` 一旦被当成变量引用会
-  //      严格报错（未知引用即失败），所以整段按字面保留。
+  // 为什么必须去掉那段动态内容：系统提示词段拿不到 `conversation.chatId`（宿主不把会话身份
+  // 传给 text 回调），于是旧实现只能在"唯一活跃群"时给数据——两个群同时活跃就两边都读不到，
+  // 那是**降级**，不是多群方案。现在「这个群刚发生过什么」由**组包路径**渲染
+  // （`PacketComposer.compose()` → `groupContinuityBlock`，群号来自宿主路由），
+  // 两条路径不重复注入同一件事。
   //
-  // 注册顺序与提示词顺序无关（提示词按 order 排）：这里先注册连续性段（order 51），
-  // 人格段（order 50）仍是最后一次注册。
+  // `interpolate: false`：段里是固定文案，但保留这条约束——将来若有人往这里加变量引用，
+  // 未知引用会让装配直接失败，宁可在评审时就被这条注释提醒一次。
   ctx.systemPrompt.section({
     name: GROUP_CONTINUITY_SECTION_NAME,
     order: GROUP_CONTINUITY_ORDER,
     interpolate: false,
-    text: () => {
-      try {
-        const service = typeof ctx.get === 'function' ? ctx.get(GROUP_CONTINUITY_SERVICE_NAME) : undefined;
-        const input = hasGroupContinuityService(service)
-          ? groupContinuityInputOf(service)
-          : { recentSelf: [], topic: null, recentlyMentioned: [] };
-        return GROUP_CHAT_CONDUCT + '\n\n' + buildGroupContinuitySection(input);
-      } catch {
-        // 行为约定不依赖任何数据，任何失败都保留它；「最近记录」换成明确的"还没有记录"，
-        // 而不是留白——留白只会让模型自己凭印象补一句"我刚才说过…"。
-        return GROUP_CHAT_CONDUCT + '\n\n' + GROUP_CONTINUITY_EMPTY;
-      }
-    },
+    text: () => GROUP_CHAT_CONDUCT,
   });
   ctx.systemPrompt.section({ name: 'companion:group-persona', order: 50, interpolate: false, text: GROUP_PERSONA });
   const calls = new Map();

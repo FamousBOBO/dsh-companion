@@ -125,7 +125,15 @@ export async function runCycleFor(ctx: CycleContext, groupId: number): Promise<b
   const startedAt = ctx.clock.now()
   const background = takeBatch(ctx, groupId, settings)
   if (background.length === 0) return false
+  const modelStartedAt = ctx.clock.now()
   const outcome = await runPresenceCycle(inputOf(ctx, groupId, settings, background), depsOf(ctx, groupId))
+  // 模型调用耗时（P7-C）：只有真的调了才算一次（没有旁听时流程根本不进模型）。
+  const modelLatency = Math.max(0, ctx.clock.now() - modelStartedAt)
+  ctx.scheduler.update(groupId, (current) => ({
+    ...current,
+    modelLatencyMs: current.modelLatencyMs + modelLatency,
+    modelCalls: current.modelCalls + 1,
+  }))
   // 卸载之后到达的结果一律丢弃（否则"关掉了还在发"）。
   ctx.applyState(groupId, outcome.state)
   recordOutcome(ctx, groupId, settings, outcome, startedAt)
@@ -254,10 +262,19 @@ function recordOutcome(
     lastJudgeAtMs: startedAt,
     lastJudgeDurationMs: duration,
     judgments: current.judgments + 1,
+    // 这一批从"第一条"等到"真的开始判"用了多久（P7-C：区分"允许判断但延迟"与"硬门槛"）。
+    lastBatchWaitMs: current.batchStartedAtMs === 0 ? 0 : Math.max(0, startedAt - current.batchStartedAtMs),
     // 这一批判完了：批次起点清零，否则下一轮会拿旧起点算"饥饿"并误报。
     batchStartedAtMs: 0,
     batchCount: 0,
     ...(outcome.kind === 'spoke' ? { spoken: current.spoken + 1 } : {}),
+    // 模型调用与发送的分段耗时：`spoke` 说明这一轮既有调用也有成功发送。
+    ...(outcome.kind === 'spoke'
+      ? {
+        sendLatencyMs: current.sendLatencyMs + Math.max(0, ctx.clock.now() - startedAt),
+        sendAttempts: current.sendAttempts + 1,
+      }
+      : {}),
   }))
   if (outcome.kind !== 'spoke') return
   ctx.noteSpoken(groupId, outcome.text)

@@ -30,6 +30,13 @@ export interface PresenceObserver {
    * 执行器关着（`presence.mode='off'`）时这里是 `undefined`，组包自然没有这一段。
    */
   scopedEventsView?(): GroupEventsScopedView
+  /**
+   * 记一次连续性上下文的注入结果（P7-C 的 `eventContextInjected` / `eventContextDenied`）。
+   *
+   * 为什么由组包路径回报：只有它知道这一段**到底有没有真的拼进包里**（群号非法、群没时间线、
+   * 视图抛错都会让它空手而归）。在执行器里自己数会把"没数据"和"没资格"混成一个数。
+   */
+  noteContinuity?(groupId: number, outcome: 'injected' | 'denied'): void
 }
 
 /** 本模块要用的 `presence` 配置项（判断与背景共用同一组投射上限）。 */
