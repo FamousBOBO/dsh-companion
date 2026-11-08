@@ -32,6 +32,7 @@ import { createChorusPort } from '../../adapters/song/chorus.js'
 import { createCoverPort } from '../../adapters/song/cover.js'
 import { createNoticePort } from '../../adapters/song/notice.js'
 import { createVoicePort } from '../../adapters/song/voice.js'
+import { createSongCachePort } from '../../adapters/song/cache.js'
 import { registerSpecs } from '../../adapters/dsh-host/tools.js'
 import { registerSongResource, runtimes } from './auto.js'
 import { SongQueue, type SongFinished } from './queue.js'
@@ -220,13 +221,14 @@ interface Wiring {
   readonly dshHome: string
 }
 
-/** 建四个外部适配器（B站 / 副歌 / 翻唱 / 发送 + 文字通知）。 */
+/** 建四个外部适配器（B站 / 副歌 / 翻唱 / 发送 + 文字通知）与同歌缓存。 */
 function buildAdapters(host: SubHost, wiring: Wiring): {
   bili: ReturnType<typeof createBiliPort>
   chorus: ReturnType<typeof createChorusPort>
   cover: ReturnType<typeof createCoverPort>
   voice: ReturnType<typeof createVoicePort>
   notice: ReturnType<typeof createNoticePort>
+  cache: ReturnType<typeof createSongCachePort>
 } {
   const { paths, config, log } = wiring
   const { api, out } = host.need('platform')
@@ -256,7 +258,17 @@ function buildAdapters(host: SubHost, wiring: Wiring): {
   })
   const voice = createVoicePort({ api, out, log, timeoutMs: config().sendTimeoutMs })
   const notice = createNoticePort({ api, out, log })
-  return { bili, chorus, cover, voice, notice }
+  // 同歌缓存落在 dshHome 下（`data/` 已 gitignore）：它是**本机**的加速器，
+  // 不进仓库、不上传。上限与开关都现取配置，改完立刻生效。
+  const cache = createSongCachePort({
+    root: path.join(wiring.dshHome, 'channel-qq', 'song-cache'),
+    process: systemProcess,
+    ffmpegPath: paths.ffmpeg,
+    log,
+    maxEntries: () => config().cacheMaxEntries,
+    now: () => systemClock.now(),
+  })
+  return { bili, chorus, cover, voice, notice, cache }
 }
 
 /** 终态通知：点歌的房间要说明卡在哪一步（群聊也发在群里）；自主入口成功要记一次日额度。 */

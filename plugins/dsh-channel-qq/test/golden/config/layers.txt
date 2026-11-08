@@ -688,6 +688,8 @@ override = {}
   "coverTimeoutMs": 240000,
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
+  "cacheEnabled": true,
+  "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
   "dailyUserCap": 2
@@ -1401,6 +1403,8 @@ override = {}
   "coverTimeoutMs": 240000,
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
+  "cacheEnabled": true,
+  "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
   "dailyUserCap": 2
@@ -2112,6 +2116,8 @@ override = {"batching":{"windowMs":20000}}
   "coverTimeoutMs": 240000,
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
+  "cacheEnabled": true,
+  "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
   "dailyUserCap": 2
@@ -2823,6 +2829,8 @@ override = {"admin":{"port":8790}}
   "coverTimeoutMs": 240000,
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
+  "cacheEnabled": true,
+  "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
   "dailyUserCap": 2
@@ -3534,6 +3542,8 @@ override = {"imageGen":{"model":"flux"}}
   "coverTimeoutMs": 240000,
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
+  "cacheEnabled": true,
+  "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
   "dailyUserCap": 2
@@ -4245,6 +4255,8 @@ override = {"tts":{"voice":"b"}}
   "coverTimeoutMs": 240000,
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
+  "cacheEnabled": true,
+  "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
   "dailyUserCap": 2
@@ -4956,6 +4968,8 @@ override = {"flood":{"windowSec":30}}
   "coverTimeoutMs": 240000,
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
+  "cacheEnabled": true,
+  "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
   "dailyUserCap": 2
@@ -5674,6 +5688,8 @@ override = {}
   "coverTimeoutMs": 240000,
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
+  "cacheEnabled": true,
+  "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
   "dailyUserCap": 2
@@ -6385,6 +6401,8 @@ override = {"keywordTriggers":[]}
   "coverTimeoutMs": 240000,
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
+  "cacheEnabled": true,
+  "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
   "dailyUserCap": 2
@@ -7103,6 +7121,8 @@ override = {"rss":{"pollIntervalMin":5}}
   "coverTimeoutMs": 240000,
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
+  "cacheEnabled": true,
+  "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
   "dailyUserCap": 2
@@ -7814,6 +7834,8 @@ override = {"groupEnabled":false}
   "coverTimeoutMs": 240000,
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
+  "cacheEnabled": true,
+  "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
   "dailyUserCap": 2
@@ -8525,6 +8547,8 @@ override = {}
   "coverTimeoutMs": 240000,
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
+  "cacheEnabled": true,
+  "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
   "dailyUserCap": 2
@@ -9236,6 +9260,8 @@ override = {"groupEnabled":true}
   "coverTimeoutMs": 240000,
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
+  "cacheEnabled": true,
+  "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
   "dailyUserCap": 2
@@ -9947,6 +9973,8 @@ override = {"admin":{"host":"127.0.0.1"}}
   "coverTimeoutMs": 240000,
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
+  "cacheEnabled": true,
+  "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
   "dailyUserCap": 2
@@ -10658,6 +10686,8 @@ override = {}
   "coverTimeoutMs": 240000,
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
+  "cacheEnabled": true,
+  "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
   "dailyUserCap": 2
@@ -11369,6 +11399,8 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
   "coverTimeoutMs": 240000,
   "sendTimeoutMs": 30000,
   "maxQueue": 8,
+  "cacheEnabled": true,
+  "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
   "dailyUserCap": 2

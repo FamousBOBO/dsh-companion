@@ -8,6 +8,8 @@
  *   1. **默认全关**：`enabled=false`、`autoPick=false`、`dryRun=true`、`allowExternalSend=false`。
  *      装上插件不等于机器人开始自己唱歌并往主人私聊里塞语音条——那是操作员的显式决定。
  *      这条链路的代价还特别贵：一首歌要跑 90 秒分离 + 30 秒推理，而且发出去的东西**撤不回**。
+ *      唯一的例外是 `cacheEnabled`（默认开）：它不改变"发不发、发什么"，只是让同一首歌
+ *      第二次点时不必再花 100 秒——那不是外发能力，所以不需要操作员先同意。
  *   2. **外部路径默认空**：`pythonPath` / `rvcRoot` / `makeCover` / `chorusPython` 空着 =
  *      未配置，运行时给一条"未配置"的阅读件而不是猜一个 `D:\` 盘路径。仓库里写死某台机器的
  *      绝对路径，换台机器就是一句静默的 ENOENT；而空值会让后台明确显示"未配置"。
@@ -81,6 +83,16 @@ export interface SongConfig {
   readonly sendTimeoutMs: number
   /** 队列里最多排几个；超了直接拒（不排长队，长队的语音条已经过时了）。 */
   readonly maxQueue: number
+  /**
+   * 同歌缓存：同一首歌再点时直接复用上次做好的语音条（省掉约 100 秒）。
+   *
+   * 为什么默认开：同一条视频、同一个音高、同一个长度上限下，做出来的语音条是同一段
+   * 音频——重跑一遍唯一的作用是再花 100 秒显卡。缓存只在本机
+   * `<dataDir>/home/channel-qq/song-cache/`（已 gitignore），不外发、不联网。
+   */
+  readonly cacheEnabled: boolean
+  /** 每层缓存最多留几条（方案层与成品层各自计数）；超了按最久没用删。 */
+  readonly cacheMaxEntries: number
   /** 自主选歌每天最多发几首（按 `Asia/Shanghai` 的日）；**0 = 不限额**。 */
   readonly dailyAutoCap: number
   /**
@@ -127,6 +139,8 @@ export const SONG_DEFAULTS: SongConfig = {
   coverTimeoutMs: 240_000,
   sendTimeoutMs: 30_000,
   maxQueue: 8,
+  cacheEnabled: true,
+  cacheMaxEntries: 50,
   dailyAutoCap: 1,
   dailyUserCap: 2,
   autoSongs: [],
@@ -252,6 +266,19 @@ export const SONG_GROUPS: FieldGroup[] = [
       maxQueue: n('队列上限（个）', SONG_DEFAULTS.maxQueue, {
         hot: 'live', min: 1, max: 50, step: 1,
         help: '同时排队的点歌上限，超了直接拒。一首歌两三分钟，排太长的队等于发一条过时的语音条。',
+      }),
+      cacheEnabled: b('同歌缓存（同一首歌再点时直接复用）', SONG_DEFAULTS.cacheEnabled, {
+        hot: 'live',
+        help: '默认开。同一首歌（同一条视频、同一个分P、同一个音高、同一个长度上限）再点时，'
+          + '直接复用上次做好的语音条，省掉下载 + 副歌定位 + 分离 + 推理约 100 秒。'
+          + '缓存**只在本机** `<dataDir>/home/channel-qq/song-cache/`，不外发、不联网；'
+          + '命中之前会用 `ffprobe` 核一次时长，对不上就删掉那条重新做（半条语音条比慢一点糟得多）。'
+          + '关掉 = 每次都重跑，行为与加缓存之前一致。',
+      }),
+      cacheMaxEntries: n('缓存条数上限（每层）', SONG_DEFAULTS.cacheMaxEntries, {
+        hot: 'live', min: 1, max: 500, step: 1, unit: '条',
+        help: '方案缓存（一条 JSON）与音频缓存（0.4–1 MB）**各自**最多留几条。超了按"最久没用"删到上限，'
+          + '同时清掉孤儿文件（有文件没记账、有记账没文件）。默认 50：按 1 MB 一条算最多约 50 MB。',
       }),
       dailyAutoCap: n('自主选歌每日上限（首，0 = 不限）', SONG_DEFAULTS.dailyAutoCap, {
         hot: 'live', min: 0, max: 5, step: 1, unit: '首',

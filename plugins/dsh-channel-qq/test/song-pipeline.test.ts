@@ -167,7 +167,7 @@ function configOf(overrides: Partial<SongConfig> = {}): () => SongConfig {
     pythonPath: '', rvcRoot: '', makeCover: '', chorusPython: '',
     biliCredentialFile: '', workRoot: '', ffmpegPath: 'ffmpeg',
     downloadTimeoutMs: 60_000, chorusTimeoutMs: 30_000, coverTimeoutMs: 240_000,
-    sendTimeoutMs: 30_000, maxQueue: 2, dailyAutoCap: 1, dailyUserCap: 0, autoSongs: ['晴天 周杰伦'],
+    sendTimeoutMs: 30_000, maxQueue: 2, cacheEnabled: true, cacheMaxEntries: 50, dailyAutoCap: 1, dailyUserCap: 0, autoSongs: ['晴天 周杰伦'],
     ...overrides,
   }
   return () => base

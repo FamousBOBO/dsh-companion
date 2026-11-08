@@ -685,6 +685,8 @@
     "coverTimeoutMs": 240000,
     "sendTimeoutMs": 30000,
     "maxQueue": 8,
+    "cacheEnabled": true,
+    "cacheMaxEntries": 50,
     "dailyAutoCap": 1,
     "autoSongs": [],
     "dailyUserCap": 2

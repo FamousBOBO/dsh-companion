@@ -4,6 +4,7 @@
  *   - `adapters/song/bili.ts`（外部 B站：搜索、视频信息、按 BV+分P 下载音轨）；
  *   - `adapters/song/chorus.ts`（副歌定位：调 `tools/song/find_chorus.py`，只认它的 JSON）；
  *   - `adapters/song/cover.ts`（翻唱：切试听段 → make_cover.py → 按副歌起点裁语音条）；
+ *   - `adapters/song/cache.ts`（同歌缓存：两层键值、`ffprobe` 时长核对、按最久没用淘汰）；
  *   - `features/song/queue.ts`（串行队列：阶段、去重、超时、清理、发送回执）；
  *   - `features/song/tools.ts`（模型面：一次点歌 / 查状态）。
  *
@@ -202,6 +203,59 @@ export interface CoverPort {
     readonly keyUp: number
     readonly signal?: AbortSignal
   }): Promise<CoverResult>
+}
+
+/** 第一层（方案缓存）的记录：这首歌在这个音高与长度上限下，上次切的是哪一段。 */
+export interface SongPlanRecord {
+  /** 副歌起点（秒，相对整条音轨）。 */
+  readonly chorusStart: number
+  /** 上次裁出来的语音条长度（秒）。 */
+  readonly seconds: number
+  /** 上次定位的置信度（0..1）：门槛调高之后，旧记录必须能被判成"不再可靠"。 */
+  readonly confidence: number
+}
+
+/** 第二层（音频缓存）的命中结果：文件已在盘上，时长已由适配器核过。 */
+export interface CachedClip {
+  /** 缓存文件（绝对路径，可直接交给 `VoicePort.sendVoice`）。 */
+  readonly file: string
+  /** `ffprobe` 实测时长（秒）；与期望值差超过容差时**不会**被返回（见适配器）。 */
+  readonly durationSeconds: number
+}
+
+/**
+ * 同歌缓存（两层，都落在 `<dshHome>/channel-qq/song-cache/`）。实现见 `adapters/song/cache.ts`。
+ *
+ * 两层分开的理由：**它们能省的东西不同**。方案缓存只省"副歌定位"（几秒），
+ * 成品缓存省的是"下载 + 定位 + 分离 + RVC"（本机约 100 秒）。而方案又比成品小得多
+ * （一条 JSON），能记住更多首歌；所以成品被淘汰时，下一次仍然不必重新定位。
+ *
+ * 三个必须写下的约定：
+ *   1. **校验与淘汰都在适配器里**（`features/` 只做决策）：时长核对要用 `ffprobe`、
+ *      淘汰要读目录——那都是 IO。
+ *   2. **时长不对就当未命中并删掉这条**。缓存文件可能被手工删过一半、被安全软件
+ *      截断、磁盘写坏；**发出半条语音条比慢 90 秒糟得多**。
+ *   3. 键由 `planKey` / `clipKey` 生成，**必须带算法版本标签**（见 `cache-key.ts`）：
+ *      改了分离器/模型/裁剪逻辑之后，旧缓存要被判成过期，而不是被当成有效结果复用。
+ */
+export interface SongCachePort {
+  /** 方案键：`bvid | cid | keyUp | maxSeconds | PLAN_ALGO_TAG`。 */
+  planKey(bvid: string, cid: number, keyUp: number, maxSeconds: number): string
+  /** 成品键：`bvid | cid | keyUp | chorusStart | seconds | COVER_ALGO_TAG`。 */
+  clipKey(bvid: string, cid: number, keyUp: number, chorusStart: number, seconds: number): string
+  /** 读方案；没有/损坏返回 `null`（不抛），命中时刷新"最久没用"的记账。 */
+  getPlan(key: string): Promise<SongPlanRecord | null>
+  /** 写方案（命中时用不到，只在真的定位成功之后写）。 */
+  putPlan(key: string, value: SongPlanRecord): Promise<void>
+  /**
+   * 读成品。**内部用 `ffprobe` 核对时长**：与 `expectedSeconds` 差超过容差就删掉这条
+   * 并返回 `null`（当作未命中）。
+   */
+  getClip(key: string, expectedSeconds: number): Promise<CachedClip | null>
+  /** 把做好的语音条收进缓存（复制一份；源文件属于任务目录，任务结束就删）。 */
+  putClip(key: string, sourceFile: string): Promise<void>
+  /** 按"最久没用"淘汰到 `cacheMaxEntries`，并清掉孤儿文件；**只记一行日志，不抛**。 */
+  prune(): Promise<void>
 }
 
 /** 发语音条能力。实现来自 QQ 通道既有 `record` 发送（`adapters` 里接上 `qq_send_voice`）。 */

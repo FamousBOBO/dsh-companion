@@ -48,6 +48,7 @@ const { systemProcess } = await fromLib(path.join('adapters', 'song', 'process.j
 const { createBiliPort } = await fromLib(path.join('adapters', 'song', 'bili.js'))
 const { createChorusPort } = await fromLib(path.join('adapters', 'song', 'chorus.js'))
 const { createCoverPort } = await fromLib(path.join('adapters', 'song', 'cover.js'))
+const { createSongCachePort } = await fromLib(path.join('adapters', 'song', 'cache.js'))
 const { createVoicePort } = await fromLib(path.join('adapters', 'song', 'voice.js'))
 const { SongQueue } = await fromLib(path.join('features', 'song', 'queue.js'))
 const { buildGate, resolveSongPaths, chorusScriptPath } = await fromLib(path.join('features', 'song', 'index.js'))
@@ -124,8 +125,9 @@ async function main() {
     ffmpegPath: process.env['FFMPEG_PATH'] ?? 'ffmpeg',
   }
   const config = resolveConfig({}, { song: songPatch })
-  log(`点歌段：seconds=${String(config.song.seconds)} dryRun=${String(config.song.dryRun)} allowExternalSend=${String(config.song.allowExternalSend)}`)
-  const paths = resolveSongPaths(config.song, process.env['DSH_HOME'] ?? path.join(os.homedir(), '.dsh'))
+  log(`点歌段：seconds=${String(config.song.seconds)} dryRun=${String(config.song.dryRun)} allowExternalSend=${String(config.song.allowExternalSend)} 缓存=${String(config.song.cacheEnabled)}/${String(config.song.cacheMaxEntries)}`)
+  const dshHome = process.env['DSH_HOME'] ?? path.join(os.homedir(), '.dsh')
+  const paths = resolveSongPaths(config.song, dshHome)
   if (paths === null) { console.error('外部路径没配全'); die(2) }
   log(`RVC：python=${paths.pythonPath} root=${paths.rvcRoot} makeCover=${paths.makeCover}`)
   log(`凭据：${existsSync(paths.credentialFile) ? '找到' : '没找到（本次匿名，搜索大概率被风控）'} ${paths.credentialFile}`)
@@ -203,8 +205,16 @@ async function main() {
           async sendVoice() { return { ok: false, messageId: null, unknown: false, detail: '演练模式（脚本层没有真发）' } },
         }
     const gate = buildGate(() => config.song, async () => ({ allowed: true, reason: 'e2e-script' }), log)
+    // 同歌缓存：与 `features/song/index.ts` 的装配同一套参数——验收脚本要验的就是
+    // "第二次真的不跑 python"，所以必须用**真的**缓存端口，而不是空实现。
+    const cache = createSongCachePort({
+      root: path.join(dshHome, 'channel-qq', 'song-cache'),
+      process: systemProcess, ffmpegPath: paths.ffmpeg, log,
+      maxEntries: () => config.song.cacheMaxEntries,
+      now: () => Date.now(),
+    })
     const queue = new SongQueue({
-      bili, chorus, cover, voice, gate,
+      bili, chorus, cover, voice, gate, cache,
       clock: {
         now: () => Date.now(), date: () => new Date(),
         setTimeout: () => ({ cancel() {} }), setInterval: () => ({ cancel() {} }),
@@ -212,6 +222,7 @@ async function main() {
       config: () => config.song,
       log,
       workRoot,
+      ownerIds: () => config.admins,
       ledgerFile: path.join(workRoot, 'ledger.json'),
       onFinish: (event) => {
         log(`终态：${event.stage}${event.detail === null ? '' : `（${event.detail}）`}`)
@@ -232,6 +243,8 @@ async function main() {
       bvid: chosen.bvid,
       chorusAt: args.chorusSeconds,
       keyUp,
+      // 私聊房间的对方就是点歌人；演练模式没有收件人，给 null（额度不判）。
+      requesterId: args.send ? target : null,
       requestedAt: Date.now(),
     })
     log(`入队：${result.accepted ? '受理' : '未受理'} ${result.taskId ?? ''}（${result.note}）`)

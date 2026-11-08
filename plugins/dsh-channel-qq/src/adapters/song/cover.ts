@@ -51,8 +51,10 @@ const PREROLL_SECONDS = 12
 /** 试听段在语音条之后多留的尾巴（秒）：给裁剪留一点余量，也让分离末段不贴边。 */
 const TAIL_SECONDS = 10
 
-/** 实测时长与请求时长的允许偏差（秒）。超过就说明裁剪或产物有问题，不能当成功。 */
-const DURATION_TOLERANCE_SECONDS = 0.75
+/** 实测时长与请求时长的允许偏差（秒）。超过就说明裁剪或产物有问题，不能当成功。
+ * `adapters/song/cache.ts` 命中缓存时**沿用同一个数**（缓存里的那条要么与"这次要的长度"
+ * 差不超过它，要么当没命中）：两处各写一个数会漂成两套口径，缓存放行而真跑失败。 */
+export const DURATION_TOLERANCE_SECONDS = 0.75
 
 /**
  * `summary.json` 只回这些字段。`make_cover.py` 写的是"本次全部参数与路径"（`input` /
@@ -87,7 +89,7 @@ function tail(text: string, limit = 300): string {
  * 同目录、同名不同前缀。这样配置不必多一个字段，也不怕两个工具版本对不上——同一个
  * 发行版的 ffprobe 才能可靠读出一份 mp3 的时长。
  */
-function ffprobeOf(ffmpegPath: string): string {
+export function ffprobeOf(ffmpegPath: string): string {
   const dir = path.dirname(ffmpegPath)
   const base = path.basename(ffmpegPath)
   const ext = path.extname(base)
@@ -115,7 +117,7 @@ function pythonEnv(ffmpegPath: string): Record<string, string> {
 }
 
 /** 读 `ffprobe -show_entries format=duration -of json` 的 duration。 */
-function probeDuration(stdout: string): number {
+export function probeDuration(stdout: string): number {
   let parsed: unknown
   try {
     parsed = JSON.parse(stdout)
@@ -261,6 +263,8 @@ async function renderExcerpt(
  * `--key` **永远传**（`0` 也传）：它进 `RVC_F0_KEY` 再落进 `summary.json` 的
  * `f0_up_key`，那是"升调准则有没有真的生效"的唯一可核查证据；只在非 0 时才传会让
  * 两条路径分叉。升调只动人声音高曲线，伴奏与时长都不变，故裁剪偏移不受影响。
+ * **改了这里的模型/分离器/混音参数（或下面的裁剪逻辑），就要把 `COVER_ALGO_TAG` 加一**
+ * （`features/song/cache-key.ts`）：否则同歌缓存会把上一版的声音当成这次的结果复用。
  */
 async function runCover(rig: Rig, excerptFile: string, coverDir: string, keyUp: number): Promise<string> {
   rig.log(`song-cover: 开始分离 + 模型 B 转换（这一步最慢；人声升调 ${String(keyUp)} 半音）`)

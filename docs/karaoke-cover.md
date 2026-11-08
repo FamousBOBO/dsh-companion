@@ -197,6 +197,8 @@ autoPickOnce（只有"计划里有"才调）─┘
 | `workRoot` | 空 | 任务工作目录（空 = `<dshHome>/channel-qq/song`） |
 | `downloadTimeoutMs` / `chorusTimeoutMs` / `coverTimeoutMs` / `sendTimeoutMs` | 60 s / 30 s / 4 min / 30 s | 四个阶段各给一个上限 |
 | `maxQueue` | 8 | 排太长队的语音条已经过时了 |
+| `cacheEnabled` | **true** | 同歌缓存：再点同一首直接复用成品，省掉约 100 秒（见 §6.5） |
+| `cacheMaxEntries` | 50 | 方案层与成品层**各自**的上限；按 1 MB/条算最多约 50 MB |
 | `dailyAutoCap` | 1 | 自主选歌每日上限；**0 = 不限额**（见下） |
 | `groupEnabled` | **false** | 群聊里是否允许点歌。关着时群里点歌被拒并说清是哪个开关 |
 | `dailyUserCap` | 2 | **每人每天**最多点几首（私聊与群聊共用一份）；**0 = 不限额**；主人与管理员不受此限 |
@@ -210,6 +212,43 @@ autoPickOnce（只有"计划里有"才调）─┘
 
 不限额的代价要写明白：**成本不封顶**。一首歌是 1–2 分钟分离 + 推理，且这条链路串行；
 真正兜底的是主动联系那三道闸（免打扰 / 额度 / 冷却）与 `maxQueue`，不是这个字段。
+
+## 6.5 同歌缓存（两层，落在本机 `data/` 下）
+
+同一首歌被再点时，**不重跑**下载 + 副歌定位 + 分离 + RVC（本机约 100 秒）。
+缓存目录 `<dshHome>/channel-qq/song-cache/`（`data/` 已 gitignore，不上传、不进仓库）。
+
+| | **方案层** `plans/<键>.json` | **成品层** `clips/<键>.mp3` + `.json` |
+|---|---|---|
+| 键 | `bvid_cid_keyUp_maxSeconds_PLAN_ALGO_TAG` | `bvid_cid_keyUp_chorusStart_seconds_COVER_ALGO_TAG` |
+| 命中省掉 | 下载 + 副歌定位（约 10 s） | 上面那些 **+ 分离 + RVC**（约 100 s） |
+| 额外校验 | `confidence ≥ 当前 minConfidence`（门槛调高，旧方案立刻失效） | `ffprobe` 时长与期望差 ≤ **0.75 s**（与 `cover.ts::verifyVoice` 同一口径） |
+
+键里的 `keyUp` 就是"男声源升八度"那个值——升不升调出来的音频不同，必须分开；
+`chorusStart`/`seconds` 不同也是不同键，所以**网关嫌长缩短后的每一档各自成一条**
+（45/30/20/15 都存）。
+
+两条刻意的边界：
+
+- **命中也要校验时长**。缓存文件可能被手工删一半、被安全软件截断、磁盘写坏——
+  **发出半条语音条比慢 90 秒糟得多**。校验不过就删掉这一条、当未命中重做。
+- **算法版本是源码里的常量**（`PLAN_ALGO_TAG='plan-v1'`、`COVER_ALGO_TAG='cover-v1'`）。
+  改了 `find_chorus.py` 的判据 → `PLAN_ALGO_TAG` +1（只让"上次切哪一段"过期，成品仍可复用）；
+  改了 `make_cover.py` 的模型/分离器/混音参数，或改了裁剪逻辑 → `COVER_ALGO_TAG` +1。
+  忘了 +1 的后果是"发出旧参数做的音频"，所以这两个常量在 `cover.ts::runCover` 旁边也留了指路。
+
+淘汰：两层各自最多 `cacheMaxEntries`（默认 50，按 1 MB/条算约 50 MB），按 `lastUsedAt`
+（命中即刷新）删最旧，同时清孤儿（有文件没记账、有记账没文件、JSON 坏）——只记一行日志，不抛。
+
+`cacheEnabled=false` 或没注入缓存端口时，行为与没有这个功能**逐字一致**（一行缓存日志都没有）。
+
+真机实测（`BV1nY4w6kEQS` 晴天，副歌 116.0 s / 24.0 s）：
+
+```
+第一次：缓存未命中，照常做 → 翻唱 66.9 s，总 79.6 s
+第二次：方案命中缓存（跳过下载与副歌定位）→ 命中缓存（跳过下载与翻唱）→ 总 4.4 s
+        message_id=815400604（24 s，就是缓存里那一份 384 775 B）
+```
 
 ## 7. 部署形态（一个容易漏的坑）
 
