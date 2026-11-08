@@ -99,6 +99,10 @@ function harness(over: {
   platform?: FakePlatform
   /** 人格快照提供者（P0）；缺省 = 取不到（走降级人格）。 */
   persona?: () => GroupPersonaSnapshot | null
+  /** 运行模式（P5-B）；缺省不传 = 没有闸门（旧装配，按 live）。 */
+  mode?: () => string
+  /** 影子日志收集（P5-B）。 */
+  readonly shadowOut?: Array<Record<string, unknown>>
 } = {}): Harness {
   const clock = over.clock ?? new FakeClock(over.start ?? START)
   const logs: string[] = []
@@ -127,6 +131,9 @@ function harness(over: {
     },
     // 人格快照：默认给"取不到"，只有专门测 P0 接线的用例才传 `persona`。
     persona: over.persona ?? (() => null),
+    // 模式闸门：只有专门测 P5-B 的用例才传；不传 = 旧装配（按 live）。
+    ...(over.mode === undefined ? {} : { mode: over.mode }),
+    ...(over.shadowOut === undefined ? {} : { recordShadow: (decision) => { over.shadowOut?.push({ ...decision }) } }),
   })
   let nextId = 1000
   const ringOf = (groupId: number) => ambient.ring(groupId, LIMITS)

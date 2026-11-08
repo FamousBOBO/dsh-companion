@@ -68,6 +68,22 @@ export interface CycleContext {
   }) => GroupMemoryRecall
   readonly noteSkip: (groupId: number, reason: string, nowMs: number, pending: number) => void
   /**
+   * 现取运行模式（P5-B）：最后一道发送闸门用它。
+   *
+   * **每次发送前都重新问**：管理员把 live 改成 shadow 时，正在飞的那次模型调用回来
+   * 也必须被拦下（计划 §7.1 点名的最高风险）。
+   */
+  readonly modeOf: () => string
+  /** 影子日志（`shadow` 下"本来想发什么"）；缺省 = 不记。 */
+  readonly recordShadow?: (decision: {
+    groupId: number
+    action: 'reply' | 'join' | 'react'
+    text: string
+    targetMessageId?: number
+    blockedBy: string
+    atMs: number
+  }) => void
+  /**
    * 她刚发出一条（文字或表情）之后的钩子（P4 §8.2 / §8.3）；缺省 = 什么都不做。
    *
    * 为什么放在这里：只有这一层知道"真的发出去了"（有回执），而表情包与弱反馈都要求
@@ -109,6 +125,22 @@ export async function runCycleFor(ctx: CycleContext, groupId: number): Promise<b
   // 卸载之后到达的结果一律丢弃（否则"关掉了还在发"）。
   ctx.applyState(groupId, outcome.state)
   recordOutcome(ctx, groupId, settings, outcome, startedAt)
+  // shadow 下"本来想发"的那句进影子账本（与真实发言分开统计）。
+  if (outcome.kind === 'shadow') {
+    ctx.scheduler.update(groupId, (current) => ({ ...current, shadowWouldSend: current.shadowWouldSend + 1 }))
+    try {
+      ctx.recordShadow?.({
+        groupId,
+        action: outcome.action,
+        text: outcome.text,
+        ...(outcome.targetMessageId === undefined ? {} : { targetMessageId: outcome.targetMessageId }),
+        blockedBy: outcome.blockedBy,
+        atMs: ctx.clock.now(),
+      })
+    } catch (error) {
+      ctx.log(`presence: 群 ${String(groupId)} 影子日志失败（已忽略）：${describe(error)}`)
+    }
+  }
   // 记忆提取放在**判断结束之后**：它是附带产物，不该拖慢这一轮（§7.4 的成本要求）。
   rememberFrom(ctx, groupId, background)
   return true
@@ -171,6 +203,8 @@ function depsOf(ctx: CycleContext, groupId: number) {
     platform: ctx.platform,
     complete: ctx.complete,
     recordSent: ctx.recordSent,
+    // 最后一道闸门：**每次要发之前**现取模式（参考 `CycleDeps.sendGate` 的注释）。
+    sendGate: () => ctx.modeOf(),
     recordEvent: (event: { kind: 'proactive_message' | 'agent_reply'; messageId: number; text: string; atMs: number }) => {
       try {
         ctx.timelines.recordSelf(groupId, event)

@@ -22,8 +22,13 @@ import { publishServiceToPeers } from '../../adapters/dsh-host/service-registry.
 import { afterSpeakHandler } from './presence-afterspeak.js'
 import { DEFAULTS, positiveOr } from '../../app/inbound/presence-flow.js'
 import { systemClock } from '../../ports/clock.js'
+import { JsonlLogStream } from '../../adapters/fs-store/log-stream.js'
+import { modeNoteOf, modeRuns, resolveMode, type GroupPresenceMode } from '../../core/presence-mode.js'
+import * as path from 'node:path'
+import type { LogStream } from '../../ports/store.js'
 import type { PresenceObserver } from '../../app/inbound/group-ambient.js'
 import type { GroupMemoryRecall } from '../../app/inbound/group-memory-contract.js'
+import type { CandidateFact } from '../../core/group-memory-extract.js'
 import type { SentLogHub } from '../../sent-log.js'
 import type { ChatPlatform } from '../../ports/platform.js'
 import type { SubHost } from '../plugin-kit.js'
@@ -117,6 +122,76 @@ function publishEvents(host: SubHost, presence: GroupPresence): () => void {
 }
 
 /**
+ * 影子日志：`shadow` 模式下"本来想发什么、为什么"的落盘记录（JSONL，一行一条）。
+ *
+ * 为什么必须落盘而不只是打日志：影子模式的**全部意义**是拿真实模型在真实群聊上下文里
+ * 的输出去做人工盲评。控制台日志会被下一次启动刷掉，也不方便逐条标注。
+ *
+ * 三条约束：
+ *   1. **只追加、封顶**（`LogStream` 自带 trim），不整份重写；
+ *   2. **不带 message_id**：它没发出去，带上就会被下游当成"说过话"；
+ *   3. **写失败只记一行日志**：影子日志是诊断资产，不能影响判断路径。
+ */
+function shadowLogger(host: SubHost): (decision: {
+  groupId: number
+  action: 'reply' | 'join' | 'react'
+  text: string
+  targetMessageId?: number
+  blockedBy: string
+  atMs: number
+}) => void {
+  let stream: LogStream<Record<string, unknown>> | null = null
+  let failed = false
+  return (decision) => {
+    if (failed) return
+    try {
+      stream ??= new JsonlLogStream<Record<string, unknown>>(
+        path.join(host.dshHome, '..', 'logs', 'presence-shadow.jsonl'),
+        { log: host.log },
+      )
+      void stream.append({
+        at: new Date(decision.atMs).toISOString(),
+        group: decision.groupId,
+        mode: decision.blockedBy,
+        action: decision.action,
+        ...(decision.targetMessageId === undefined ? {} : { target: decision.targetMessageId }),
+        text: decision.text,
+        chars: [...decision.text].length,
+      }).catch((error: unknown) => {
+        host.log(`presence: 影子日志追加失败（已忽略）：${error instanceof Error ? error.message : String(error)}`)
+      })
+    } catch (error) {
+      // 第一次就失败（比如目录不可写）：关掉这条路径，不要在每轮判断里重试。
+      failed = true
+      host.log(`presence: 影子日志不可用（已停用）：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+}
+
+/**
+ * 记忆写入（P1 §5.3）：逐条落库，失败只记一行。
+ *
+ * 为什么打日志要"只在真写了东西时"：顺利时每轮都会有一条候选，逐轮打会把群里
+ * 其它日志淹掉；而"一条都没写"是常态（大多数话不是事实），不值得记。
+ */
+function memoryWriter(host: SubHost): (input: {
+  groupId: number
+  facts: readonly CandidateFact[]
+  nowMs: number
+}) => void {
+  return (input) => {
+    try {
+      const { written, merged, rejected } = rememberGroupFacts({ dataRoot: dataRootOfDshHome(host.dshHome), ...input })
+      if (written + merged > 0) {
+        host.log(`presence: 群 ${String(input.groupId)} 记住 ${String(written)} 条（合并 ${String(merged)}，拒 ${String(rejected)}）`)
+      }
+    } catch (error) {
+      host.log(`presence: 群记忆写入失败（已忽略）：${error instanceof Error ? error.message : String(error)}`)
+    }
+  }
+}
+
+/**
  * 造旁听环与执行器。
  *
  * `platform` 传的是**取值函数**：通道热重载后要跟随新的 OneBot 客户端，不能把
@@ -128,12 +203,21 @@ export function wirePresence(
   fallbackPlatform: ChatPlatform,
 ): PresenceWiring {
   const ambient = new AmbientStore({ log: host.log })
-  if (host.config.presence?.enabled !== true) {
-    host.log('presence: 关（presence.enabled=false）——不记旁听、不调模型判断、不发自主消息')
+  // 模式解析（P5-B）：`mode` 优先，缺席时退回 `enabled` 的旧口径。
+  const modeNow = (): GroupPresenceMode => resolveMode(host.config.presence ?? null)
+  const mode = modeNow()
+  const modeNote = modeNoteOf(host.config.presence ?? null)
+  if (modeNote !== '') host.log(`presence: ${modeNote}`)
+  if (!modeRuns(mode)) {
+    // `off`: 连旁听都不记（旧 `enabled:false` 的行为逐字节一致）。
+    host.log(`presence: 关（mode=${mode}）——不记旁听、不调模型判断、不发自主消息`)
     return { ambient, dispose: () => {} }
   }
   // 说完之后的附加动作（表情包 / 弱反馈 / 话题落地）。装配一次，内部自带每群额度账本。
   const afterSpeak = afterSpeakHandler(host, () => host.config.presence ?? null)
+  // 影子日志（`shadow` 模式的全部意义）：一行 JSON 落本地文件，供人工盲评。
+  // 只记"本来想发什么 + 为什么"，**不带 message_id**——它没发出去。
+  const shadowLog = shadowLogger(host)
   const presence = new GroupPresence({
     config: () => host.config,
     clock: systemClock,
@@ -142,17 +226,10 @@ export function wirePresence(
     persona: personaReader(host),
     memory: memoryRecall(host),
     afterSpeak,
-    remember: (input) => {
-      try {
-        const { written, merged, rejected } = rememberGroupFacts({ dataRoot: dataRootOfDshHome(host.dshHome), ...input })
-        // 只在真的写了东西时打日志：每轮都打会把群里其它日志淹掉。
-        if (written + merged > 0) {
-          host.log(`presence: 群 ${String(input.groupId)} 记住 ${String(written)} 条（合并 ${String(merged)}，拒 ${String(rejected)}）`)
-        }
-      } catch (error) {
-        host.log(`presence: 群记忆写入失败（已忽略）：${error instanceof Error ? error.message : String(error)}`)
-      }
-    },
+    // 每次现取：后台把 live 改成 shadow 时，在途的模型结果也必须被拦下。
+    mode: modeNow,
+    recordShadow: shadowLog,
+    remember: memoryWriter(host),
     ambient,
     complete: createHostComplete({
       context: () => host.bridge.tagContext(),

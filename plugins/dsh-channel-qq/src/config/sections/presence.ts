@@ -17,11 +17,18 @@
  * 都写了后果。
  */
 
-import { b, list, n, type FieldGroup } from '../dsl.js'
+import { b, e, list, n, type FieldGroup } from '../dsl.js'
 
 /** `presence` 段的形状；字段定义与默认值见下面 `PRESENCE_GROUPS`（唯一来源）。 */
 export interface PresenceConfig {
-  /** 总开关（默认 false）：关着时整条旁听/判断/自主发言路径都不跑。 */
+  /**
+   * 运行模式（P5-B）：`off` / `shadow` / `live`。
+   *
+   * 缺席时按 `enabled` 推断（`enabled:true` → `live`），所以旧配置升级后行为不变。
+   * 显式写了 `mode` 之后它**优先于** `enabled`：写了 `shadow` 就不会发消息。
+   */
+  mode: string
+  /** 总开关（默认 false）：关着时整条旁听/判断/自主发言路径都不跑。`mode` 缺席时的旧口径。 */
   enabled: boolean
   /** 白名单群号；空数组 = 谁都不启用。 */
   groups: number[]
@@ -71,6 +78,19 @@ export const PRESENCE_GROUPS: FieldGroup[] = [
     help: '在群里先旁听、觉得够相关才自己说一句。**默认关**：关着时与旧行为逐字节一致，'
       + '不记旁听、不调用模型、不发任何一条自主消息。只对白名单群生效。',
     fields: {
+      // 读法：装配侧每次现取（live）；最后一道发送闸门**每次发送前**再读一次。
+      mode: e('运行模式', 'off', [
+        ['off', '关闭：不判断、不发'],
+        ['shadow', '影子：真判断、真校验、只记不发'],
+        ['live', '线上：真的会发（白名单 + 限频）'],
+      ], {
+        hot: 'live',
+        page: 'groups',
+        help: '三档语义见 README 与 docs/10c：off 什么都不做；shadow 收消息、调模型、走完所有校验，'
+          + '但**一条都不发**，只把"本来想发什么、为什么"记进本地影子日志；live 才会真的发到群里。'
+          + '留空 / 不写这一项时按下面的总开关推断（enabled:true 视为 live），旧配置行为不变。'
+          + '**停发请改这一项，不要用 speakMaxPerHour=0**：那个只停自主发言，停不了表情包。',
+      }),
       // 读法：入站流水线与判断执行器每包/每次判断前经 config() 现取（live）。
       enabled: b('启用旁听与自主接话', false, {
         hot: 'live',

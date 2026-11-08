@@ -40,6 +40,7 @@
     "probe:admin": "node scripts/probe-admin-layout.mjs",
     "eval": "node eval/run.mjs",
     "eval:group": "node eval/group/run.mjs",
+    "eval:group:llm": "node eval/group/llm/run.mjs",
     "eval:kb": "node eval/kb/run.mjs",
     "catalog": "node scripts/update-model-catalog.mjs"
   },

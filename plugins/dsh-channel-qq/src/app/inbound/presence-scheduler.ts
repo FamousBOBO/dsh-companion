@@ -31,6 +31,13 @@ export interface GroupSchedulerStats {
   readonly spoken: number
   /** 出现过"待判消息比 judgeMaxWaitMs 还老"的次数（§7.4 的饥饿告警）。 */
   readonly starvationWarnings: number
+  /**
+   * `shadow` 下"本来要发"的次数（P5-B / §7.3）。
+   *
+   * 与 `spoken` **分开统计**：这两个数字放在一起才有意义——shadow 跑一轮应该看到
+   * `shadowWouldSend > 0` 且 `spoken === 0`；出现 `spoken > 0` 就说明闸门漏了。
+   */
+  readonly shadowWouldSend: number
 }
 
 /** 零值（新群的起点）。 */
@@ -47,6 +54,7 @@ export function emptyStats(): GroupSchedulerStats {
     judgments: 0,
     spoken: 0,
     starvationWarnings: 0,
+    shadowWouldSend: 0,
   }
 }
 

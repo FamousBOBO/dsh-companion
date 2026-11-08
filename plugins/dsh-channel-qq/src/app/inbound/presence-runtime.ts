@@ -89,6 +89,22 @@ export interface PresenceDeps {
     atMs: number
     topic: string | null
   }) => void
+  /**
+   * 现取运行模式（P5-B）：**每次要发之前**都会重新问一遍。
+   *
+   * 缺省 = `live`（旧装配与单测的行为不变）。装配侧传的是
+   * `() => resolveMode(host.config.presence)`，所以后台一改就立即生效。
+   */
+  readonly mode?: () => string
+  /** 影子日志（`shadow` 下"本来想发什么"）；缺省 = 只写普通日志。 */
+  readonly recordShadow?: (decision: {
+    groupId: number
+    action: 'reply' | 'join' | 'react'
+    text: string
+    targetMessageId?: number
+    blockedBy: string
+    atMs: number
+  }) => void
 }
 
 /** 群聊旁听的执行器。一个实例管所有白名单群（每群一份状态，互不影响）。 */
@@ -237,6 +253,16 @@ export class GroupPresence {
       persona: (groupId) => this.personaSnapshot(groupId),
       ...(this.deps.memory === undefined ? {} : { memory: this.deps.memory }),
       ...(this.deps.remember === undefined ? {} : { remember: this.deps.remember }),
+      // 最后一道发送闸门：每次现取（不能装配时读一次，否则在途的模型结果会照发）。
+      modeOf: () => {
+        try {
+          const mode = this.deps.mode?.()
+          return typeof mode === 'string' && mode !== '' ? mode : 'live'
+        } catch {
+          return 'off'
+        }
+      },
+      ...(this.deps.recordShadow === undefined ? {} : { recordShadow: this.deps.recordShadow }),
       ...(this.deps.afterSpeak === undefined ? {} : {
         onSpoken: (input: { groupId: number; action: 'reply' | 'join' | 'react'; text: string; messageId: number; atMs: number }) => {
           const topic = this.timelines.view().topic()

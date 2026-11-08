@@ -690,6 +690,7 @@
     "dailyUserCap": 2
   },
   "presence": {
+    "mode": "off",
     "enabled": false,
     "groups": [],
     "ambientMaxEntries": 40,

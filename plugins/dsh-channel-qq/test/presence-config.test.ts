@@ -20,6 +20,8 @@ import { hotOf } from '../src/config/meta.js'
 
 /** §0.1 的权威默认值表（顺序即段内字段顺序，与 schema 一致）。 */
 const CONTRACT: PresenceConfig = {
+  // P5-B：运行模式。`off` 默认 + `enabled:false` 升级后行为完全不变。
+  mode: 'off',
   enabled: false,
   groups: [],
   ambientMaxEntries: 40,
