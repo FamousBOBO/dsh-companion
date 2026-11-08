@@ -167,7 +167,7 @@ presence.stickers 默认关；companion-expression 的 delivery.enabled 也要�
 | 动作 | 生效 | 影响 |
 |---|---|---|
 | presence.mode = 'shadow' | 立即（热生效） | 不再发消息，但继续判断并记影子日志——**这是首选**，因为它保留了诊断 |
-| presence.mode = 'off' | 立即 | 连旁听都不记，执行器不再创建 |
+| presence.mode = 'off' | 立即 | 连旁听都不记（P9-A2 起执行器**仍然在**，只是不跑；所以改回 shadow/live 不需要重启） |
 | presence.socialGuard = 'off' | 立即 | P6 复核完全不参与（连日志都不记） |
 | 卸载 channel-qq 子插件 | 需重启 | 整条 QQ 通道停止 |
 

@@ -188,13 +188,13 @@ P9-A（上线前兼容性与可靠性审计）见 `docs/11-group-social-runtime-
 
 | 项 | 证据 | 说明 |
 |---|---|---|
-| 停发控制（`presence.mode`） | `presence-mode-core.test.ts` 8 例 + `presence-mode.test.ts` 7 例 | 显式 mode 优先于 `enabled`；闸门**每次发送前现取**，在途模型结果也会被拦下 |
+| 停发控制（`presence.mode`） | `presence-mode-core.test.ts` 8 例 + `presence-mode.test.ts` 7 例 + `presence-legacy-config.test.ts` 13 例 | 显式 mode 优先于 `enabled`；闸门**每次发送前现取**，在途模型结果也会被拦下；**旧配置走真实合成链路仍为 live**（P9-A1） |
 | `speakMaxPerHour=0` 的真实行为 | `docs/10a` §2.1（审计）+ 代码注释 | 旧实现把 0 当「没配」退回 3；现在额度 fail-closed，但**停发要用 `mode`** |
 | 社交场景（P6-A） | `group-scene.test.ts` 39 例 + `group-scene-prompt.test.ts` 10 例 | 只认平台 reply/at 段；判不准写「看不出」；渲染不含命令句 |
 | 四类语义复核（P6-B） | `group-social-guard.test.ts` 20 例 | 每类都配「必须放行」的反例；默认 `warn`（**只记不拦**） |
 | 多群连续性（P7-A） | `group-multi-room.test.ts` 10 例 + `companion-group` 18 例 | 按群号查询；非法/伪群号 fail-closed；系统段只留静态约定 |
-| 调度与诊断（P7-B/C） | `presence-cadence` / `presence-scheduler` 字段 + 单测 | `starvationWarnMs` **只报警不改调度**；分段耗时与上下文注入计数 |
-| 后台诊断页（P8 §5.4） | `presence-resource.test.ts` 9 例 | 只读；群号脱敏末四位；**不含正文与完整 QQ 号**；无样本时给 `null` 不给 0 |
+| 调度与诊断（P7-B/C） | `presence-cadence` / `presence-scheduler` 字段 + 单测 + `presence-send-timing.test.ts` 7 例 | `starvationWarnMs` **只报警不改调度**；三段耗时真正分开：模型 / 合批 / **平台发送本身**（P9-A3），失败也计入尝试 |
+| 后台诊断页（P8 §5.4） | `presence-resource.test.ts` 10 例 | 只读；群号脱敏末四位；**不含正文与完整 QQ 号**；无样本时给 `null` 不给 0；`running` 与 `mounted` 分开给（P9-A2） |
 | 离线评测 | `npm run eval:group` → PASS 49 / FAIL 0 / WARN 3 / 52 | WARN 从 4 降到 3：G30 已由代码闭环 |
 | 真实模型通道 | `npm run eval:group:llm`（`--selftest` 通过，绊线 0 次） | 通道就绪但**未配端点**，退出码 2；没有真实模型数据 |
 

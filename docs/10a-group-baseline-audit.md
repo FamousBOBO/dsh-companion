@@ -166,9 +166,14 @@ live   真的会发（白名单 + 限频 + 冷却）
 
 | 字段 | 默认 | 热生效 | 影响 |
 |---|---|---|---|
-| `presence.mode` | `off` | live | `off` / `shadow` / `live`。缺席时按 `enabled` 推断，旧配置行为不变 |
+| `presence.mode` | `''`（未指定） | live | `''` / `off` / `shadow` / `live`。缺席时按 `enabled` 推断，旧配置行为不变 |
 
-黄金快照 `test/golden/config/resolved.txt` 与 `layers.txt` 已同步（diff 只有 `"mode": "off"` 一行）。
+> **默认值是空串，不是 `off`（P9-A1 修正）**：P5 那版默认写 `off`，但 `DEFAULT_CONFIG` 由
+> schema 生成，于是合成器会给**每一份旧配置**补上 `mode:'off'`，而 `resolveMode` 看到显式值
+> 就照办——`enabled:true` 的老部署升级后被静默停用。改成空串之后「没指定」与「显式 off」
+> 在数据上就能区分，旧配置才会真的走 `enabled` 那条兼容路径。详见 `docs/11` §A1。
+
+黄金快照 `test/golden/config/resolved.txt` 与 `layers.txt` 已同步（diff 只有 `"mode"` 这一行的值：`resolved.txt` 1 处、`layers.txt` 16 处，原文都是 `"off"`）。
 
 ---
 
