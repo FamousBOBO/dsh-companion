@@ -296,7 +296,10 @@ export class GroupPresence {
       ...(this.deps.recordShadow === undefined ? {} : { recordShadow: this.deps.recordShadow }),
       ...(this.deps.afterSpeak === undefined ? {} : {
         onSpoken: (input: { groupId: number; action: 'reply' | 'join' | 'react'; text: string; messageId: number; atMs: number }) => {
-          const topic = this.timelines.view().topic()
+          // 话题**按群号**取（P9-G §1 的第二处修复）：`view().topic()` 是「唯一活跃群」的旧降级，
+          // 两个群都有消息时它返回 `null`，于是「说完之后贴表情 / 落地话题」那一层拿不到话题。
+          // 这里本来就知道群号（`input.groupId`），没有理由退回到猜。
+          const topic = this.timelines.scopedView().topic(input.groupId)
           this.deps.afterSpeak?.({ ...input, topic })
         },
       }),
