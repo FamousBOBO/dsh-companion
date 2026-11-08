@@ -19,6 +19,8 @@ import { registerPulseTools } from './pulse-tools.mjs';
 import { createMemoryEngine, shareEngine, sharedEngineFor, VERSION as MEMORY_VERSION } from '../companion-memory/index.mjs?v=0.4.0';
 import { resolveSuitePaths } from './suite-paths.mjs';
 import { createGroupPersonaPort, publishGroupPersonaPort, resolveGroupPersonaPort } from './group-persona.mjs';
+import { createGroupMemoryStore, GROUP_MEMORY_RELATIVE_FILE } from './group-memory.mjs';
+import { publishCompanionService } from './port-publish.mjs';
 
 // The cognitive runtime is optional on purpose: if its files are missing or a module
 // fails to evaluate, the companion keeps running on the existing chat + memory path.
@@ -775,6 +777,77 @@ export function mountCompanion(ctx, root, options = {}) {
     console.log(`[companion-foundation] group persona port not published: ${error instanceof Error ? error.message : String(error)}`);
   }
   ctx.on('dispose', () => { try { releaseGroupPersona(); } catch { /* 释放必须幂等且不抛 */ } });
+
+  // P1 §5.1: the group-social store — group facts, member facts and the short-lived topic state.
+  //
+  // Why a **separate** database rather than rows in the main memory store: `companion-memory`'s
+  // `memories` table has no group dimension (`user_id`/`persona_id`/`world_id` only), and its
+  // `scopeMatches()` treats `worldId: ''` as visible-to-everyone — so impersonating a group with a
+  // world id would leak private-chat memory into group recall. The group store keeps `group_id` on
+  // every table and on every query, so isolation is structural instead of a convention.
+  //
+  // Mounting is best-effort on purpose: an unreadable store means "the group has no memory yet",
+  // which the chat path already renders honestly, while a thrown error here would take the whole
+  // foundation (chat, long-term memory, tools) down for an optional extra.
+  // **Lazy on purpose.** Opening the database at mount time would create a file (and hold a
+  // handle) for every deployment that never uses group chat — and on Windows an open handle makes
+  // the containing directory undeletable, which broke the integration test's fixture cleanup the
+  // first time this was written eagerly. So the store is created on the first actual call, and a
+  // mount that never touches group memory touches nothing on disk.
+  let groupMemory = null;
+  let groupMemoryReason = '';
+  let groupMemoryAttempted = false;
+  const openGroupMemoryStore = () => {
+    if (groupMemory !== null) return groupMemory;
+    if (groupMemoryAttempted) return null;
+    groupMemoryAttempted = true;
+    try {
+      groupMemory = createGroupMemoryStore({ root });
+      const status = groupMemory.status();
+      groupMemoryReason = status?.degraded === true ? String(status.reason ?? 'degraded') : '';
+      console.log(groupMemoryReason === ''
+        ? '[companion-foundation] group memory store ready (file=' + String(status?.file ?? GROUP_MEMORY_RELATIVE_FILE) + ')'
+        : '[companion-foundation] group memory store degraded (' + groupMemoryReason + '); group chats continue without memory');
+    } catch (error) {
+      groupMemoryReason = error instanceof Error ? error.message : String(error);
+      console.log('[companion-foundation] group memory store unavailable (' + groupMemoryReason + '); group chats continue without memory');
+    }
+    return groupMemory;
+  };
+  // The port is published even when the store is degraded: the consumer then gets the store's own
+  // empty answers rather than "no service", which keeps one code path (and one log line) in the
+  // group channel instead of two.
+  let releaseGroupMemory = () => {};
+  try {
+    const emptyQuery = { group: [], member: [], topic: null, dropped: ['no-store'], reason: 'no-store' };
+    const port = {
+      // Every method funnels through `openGroupMemoryStore()`: the first real call is what opens
+      // the file, so a deployment that never uses groups never creates one.
+      query: input => (openGroupMemoryStore() ? groupMemory.query(input) : emptyQuery),
+      status: () => (openGroupMemoryStore()
+        ? groupMemory.status()
+        : { groups: 0, facts: 0, memberFacts: 0, topics: 0, file: '', degraded: true, reason: groupMemoryReason }),
+      writeGroupFact: input => (openGroupMemoryStore() ? groupMemory.writeGroupFact(input) : { ok: false, reason: 'no-store' }),
+      writeMemberFact: input => (openGroupMemoryStore() ? groupMemory.writeMemberFact(input) : { ok: false, reason: 'no-store' }),
+      upsertTopic: input => (openGroupMemoryStore() ? groupMemory.upsertTopic(input) : { ok: false, reason: 'no-store' }),
+      topicState: (groupId, options) => (openGroupMemoryStore() ? groupMemory.topicState(groupId, options) : null),
+      forgetGroup: groupId => (openGroupMemoryStore() ? groupMemory.forgetGroup(groupId) : { ok: false, reason: 'no-store' }),
+    };
+    releaseGroupMemory = publishCompanionService({
+      root,
+      name: 'companionGroupMemory',
+      service: port,
+      ready: () => true,
+      log: message => console.log('[companion-foundation] group memory: ' + message),
+    });
+    ctx.provide?.('companionGroupMemory', port);
+  } catch (error) {
+    console.log('[companion-foundation] group memory port not published: ' + (error instanceof Error ? error.message : String(error)));
+  }
+  ctx.on('dispose', () => {
+    try { releaseGroupMemory(); } catch { /* 释放必须幂等且不抛 */ }
+    try { groupMemory?.close?.(); } catch { /* 关库失败只影响下次打开 */ }
+  });
   return {
     store, identity, memory, engine, cognitive,
     backend: sqliteBackend ? 'sqlite' : 'legacy',

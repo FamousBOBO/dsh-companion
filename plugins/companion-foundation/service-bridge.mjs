@@ -18,7 +18,13 @@ import path from 'node:path';
 // invent a character — the exact failure the port exists to prevent. Publishing is done by
 // `group-persona.mjs#publishGroupPersonaPort`; this file only grants the name.
 const homes = new Map();
-const names = new Set(['companionAgenda', 'companionContactShare', 'companionGroupPersona', 'companionHealth']);
+const names = new Set([
+  'companionAgenda',
+  'companionContactShare',
+  'companionGroupMemory',
+  'companionGroupPersona',
+  'companionHealth',
+]);
 function keyOf(root) {
   const home = path.resolve(root, 'home');
   let canonical = home;
