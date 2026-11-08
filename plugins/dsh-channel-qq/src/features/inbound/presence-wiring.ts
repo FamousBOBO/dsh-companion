@@ -11,6 +11,7 @@
 import { AmbientStore } from '../../app/inbound/ambient-store.js'
 import { GroupPresence } from '../../app/inbound/presence-runtime.js'
 import { createHostComplete } from '../../adapters/dsh-host/completion.js'
+import { dataRootOfDshHome, readGroupPersona, type GroupPersonaDeps } from '../../adapters/dsh-host/group-persona.js'
 import { systemClock } from '../../ports/clock.js'
 import type { PresenceObserver } from '../../app/inbound/group-ambient.js'
 import type { SentLogHub } from '../../sent-log.js'
@@ -40,11 +41,34 @@ export function wirePresence(
     host.log('presence: 关（presence.enabled=false）——不记旁听、不调模型判断、不发自主消息')
     return { ambient, dispose: () => {} }
   }
+  // 人格快照：**每轮现取**（快照自带版本号），解析路径与失败原因由适配层给。
+  // 这条路径没有系统提示词、没有会话，所以人格只能从这条缝进提示词；适配层拿不到就
+  // 返回 null，提示词里明说"这次拿不到完整人格"，而不是让它自由发挥。
+  const personaDeps: GroupPersonaDeps = {
+    context: () => host.bridge.tagContext(),
+    // 桥是可选通道（新布局下 home 的父目录才是套件根，能不能解析到取决于部署形态）。
+    bridge: () => null,
+    dataRoot: () => dataRootOfDshHome(host.dshHome),
+    log: host.log,
+  }
+  let lastPersonaNote = ''
   const presence = new GroupPresence({
     config: () => host.config,
     clock: systemClock,
     log: host.log,
     platform: () => host.get('platform')?.platform ?? fallbackPlatform,
+    persona: () => {
+      const read = readGroupPersona(personaDeps)
+      // 只在"来源变了"时打一行：每轮都打会把群里其它日志淹掉。
+      const note = read.snapshot === null
+        ? `none(${read.reason})`
+        : `${read.via} v${read.snapshot.version}`
+      if (note !== lastPersonaNote) {
+        lastPersonaNote = note
+        host.log(`presence: 人格快照 ${note}`)
+      }
+      return read.snapshot
+    },
     ambient,
     complete: createHostComplete({
       context: () => host.bridge.tagContext(),

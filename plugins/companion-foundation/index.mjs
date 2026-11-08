@@ -18,6 +18,7 @@ import { registerHealthTools } from './health-tools.mjs';
 import { registerPulseTools } from './pulse-tools.mjs';
 import { createMemoryEngine, shareEngine, sharedEngineFor, VERSION as MEMORY_VERSION } from '../companion-memory/index.mjs?v=0.4.0';
 import { resolveSuitePaths } from './suite-paths.mjs';
+import { createGroupPersonaPort, publishGroupPersonaPort, resolveGroupPersonaPort } from './group-persona.mjs';
 
 // The cognitive runtime is optional on purpose: if its files are missing or a module
 // fails to evaluate, the companion keeps running on the existing chat + memory path.
@@ -737,9 +738,53 @@ export function mountCompanion(ctx, root, options = {}) {
   if (agendaPublication?.verified !== true) {
     console.log(`[companion-foundation] the agenda service could NOT be published with a verified read-back (via=${String(agendaPublication?.via ?? 'none')}); reminder delivery will report not-wired`);
   }
+  // P0-A §4.1: `companionGroupPersona` — the group-visible slice of the persona document.
+  //
+  // Why a separate port instead of letting the group preset read the file: the group preset is a
+  // sibling row (§4.1 and the health incident of 2026-11-04) and cannot resolve `suite-paths` for
+  // another plugin; and the extraction rules (which sections may leave private chat at all) are
+  // exactly the rules that must live in one reviewed place, not in every consumer. The port reads
+  // the *same* file the system prompt above reads (`personaFile`), so a relocated or renamed
+  // persona can never leave the two views disagreeing.
+  //
+  // Publishing never throws and is never fatal: a group preset without a snapshot stays generic,
+  // which is honest; a crash here would take the whole foundation (chat, memory, tools) down with
+  // it for a prompt nicety.
+  let releaseGroupPersona = () => {};
+  try {
+    const groupPersonaPort = createGroupPersonaPort({
+      root,
+      ...(personaFile ? { personaFile } : {}),
+      personaId: suitePaths?.personaId ?? '',
+      // 来源标签跟着 `suite-paths` 的解析结果走：裸挂载（没有 suitePaths）时 index 用的就是
+      // 历史布局 `workspace/PERSONA.md`，标签必须说 legacy，不能冒充 config/persona.md。
+      source: suitePaths?.personaSource ?? 'legacy',
+    });
+    // `publishGroupPersonaPort` 一次发三条路：`ctx.provide`(cordis 契约) + process 注册表
+    // （裸 dataRoot 键，与消费端 `dirname(realpathSync(host.dshHome))` 同一个值）+ service-bridge。
+    // `root` 就是 dataRoot，不是 suiteRoot、不是 `data/home`——键错了是**静默**失效。
+    releaseGroupPersona = publishGroupPersonaPort(ctx, groupPersonaPort, {
+      root,
+      log: message => console.log(`[companion-foundation] group persona: ${message}`),
+    });
+    const published = groupPersonaPort.get();
+    console.log(published
+      ? `[companion-foundation] group persona snapshot published; version=${published.version}; source=${published.source}`
+      : '[companion-foundation] group persona port published without a snapshot (no readable persona file); group chats will stay generic');
+  } catch (error) {
+    console.log(`[companion-foundation] group persona port not published: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  ctx.on('dispose', () => { try { releaseGroupPersona(); } catch { /* 释放必须幂等且不抛 */ } });
   return {
     store, identity, memory, engine, cognitive,
     backend: sqliteBackend ? 'sqlite' : 'legacy',
     agenda: agendaPort,
+    // P0-A: the group-chat view of the persona, exposed on the mount result as well. The hosted
+    // service name is what `plugins/companion-group` and the QQ channel actually read; this getter
+    // is for callers that already hold the mount result (diagnostics, tests) and must not have to
+    // resolve the port again.
+    get groupPersona() {
+      try { return resolveGroupPersonaPort(ctx, root)?.get?.() ?? null; } catch { return null; }
+    },
   };
 }

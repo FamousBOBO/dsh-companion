@@ -10,8 +10,15 @@ import path from 'node:path';
 // answered `undefined` for both consumers and the whole health feature (tools, routes, the injected
 // pulse line) was inert in production while the service itself ran fine. The bridge is the project's
 // sanctioned way across that boundary; the name below is what makes it reachable.
+//
+// `companionGroupPersona` joined 2026-11-08 for the same reason, in the public direction: the
+// group-chat preset (`plugins/companion-group`, and the QQ channel that reads it) is another sibling
+// row, and the human-readable persona document is only resolvable from here. Without the name below,
+// every group turn would answer "no persona is published" and the model would either stay generic or
+// invent a character — the exact failure the port exists to prevent. Publishing is done by
+// `group-persona.mjs#publishGroupPersonaPort`; this file only grants the name.
 const homes = new Map();
-const names = new Set(['companionAgenda', 'companionContactShare', 'companionHealth']);
+const names = new Set(['companionAgenda', 'companionContactShare', 'companionGroupPersona', 'companionHealth']);
 function keyOf(root) {
   const home = path.resolve(root, 'home');
   let canonical = home;

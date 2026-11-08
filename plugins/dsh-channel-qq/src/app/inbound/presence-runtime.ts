@@ -28,6 +28,7 @@ import { DEFAULTS, limitsOf, positiveOr, runPresenceCycle, type CompletePort, ty
 import type { Clock, TimerHandle } from '../../ports/clock.js'
 import type { ChatPlatform } from '../../ports/platform.js'
 import type { JudgeEntry } from './presence-judge.js'
+import type { GroupPersonaSnapshot } from './group-persona.js'
 
 export type { CompletePort, CompleteRequest, CompleteResult, PresenceView } from './presence-flow.js'
 
@@ -42,6 +43,14 @@ export interface PresenceDeps {
   readonly complete: CompletePort
   /** 写 sent-log（她自己的出站账本）；失败只记日志。 */
   readonly recordSent: (groupId: number, messageId: number | null, text: string) => Promise<void>
+  /**
+   * 现取群聊可见的人格快照（P0 §4.2）。
+   *
+   * 为什么是"取快照的函数"而不是"一份快照"：快照带版本号，人格文件改了要在下一轮判断
+   * 里生效，而不是等通道重启。解析成本由发布方（foundation）缓存，这里每轮只多一次
+   * 函数调用。返回 `null` = 取不到，提示词会明说降级（绝不假装已经读到完整人格）。
+   */
+  readonly persona: () => GroupPersonaSnapshot | null
 }
 
 /** 她最近说过的话留几条（防重复；提示词里最多渲染 6 条）。 */
@@ -140,6 +149,7 @@ export class GroupPresence {
           background,
           sentLines: this.sent.get(groupId) ?? [],
           nowLabel: nowLabelOf(this.deps.clock.date()),
+          persona: this.personaSnapshot(groupId),
         },
         { clock: this.deps.clock, log: this.deps.log, platform: this.deps.platform, complete: this.deps.complete, recordSent: this.deps.recordSent },
       )
@@ -182,11 +192,32 @@ export class GroupPresence {
         userId: typeof selfId === 'number' ? selfId : 0,
         name: '',
         text,
+        body: text,
         atMs: this.deps.clock.now(),
         self: true,
       })
     } catch (error) {
       this.deps.log(`presence: 群 ${String(groupId)} 回灌旁听失败（已忽略）：${describe(error)}`)
+    }
+  }
+
+  /**
+   * 取一次人格快照（**绝不抛**：这条路径上任何异常都只能让"这一轮少一段人格"）。
+   *
+   * 拿不到时打一行日志——一行就够，因为"她说话不像角色"这个问题唯一的排查起点就是
+   * "快照到底有没有接上"。
+   */
+  private personaSnapshot(groupId: number): GroupPersonaSnapshot | null {
+    try {
+      const snapshot = this.deps.persona()
+      if (snapshot === null) {
+        this.deps.log(`presence: 群 ${String(groupId)} 人格快照不可用，这一轮用降级人格`)
+        return null
+      }
+      return snapshot
+    } catch (error) {
+      this.deps.log(`presence: 群 ${String(groupId)} 取人格快照抛错（已降级）：${describe(error)}`)
+      return null
     }
   }
 
@@ -242,10 +273,16 @@ function windowOf(entries: readonly AmbientEntry[], maxEntries: number, maxChars
     total += size
   }
   return picked.reverse().map((entry) => ({
+    messageId: entry.messageId,
     name: entry.name,
     userId: entry.userId,
     text: entry.text,
+    // 正文单独带一份：渲染层要显式输出一次发送者身份，整行里那段抬头就不能再出现。
+    // 环里没存 body（旧写入方 / 测试直接 `add`）时不填这个键：让判断层自己去剥抬头，
+    // 而不是在这里塞一整行当正文——那正好会渲染成"身份出现两次"。
+    ...(entry.body === undefined ? {} : { body: entry.body }),
     self: entry.self,
+    atMs: entry.atMs,
   }))
 }
 

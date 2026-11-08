@@ -26,6 +26,7 @@ import {
 import type { Clock } from '../../ports/clock.js'
 import type { ChatPlatform } from '../../ports/platform.js'
 import { buildJudgePrompt, parseJudgeReply, type JudgeEntry } from './presence-judge.js'
+import type { GroupPersonaSnapshot } from './group-persona.js'
 import type { PresenceSettings } from './ambient-store.js'
 
 // ── 一次纯补全的端口（实现在 `adapters/dsh-host/completion.ts`） ──────────────
@@ -106,6 +107,13 @@ export interface CycleInput {
   readonly sentLines: readonly string[]
   /** 提示词里的"现在几点"（由调用方用注入时钟格式化）。 */
   readonly nowLabel: string
+  /**
+   * 群聊可见的人格快照（P0 §4.2）；`null` = 拿不到。
+   *
+   * 由调用方**每轮现取**（快照带版本号，人格改了不该等到重启才生效），这里只负责把它
+   * 交给提示词，不负责解析来源——那是适配层的事。
+   */
+  readonly persona: GroupPersonaSnapshot | null
 }
 
 /** 这一次流程能碰到的外部世界（全部注入，测试里全是假件）。 */
@@ -149,6 +157,7 @@ export async function runPresenceCycle(input: CycleInput, deps: CycleDeps): Prom
     sentLines: input.sentLines,
     replyMaxChars,
     nowLabel: input.nowLabel,
+    persona: input.persona,
   })
   const result = await deps.complete.complete({
     prompt,

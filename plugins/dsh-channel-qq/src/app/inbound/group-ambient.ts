@@ -11,7 +11,7 @@
  * 两条写路径会让同一条消息进两次、游标也会错位。
  */
 
-import { renderMessageLine } from '../../core/message/render.js'
+import { renderMessageContent, renderMessageLine } from '../../core/message/render.js'
 import type { ParsedInbound } from '../../core/message/parse.js'
 import type { OneBotEvent } from '../../types.js'
 import {
@@ -62,6 +62,15 @@ export function ambientTextOf(event: OneBotEvent, parsed: ParsedInbound, nowMs: 
   return line.replace(/\s+$/, '')
 }
 
+/**
+ * 一条旁听的**正文**：与 {@link ambientTextOf} 同一套取法（`renderMessageContent`），
+ * 但不带发送者抬头。没有正文时返回 `null`（与整行同一条判据）。
+ */
+export function ambientBodyOf(parsed: ParsedInbound): string | null {
+  const body = renderMessageContent(parsed)
+  return body === null ? null : body.replace(/\s+$/, '')
+}
+
 export interface CaptureInput {
   readonly ambient?: AmbientStore | undefined
   readonly presence?: PresenceObserver | undefined
@@ -86,11 +95,17 @@ export function captureAmbient(input: CaptureInput): void {
   if (text === null) return
   const self = isSelfMessage(input.event, input.selfId)
   const ring = store.ring(input.groupId, ambientLimitsOf(input.settings))
+  const body = ambientBodyOf(
+    input.parsed.plainText.trim() === '' && input.parsed.text.trim() !== ''
+      ? { ...input.parsed, plainText: input.parsed.text }
+      : input.parsed,
+  )
   const outcome = ring.add({
     messageId: typeof input.event.message_id === 'number' ? input.event.message_id : null,
     userId: input.event.user_id ?? 0,
     name: input.event.sender?.card?.trim() || input.event.sender?.nickname || '',
     text,
+    ...(body === null ? {} : { body }),
     atMs: input.nowMs,
     self,
   })

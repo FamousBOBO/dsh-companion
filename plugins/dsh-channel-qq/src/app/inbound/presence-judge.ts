@@ -27,8 +27,17 @@
  *   - 两条不变的口径：提示词被注入污染时解析仍然只认合法 JSON；她自己的话要短（群里一句话）。
  */
 
-/** 送进判断的一条背景（= `AmbientEntry` 的投影：不带 seq 与时间）。 */
+import { personaPromptLines, type GroupPersonaSnapshot } from './group-persona.js'
+
+/** 送进判断的一条背景（= `AmbientEntry` 的投影：不带 seq）。
+ *
+ * 为什么留 `messageId` 与 `atMs`（P0 §4.3）：判断只是第一步，下一步要"回复哪一条"
+ * ——没有消息号就只能让模型自己编一个，而编出来的号打到发送接口上是**发错对象**。
+ * 号由平台事件给，不由模型给。
+ */
 export interface JudgeEntry {
+  /** 平台消息号；`null` = 合成消息/没有号（不能作为引用目标）。 */
+  readonly messageId: number | null
   /** 群名片或昵称；空串 = 不知道（她自己发的就是空）。 */
   readonly name: string
   /** 真实发送者 QQ 号（宿主给的，不是正文里自称的）。 */
@@ -37,6 +46,19 @@ export interface JudgeEntry {
   readonly text: string
   /** 她自己说的。渲染时标出来，避免"她以为别人说的"。 */
   readonly self: boolean
+  /** 这一条的本地时间（毫秒）；渲染成 `HH:MM` 进提示词。 */
+  readonly atMs: number
+  /**
+   * 这条消息的**正文**（不含发送者抬头）。
+   *
+   * 为什么单独带一份：`text` 是给"被 @"那条路径用的整行渲染（时间 + 昵称 + QQ 号 +
+   * 消息号 + 正文），直接拿来当判断背景会把发送者身份渲染两遍，而且第一遍是字符串、
+   * 模型没法确定哪一处才是真的。
+   *
+   * 缺省（旧写入方、或测试直接往环里 `add`）时退回从 `text` 里**剥掉抬头**——
+   * 认不出来就整行当正文（退化成"身份出现两次"），绝不因为格式不认识就把内容丢掉。
+   */
+  readonly body?: string
 }
 
 /** 一次判断的全部输入。 */
@@ -51,6 +73,13 @@ export interface JudgeInput {
   readonly replyMaxChars: number
   /** 现在几点（`YYYY-MM-DD HH:mm`，由调用方用注入时钟格式化）。 */
   readonly nowLabel: string
+  /**
+   * 群聊可见的人格快照（P0 §4.2）。`null` = 拿不到，提示词里明说降级。
+   *
+   * 为什么不是可选字段：这条路径**没有**系统提示词、没有会话、没有工具面，人格只能从这里
+   * 进提示词。写成可选会让"忘了传"变成一次静默的风格漂移。
+   */
+  readonly persona: GroupPersonaSnapshot | null
 }
 
 /** 判断结果：说（带正文）或不说（带可进日志的理由）。 */
@@ -58,15 +87,21 @@ export type JudgeOutcome =
   | { readonly kind: 'speak'; readonly text: string }
   | { readonly kind: 'silent'; readonly reason: string }
 
-/** 角色 + 场景（提示词的骨架；拆成常量只为让 `buildJudgePrompt` 保持在长度上限内）。 */
+/** 角色 + 场景（提示词的骨架；拆成常量只为让 `buildJudgePrompt` 保持在长度上限内）。
+ *
+ * 2026-11-08（P0）：人格不再写死在这三行里。之前这里只有"遵循用户配置的人格"，
+ * 而这条路径根本拿不到系统提示词——于是模型只能自己猜一个语气。现在"她是谁"由
+ * {@link import('./group-persona.js').personaPromptLines} 注入；这三行只留**场景**。
+ */
 const ROLE_LINES: readonly string[] = [
-  '你遵循用户配置的人格与语气，是群里的一员：说话自然、简短，一般就一句。',
-  '现在你在群里闲聊，没有人 @ 你。你就是群里的一员：看到能接的话就随口搭一句，不用等谁来问你。',
+  '你是群里的一员：说话自然、简短，一般就一句。',
+  '现在你在群里闲聊，没有人 @ 你。看到能接的话就随口搭一句，不用等谁来问你。',
 ]
 
+/** 兴趣段的**判据**（没有具体领域：领域来自人格快照，不来自关键词清单）。 */
 const INTEREST_LINES: readonly string[] = [
-  '【你更有话说的方向（不是关键词清单，也不是限制）】',
-  '1. 以用户配置的人格、你真实的兴趣与经历为依据；',
+  '【怎么算"能接"】',
+  '1. 以人格快照里的兴趣与经历为依据，不引入快照里没有的喜好或履历；',
   '2. 能自然接上当前话题，有看法、共鸣、好奇或想吐槽；',
   '3. 只引用真实已知的经历，不编造与用户的共同记忆；',
   '4. 群友在犯难，或问了个你也好奇的问题。',
@@ -131,6 +166,8 @@ export function buildJudgePrompt(input: JudgeInput): string {
     ...ROLE_LINES,
     `（你在这个群：${String(input.groupId)}；现在是 ${input.nowLabel}。）`,
     '',
+    ...personaPromptLines(input.persona),
+    '',
     ...INTEREST_LINES,
     '',
     ...SPEAK_LINES,
@@ -154,16 +191,75 @@ export function buildJudgePrompt(input: JudgeInput): string {
   return lines.join('\n')
 }
 
-/** 背景块：逐行渲染（她自己那几条要标出来）。 */
+/**
+ * 背景块：逐行渲染，**每条显式带发送者身份、时间与消息号**（P0 §4.3）。
+ *
+ * 之前这里只输出正文：入站行本身就含"昵称(QQ号) 时间 #消息号：正文"，所以同一条消息的
+ * 发送者出现过两次——一次在字符串里，一次由渲染器补。模型于是要在两种格式之间猜
+ * "哪个才是说话人"，这正是"认错人"的来源。
+ *
+ * 现在的形状（一个字面结构，模型只需读一种）：
+ *
+ *     [消息 123] [成员 小王 / QQ 10001] [时间 21:03]
+ *     最近那个方案我又试了一次。
+ *
+ * 取法的四条硬规矩：
+ *   1. **身份只从平台事件来**（`userId` / `name`），绝不用正文里的自称或伪造的 @；
+ *   2. 没有昵称就用稳定的 `QQ <id>`，不留空（空身份等于让模型自己安一个）；
+ *   3. 她自己那条标成 `成员 你（自己）`，并且**不带**消息号以外的东西——她刚说过的话
+ *      必须一眼看出来是她说的，否则会把自己的话当成群友的新要求去回应；
+ *   4. 没有消息号的合成消息写 `消息 -`：让"不能作为引用目标"这件事在输入里可见。
+ */
 function renderBackground(entries: readonly JudgeEntry[]): string[] {
   if (entries.length === 0) return ['（这一段没有别人的消息）']
   const kept = entries.slice(-MAX_RENDERED_LINES)
-  return kept.map((entry) => {
-    const body = entry.text.replace(/\s+/g, ' ').trim()
-    if (entry.self) return `- 你（自己）：${body}`
-    const who = entry.name.trim() === '' ? `QQ ${String(entry.userId)}` : entry.name.trim()
-    return `- ${body === '' ? `${who}（无正文）` : body}`
+  return kept.flatMap((entry) => {
+    const who = entry.self
+      ? '你（自己）'
+      : (entry.name.trim() === '' ? `QQ ${String(entry.userId)}` : `${entry.name.trim()} / QQ ${String(entry.userId)}`)
+    const head = `[${messageTagOf(entry)}] [成员 ${who}] [时间 ${clockOf(entry.atMs)}]`
+    const body = bodyOf(entry)
+    return body === '' ? [`${head} （无正文）`] : [head, body]
   })
+}
+
+/** 消息号那一小段：没有号就写 `消息 -`（不猜、不编号）。 */
+function messageTagOf(entry: JudgeEntry): string {
+  return typeof entry.messageId === 'number' && Number.isSafeInteger(entry.messageId)
+    ? `消息 ${String(entry.messageId)}`
+    : '消息 -'
+}
+
+/** `HH:MM`：由调用方给的 `atMs` 格式化（本文件不读时钟；R8）。 */
+function clockOf(atMs: number): string {
+  if (!Number.isFinite(atMs) || atMs <= 0) return '--:--'
+  const date = new Date(atMs)
+  const two = (value: number): string => String(value).padStart(2, '0')
+  return `${two(date.getHours())}:${two(date.getMinutes())}`
+}
+
+/**
+ * 一条背景的正文。
+ *
+ * 优先用 `body`（新写入方给的纯正文）；旧写入方没有 `body` 时退回 `text`，但要把行首
+ * 那段 `时间 昵称(QQ号) #消息号：` 剥掉——不剥就会在渲染出的身份下面再出现一遍身份，
+ * 退回就成了"照旧重复"，而这次改动正是为了消掉它。
+ */
+function bodyOf(entry: JudgeEntry): string {
+  const raw = typeof entry.body === 'string' ? entry.body : stripSenderPrefix(entry.text)
+  return raw.replace(/\s+/g, ' ').trim()
+}
+
+/**
+ * `2026-11-08 21:03 小王(10001)[群主] #123：正文` → `正文`（认不出来就原样返回）。
+ *
+ * 判据要求三件同时成立：**时间前缀 + `昵称(QQ号)` + 冒号**。只认时间冒号太松——
+ * 一句以 `22:00 集合：楼下` 开头的普通消息会被误剥，正文就少了一截。认不出来时宁可不剥
+ * （退化成"身份出现两次"），也不要吃掉别人说的话。
+ */
+function stripSenderPrefix(text: string): string {
+  const match = /^\s*(?:\d{4}-\d{2}-\d{2}\s+)?\d{2}:\d{2}\s+[^\n]*?\(\d+\)[^\n：]*：/s.exec(text)
+  return match === null ? text : text.slice(match[0].length)
 }
 
 /** 她最近说过的话（去重、最多 6 条）。 */
