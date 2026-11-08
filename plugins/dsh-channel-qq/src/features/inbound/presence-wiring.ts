@@ -19,6 +19,7 @@ import { createHostComplete } from '../../adapters/dsh-host/completion.js'
 import { dataRootOfDshHome, readGroupPersona, type GroupPersonaDeps } from '../../adapters/dsh-host/group-persona.js'
 import { openGroupMemory, recallGroupMemory, rememberGroupFacts } from '../../adapters/dsh-host/group-memory.js'
 import { publishServiceToPeers } from '../../adapters/dsh-host/service-registry.js'
+import { afterSpeakHandler } from './presence-afterspeak.js'
 import { DEFAULTS, positiveOr } from '../../app/inbound/presence-flow.js'
 import { systemClock } from '../../ports/clock.js'
 import type { PresenceObserver } from '../../app/inbound/group-ambient.js'
@@ -131,6 +132,8 @@ export function wirePresence(
     host.log('presence: 关（presence.enabled=false）——不记旁听、不调模型判断、不发自主消息')
     return { ambient, dispose: () => {} }
   }
+  // 说完之后的附加动作（表情包 / 弱反馈 / 话题落地）。装配一次，内部自带每群额度账本。
+  const afterSpeak = afterSpeakHandler(host, () => host.config.presence ?? null)
   const presence = new GroupPresence({
     config: () => host.config,
     clock: systemClock,
@@ -138,6 +141,7 @@ export function wirePresence(
     platform: () => host.get('platform')?.platform ?? fallbackPlatform,
     persona: personaReader(host),
     memory: memoryRecall(host),
+    afterSpeak,
     remember: (input) => {
       try {
         const { written, merged, rejected } = rememberGroupFacts({ dataRoot: dataRootOfDshHome(host.dshHome), ...input })

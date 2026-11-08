@@ -38,6 +38,10 @@ const CONTRACT: PresenceConfig = {
   // P2 §6.5 的引用时间窗与 P1 §5.4 的记忆预算。
   replyWindowMs: 600_000,
   memoryBudgetChars: 800,
+  // P4 §8.2 的表情包（默认关闭：它依赖图库已授权）。
+  stickers: false,
+  stickerMinIntervalMs: 600_000,
+  stickerMaxPerHour: 1,
   replyMaxChars: 70,
 }
 
@@ -93,8 +97,9 @@ test('presence：每个字段都有中文 label / help，且 hot 全为 live、p
 test('presence：数值字段都带 min/max/step 与 unit', () => {
   const group = presenceGroup()
   const numeric = FIELDS.filter((key) => group.fields[key]?.kind === 'number')
-  // 15 = 原有 11 个 + P3 的 batchQuietMs/judgeMaxWaitMs + P2 的 replyWindowMs + P1 的 memoryBudgetChars
-  assert.equal(numeric.length, 15, '除 enabled（开关）与 groups（列表）外都应是数值字段')
+  // 17 = 原有 11 + P3 的 batchQuietMs/judgeMaxWaitMs + P2 的 replyWindowMs/memoryBudgetChars
+  //      + P4 的 stickerMinIntervalMs/stickerMaxPerHour（stickers 是开关，不是数值）
+  assert.equal(numeric.length, 17, '除开关与列表外都应是数值字段')
   for (const key of numeric) {
     const spec = group.fields[key]
     assert.ok(spec !== undefined)

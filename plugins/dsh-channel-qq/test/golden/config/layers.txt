@@ -709,6 +709,9 @@ override = {}
   "speakMaxPerHour": 3,
   "replyWindowMs": 600000,
   "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
  }
 }
@@ -1426,6 +1429,9 @@ override = {}
   "speakMaxPerHour": 3,
   "replyWindowMs": 600000,
   "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
  }
 }
@@ -2141,6 +2147,9 @@ override = {"batching":{"windowMs":20000}}
   "speakMaxPerHour": 3,
   "replyWindowMs": 600000,
   "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
  }
 }
@@ -2856,6 +2865,9 @@ override = {"admin":{"port":8790}}
   "speakMaxPerHour": 3,
   "replyWindowMs": 600000,
   "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
  }
 }
@@ -3571,6 +3583,9 @@ override = {"imageGen":{"model":"flux"}}
   "speakMaxPerHour": 3,
   "replyWindowMs": 600000,
   "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
  }
 }
@@ -4286,6 +4301,9 @@ override = {"tts":{"voice":"b"}}
   "speakMaxPerHour": 3,
   "replyWindowMs": 600000,
   "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
  }
 }
@@ -5001,6 +5019,9 @@ override = {"flood":{"windowSec":30}}
   "speakMaxPerHour": 3,
   "replyWindowMs": 600000,
   "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
  }
 }
@@ -5723,6 +5744,9 @@ override = {}
   "speakMaxPerHour": 3,
   "replyWindowMs": 600000,
   "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
  }
 }
@@ -6438,6 +6462,9 @@ override = {"keywordTriggers":[]}
   "speakMaxPerHour": 3,
   "replyWindowMs": 600000,
   "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
  }
 }
@@ -7160,6 +7187,9 @@ override = {"rss":{"pollIntervalMin":5}}
   "speakMaxPerHour": 3,
   "replyWindowMs": 600000,
   "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
  }
 }
@@ -7875,6 +7905,9 @@ override = {"groupEnabled":false}
   "speakMaxPerHour": 3,
   "replyWindowMs": 600000,
   "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
  }
 }
@@ -8590,6 +8623,9 @@ override = {}
   "speakMaxPerHour": 3,
   "replyWindowMs": 600000,
   "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
  }
 }
@@ -9305,6 +9341,9 @@ override = {"groupEnabled":true}
   "speakMaxPerHour": 3,
   "replyWindowMs": 600000,
   "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
  }
 }
@@ -10020,6 +10059,9 @@ override = {"admin":{"host":"127.0.0.1"}}
   "speakMaxPerHour": 3,
   "replyWindowMs": 600000,
   "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
  }
 }
@@ -10735,6 +10777,9 @@ override = {}
   "speakMaxPerHour": 3,
   "replyWindowMs": 600000,
   "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
  }
 }
@@ -11450,6 +11495,9 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
   "speakMaxPerHour": 3,
   "replyWindowMs": 600000,
   "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
  }
 }

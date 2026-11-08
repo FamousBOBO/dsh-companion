@@ -55,6 +55,12 @@ export interface PresenceConfig {
   replyWindowMs: number
   /** 群记忆注入的字数预算（§5.4 建议 600–800）。 */
   memoryBudgetChars: number
+  /** 自主发言之后是否允许配一张表情包（P4 §8.2）。默认关闭。 */
+  stickers: boolean
+  /** 两张图之间的最小间隔（毫秒）。 */
+  stickerMinIntervalMs: number
+  /** 每小时最多几张图。 */
+  stickerMaxPerHour: number
 }
 
 export const PRESENCE_GROUPS: FieldGroup[] = [
@@ -219,6 +225,33 @@ export const PRESENCE_GROUPS: FieldGroup[] = [
         help: '一次判断里"群体记忆 + 成员记忆"总共允许多少字（中文按字符算）。'
           + '默认 800 字（计划建议 600～800）：再多会把这一轮真正要说的话挤掉；'
           + '超预算时先丢推测、再丢成员记忆，最后才动群体记忆。',
+      }),
+      stickers: b('允许自主发言配表情包', false, {
+        // `live`：消费方（presence-afterspeak 的 settingsOf）每次现取，改完立即生效。
+        hot: 'live',
+        page: 'groups',
+        help: '打开后，自主发言可能再配一张表情包（发不发、发哪张由 companion-expression 决定）。'
+          + '默认**关闭**：它依赖图库已授权并自带冷却与审核，未配置时会一直"没有合适的图"。'
+          + '打开前先确认图库那边真的可用，否则日志里只会多出一串 declined。',
+      }),
+      stickerMinIntervalMs: n('两张图的最小间隔', 600_000, {
+        hot: 'live',
+        page: 'groups',
+        min: 60_000,
+        max: 7_200_000,
+        step: 60_000,
+        unit: 'ms',
+        help: '两次配图之间至少隔这么久（毫秒），默认 10 分钟。与文字限频**分开**：'
+          + '文字说多了是啰嗦，图发多了是刷屏。',
+      }),
+      stickerMaxPerHour: n('每小时最多几张图', 1, {
+        hot: 'live',
+        page: 'groups',
+        min: 1,
+        max: 6,
+        step: 1,
+        unit: '张',
+        help: '每群每小时最多配几张图，默认 1。连续两张图在任何群里都像机器人。',
       }),
       replyMaxChars: n('自主发言字数上限', 70, {
         hot: 'live',

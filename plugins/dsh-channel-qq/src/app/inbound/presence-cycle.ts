@@ -68,6 +68,19 @@ export interface CycleContext {
   }) => GroupMemoryRecall
   readonly noteSkip: (groupId: number, reason: string, nowMs: number, pending: number) => void
   /**
+   * 她刚发出一条（文字或表情）之后的钩子（P4 §8.2 / §8.3）；缺省 = 什么都不做。
+   *
+   * 为什么放在这里：只有这一层知道"真的发出去了"（有回执），而表情包与弱反馈都要求
+   * "发成功才记"。放在外面会让失败也记一笔。
+   */
+  readonly onSpoken?: (input: {
+    groupId: number
+    action: 'reply' | 'join' | 'react'
+    text: string
+    messageId: number
+    atMs: number
+  }) => void
+  /**
    * 写候选记忆（P1 §5.3）；缺省 = 不写。
    *
    * 为什么由**这一层**调：只有它手里有"这一批是哪几条消息"（带真实消息号），而记忆必须有来源。
@@ -190,6 +203,19 @@ function recordOutcome(
   if (outcome.kind !== 'spoke') return
   ctx.noteSpoken(groupId, outcome.text)
   echoSelf(ctx, groupId, settings, outcome.messageId, outcome.selfId, outcome.text)
+  if (ctx.onSpoken === undefined) return
+  try {
+    ctx.onSpoken({
+      groupId,
+      action: outcome.action,
+      text: outcome.text,
+      messageId: outcome.messageId,
+      atMs: ctx.clock.now(),
+    })
+  } catch (error) {
+    // 表情包/反馈都是附加动作：失败绝不能影响"这一句已经发出去了"这个事实。
+    ctx.log(`presence: 群 ${String(groupId)} 附加动作失败（已忽略）：${describe(error)}`)
+  }
 }
 
 /** 把她自己刚发的那条回灌旁听：下一次判断要能看见"这是我自己说的"。 */

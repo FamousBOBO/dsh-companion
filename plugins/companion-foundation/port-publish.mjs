@@ -36,6 +36,11 @@ function portRegistry() {
   return holder[COMPANION_PORTS_SYMBOL];
 }
 
+/** `ready()` honoured: a service that reports itself unready is treated as absent. */
+function usableEntry(entry) {
+  try { return typeof entry.ready === 'function' ? entry.ready() !== false : true; } catch { return false; }
+}
+
 /** Spelling variants of one root, so a junction / trailing separator cannot split one deployment. */
 function keyVariants(root) {
   const raw = String(root ?? '').trim();
@@ -70,32 +75,52 @@ export function registryKeysFor(name, root) {
  * Returns `null` when nothing usable is found; never throws. `entry.ready()` is honoured: a
  * service that reports itself unready is treated as absent rather than half-broken.
  *
+ * `accept` matters more than it looks. The bare data-root key is shared, so a *released* port
+ * leaves the other occupant (in practice the health service) answering to that key — without a
+ * shape check, a consumer asking for `companionGroupMemory` would receive the health object and
+ * only fail later, far from the cause. Passing `accept` makes that a clean "not found".
+ *
  * @param {object} input
  * @param {string} input.name
  * @param {string} input.root
  * @param {() => unknown} [input.context] returns the plugin ctx (may itself return undefined)
+ * @param {(service: unknown) => boolean} [input.accept] shape check; falsy result = keep looking
  * @returns {unknown|null}
  */
-export function resolveCompanionService({ name, root, context = null } = {}) {
+export function resolveCompanionService({ name, root, context = null, accept = null } = {}) {
   if (!name) return null;
+  const accepted = (value) => {
+    if (value === undefined || value === null) return false;
+    if (typeof accept !== 'function') return true;
+    try { return accept(value) === true; } catch { return false; }
+  };
   try {
     if (typeof context === 'function') {
       const ctx = context();
       if (ctx && typeof ctx.get === 'function') {
         const local = ctx.get(name);
-        if (local !== undefined && local !== null) return local;
+        if (accepted(local)) return local;
       }
     }
   } catch { /* keep going: the registry is the channel that has to work */ }
   try {
     const registry = portRegistry();
-    for (const key of [...registryKeysFor(name, root), ...keyVariants(root)]) {
+    // Namespaced keys first: those are exclusively ours.
+    for (const key of registryKeysFor(name, root)) {
       const entry = registry.get(key);
-      if (!entry) continue;
-      let usable = true;
-      try { usable = typeof entry.ready === 'function' ? entry.ready() !== false : true; } catch { usable = false; }
-      if (!usable) continue;
-      if (entry.service !== undefined && entry.service !== null) return entry.service;
+      if (!entry || !usableEntry(entry)) continue;
+      if (accepted(entry.service)) return entry.service;
+    }
+    // Then the bare data-root key — but only when it demonstrably belongs to the service we
+    // asked for: either it was published by us under this name, or the caller supplied a shape
+    // check. Without that, a released port would hand back whatever else occupies the key
+    // (in practice the health service), and the consumer would fail somewhere far away.
+    for (const key of keyVariants(root)) {
+      const entry = registry.get(key);
+      if (!entry || !usableEntry(entry)) continue;
+      const ours = entry.name === name;
+      if (!ours && typeof accept !== 'function') continue;
+      if (accepted(entry.service)) return entry.service;
     }
   } catch { /* absent */ }
   return null;
@@ -122,7 +147,10 @@ export function publishCompanionService({ root, name, service, ready = () => tru
   let released = false;
   try {
     const registry = portRegistry();
-    const entry = { service, ready };
+    // The entry carries its own name so a resolver can tell "this key belongs to the service I
+    // asked for" from "this key happens to hold somebody else's service" — the bare data-root
+    // key is shared, and after a release it still points at the other occupant.
+    const entry = { service, ready, name };
     // Namespaced keys first: these can never be taken from another service.
     for (const key of registryKeysFor(name, root)) registry.set(key, entry);
     // Then the bare data-root key, but only when it is free. Overwriting would silently break

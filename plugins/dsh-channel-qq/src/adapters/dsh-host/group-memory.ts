@@ -173,6 +173,34 @@ export function rememberGroupFacts(input: {
   return { written, merged, rejected }
 }
 
+/** 记一次话题（P3 的 topic_change 落到存储，供下一次召回的 `topic` 参数用）。 */
+export function noteGroupTopic(input: {
+  dataRoot: string | null
+  groupId: number
+  topic: string
+  startedBy: string
+  participants: readonly number[]
+  ttlMs?: number
+}): boolean {
+  const handle = openGroupMemory(input.dataRoot)
+  if (handle.store === null) return false
+  const store = handle.store as GroupMemoryStore & {
+    upsertTopic?: (row: unknown) => { ok?: boolean }
+  }
+  try {
+    const result = store.upsertTopic?.({
+      groupId: input.groupId,
+      topic: input.topic,
+      startedBy: input.startedBy,
+      participants: [...input.participants],
+      ...(input.ttlMs === undefined ? {} : { ttlMs: input.ttlMs }),
+    })
+    return result?.ok === true
+  } catch {
+    return false
+  }
+}
+
 /** 测试/诊断用：丢掉缓存（换库文件之后必须调，否则会一直用旧句柄）。 */
 export function resetGroupMemoryCache(): void {
   cached = null

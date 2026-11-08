@@ -706,6 +706,9 @@
     "speakMaxPerHour": 3,
     "replyWindowMs": 600000,
     "memoryBudgetChars": 800,
+    "stickers": false,
+    "stickerMinIntervalMs": 600000,
+    "stickerMaxPerHour": 1,
     "replyMaxChars": 70
   }
 }

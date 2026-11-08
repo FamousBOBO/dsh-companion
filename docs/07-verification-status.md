@@ -176,6 +176,25 @@
 > 边界仍然是**目录**边界：`home/expression/assets/`（图库原文件）与系统其它路径照样拒。
 
 
+### 2.8 群聊社交运行时 P0–P4（2026-11-08）：只有 `offline-test`
+
+按 `docs/09-group-social-runtime-p1-p4.md` 落地了人格快照（P0）、群体/成员记忆（P1）、
+五动作决策器（P2）、统一事件时间线与调度（P3）、表达约定与表情/反馈层（P4），外加 41 条离线
+评测集。**证据级别只到 `offline-test`**：
+
+| 项 | 证据 | 说明 |
+|---|---|---|
+| 群记忆按群隔离 | `group-memory.test.mjs` 17 例 + 三张表 `group_id NOT NULL`（PRAGMA 断言） | 结构隔离，不是约定隔离 |
+| 决策解析与执行边界 | `group-social-decision.test.ts` 18 例 | 编造目标 / 超窗 / 超长 / 带 @ 全部拦下 |
+| 时间线与话题 | `group-topic.test.ts` 10 例、`group-events-memory.test.ts` 18 例 | 重推去重、双上限裁剪、不猜话题 |
+| 表达约定与连续性段 | `companion-group` 18 例 | 段 ≤400 字、服务缺失降级 |
+| 表情策略 / 弱反馈 | `group-expression-feedback.test.ts` 16 例 | 只判"要不要问图库"，不碰投递 |
+| 离线评测 | `npm run eval:group` → PASS 37 / FAIL 0 / WARN 4 / 41 | 三个硬门槛 100%（错误目标、坏输出、隐私沉默） |
+
+**明确没验证的**：真实群里的自主接话、真实模型判断力（4 条 WARN 就是代码侧判不了语义的部分）、
+表情包真实投递（图库 `delivery.enabled` 默认 false 且需授权）、弱反馈对表达的实际影响、
+调度节奏（6 秒合批 / 50 秒间隔）在真实活跃群里的表现。不要用离线绿灯抵消这些。
+
 ### 2.7 点歌翻唱（`dsh-channel-qq` 的 `song` 段）：`offline-test` + **`real-api` + 两条 `real-send`（2026-11-07）**
 
 链路：B站搜歌 → 下载音轨 → 副歌定位 → RVC 音色翻唱 → QQ 副歌语音条。
@@ -251,7 +270,8 @@
 
 **产品行为**
 
-- 群聊里发图 / 发语音出站、群内自主接话的真实触发。
+- 群聊里发图 / 发语音出站、群内自主接话的真实触发。群聊社交运行时（记忆 / 决策 / 时间线 /
+  表情 / 反馈）到 2026-11-08 只有 `offline-test`，详见 §2.8 与 `docs/09-group-social-runtime-p1-p4.md`。
 - 表情包系统（`companion-expression`）的宿主装载与真实发图：见 §2.6。图库、决策、管理入口只到
   `offline-test`；GIF 关键帧 / OCR / 向量召回 / QQ 内置 `face` 投递**未实现**。
 - 主动联系（contact）的真实平台发送与回执。

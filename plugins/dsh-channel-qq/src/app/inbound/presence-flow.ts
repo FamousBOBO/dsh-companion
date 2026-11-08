@@ -84,6 +84,12 @@ export interface PresenceView extends PresenceSettings {
   readonly replyWindowMs?: number
   /** 记忆段字数预算（§5.4 建议 600–800）；缺省 800。 */
   readonly memoryBudgetChars?: number
+  /** 是否允许在自主发言之后配一张表情包（P4 §8.2）；缺省 `false`。 */
+  readonly stickers?: boolean
+  /** 两张图之间的最小间隔（毫秒）；缺省 10 分钟。 */
+  readonly stickerMinIntervalMs?: number
+  /** 每小时最多几张图；缺省 1。 */
+  readonly stickerMaxPerHour?: number
 }
 
 /** 默认值：配置给坏了也不能把这条路径弄崩。 */

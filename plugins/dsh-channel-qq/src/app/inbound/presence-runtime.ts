@@ -80,6 +80,15 @@ export interface PresenceDeps {
     facts: readonly CandidateFact[]
     nowMs: number
   }) => void
+  /** 她真的发出一条之后的附加动作（P4 §8.2 表情包 / §8.3 弱反馈）；缺省 = 不做。 */
+  readonly afterSpeak?: (input: {
+    groupId: number
+    action: 'reply' | 'join' | 'react'
+    text: string
+    messageId: number
+    atMs: number
+    topic: string | null
+  }) => void
 }
 
 /** 群聊旁听的执行器。一个实例管所有白名单群（每群一份状态，互不影响）。 */
@@ -228,6 +237,12 @@ export class GroupPresence {
       persona: (groupId) => this.personaSnapshot(groupId),
       ...(this.deps.memory === undefined ? {} : { memory: this.deps.memory }),
       ...(this.deps.remember === undefined ? {} : { remember: this.deps.remember }),
+      ...(this.deps.afterSpeak === undefined ? {} : {
+        onSpoken: (input: { groupId: number; action: 'reply' | 'join' | 'react'; text: string; messageId: number; atMs: number }) => {
+          const topic = this.timelines.view().topic()
+          this.deps.afterSpeak?.({ ...input, topic })
+        },
+      }),
       noteSkip: (groupId, reason, nowMs, pending) => this.noteSkip(groupId, reason, nowMs, pending),
     }
   }
