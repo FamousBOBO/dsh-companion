@@ -20,6 +20,7 @@ import { dataRootOfDshHome, readGroupPersona, type GroupPersonaDeps } from '../.
 import { openGroupMemory, recallGroupMemory, rememberGroupFacts } from '../../adapters/dsh-host/group-memory.js'
 import { publishServiceToPeers } from '../../adapters/dsh-host/service-registry.js'
 import { afterSpeakHandler } from './presence-afterspeak.js'
+import { socialResource } from './presence-resource.js'
 import { DEFAULTS, positiveOr } from '../../app/inbound/presence-flow.js'
 import { systemClock } from '../../ports/clock.js'
 import { JsonlLogStream } from '../../adapters/fs-store/log-stream.js'
@@ -169,6 +170,27 @@ function shadowLogger(host: SubHost): (decision: {
 }
 
 /**
+ * 注册后台「群社交」诊断页（P8 §5.4）。
+ *
+ * 为什么关着（off）时**也注册**：运维最先要看的就是「现在到底是不是关的、为什么没发」。
+ * 不注册的话那一页会整个消失，而「页面没了」和「能力关着」在事故现场是两件完全不同的事。
+ */
+function registerSocialResource(host: SubHost, presence: GroupPresence): void {
+  try {
+    host.registerResource('group-social', socialResource({
+      mode: () => resolveMode(host.config.presence ?? null),
+      presence: () => presence,
+      guardMode: guardModeOf(host),
+      stickers: () => host.config.presence?.stickers === true,
+      now: () => systemClock.now(),
+    }))
+  } catch (error) {
+    // 诊断页注册失败不该影响接话本身。
+    host.log(`presence: 后台诊断页注册失败（已忽略）：${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
+/**
  * sent-log 写入（每群一份，按群号分文件）。
  *
  * 为什么失败只记日志：这条日志是"她说过什么"的持久化副本，写坏了不该让一次成功的发言
@@ -270,6 +292,9 @@ export function wirePresence(
     recordSent: sentLogWriter(host, sentLogHub),
   })
   const releaseEvents = publishEvents(host, presence)
+  // 后台「群社交」页（P8 §5.4）：只读诊断。它读的就是发送闸门真正在读的那个 mode 函数，
+  // 所以页面上显示的模式与「到底会不会发」永远是同一个值。
+  registerSocialResource(host, presence)
   host.log(`presence: 已启用（白名单群 ${JSON.stringify(host.config.presence.groups)}；`
     + '未 @ 时也会自己搭话：能接就接、没话可说就沉默，受最小间隔与每小时额度约束）')
   return {
