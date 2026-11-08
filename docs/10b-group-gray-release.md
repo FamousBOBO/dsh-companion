@@ -76,10 +76,13 @@ shadow 下会发生：收消息 → 记旁听 → **真调模型** → 走完解
 
 | 数字 | 期望 | 说明 |
 |---|---|---|
+| running | **true** | P9-A2 起这一页单独给「实际跑不跑」，与收消息共用同一判据；`mounted` 只说明执行器在（关着也在，为了热切换） |
 | shadowWouldSend | > 0 | 说明模型确实在正常产出决策 |
 | spoken | **必须为 0** | 出现非零 = 闸门漏了，立刻停下查 |
 | eventContextInjected / Denied | 两个都非零 | 全是 denied 说明群号或时间线有问题 |
 | starvationWarnings | 偶发 | 频繁说明限频/失败退避把判断卡住了 |
+| sendAttempts / sendFailures | 两个都 0 | shadow **不该**有任何平台发送尝试；非 0 = 闸门漏了 |
+| modelMsAvg / sendMsAvg | sendMsAvg 为 null | 分段耗时（P9-A3）：shadow 没有发送，所以发送均值必须是 null 而不是 0 |
 
 ---
 
@@ -200,10 +203,17 @@ presence.stickers 默认关；companion-expression 的 delivery.enabled 也要�
 
 P7-C 之后，GroupPresence.diagnostics() 按群给出（**不含正文**）：
 judgments / shadowWouldSend / spoken / 三种 skip 计数 / starvationWarnings /
-modelLatencyMs+modelCalls / sendLatencyMs+sendAttempts / lastBatchWaitMs /
+modelLatencyMs+modelCalls / sendLatencyMs+sendAttempts+**sendFailures** / lastBatchWaitMs /
 eventContextInjected+eventContextDenied / 两个时间点。
 
+发送三段耗时的口径（P9-A3 修正）：**模型**看 `modelMsAvg`，**真实平台调用**看 `sendMsAvg`
+（只含 `sendGroupMessage` 本身，不含模型与合批等待），**合批等待**看 `lastBatchWaitMs`。
+P5 那版把整轮耗时记成发送耗时，会让「发送很慢」其实是模型慢——已经改掉。
+
 后台「群社交」页只读渲染这张表，群号脱敏成末四位，**不展示正文与完整 QQ 号**。
+页头除了配置里的 `mode` 还有两个字段（P9-A2）：`running`（与收消息共用同一判据的
+**实际运行状态**）与 `mounted`（执行器在不在；关着也在，为了热切换）。运维要看的是
+`running`——`mode` 只是输入。
 
 ---
 
@@ -215,6 +225,7 @@ eventContextInjected+eventContextDenied / 两个时间点。
 3. **socialGuard 阈值未校准**：0.9 重叠率与 40 分钟窗是先验值；默认 warn 期间一次都不会拦。
 4. **表情链路的闸门是「靠没走到那一步」**：shadow 下不发图，是因为 presence-afterspeak.ts
    只在 outcome.kind === 'spoke' 时被调用；将来若要「shadow 下也评估表情」，必须在图库
-   那条路径上再加一次同样的模式检查。
+   那条路径上再加一次同样的模式检查。**P9-A4 已把这一点写进 §5 的更正框**——按原手册
+   在 shadow 里看会选哪张图是做不到的。
 5. **没有运行时守护「停发」**：如果将来有人在发送路径上绕过 sendGate，现有单测能发现，
    但没有告警。

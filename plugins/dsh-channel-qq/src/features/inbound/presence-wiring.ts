@@ -13,7 +13,7 @@
  *   - {@link publishEvents}：把时间线视图发给兄弟插件行（P3 §7.2）。
  */
 
-import { AmbientStore } from '../../app/inbound/ambient-store.js'
+import { AmbientStore, presenceRuns } from '../../app/inbound/ambient-store.js'
 import { GroupPresence } from '../../app/inbound/presence-runtime.js'
 import { createHostComplete } from '../../adapters/dsh-host/completion.js'
 import { dataRootOfDshHome, readGroupPersona, type GroupPersonaDeps } from '../../adapters/dsh-host/group-persona.js'
@@ -175,6 +175,17 @@ function shadowLogger(host: SubHost): (decision: {
  * 为什么关着（off）时**也注册**：运维最先要看的就是「现在到底是不是关的、为什么没发」。
  * 不注册的话那一页会整个消失，而「页面没了」和「能力关着」在事故现场是两件完全不同的事。
  */
+/**
+ * 这套能力现在到底跑不跑（P9-A2）：与收消息路径**同一个判据**（`presenceRuns`）。
+ *
+ * 为什么要在装配侧单独写一个：后台要显示的是"实际运行状态"，而配置里那个字符串只是
+ * 输入之一（还要考虑 mode 缺席时退回 enabled、配置写错时的回退）。用同一个函数算，
+ * 页面就不会和真实行为分叉。
+ */
+function presenceAppliesToAny(host: SubHost): boolean {
+  return presenceRuns(host.config.presence ?? null)
+}
+
 function registerSocialResource(host: SubHost, presence: GroupPresence): void {
   try {
     host.registerResource('group-social', socialResource({
@@ -182,6 +193,8 @@ function registerSocialResource(host: SubHost, presence: GroupPresence): void {
       presence: () => presence,
       guardMode: guardModeOf(host),
       stickers: () => host.config.presence?.stickers === true,
+      // 实际会不会跑：与收消息那条路径共用同一个判据（P9-A2），不是配置字符串。
+      runs: () => presenceAppliesToAny(host),
       now: () => systemClock.now(),
     }))
   } catch (error) {

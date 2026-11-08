@@ -34,6 +34,14 @@ export interface SocialResourceDeps {
   /** 现取配置里的复核档位与表情开关（都是"现在到底会不会做这件事"的一部分）。 */
   readonly guardMode: () => string
   readonly stickers: () => boolean
+  /**
+   * 现取"这套能力现在到底跑不跑"（P9-A2）。
+   *
+   * 为什么不能拿 `presence() !== null` 代替：P9-A2 之后**关着也会装配执行器**
+   * （否则 off→shadow 必须重启）。所以"有没有执行器"不再等于"会不会跑"，
+   * 这一页要显示的实际运行状态只能靠这个谓词——它与收消息那条路径共用同一个判据。
+   */
+  readonly runs: () => boolean
   readonly now: () => number
 }
 
@@ -85,11 +93,24 @@ function rowOf(groupId: number, stats: GroupSchedulerStats): Record<string, unkn
   }
 }
 
-/** 一份"没有数据"的回答（关着 / 没装配 / 诊断读取失败都用它，差别只在 `note`）。 */
-function emptyAnswer(deps: SocialResourceDeps, mode: string, enabled: boolean, note: string): Record<string, unknown> {
+/**
+ * 一份"没有数据"的回答（关着 / 没装配 / 诊断读取失败都用它，差别只在 `note`）。
+ *
+ * `running` 与 `mounted` **必须分开给**（P9-A2）：关着时执行器**在**（`mounted:true`）
+ * 但**不跑**（`running:false`）。只给一个布尔的话，运维看到 `enabled:true` 会以为她在工作。
+ */
+function emptyAnswer(
+  deps: SocialResourceDeps,
+  mode: string,
+  mounted: boolean,
+  note: string,
+): Record<string, unknown> {
   return {
     mode,
-    enabled,
+    // 实际会不会跑：与收消息那条路径共用同一个判据，不是配置字符串。
+    running: deps.runs(),
+    // 执行器在不在（关着也在，为了热切换；见 P9-A2）。
+    mounted,
     note,
     guardMode: deps.guardMode(),
     stickers: deps.stickers(),
@@ -98,6 +119,13 @@ function emptyAnswer(deps: SocialResourceDeps, mode: string, enabled: boolean, n
     summary: null,
     shadow: [],
   }
+}
+
+/** 关着时到底为什么没数据——把"没装配"与"模式 off"两种情况都说清楚。 */
+function offNote(mode: string, mounted: boolean): string {
+  const mount = mounted ? '' : '（执行器未装配：插件没装上或装配抛错，看启动日志）'
+  if (mode === 'off') return `模式是 off：不判断、不发${mounted ? '（执行器在，改配置即可开始，不必重启）' : ''}${mount}`
+  return `模式是 ${mode}${mount}：还没有任何群的数据（白名单没命中或刚启动）`
 }
 
 /** 读一份诊断快照；读不到时返回 `null` 与原因（调用方据此决定给不给空表）。 */
@@ -118,17 +146,14 @@ export function socialResource(deps: SocialResourceDeps): AdminResource {
       const mode = deps.mode()
       const now = deps.now()
       const presence = deps.presence()
-      // 关着（off）或没装配：明说，不给一份"全零但看起来正常"的表。
-      if (presence === null) {
-        return emptyAnswer(
-          deps,
-          mode,
-          false,
-          mode === 'off' ? '模式是 off：不判断、不发' : '执行器未装配（模式或配置还没生效）',
-        )
-      }
+      // 没装配：明说，不给一份"全零但看起来正常"的表。
+      if (presence === null) return emptyAnswer(deps, mode, false, offNote(mode, false))
       const read = snapshotOf(presence)
       if ('problem' in read) return emptyAnswer(deps, mode, true, read.problem)
+      // 装配了但没在跑（off、或白名单里的群都没消息过）：同样不给全零表。
+      if (!deps.runs() && read.snapshot.groups.length === 0) {
+        return emptyAnswer(deps, mode, true, offNote(mode, true))
+      }
       const { snapshot } = read
       const rows = snapshot.groups.map((entry) => rowOf(entry.groupId, entry))
       const judgeDurations = snapshot.groups
@@ -147,7 +172,9 @@ export function socialResource(deps: SocialResourceDeps): AdminResource {
         }))
       return {
         mode,
-        enabled: true,
+        // 实际会不会跑（P9-A2）：与收消息同一个判据——运维看的就是这个，不是配置字符串。
+        running: deps.runs(),
+        mounted: true,
         guardMode: deps.guardMode(),
         stickers: deps.stickers(),
         generatedAtMs: now,

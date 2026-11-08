@@ -48,14 +48,18 @@ function resource(over: {
   presence?: unknown
   guardMode?: string
   stickers?: boolean
+  /** 实际会不会跑（P9-A2；缺省按模式推断，与线上同一口径）。 */
+  runs?: boolean
 } = {}) {
+  const mode = over.mode ?? 'shadow'
   return socialResource({
-    mode: () => over.mode ?? 'shadow',
+    mode: () => mode,
     presence: () => (over.presence === undefined
       ? { diagnostics: () => ({ groups: [{ groupId: GROUP, ...stats() }], pending: 1 }) }
       : over.presence) as never,
     guardMode: () => over.guardMode ?? 'warn',
     stickers: () => over.stickers === true,
+    runs: () => over.runs ?? mode !== 'off',
     now: () => NOW,
   })
 }
@@ -73,7 +77,8 @@ function listOf(res: { list?: (query: URLSearchParams) => unknown }): Row {
 test('正常数据：模式、计数、分段耗时都在，且**不含群号原文**', () => {
   const value = listOf(resource()) as Row
   assert.equal(value['mode'], 'shadow')
-  assert.equal(value['enabled'], true)
+  assert.equal(value['running'], true, '实际运行状态（不是配置字符串）')
+  assert.equal(value['mounted'], true)
   const row = rowsOf(value)[0] ?? {}
   assert.equal(row['judgments'], 4)
   assert.equal(row['wouldSend'], 1)
@@ -89,7 +94,7 @@ test('正常数据：模式、计数、分段耗时都在，且**不含群号原
 
 test('off：明确说"关着"，不给一份全零的健康表', () => {
   const value = listOf(resource({ mode: 'off', presence: null })) as Row
-  assert.equal(value['enabled'], false)
+  assert.equal(value['running'], false, '实际不跑')
   assert.equal(value['mode'], 'off')
   assert.match(String(value['note']), /off/)
   assert.deepEqual(value['groups'], [])
@@ -97,15 +102,23 @@ test('off：明确说"关着"，不给一份全零的健康表', () => {
 
 test('执行器没装配但模式不是 off：说明"未装配"，不假装关着', () => {
   const value = listOf(resource({ mode: 'live', presence: null })) as Row
-  assert.equal(value['enabled'], false)
+  assert.equal(value['mounted'], false, '执行器不在')
+  assert.equal(value['running'], true, '但按模式它会跑（没装配才是问题）')
   assert.match(String(value['note']), /未装配/)
+})
+
+test('模式是 off 但执行器在（P9-A2 的热切换形态）：说清楚"在但不跑"', () => {
+  const value = listOf(resource({ mode: 'off', presence: { diagnostics: () => ({ groups: [], pending: 0 }) } })) as Row
+  assert.equal(value['mounted'], true, '关着也装配（否则 off→shadow 要重启）')
+  assert.equal(value['running'], false, '但不跑')
+  assert.match(String(value['note']), /改配置即可开始/)
 })
 
 test('诊断抛错：如实说"读取失败"，且不让整页 500', () => {
   const value = resource({
     presence: { diagnostics: () => { throw new Error('boom') } },
   }).list!(new URLSearchParams()) as Row
-  assert.equal(value['enabled'], true)
+  assert.equal(value['mounted'], true)
   assert.match(String(value['note']), /诊断读取失败/)
   assert.deepEqual(value['groups'], [])
 })
@@ -162,6 +175,7 @@ test('模式与复核档位都直接来自现取函数（页面显示的必须�
     presence: () => ({ diagnostics: () => ({ groups: [], pending: 0 }) }),
     guardMode: () => guard,
     stickers: () => false,
+    runs: () => mode !== 'off',
     now: () => NOW,
   })
   assert.equal((res.list!(new URLSearchParams()) as Row)['mode'], 'live')

@@ -124,7 +124,7 @@
 | `shadow → live` | ✅ 逻辑同一条路径，测试覆盖 |
 | `live → shadow/off` 在途结果不外发 | ✅ P5-B 已有测试（本次未改） |
 | `live → off → live` 定时器/游标/服务恢复一致、不补发旧消息 | ✅ 判据反复切换的用例 + 既有「热加载不补发」用例 |
-| 后台核对模式值与**实际运行状态** | ⚠️ 诊断页给的是**发送闸门在读的同一个函数**（不是配置字符串），但「实际是否会跑」还需在实机上看一眼 |
+| 后台核对模式值与**实际运行状态** | ✅ 页头分开给 `mode` / `running` / `mounted`（见 §8）；渲染未在真实宿主里看过 |
 | `sendAttempts` 记实际尝试（含失败） | ✅ 新增 `sendFailures`，成功失败都计数 |
 | 加 FakeClock 测试避免仪表盘误导 | ✅ 7 例，含「模型慢 ≠ 发送慢」 |
 
@@ -198,6 +198,8 @@
 | `GroupSchedulerBook.noteSend({groupId, latencyMs, ok})` | **新增** |
 | `CycleDeps.noteSend` / `CycleContext.noteSend` | **新增**（可选，缺省不记） |
 | `PresenceSettings.mode?` | **新增**（可选字段，结构类型） |
+| `SocialResourceDeps.runs` | **新增**（必填）：后台页的「实际会不会跑」 |
+| 后台「群社交」页 | 新增 `running` / `mounted` 两个字段，`note` 分三种情况说明（§8） |
 | `wirePresence()` | `off` 不再早退（返回值形状不变） |
 | 离线报告 `report.corpus` | **新增** `{cases, ids}` |
 
@@ -209,9 +211,11 @@
 | `test/presence-send-timing.test.ts` | **7**（新增） | 发送耗时只含平台调用、失败也计入尝试、按群分开 |
 | `test/presence-config.test.ts` | 既有 | 合同默认值改为 `mode: ''` |
 | `test/presence-resource.test.ts` | 既有 | 补 `sendFailures` 字段 |
-| 全量 | **1631 / 1630 通过 / 0 失败** | `npm run verify` 三段全绿（unit 9 / static 32 / compose 1） |
+| `test/presence-resource.test.ts` | 10（9 → 10） | 新增「模式 off 但执行器在」：页面必须区分在/不在与跑/不跑 |
+| 全量 | **1632 / 1631 通过 / 0 失败** | `npm run verify` 三段全绿（unit 9 / static 32 / compose 1） |
 
-`check:layers` 467 文件通过；`check:size` 通过；`npm run eval:group` 52 条 PASS 49 / FAIL 0 / WARN 3。
+`check:layers` 467 文件通过；`check:size` 通过；`npm run eval:group` 52 条 PASS 49 / FAIL 0 / WARN 3
+（条数以报告的 `report.corpus.cases` 为准）。
 
 ---
 
@@ -219,7 +223,7 @@
 
 | 级别 | 本次是否达成 | 证明 |
 |---|---|---|
-| `offline-test` | ✅ | `test/presence-legacy-config.test.ts` 13 例、`test/presence-send-timing.test.ts` 7 例、全量 1631 例；`npm run verify` 退出码 0；适用提交见 §7 |
+| `offline-test` | ✅ | `test/presence-legacy-config.test.ts` 13 例、`test/presence-send-timing.test.ts` 7 例、全量 1632 例；`npm run verify` 退出码 0；适用提交见 §7 |
 | `host-load` | ⚠️ 部分 | `npm run verify` 的 compose 段通过（`dsh --dump-config` 194 个 loader 行），说明配置能合成、插件能装载；但**没有**在真实宿主里跑过 `off→shadow` 的热切换 |
 | `real-api` | ❌ | 没有真实模型调用：无端点凭据（见 §3） |
 | `real-send` | ❌ | 没有真实 QQ 发送：未授权 |
@@ -231,7 +235,8 @@
 
 ## 7. 回滚
 
-本次是一笔独立提交（`fix(group): P9-A 旧配置兼容、热切换与发送计时`），可整笔 `git revert`。
+本次是两笔独立提交（`fix(group): P9-A 旧配置兼容、热切换与发送计时` 与
+`fix(admin): 群社交页区分「实际运行状态」与「执行器在不在」`），各自可单独 `git revert`。
 
 单点回滚：
 
@@ -244,7 +249,31 @@
 
 ---
 
-## 8. 下一步（需要你决定的事）
+## 8. 后台页显示的是**实际运行状态**（A2 最后一条验收项）
+
+计划 §A2 要求「管理员后台要能区分配置字符串与实际运行状态」。这一条已补：
+
+| 字段 | 含义 |
+|---|---|
+| `mode` | 配置解析出来的模式（`resolveMode` 的产物，与发送闸门读的是同一个函数） |
+| `running` | **实际会不会跑**（`presenceRuns`，与收消息那条路径共用同一判据） |
+| `mounted` | 执行器在不在（A2 之后关着也在，为了热切换） |
+
+为什么三个都要：A2 改动之前「有没有执行器」等价于「跑不跑」，一个 `enabled` 就够。现在关着
+也装配，两个概念分开了——只给 `mode` 会让运维看到 `shadow` 却不知为何一条数据都没有
+（可能是白名单没命中），只给 `mounted` 会让人以为在跑。`note` 把「装配了但没跑」「根本没
+装配」「诊断读取失败」三种情况分别说清楚。
+
+对应改动：`SocialResourceDeps.runs`（新增，设为**必填**——漏接就编译不过，不靠自觉）、
+`emptyAnswer(mounted)` + `offNote()`、`presence-wiring.ts` 的 `presenceAppliesToAny()`。
+`test/presence-resource.test.ts` 10 例（原 9 例 + 新增「模式 off 但执行器在」）。
+
+**仍未验证**：这一页在真实宿主里的渲染没看过（`offline-test` 只到 `list()` 的返回值）。
+`host-load` 那一级要真起一个宿主、打开面板、切一次模式再看，本次没做。
+
+---
+
+## 9. 下一步（需要你决定的事）
 
 1. **P9-B**：在本机设好 `EVAL_GROUP_LLM_*` 三个变量（端点 8000 那个 401 的服务如果是你的，
    配上它的 key 就行），然后 `npm run eval:group:llm`。这一步不发任何 QQ 消息。
