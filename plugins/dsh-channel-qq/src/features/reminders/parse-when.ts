@@ -11,9 +11,19 @@
  *
  * 为什么不放 `src/core/`：parseWhen 的默认参数是无参 `new Date()`，而 `core/`
  * 有 R8 铁律禁止读全局时钟——这条留给 P6 决定。
+ *
+ * **时区（2026-11-10 热修）**：这里**不再**用 `new Date(y, m, d, h, min)` 与
+ * `getHours()/getDate()/setDate()`——那些读的是宿主的隐式本地时区，`TZ` 一变，
+ * 同一条"明天9点"就落到另一个瞬间。所有墙上时间一律经
+ * `core/schedule/wall-clock.ts` 换算到 `REMINDER_ZONE`（Asia/Shanghai）。
+ * `now` 仍然是一个**瞬间**（Date），它属于哪个墙上日期由换算决定。
  */
 
 import type { Repeat } from './store.js'
+import {
+  REMINDER_ZONE, epochToWallClock, legacyDateYear, shiftWallDays, wallClockToEpoch, wallDayIndex,
+  type WallClock, type WallClockParts,
+} from '../../core/schedule/wall-clock.js'
 
 type Period = 'morning' | 'noon' | 'afternoon' | 'evening' | 'night' | 'latenight'
 
@@ -41,8 +51,20 @@ const PERIOD_HOURS: Record<Period, [number, number]> = {
   latenight: [23, 23],
 }
 
-function formatMDHM(d: Date): string {
-  return `${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')} ${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
+function pad2(n: number): string {
+  return String(n).padStart(2, '0')
+}
+
+/** 墙上时间 → "MM-DD HH:mm"。算不出墙上时间（非法瞬间）时给一个显眼占位，不装正常。 */
+function formatMDHM(wall: WallClock | null): string {
+  if (wall === null) return '--'
+  return `${pad2(wall.month)}-${pad2(wall.day)} ${pad2(wall.hour)}:${pad2(wall.minute)}`
+}
+
+/** `now` 这个**瞬间**在提醒时区里的墙上时间；非法瞬间返回 null（上层据此判"认不出来"）。 */
+function wallOf(now: Date): WallClock | null {
+  const ms = now.getTime()
+  return Number.isFinite(ms) ? epochToWallClock(ms, REMINDER_ZONE) : null
 }
 
 /**
@@ -50,22 +72,24 @@ function formatMDHM(d: Date): string {
  * 分不清是今年还是明年，用户根本没法核对。
  */
 function buildNote(at: number, now: Date, repeat: Repeat): string {
-  const d = new Date(at)
-  const year = d.getFullYear() !== now.getFullYear() ? `${String(d.getFullYear())}-` : ''
+  const wall = epochToWallClock(at, REMINDER_ZONE)
+  const nowWall = wallOf(now)
+  const year = wall !== null && nowWall !== null && wall.year !== nowWall.year ? `${String(wall.year)}-` : ''
   const label = repeat === 'daily' ? '（每天）' : repeat === 'weekly' ? '（每周）' : ''
   return `已定在 ${year}${humanTime(at, now)}${label}`
 }
 
-/** 单次提醒里，一个能"看出是今天还是明天"的时刻文本。 */
+/** 单次提醒里，一个能"看出是今天还是明天"的时刻文本（按提醒时区的墙上日历算）。 */
 export function humanTime(at: number, now: Date): string {
-  const d = new Date(at)
-  const hm = `${String(d.getHours()).padStart(2, '0')}:${String(d.getMinutes()).padStart(2, '0')}`
-  const days = Math.round((new Date(d.getFullYear(), d.getMonth(), d.getDate()).getTime()
-    - new Date(now.getFullYear(), now.getMonth(), now.getDate()).getTime()) / DAY_MS)
+  const wall = epochToWallClock(at, REMINDER_ZONE)
+  const nowWall = wallOf(now)
+  if (wall === null || nowWall === null) return formatMDHM(wall)
+  const hm = `${pad2(wall.hour)}:${pad2(wall.minute)}`
+  const days = wallDayIndex(wall) - wallDayIndex(nowWall)
   if (days === 0) return `今天 ${hm}`
   if (days === 1) return `明天 ${hm}`
   if (days === 2) return `后天 ${hm}`
-  return formatMDHM(d)
+  return formatMDHM(wall)
 }
 
 /** 从文本里取星期几：周一=1 … 周日=7；下周X 记额外 +7 天。 */
@@ -121,15 +145,19 @@ function resolveHour(rawHour: number, period: Period | null): number | null {
 }
 
 /**
- * 把解析出的 hour/minute 落成绝对时间。
+ * 把解析出的 hour/minute 落成绝对时间（按提醒时区的墙上日历落）。
  *
  * 顺延只发生在"只给时刻"（dayShift === 0）的情况：用户说"9点"绝不会指
  * 已经过去的那个 9 点。显式说了"明天/后天"就照他说的算，不再自作主张。
  */
-function resolveDay(now: Date, dayShift: number, hour: number, minute: number): number {
-  const at = new Date(now.getFullYear(), now.getMonth(), now.getDate() + dayShift, hour, minute, 0, 0)
-  if (dayShift === 0 && at.getTime() <= now.getTime()) at.setDate(at.getDate() + 1)
-  return at.getTime()
+function resolveDay(now: Date, nowWall: WallClock, dayShift: number, hour: number, minute: number): number | null {
+  const at = wallClockToEpoch(
+    { year: nowWall.year, month: nowWall.month, day: nowWall.day + dayShift, hour, minute, second: 0 },
+    REMINDER_ZONE,
+  )
+  if (at === null) return null
+  if (dayShift === 0 && at <= now.getTime()) return shiftWallDays(at, 1, REMINDER_ZONE)
+  return at
 }
 
 /** 第 3 步的状态：日期（绝对日期 / 相对日 / 周几）与剥完的文本。 */
@@ -178,7 +206,7 @@ function stripRelative(text: string): { text: string; offsetMs: number } {
 }
 
 /** 第 3 步：绝对日期（2026-10-15 / 10-15 / 10月15日 / 15号）或相对日（今天/明天/后天/周X）。 */
-function extractDay(text: string, now: Date): DayStep {
+function extractDay(text: string, nowWall: WallClock): DayStep {
   let absDate: DayStep['absDate'] = null
   let dayShift: number | null = null
   let weekdayInfo: DayStep['weekdayInfo'] = null
@@ -192,13 +220,13 @@ function extractDay(text: string, now: Date): DayStep {
     hasFullYear = true
     text = text.replace(full[0], ' ')
   } else if (cnDate !== null) {
-    absDate = { year: now.getFullYear(), month: Number(cnDate[1]), day: Number(cnDate[2]) }
+    absDate = { year: nowWall.year, month: Number(cnDate[1]), day: Number(cnDate[2]) }
     text = text.replace(cnDate[0], ' ')
   } else if (short !== null) {
-    absDate = { year: now.getFullYear(), month: Number(short[1]), day: Number(short[2]) }
+    absDate = { year: nowWall.year, month: Number(short[1]), day: Number(short[2]) }
     text = text.replace(short[0], ' ')
   } else if (dayOnly !== null) {
-    absDate = { year: now.getFullYear(), month: now.getMonth() + 1, day: Number(dayOnly[1]) }
+    absDate = { year: nowWall.year, month: nowWall.month, day: Number(dayOnly[1]) }
     text = text.replace(dayOnly[0], ' ')
   } else {
     weekdayInfo = extractWeekday(text)
@@ -242,15 +270,22 @@ function extractClock(text: string): ClockStep {
 /**
  * 解析中文/数字时间写法 → 绝对时间戳。纯本地规则，不调 LLM。
  *
+ * `now` 是一个**瞬间**；它在提醒时区（`REMINDER_ZONE`）里是几月几号几点，
+ * 由 `wall-clock.ts` 换算——与宿主进程的 `TZ` 无关。
+ *
  * @returns null 表示认不出来（调用方应该让模型改用显式时间工具）。
  */
 export function parseWhen(input: string, now = new Date()): { at: number; repeat: Repeat; note: string } | null {
   const raw = String(input ?? '').trim()
   if (raw === '') return null
+  const nowWall = wallOf(now)
+  // 连"现在是墙上几点"都算不出来（`now` 是非法 Date 或时区未知）⇒ 认不出来，
+  // 绝不按宿主的本地时区猜一个答案。
+  if (nowWall === null) return null
 
   const repeated = extractRepeat(raw)
   const rel = stripRelative(repeated.text)
-  const day = extractDay(rel.text, now)
+  const day = extractDay(rel.text, nowWall)
   const clock = extractClock(day.text)
 
   const prefixPeriod = periodFromPrefix(raw)
@@ -278,9 +313,24 @@ function resolveAbsDate(
   if (absDate.month < 1 || absDate.month > 12 || absDate.day < 1 || absDate.day > 31) return null
   const anchor = PERIOD_ANCHOR[period ?? 'morning']
   const useHour = clock.hour === null ? anchor : (resolveHour(clock.hour, period) ?? anchor)
-  const at = new Date(absDate.year, absDate.month - 1, absDate.day, useHour, clock.minute, 0, 0)
-  if (!hasFullYear && at.getTime() < now.getTime() - DAY_MS) at.setFullYear(at.getFullYear() + 1)
-  return { at: at.getTime(), repeat, note: buildNote(at.getTime(), now, repeat) }
+  const parts: WallClockParts = {
+    // `legacyDateYear`：旧写法 `new Date(y, …)` 把 0–99 当 1900+y，这条**保持原样**
+    // （见 wall-clock.ts 的说明）。四位年份不受影响。
+    year: legacyDateYear(absDate.year), month: absDate.month, day: absDate.day,
+    hour: useHour, minute: clock.minute, second: 0,
+  }
+  let at = wallClockToEpoch(parts, REMINDER_ZONE)
+  if (at === null) return null
+  // 跨年顺延：判据是"比现在早了一天以上"，所以只有**没给年份**时才补年。
+  // 补年作用在**已归一化的墙上日期**上（与旧写法 `at.setFullYear(at.getFullYear() + 1)` 同口径）：
+  // "2月29日"落在非闰年时先归一化到 3-01，再补年得到次年 3-01，而不是次年 2-29。
+  if (!hasFullYear && at < now.getTime() - DAY_MS) {
+    const landed = epochToWallClock(at, REMINDER_ZONE)
+    if (landed === null) return null
+    at = wallClockToEpoch({ ...landed, year: landed.year + 1 }, REMINDER_ZONE)
+  }
+  if (at === null) return null
+  return { at, repeat, note: buildNote(at, now, repeat) }
 }
 
 /** 出口 2：周几。每周X 的"X"是周期锚点：首次就从那天开始，别因为"今天正好也是那一刻"提前开跑。 */
@@ -290,16 +340,28 @@ function resolveWeekday(
   info: { weekday: number; nextWeek: boolean },
   clock: ClockStep,
   period: Period | null,
-): { at: number; repeat: Repeat; note: string } {
+): { at: number; repeat: Repeat; note: string } | null {
+  const nowWall = wallOf(now)
+  if (nowWall === null) return null
   const anchor = PERIOD_ANCHOR[period ?? 'morning']
   const useHour = clock.hour === null ? anchor : (resolveHour(clock.hour, period) ?? anchor)
-  const at = new Date(now.getFullYear(), now.getMonth(), now.getDate(), useHour, clock.hasMinute ? clock.minute : 0, 0, 0)
-  const delta = (info.weekday + 7 - at.getDay()) % 7
-  at.setDate(at.getDate() + delta + (info.nextWeek ? 7 : 0))
-  if (at.getTime() <= now.getTime() && !(repeat === 'weekly' && info.weekday === at.getDay())) {
-    at.setDate(at.getDate() + 7)
+  const start = wallClockToEpoch(
+    { year: nowWall.year, month: nowWall.month, day: nowWall.day, hour: useHour, minute: clock.hasMinute ? clock.minute : 0, second: 0 },
+    REMINDER_ZONE,
+  )
+  if (start === null) return null
+  const startWall = epochToWallClock(start, REMINDER_ZONE)
+  if (startWall === null) return null
+  const delta = (info.weekday + 7 - startWall.weekday) % 7
+  let at = shiftWallDays(start, delta + (info.nextWeek ? 7 : 0), REMINDER_ZONE)
+  if (at === null) return null
+  const landed = epochToWallClock(at, REMINDER_ZONE)
+  if (landed === null) return null
+  if (at <= now.getTime() && !(repeat === 'weekly' && info.weekday === landed.weekday)) {
+    at = shiftWallDays(at, 7, REMINDER_ZONE)
+    if (at === null) return null
   }
-  return { at: at.getTime(), repeat, note: buildNote(at.getTime(), now, repeat) }
+  return { at, repeat, note: buildNote(at, now, repeat) }
 }
 
 /** 出口 3：只说了时间段（"明早"/"半夜"）没给点数：用该时间段的锚点小时。 */
@@ -314,9 +376,12 @@ function resolveClockOnly(
   if (clock.hour === null && dayShift === null && period !== null) dayShift = 0
   if (clock.hour === null && dayShift === null) return null
   if (clock.minute > 59 || clock.minute < 0) return null
+  const nowWall = wallOf(now)
+  if (nowWall === null) return null
 
   const anchor = PERIOD_ANCHOR[period ?? 'morning']
   const useHour = clock.hour === null ? anchor : (resolveHour(clock.hour, period) ?? anchor)
-  const at = resolveDay(now, dayShift ?? 0, useHour, clock.hasMinute ? clock.minute : 0)
+  const at = resolveDay(now, nowWall, dayShift ?? 0, useHour, clock.hasMinute ? clock.minute : 0)
+  if (at === null) return null
   return { at, repeat, note: buildNote(at, now, repeat) }
 }

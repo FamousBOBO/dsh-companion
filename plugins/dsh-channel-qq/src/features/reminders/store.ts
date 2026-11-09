@@ -1,4 +1,4 @@
-﻿/**
+/**
  * **ReminderStore**（task-66 起按设计重写）：所有变更都走
  * `store-transaction.ts` 的事务——串行队列 + copy-on-write + 写盘成功后发布。
  *
@@ -23,6 +23,8 @@ import { ReminderStoreFault, storeFault } from './store-contract.js'
 import { deepFreeze } from './store-freeze.js'
 import { ReminderFile } from './store-io.js'
 import { reduceMarkUnknown, reducePruneFired, reduceRemove, reduceResolve } from './store-admin.js'
+import { clearClaim, reduceClaim, reduceReleaseClaim } from './claim.js'
+import { nudgeIfChanged } from './nudge.js'
 export type { Reminder, Repeat } from './reminder-model.js'
 import {
   dispatchMetricsOf, pendingDispatchesOf, reduceBumpPending, reduceClearPending, reduceMarkSent,
@@ -56,6 +58,8 @@ export class ReminderStore {
   private readonly queue = new SerialQueue()
   private readonly log: (line: string) => void
   private readonly ownerKey: string
+  /** 演练模式（`config.reminders.dryRun !== false`）：认领类写**整笔不发生**（见 `claim()`）。 */
+  private readonly dryRun: boolean
   private state: StoreState | null = null
   private lock: ReadFailure | null = null
   private issues: readonly ValidationIssue[] = []
@@ -76,6 +80,7 @@ export class ReminderStore {
       ? path.join(base, 'reminders.json')
       : (path.isAbsolute(configured) ? configured : path.join(base, configured))
     this.log = opts.log
+    this.dryRun = config.dryRun !== false
     this.io = persistence ?? new ReminderFile(file, this.log)
     this.ownerKey = path.resolve(file)
     const existing = OWNERS.get(this.ownerKey)
@@ -198,28 +203,39 @@ export class ReminderStore {
 
   async add(input: AddInput): Promise<Mutation<Reminder>> {
     this.assertWritable('add')
-    return await this.edit('add', (draft) => {
+    const mutation = await this.edit('add', (draft) => {
       const item = buildReminder(input)
       if (draft.some((row) => row.id === item.id)) return { kind: 'reject', code: 'INVALID_INPUT', message: 'id 冲突' }
       draft.push(item)
       return { kind: 'changed', value: item }
     })
+    // **立刻重排定时器**（2026-11-10）：见 `nudge.ts::nudgeIfChanged`（含"为什么必须挂在写入侧"）。
+    nudgeIfChanged(mutation, 'add')
+    return mutation
   }
 
   remove(id: string): Promise<Mutation<boolean>> {
-    return this.edit('remove', (draft) => reduceRemove(draft, id))
+    return this.edit('remove', (draft) => reduceRemove(draft, id)).then((mutation) => {
+      // 删掉的也许正是"下一次要醒来的那一条" ⇒ 也重排（否则会为一个不存在的时刻白醒）。
+      nudgeIfChanged(mutation, 'remove')
+      return mutation
+    })
   }
 
   resolve(id: string, outcome: 'confirmed' | 'failed'): Promise<Mutation<Reminder>> {
-    return this.edit('resolve', (draft) => reduceResolve(draft, id, outcome))
+    return this.edit('resolve', (draft) => reduceResolve(draft, id, outcome)).then((mutation) => {
+      // 人工收敛成 `failed` ⇒ 这条重新变成"可投递"，立刻一拍（否则要等心跳）。
+      if (outcome === 'failed') nudgeIfChanged(mutation, 'resolve-failed')
+      return mutation
+    })
   }
 
   pruneFired(now = Date.now(), keepMs = 7 * 86_400_000): Promise<Mutation<Reminder[]>> {
     return this.edit('pruneFired', (draft) => reducePruneFired(draft, now, keepMs))
   }
 
-  markUnknown(id: string, reason: string): Promise<Mutation<Reminder>> {
-    return this.edit('markUnknown', (draft) => reduceMarkUnknown(draft, id, reason))
+  markUnknown(id: string, reason: string, now = Date.now()): Promise<Mutation<Reminder>> {
+    return this.edit('markUnknown', (draft) => reduceMarkUnknown(draft, id, reason, now))
   }
 
   skipRound(id: string, now = Date.now()): Promise<Mutation<Reminder>> {
@@ -248,6 +264,8 @@ export class ReminderStore {
       }
       delete item.sentFor
       delete item.sentAt
+      // 一轮结束了 ⇒ 放掉认领（否则要等 TTL 过期，周期提醒的下一轮会被自己的旧认领挡住）。
+      clearClaim(item)
       return { kind: 'changed', value: { ...item } }
     })
   }
@@ -263,8 +281,39 @@ export class ReminderStore {
       delete item.sentAt
       if (occurrence === null) delete item.occurrence
       else item.occurrence = { ...occurrence }
+      clearClaim(item)
       return { kind: 'changed', value: { ...item } }
     })
+  }
+
+  // ── 原子领取（2026-11-10：多 worker / 多次扫描只发一次） ─────────────────
+  // 语义、四态、为什么"过期不重发"全在 `claim.ts`。这里只强调一条：**演练下这三笔写整个不发生**
+  //（返回 `changed:false`）——"dryRun 全程零写入"是硬不变量，不能依赖调用方记得传探针。
+
+  /** **领一次**（落盘一次事务：读-判-写原子完成）。业务拒绝 `STALE_STATE` = 别人在发，不是故障。 */
+  claim(id: string, owner: string, now = Date.now(), ttlMs?: number): Promise<Mutation<Reminder>> {
+    if (this.dryRun) return Promise.resolve(this.dryRunSkip(id, 'claim'))
+    return this.edit('claim', (draft) => reduceClaim(draft, id, owner, now, ttlMs))
+  }
+
+  /** **放回**：`skipped` / `dry-run` 之后立刻调用，让这条下一拍还能被领。 */
+  releaseClaim(id: string): Promise<Mutation<Reminder>> {
+    if (this.dryRun) return Promise.resolve(this.dryRunSkip(id, 'releaseClaim'))
+    return this.edit('releaseClaim', (draft) => reduceReleaseClaim(draft, id))
+  }
+
+  /** **收敛过期认领**：盘上分不清"发之前崩"还是"发之后崩" ⇒ 按 `unknown` 收（不重试）。 */
+  resolveStaleClaim(id: string, now = Date.now()): Promise<Mutation<Reminder>> {
+    if (this.dryRun) return Promise.resolve(this.dryRunSkip(id, 'resolveStaleClaim'))
+    return this.edit('resolveStaleClaim', (draft) => reduceMarkUnknown(draft, id, 'claim-expired:unknown', now))
+  }
+
+  /** 演练下的"认领类写"：**不写盘**，返回当前行（`changed:false`）。 */
+  private dryRunSkip(id: string, operation: string): Mutation<Reminder> {
+    const item = this.rows().find((row) => row.id === id)
+    this.log(`reminders: 演练模式不落盘：跳过 ${operation}（${id}）`)
+    if (item === undefined) return { ok: false, code: 'NOT_FOUND', message: `没有 id=${id} 的提醒` }
+    return { ok: true, changed: false, value: { ...item } }
   }
 
   markSent(id: string, forAt: number): Promise<Mutation<Reminder>> {

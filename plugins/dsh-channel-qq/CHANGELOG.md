@@ -1,5 +1,28 @@
 ## [Unreleased]
 
+### 修复
+
+- **到点提醒迟到 42 分钟（2026-11-09 事故，热修）**：一条 `2026-11-09 23:40` 的提醒实际
+  `00:22:10` 才发出（`latenessMs=2530430`）。**时间不是在"到期检测"或"QQ 发送"丢的**，
+  而是丢在**共享闸门**：提醒借了主动消息的判据，被 23:21 一次普通回复留下的会话冷却
+  （`perRoomCooldownMs=3600000`）挡到 00:21:52；日志里 84 条 `被共享闸门拦下（cooldown:room）`
+  就是那 84 拍。残余 ~17.5 秒来自固定 30 秒轮询的粒度。四处改动：
+  - **判据分档**：`contact.outboundBudget()` 新增 `profile: 'proactive' | 'reminder'`。到点提醒走
+    `reminder` 档，**只判通道与绑定**（`no-channel` / `binding-invalid`）；免打扰/冷却/配额/退避不再参与。
+    提醒发成功后**照样** `contact.account()` 记账 ⇒ 主动消息侧仍把提醒算作"刚说过话"（单向）。
+    缺省档 `proactive` = 修复前逐条不变。
+  - **按到期时刻唤醒**：`runner` 的 `setInterval(30_000)` 换成"算下一条 `scheduledAt`，到点才醒"
+    （`features/reminders/schedule.ts` + `wakeup.ts`），没有未来提醒时退回心跳。误差不再有 30 秒下界。
+  - **投递前原子认领**：`claim = {by, at, until}`（TTL 120s）落盘一次事务，多实例/多拍只发一次；
+    过期认领按 `unknown`（`claim-expired:unknown`）收敛，**不重发**。`store.claim/releaseClaim/resolveStaleClaim`。
+  - **结构化投递日志**：`reminders: dispatch reminderId= scheduledAt= observedAt= latenessMs= claimedAt=
+    sendStartedAt= sendCompletedAt= attempt= outcome= reason=`，**不含正文**；`latenessMs > 1000` 时额外先打一行迟到告警。
+- **时间解析显式用 `Asia/Shanghai`**：`parseWhen` / `qq_remind_at` 的墙上时间不再走宿主隐式时区
+  （换 `TZ` 会让同一条 "YYYY-MM-DD HH:mm" 落到另一个瞬间），统一走 `core/schedule/wall-clock.ts`；
+  不存在/非法的墙上时间（夏令时跳变、分量越界）如实回 `ok:false`，绝不换一个瞬间。
+- 证据档案：[docs/reminders-dispatch-timing.md](docs/reminders-dispatch-timing.md)（逐字段时间线、
+  三段时间的归属、修复前后语义对照、未覆盖边界）。
+
 ### 新增
 
 - **SnowLuma 能力面接入（审计 20261025_snowluma-capability-audit.md 落地）**：

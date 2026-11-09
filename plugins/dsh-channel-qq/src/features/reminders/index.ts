@@ -113,7 +113,16 @@ async function scheduleVerdict(
 }
 
 /**
- * 共享闸门（3A-1）：免打扰 / 冷却 / 配额 / 通道，与 contact 同一份判据同一本账。
+ * 共享闸门（3A-1）：**只问通道可行性**，不再借主动消息的免打扰 / 冷却 / 配额 / 退避。
+ *
+ * **2026-11-10 修复（本文件所在分支）**：以前这里传的是 `proactive` 档，于是到点提醒被
+ * 主动消息的会冷动挡住——2026-11-09 23:40 的那条提醒被 23:21 一次普通回复留下的
+ * `cooldown:room`（`perRoomCooldownMs` 1 小时）挡到 00:21:52，实际 00:22:10 才发出，
+ * 迟到 42 分钟（84 个 tick 全是被拦的日志，见 `docs/reminders-dispatch-timing.md`）。
+ *
+ * 现在传 `profile: 'reminder'`：只判 `no-channel` / `binding-invalid`（那是"真的发不出去"）。
+ * 冷却与配额那两本账**仍然记**（`sendOnce()` 里 `contact.account()`），所以主动消息一侧
+ * 照样把提醒算作"刚说过话"；单向：提醒不借额度，但会消耗额度。
  *
  * **round7**：以前注释写"只读"，实际不然——contact 的账本读取在**损坏/版本不匹配**时会
  * **删旧 `.corrupt` 并 rename 当前账本**（`ledger-io.ts:81-90`）。演练模式下绝不能发生这种事，
@@ -129,7 +138,7 @@ async function gateAllows(host: SubHost, reminder: Reminder, room: string, dryRu
     host.log('reminders: 没有 contact 服务，跳过共享闸门（只有提醒自己的开关生效）')
     return true
   }
-  const budget = await contact.outboundBudget({ room, sender: 'reminders' })
+  const budget = await contact.outboundBudget({ room, sender: 'reminders', profile: 'reminder' })
   if (budget.allowed) return true
   host.log(`reminders: ${reminder.id} 被共享闸门拦下（${budget.reason}），不投递`)
   return false

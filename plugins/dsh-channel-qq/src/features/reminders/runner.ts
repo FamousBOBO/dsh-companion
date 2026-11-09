@@ -20,22 +20,24 @@ import type { Reminder, ReminderStore } from './store.js'
 import { isHaltWorthyFault, SOFT_FAULT_LIMIT, SoftFaultTracker } from './store-contract.js'
 import { haltOnSoftFault, haltOnStorageFault, ScheduleHalt, type RunnerStatus } from './runner-status.js'
 import { flushPendingDispatches } from './runner-flush.js'
-import { CATCH_UP_MAX_TOTAL } from './catch-up.js'
+import { CATCH_UP_MAX_TOTAL, CATCH_UP_WINDOW_MS } from './catch-up.js'
+import { REMINDER_OUTCOMES, outcomeOf, type ReminderOutcome } from './outcome.js'
+import { dispatchOne, claimOwnerOf, type DispatchDeps } from './dispatch.js'
+import { nextWakeupDelayMs, wakeupAtsOf } from './schedule.js'
+import { WakeupTimer } from './wakeup.js'
+import { setReminderNudge } from './nudge.js'
+import { systemClock, type Clock } from '../../ports/clock.js'
 
 /**
- * 一次投递尝试的**全部**结论——**唯一权威定义**（类型从这里派生，别再手写第二份）。
+ * 一次投递尝试的**全部**结论——**唯一权威定义在 `outcome.ts`**，这里只做 re-export。
  *
- * | 结论 | runner 会写什么 | 会不会消耗这条提醒 |
- * |---|---|---|
- * | `sent` | `markFired()` / `markFiredRebound()`（推进 `at`、换绑 `occurrence`） | 会（它就是"发过了"） |
- * | `dry-run` | **什么都不写**（只留一行日志） | **不会**（演练不是发出） |
- * | `unknown` | `markUnknown()`（终态，留证据） | 会（但会留痕、可人工收敛） |
- * | `skipped` | 什么都不写 | 不会 |
- *
- * ⚠️ 仓外若有人按"三态"枚举（`sent`/`unknown`/`skipped`），**必须**把 `dry-run` 补进去：
- * 演练既不是"发出去"也不是"失败"，混进 `unknown` 会让人以为出过错。
+ * 为什么搬走：`dispatch.ts`（"单独一条怎么发"）也要用它，而它不能反向 import `runner.ts`
+ * （循环依赖）。既有写法 `import { outcomeOf } from '.../runner.js'` 继续有效——
+ * `test/review3-qq.test.ts` B2-4 就钉着这个出口。
  */
-export const REMINDER_OUTCOMES = ['sent', 'dry-run', 'unknown', 'skipped'] as const
+export { REMINDER_OUTCOMES, outcomeOf }
+export type { ReminderOutcome }
+
 
 /**
  * **每拍最多补发几条**（终审 B7，默认 3 条）。
@@ -46,18 +48,19 @@ export const REMINDER_OUTCOMES = ['sent', 'dry-run', 'unknown', 'skipped'] as co
  */
 export const MAX_CATCH_UP_PER_TICK = 3
 
-/** 一次投递尝试的结论。`skipped` / `dry-run` 都不消耗提醒，区别是后者"闸门跑过了"。 */
-export type ReminderOutcome = typeof REMINDER_OUTCOMES[number]
-
-/** 把回调随便返回的东西收敛成四种结论之一（认不出的按 `unknown`：说不清就别重试）。 */
-export function outcomeOf(value: unknown): ReminderOutcome {
-  const text = String(value)
-  return (REMINDER_OUTCOMES as readonly string[]).includes(text) ? text as ReminderOutcome : 'unknown'
-}
+/** 算"下一条什么时候到点"时最多看多少行：提醒表按 `at` 升序，够了。 */
+const MAX_ROWS_FOR_WAKEUP = 50
 
 export class ReminderRunner {
-  private timer: ReturnType<typeof setInterval> | null = null
-  /** 上一轮还没跑完就不开下一轮：send 超过 30s 时同一批 due 会被推两次。 */
+  /**
+   * **按到期时刻醒来的定时器**（2026-11-10 修复）。
+   *
+   * 以前这里是 `setInterval(intervalMs)`：到点误差的**下界就是轮询间隔**，一条 23:40:00 的
+   * 提醒最好也要 23:40:00–23:40:30 才被看见（事故日志里 84 次被拦的记录间隔稳定 30 s，
+   * 就是这条定时器）。现在改成"算下一条 `at`，到点才醒"，心跳只兜时钟漂移/休眠唤醒/手改文件。
+   */
+  private wake: WakeupTimer | null = null
+  /** 上一轮还没跑完就不开下一轮：send 超过一拍时同一批 due 会被推两次。 */
   private running = false
   /** 停表现场（原因与时刻都在里面；"为什么停"的两套文案见 `runner-status.ts`）。 */
   private readonly halt = new ScheduleHalt()
@@ -83,6 +86,10 @@ export class ReminderRunner {
    * 不再做"收终态/积压淘汰"这些批量收编动作（否则 dryRun 会把周期提醒永久停掉）。
    */
   private readonly dryRun?: () => boolean
+  /** 时钟（`now()` 与定时器都从这里来）：到点精度与"停机补发"都要能在假时钟上复现。 */
+  private readonly clock: Clock
+  /** 认领者标识（写进盘上：多实例排查时能读出"谁在发"）。 */
+  private readonly owner = claimOwnerOf()
   private readonly log: (line: string) => void
 
   constructor(
@@ -93,6 +100,7 @@ export class ReminderRunner {
     rebind?: (r: Reminder) => Promise<{ id: string; revision: number } | null>,
     redispatch?: (r: Reminder) => Promise<'ok' | 'absent' | 'fail'>,
     dryRun?: () => boolean,
+    clock: Clock = systemClock,
   ) {
     this.store = store
     this.send = send
@@ -101,6 +109,7 @@ export class ReminderRunner {
     this.rebind = rebind
     this.redispatch = redispatch
     this.dryRun = dryRun
+    this.clock = clock
   }
 
   /**
@@ -138,33 +147,57 @@ export class ReminderRunner {
   /** **只读诊断快照**（字段含义见 `runner-status.ts` 的 `RunnerStatus`；**不改停表判定、不新增写路径**）。 */
   status(): RunnerStatus {
     return {
-      scheduled: this.timer !== null, halted: this.halt.halted,
+      scheduled: this.wake !== null, halted: this.halt.halted,
       haltReason: this.halt.reason, haltedAt: this.halt.at,
       softFault: { streak: this.softFault.count(), code: this.softFault.lastCode(), limit: SOFT_FAULT_LIMIT },
     }
   }
 
-  start(intervalMs = 30_000): void {
-    if (this.timer !== null) return
+  /**
+   * 启动调度（`heartbeatMs` 是**心跳**，不是原来的"固定轮询间隔"）。
+   *
+   * **2026-11-10 修复**：以前这里是 `setInterval(intervalMs)`，"提醒何时被看见"的下界就是
+   * 这个间隔——一条 23:40:00 的提醒最好也要 23:40:30 才被处理，5 秒验收在结构上不可能。
+   * 现在每拍跑完都重新算"下一条 `at` 离现在多久"并按它唤醒；心跳只兜时钟漂移、系统休眠/
+   * 唤醒（`setTimeout` 不保证跨休眠按墙钟走）与被外部手改过的提醒文件。
+   */
+  start(heartbeatMs = 30_000): void {
+    if (this.wake !== null) return
     // **round18 P1（复审 17.2）**：停表之后 `start()` 不许只打一行 "started"——那会让人以为
     // 它又开始干活了，实际 `tick()` 立刻返回、一条都不会发（复审实测：只多 1 行日志、`sends` 增量 0）。
     if (this.halt.halted) {
       this.log(`reminders: **仍在停表中**（${this.halt.reason ?? '原因未记录'}）：runner 不会开始轮询，需要人工重启本插件`)
       return
     }
-    // **P1（复审 1.1）**：`tick()` 会 reject（存储故障按设计是 reject）。没人接住 = 进程级
-    // 未捕获拒绝，Node ≥15 默认会**中止整个宿主**（提醒、contact、面板一起没）。
-    this.timer = setInterval(() => {
-      // **round18 P1（复审 17.1）**：`softFault.reset()` **绝对不能**挂在这个 `.then()` 上——
-      // `tick()` 在上一拍还没跑完（`running`）时会**立即 resolve**，于是"这一拍什么都没做"会被
-      // 当成"这一拍成功了"，故障比一拍慢时连击永远归零（复审实测：32 次故障、日志全写"第 1 拍"、
-      // `sends=0`、`halted` 永假）。清零现在在 `tick()` 里、`runDue()` 真的跑完之后。
-      void this.tick().catch((error: unknown) => { this.haltAfterTickFault(error) })
-    }, intervalMs)
-    // 别让这个轮询把进程钉住：主控 dispose 时进程照常退出。
-    // `unref` 在 Node 的 Timeout 上一定存在；`typeof` 只是防"跑在别的运行时上"。
-    if (typeof this.timer.unref === 'function') this.timer.unref()
-    this.log(`reminders: runner started (every ${String(intervalMs)}ms)`)
+    this.wake = new WakeupTimer({
+      clock: this.clock,
+      // **P1（复审 1.1）**：`tick()` 会 reject（存储故障按设计是 reject）。没人接住 = 进程级
+      // 未捕获拒绝，Node ≥15 默认会**中止整个宿主**（提醒、contact、面板一起没）。
+      // `WakeupTimer` 自己接住，所以这里只负责把异常分流到停表判定。
+      onTick: async () => { await this.tick().catch((error: unknown) => { this.haltAfterTickFault(error) }) },
+      nextDelayMs: () => this.nextDelayMs(heartbeatMs),
+      log: this.log,
+    })
+    // 建/删提醒之后立刻重排（`nudge.ts`）：否则一条"15 秒后"的提醒可能排在心跳后面。
+    setReminderNudge(() => { this.wake?.reschedule() })
+    this.wake.start()
+    this.log(`reminders: runner started (heartbeat ${String(heartbeatMs)}ms，按到期时刻唤醒)`)
+  }
+
+  /**
+   * 下一拍该等多久（毫秒）。
+   *
+   * 取值来自**盘上的提醒表**（与投递侧同一套判据，见 `schedule.ts::wakeupAtsOf`）；
+   * 停表/正在跑时给心跳，避免"跑着的时候又醒一次"。
+   */
+  private nextDelayMs(heartbeatMs: number): number {
+    if (this.halt.halted) return heartbeatMs
+    const now = this.clock.now()
+    return nextWakeupDelayMs({
+      ats: wakeupAtsOf(this.store.list(MAX_ROWS_FOR_WAKEUP), CATCH_UP_WINDOW_MS, now),
+      now,
+      heartbeatMs,
+    })
   }
 
   /** 每次轮询同一时刻的 due 快照；单条失败只记日志，其它条继续。 */
@@ -214,18 +247,22 @@ export class ReminderRunner {
    * 每一步都记日志：既不静默丢弃，也不在恢复瞬间刷屏。
    */
   private async takeBatch(): Promise<Reminder[]> {
+    // **一律用注入的时钟判"到点"**（2026-11-10）：store 的查询方法都接受 `now`，但缺省是
+    // `Date.now()` —— 缺省值在假时钟下会让 due/expire/cap 读到与调度不同的时间，
+    // 于是"精度"与"补发窗口"在测试里根本不可复现（也让 T1/T6/T9 之类用例判红）。
+    const now = this.clock.now()
     // **演练模式：一行持久状态都不写**（round5 D4）。淘汰/收编都是写操作，必须整个跳过——
     // 否则"dryRun 开着"也会把超期的 daily/weekly 收成终态 ⇒ 永久停掉周期提醒。
-    if (this.dryRun?.() === true) return this.store.due()
+    if (this.dryRun?.() === true) return this.store.due(now)
     // **task-66（设计 §6 调用方规则）**：收编失败是**存储故障**（reject）⇒ **终止本拍投递**，
     // 不能捕获后继续用空数组绕过防雪崩。业务拒绝（NOT_APPLICABLE）才算"没有要收的"。
-    const expiredMutation = await this.store.expireStale()
+    const expiredMutation = await this.store.expireStale(now)
     const expired = expiredMutation.ok ? expiredMutation.value.map((row) => row.id) : []
     if (expired.length > 0) {
       this.log(`reminders: ${String(expired.length)} 条已超出补发窗口（${String(this.store.catchUpWindowMs)}ms）`
         + ' → 收成终态 skipped-expired:too-old（不补发、也不假装还在等）')
     }
-    const overflowMutation = await this.store.capBacklog()
+    const overflowMutation = await this.store.capBacklog(now)
     const overflow = overflowMutation.ok ? overflowMutation.value.map((row) => row.id) : []
     if (overflow.length > 0) {
       this.log(`reminders: 因积压丢弃 ${String(overflow.length)} 条（skipped-expired:backlog-overflow，`
@@ -238,17 +275,17 @@ export class ReminderRunner {
       }
       // **清单可能不全**（Lead 的 P2）：一定要说清"这只是前 5 条"，别让人当成全部。
       const total = typeof this.store.catchUpDiagnostics === 'function'
-        ? this.store.catchUpDiagnostics().droppedTotal
+        ? this.store.catchUpDiagnostics(now).droppedTotal
         : overflow.length
       if (total > dropped.length) {
         this.log(`reminders: 丢弃明细只列了 ${String(dropped.length)} 条，**还有 ${String(total - dropped.length)} 条没列出**`
           + `（后台 reminders.catchUp.droppedTotal=${String(total)}、droppedTruncated=true）`)
       }
     }
-    const backlog = this.store.due()
+    const backlog = this.store.due(now)
     // **错过这一轮的周期提醒也要进本拍**（round5 D4）：它们不在 `due()` 里（`at` 已滑出窗口），
     // 但需要被"推进到下一轮"——否则会永远卡在过去的时刻（既不响也不再走）。
-    const missed = typeof this.store.missedRounds === 'function' ? this.store.missedRounds() : []
+    const missed = typeof this.store.missedRounds === 'function' ? this.store.missedRounds(now) : []
     // **每拍上限只对一次性提醒计数**（round5 D4）：周期提醒本来就不会被淘汰，不该被"积压"挤掉。
     const repeats = backlog.filter((item) => item.repeat !== 'none')
     const oneShots = backlog.filter((item) => item.repeat === 'none')
@@ -263,53 +300,26 @@ export class ReminderRunner {
   private async runDue(): Promise<void> {
     const pending = await this.takeBatch()
     for (const reminder of pending) {
-      // P1-02：投递前再判一次（开关 / 房间白名单 / 按群策略）。不允许投的**不消耗**提醒。
-      if (!this.allow(reminder)) {
-        this.log(`reminders: 跳过 ${reminder.id}（当前不可投递：开关关闭或房间不在白名单）`)
-        continue
-      }
-      let outcome: ReminderOutcome = 'unknown'
-      let reason = 'unknown'
-      try {
-        // 四种结论都在 `REMINDER_OUTCOMES` 里（权威定义）；认不出的一律 `unknown`：
-        // "说不清发没发"时最安全的是不重试。
-        const result = await this.send(reminder)
-        outcome = outcomeOf(result)
-        if (outcome === 'unknown') reason = `unclassified:${String(result)}`
-      } catch (error) {
-        // 抛错 = "无法证明没发出去" ⇒ 与 contact 的 unknown 同口径：不重试。
-        outcome = 'unknown'
-        reason = error instanceof Error ? error.message : String(error)
-        this.log(`reminders: send failed for ${reminder.id}: ${reason}`)
-      }
-      if (outcome === 'dry-run') {
-        // **终审 B2**：演练**不许动任何持久状态**——不写 `fired`、不推进 `at`、不改 `occurrence`。
-        // 所以这里什么都不做，只留一行日志（`dryRun` 与"真发过"在日志/诊断里能分辨）。
-        this.log(`reminders: ${reminder.id} 演练过（dry-run），状态未改动，下一次到点还会响`)
-      } else if (outcome === 'sent') {
-        if (!(await this.recordSent(reminder))) return
-      } else if (outcome === 'unknown') {
-        // **round8**：演练下**任何**出口都不许落盘——包括这条"异常/说不清"的出口。
-        // 以前只在前面的分支里挡 dryRun，这里漏了 ⇒ send 抛错仍然 `markUnknown()`
-        // （会清 sent 字段、终结一次性或推进周期）。
-        if (this.dryRun?.() === true) {
-          this.log(`reminders: ${reminder.id} 演练里出现 unknown（${reason}）→ **不落 unknown**，状态保持原样`)
-        } else {
-          // **task-65**：`markUnknown` 返回 false（锁着/没落盘）时不许写"记为 unknown"——那等于谎报状态。
-          try {
-            await this.store.markUnknown(reminder.id, reason)
-          } catch (error) {
-            // **P1（复审 16.1）**：投递**已经发生**（结论 unknown = 不确定发没发），
-            // 所以这里和另外两条记账路径一样**无条件停表**——rethrow 会被 tick 级分类判成
-            // "程序错误、不停表"，结果每 30 秒再发一次（复审探针实测 350ms 内 23 次外发）。
-            this.log(`reminders: ${reminder.id} 的 unknown 状态**没写进去**（${error instanceof Error ? error.message : String(error)}）：内存与盘上都没记，别当成已收敛`)
-            // **P1（复审 13.2）**：unknown 也没写成 ⇒ "发没发"说不清 ⇒ 下一拍 `due()` 仍会选中它 ⇒ 锁定调度
-            this.haltDispatch(`unknown 没写进去：${error instanceof Error ? error.message : String(error)}`, reminder.id)
-            return
-          }
-          this.log(`reminders: ${reminder.id} 记为 unknown（不自动重试，等人工收敛 ${reason}）`)
-        }
-      }
+      // 认领 → 闸门 → 真发 → 记账 → 结构化日志，全在 `dispatch.ts`（runner.ts 贴着 400 行上限）。
+      // 返回 `false` = 这一条必须中止本拍（投递已发生但记账失败 ⇒ 已停表）。
+      const ok = await dispatchOne(this.dispatchDeps(), reminder)
+      if (!ok) return
+    }
+  }
+
+  /** `dispatchOne` 的依赖（每次现取：`halt`/`dryRun` 都是活状态，不能提前快照）。 */
+  private dispatchDeps(): DispatchDeps {
+    return {
+      store: this.store,
+      owner: this.owner,
+      now: () => this.clock.now(),
+      dryRun: () => this.dryRun?.() === true,
+      allow: this.allow,
+      send: this.send,
+      recordSent: (reminder) => this.recordSent(reminder),
+      markUnknown: async (id, reason) => { await this.store.markUnknown(id, reason, this.clock.now()) },
+      haltDispatch: (reason, reminderId) => { this.haltDispatch(reason, reminderId) },
+      log: this.log,
     }
   }
 
@@ -341,7 +351,7 @@ export class ReminderRunner {
         this.log(`reminders: ${reminder.id} 拿不到下一轮 occurrence → 已解除日程绑定（清空，避免旧 revision 必然过期）`)
       }
       try {
-        await this.store.markFiredRebound(reminder.id, occurrence)
+        await this.store.markFiredRebound(reminder.id, occurrence, this.clock.now())
       } catch (error) {
         // 投递已经发生、写盘失败 ⇒ 无条件停表（理由见本函数头注释）。
         this.haltDispatch(`推进+换绑写盘失败：${error instanceof Error ? error.message : String(error)}`, reminder.id)
@@ -349,7 +359,7 @@ export class ReminderRunner {
       }
     } else {
       try {
-        await this.store.markFired(reminder.id)
+        await this.store.markFired(reminder.id, this.clock.now())
       } catch (error) {
         // 投递已经发生、写盘失败 ⇒ 无条件停表（理由见本函数头注释）。
         this.haltDispatch(`"已触发"没落盘：${error instanceof Error ? error.message : String(error)}`, reminder.id)
@@ -359,9 +369,10 @@ export class ReminderRunner {
     return true
   }
   dispose(): void {
-    if (this.timer !== null) {
-      clearInterval(this.timer)
-      this.timer = null
+    setReminderNudge(null)
+    if (this.wake !== null) {
+      this.wake.dispose()
+      this.wake = null
     }
   }
 }

@@ -319,6 +319,20 @@ export interface OutboundBudgetInput {
   readonly sender: string
   /** 现在；缺省用 contact 的时钟。 */
   readonly now?: number
+  /**
+   * **预算档**（2026-11-10 修复）：`reminder` = 到点提醒，只判通道可行性
+   * （`no-channel` / `binding-invalid`）；缺省 `proactive` = 修复前的老判据，一字不变。
+   *
+   * 为什么提醒要单独一档：免打扰/冷却/配额/退避回答的是"现在适合主动找人说话吗"，
+   * 而提醒是**主人在某个时刻明确要求**的一句话。拿主动消息的额度去推迟它，就是把一次
+   * 承诺改写成"看心情"——2026-11-09 的 42 分钟延迟正是如此：23:21 一条普通回复留下的
+   * 会话冷却（`perRoomCooldownMs` 1 小时）把 23:40 的提醒挡到了 00:21:52。
+   *
+   * 判据表在 `features/contact/gate.ts::budgetChecksFor()`。安全边界没有放松：
+   * 提醒的 `dryRun` / `allowExternalSend` 由提醒自己的装配判，投递成功后**照样**记进
+   * 同一本账，所以主动消息那一侧仍然看得见"刚发过提醒"。
+   */
+  readonly profile?: BudgetProfile
 }
 
 /** 共享闸门的结论（`reason` 与 contact 门控同名同义）。 */
@@ -337,6 +351,15 @@ export interface OutboundAccountInput {
   readonly reason: string
   readonly now?: number
 }
+
+/**
+ * **预算判据的两档**（2026-11-10 修复）：谁在问，决定适用哪张判据表。
+ *
+ * 缺省 `proactive` = contact 自己与所有老调用方，行为与修复前逐条相同；`reminder` =
+ * 到点提醒（只判物理可行性）。语义与取舍见 `OutboundBudgetInput.profile` 与
+ * `features/contact/gate.ts::budgetChecksFor()`。
+ */
+export type BudgetProfile = 'proactive' | 'reminder'
 
 /** 空计数（第一次启动、跨日清零都用它）。 */
 export function emptyCounters(day: string): ContactCounters {

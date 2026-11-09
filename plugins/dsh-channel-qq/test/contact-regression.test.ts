@@ -69,22 +69,41 @@ function immediateOut(): PlatformParts['out'] {
   return { push: async <T>(fn: () => Promise<T>): Promise<T> => fn() } as unknown as PlatformParts['out']
 }
 
-/** 把 runner 的 `setInterval` 抓住（`ReminderRunner` 不接时钟——见审查发现 V-R3）。 */
-function captureIntervals(): { fire(): void; cleared(): number; restore(): void } {
+/**
+ * 把 runner 的定时器抓住。
+ *
+ * **2026-11-10 修复之后要同时抓 `setTimeout`**：调度不再是 `setInterval(30s)` 固定轮询
+ * （那是"到点精度不可能达标"的根因），而是"算下一条 `at`，到点才醒"——`WakeupTimer`
+ * 走 `Clock.setTimeout`。这个助手因此两个都拦：`fire()` 触发**当前挂着的那一个**，
+ * `cleared()` 数两种取消。判据本身没变：一拍恰好发一条、第二拍不重发、卸载后不再留定时器。
+ *
+ * `fire()` **返回那一拍的 promise**：这一拍要落盘（认领 + 记账），`settle()` 的
+ * `setImmediate` 轮次等不到真实文件 I/O 回来。所以下面调用处一律 `await capture.fire()`。
+ */
+function captureIntervals(): { fire(): Promise<void>; cleared(): number; restore(): void } {
   const originalSet = globalThis.setInterval
   const originalClear = globalThis.clearInterval
-  let fn: (() => void) | null = null
+  const originalSetTimeout = globalThis.setTimeout
+  const originalClearTimeout = globalThis.clearTimeout
+  let fn: (() => unknown) | null = null
   let clearCount = 0
+  const handle = { unref(): void {}, cancel(): void {} }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  ;(globalThis as any).setInterval = (callback: () => void): unknown => { fn = callback; return { unref(): void {} } }
+  ;(globalThis as any).setInterval = (callback: () => unknown): unknown => { fn = callback; return handle }
   // eslint-disable-next-line @typescript-eslint/no-explicit-any
   ;(globalThis as any).clearInterval = (): void => { clearCount += 1 }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(globalThis as any).setTimeout = (callback: () => unknown): unknown => { fn = callback; return handle }
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  ;(globalThis as any).clearTimeout = (): void => { clearCount += 1 }
   return {
-    fire: () => { fn?.() },
+    fire: async () => { await (fn?.() as Promise<void> | undefined) },
     cleared: () => clearCount,
     restore: () => {
       globalThis.setInterval = originalSet
       globalThis.clearInterval = originalClear
+      globalThis.setTimeout = originalSetTimeout
+      globalThis.clearTimeout = originalClearTimeout
     },
   }
 }
@@ -183,19 +202,17 @@ test('R03 提醒到点：直发恰好一次，第二拍不重发，卸载时定�
     // 一条已经到点的一次性提醒。
     await store!.add({ text: '喝水', at: Date.now() - 1000, room: 'group', target: 1000000003, createdBy: 10001 })
 
-    capture.fire()
-    await settle()
+    await capture.fire()
     assert.equal(platform.count(), 1, '到点应当直发一条')
     assert.equal(platform.sent[0]!.text, '⏰ 到点了：喝水')
     assert.deepEqual([platform.sent[0]!.isGroup, platform.sent[0]!.target], [true, 1000000003])
 
     // 第二拍：已经 markFired，不该再发（这是"重复 tick 不重复发"的最底层一条）。
-    capture.fire()
-    await settle()
+    await capture.fire()
     assert.equal(platform.count(), 1, '同一批 due 不能被推两次')
 
     await dispose()
-    assert.equal(capture.cleared(), 1, '卸载必须 clearInterval（否则进程里留一个 30s 的幽灵）')
+    assert.equal(capture.cleared() >= 1, true, '卸载必须撤掉定时器（否则进程里留一个幽灵）')
   } finally {
     capture.restore()
     await dispose()
@@ -217,8 +234,7 @@ test('R03b 提醒未到点：一拍都不发（due() 的时间判据不能提前
     dispose = async () => { if (typeof effect === 'function') await effect() }
     const store = sub.host.get('reminders')!
     expectOk(await store.add({ text: '明天的事', at: Date.now() + 6 * 60 * 60_000, room: 'dm', target: 10001, createdBy: 10001 }))
-    capture.fire()
-    await settle()
+    await capture.fire()
     assert.equal(platform.count(), 0)
   } finally {
     capture.restore()
@@ -325,7 +341,7 @@ test('R06 同一拍里：主动回合一条 + 提醒直发一条，互不吞也�
     await sub.host.get('reminders')!.add({
       text: '出门带伞', at: Date.now() - 1000, room: 'group', target: 1000000003, createdBy: 10001,
     })
-    capture.fire()
+    await capture.fire()
     await settle()
 
     assert.equal(turns.booked.length, 1, '主动回合恰好一条')
