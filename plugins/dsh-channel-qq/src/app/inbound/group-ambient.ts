@@ -13,6 +13,7 @@
 
 import { renderMessageContent, renderMessageLine } from '../../core/message/render.js'
 import type { ParsedInbound } from '../../core/message/parse.js'
+import { registryFor, resolveParticipant, type RegistryFile, type SenderKind } from '../../core/participant.js'
 import type { OneBotEvent } from '../../types.js'
 import {
   ambientLimitsOf, type AmbientStore, type PresenceSettings,
@@ -96,6 +97,36 @@ export interface CaptureInput {
   readonly parsed: ParsedInbound
   readonly selfId?: number | undefined
   readonly nowMs: number
+  /**
+   * 参与者注册表（P9-G4 §2.2）：**每次现取**；缺省 = 没装注册表。
+   *
+   * 为什么由采集层查而不是流水线查：身份要在**采集现场**冻结（§2.3），
+   * 而"采集"就是这个函数。流水线只负责把端口递过来。
+   */
+  readonly registry?: (() => RegistryFile | null) | undefined
+}
+
+/**
+ * 采集现场冻结的发送者身份（P9-G4 §2.3）。
+ *
+ * 注册表拿不到时返回**空对象**（不带字段），而不是 `{ senderKind: 'unknown' }`：
+ * "没查"与"查了没登记"在诊断上是两件事——前者是能力缺失，后者是事实。
+ * 渲染时两者都写"未登记"，但报告里的 Unknown 保留率只该数后者。
+ */
+function frozenKindOf(input: CaptureInput, groupId: number, userId: number): { readonly senderKind?: SenderKind } {
+  try {
+    const registry = input.registry?.() ?? null
+    if (registry === null) return {}
+    const participant = resolveParticipant({
+      userId,
+      displayName: input.event.sender?.card?.trim() || input.event.sender?.nickname || '',
+      ...(input.selfId === undefined ? {} : { selfId: input.selfId }),
+      registry: registryFor(registry, groupId),
+    })
+    return { senderKind: participant.senderKind }
+  } catch {
+    return {}
+  }
 }
 
 /**
@@ -116,9 +147,10 @@ export function captureAmbient(input: CaptureInput): void {
       ? { ...input.parsed, plainText: input.parsed.text }
       : input.parsed,
   )
+  const userId = input.event.user_id ?? 0
   const outcome = ring.add({
     messageId: typeof input.event.message_id === 'number' ? input.event.message_id : null,
-    userId: input.event.user_id ?? 0,
+    userId,
     name: input.event.sender?.card?.trim() || input.event.sender?.nickname || '',
     text,
     ...(body === null ? {} : { body }),
@@ -127,6 +159,9 @@ export function captureAmbient(input: CaptureInput): void {
     // 平台结构原样带走（P6-A）：判断时"谁回了谁、谁 @ 了谁"要用真事实，不能靠正文猜。
     replyToMessageId: input.parsed.replyToMessageId,
     atIds: input.parsed.atIds,
+    // 身份在**采集现场**冻结（P9-G4 §2.3）：注册表以后会变，而"这条消息当时属于哪种身份"
+    // 是历史事实。判断时再查等于用今天的注册表解释昨天的对话，回放也就没法复现。
+    ...frozenKindOf(input, input.groupId, userId),
   })
   if (outcome !== 'added' || self) return
   input.presence?.observe(input.groupId)

@@ -13,6 +13,8 @@
  * 兴趣判断则只看最近一段（`peekAfter`，不推进游标）。两者共用同一份条目。
  */
 
+import type { SenderKind } from './participant.js'
+
 /** 缓冲里的一条：保留真实发送者、消息号、时间与顺序（P0：还要能分出"正文"与"抬头"）。 */
 export interface AmbientEntry {
   /** 群内单调递增序号；游标与"判断到哪了"都用它。 */
@@ -46,6 +48,15 @@ export interface AmbientEntry {
   readonly replyToMessageId?: number | null
   /** 这条消息**真实 @** 了谁（平台 at 段；**不含**自己与 @全体）。正文里的"@某某"不算。 */
   readonly atIds?: readonly number[]
+  /**
+   * 这条消息的发送者身份（P9-G4 §3 的 `senderKind`）；缺省 `undefined` = 没查过。
+   *
+   * 为什么一路带到缓冲里，而不是判断时再查：身份来自注册表，而**注册表会变**（§2.3：
+   * `unknown` 变成 `known_bot` 要保留变更时间、历史事件的原始身份不许改）。在解析现场
+   * 冻结一份"这条消息当时属于哪种身份"，回放才能重算出与当时一致的结果——判断时再查
+   * 等于用今天的注册表去解释昨天的对话。
+   */
+  readonly senderKind?: SenderKind
 }
 
 /** 三重上限。 */

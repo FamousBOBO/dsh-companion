@@ -18,6 +18,7 @@
 import type { PresenceLimits, PresenceState } from '../../core/presence.js'
 import type { Clock } from '../../ports/clock.js'
 import type { ChatPlatform } from '../../ports/platform.js'
+import type { RegistryFile } from '../../core/participant.js'
 import type { JudgeEntry } from './presence-judge.js'
 import type { GroupPersonaSnapshot } from './group-persona.js'
 import type { PresenceSettings } from './ambient-store.js'
@@ -29,6 +30,7 @@ import {
   type SocialDecision,
 } from './group-social-decision.js'
 import { buildSocialPrompt } from './group-social-prompt.js'
+import { renderParticipantsSection, renderRiskSection } from './presence-ecology.js'
 import { renderScene, runSocialGuard } from './presence-scene.js'
 import { EMPTY_RECALL, type GroupMemoryRecall } from './group-memory-contract.js'
 import { failed, silent, speak } from './presence-send.js'
@@ -215,6 +217,14 @@ export interface CycleDeps {
    */
   readonly guardMode?: () => string
   /**
+   * 参与者注册表（P9-G4 §2.2）：**每次现取**，拿不到就返回 `null`。
+   *
+   * 为什么是函数：注册表是文件，后台改完要立即生效（§2.3 的"身份变更保留时间"也要求
+   * 读到的是当前版本）。缓存它会让"改了注册表但她还是把对方当未知"变成难查的问题。
+   * 缺省 = `undefined`，此时全员 `unknown`——**降级方向是保守的**：不当成已确认事实。
+   */
+  readonly registry?: () => RegistryFile | null
+  /**
    * 记一次**真实的平台发送尝试**（P9-A3）：成功与失败都算，耗时只含平台调用本身。
    *
    * 为什么与 `recordEvent` 分开：那个只在**成功**时记时间线；这个要看"尝试了几次、每次多慢"，
@@ -283,6 +293,10 @@ export async function runPresenceCycle(input: CycleInput, deps: CycleDeps): Prom
     memoryBudgetChars: positiveOr(input.settings.memoryBudgetChars ?? DEFAULTS.memoryBudgetChars, DEFAULTS.memoryBudgetChars),
     // 社交结构（P6-A）：只给**事实**，不给结论；判不准就是 uncertain。
     scene: renderScene(input, deps),
+    // 参与者身份（P9-G4 §3）：由代码查注册表，模型不猜；注册表缺失时全员 unknown。
+    participants: renderParticipantsSection(input, deps),
+    // 互动风险（P9-G4 §4.1）：只给"这一轮参与会不会变成循环"的事实与建议，不替模型选动作。
+    risk: renderRiskSection(input, deps),
   })
   const result = await deps.complete.complete({
     prompt,

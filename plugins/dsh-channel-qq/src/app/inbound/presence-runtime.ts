@@ -1,17 +1,13 @@
 /** 群聊旁听的**状态机**：合批定时器、每群游标、限频记账、卸载。
  *
- * 分层（这个文件的边界就是这几层的边界）：`core/ambient.ts` 背景缓冲、`core/presence.ts`
- * 限频记账、`presence-timeline.ts` 事件时间线、`presence-scheduler.ts` 调度观测、
- * `presence-cycle.ts` 一次判断的编排、`presence-scene.ts` 社交场景与语义复核、
- * `presence-flow.ts` 流程本身、**本文件** 常驻状态与定时器。
+ * 分层：背景缓冲在 `core/ambient.ts`、限频记账在 `core/presence.ts`、时间线在
+ * `presence-timeline.ts`、调度观测在 `presence-scheduler.ts`、一次判断的编排在
+ * `presence-cycle.ts`、**本文件**只管常驻状态与定时器。
  *
- * 六条硬约束：1) **`observe` 非阻塞**——入站不等模型，只（可能）武装一个合批定时器；
- * 2) **旁听环不归我写**——`captureAmbient` 负责 `add`，这里只读并推进自己的游标；
- * 3) **每次现取 platform / persona / memory**——热加载会换掉旧对象，缓存等于把"重连"变成静默失败；
- * 4) **热加载不补发**——`emptyPresenceState(now)` 把上次判断时刻置成"现在"，只有上线之后的新消息才判；
- * 5) **同群不并发**——一个群同时只跑一次判断（`inflight`），避免"两句连着发出去"；
- * 6) **不重排已武装的定时器**——重排会让热闹的群无限往后推（"判断饥饿"的老根因）；
- * `starvationWarnMs` 只用来**报警**（见 `noteSkip`）。
+ * 六条硬约束：1) `observe` 非阻塞（入站不等模型）；2) 旁听环不归我写（`captureAmbient`
+ * 负责 `add`，这里只读并推进游标）；3) platform / persona / memory 每次现取（热加载会换
+ * 掉旧对象）；4) 热加载不补发（`emptyPresenceState(now)` 把上次判断时刻置成"现在"）；
+ * 5) 同群不并发（`inflight`）；6) 不重排已武装的定时器——`starvationWarnMs` 只用来报警。
  *
  * 这里不碰盘、不建会话、不给工具：自主发言由通道直接发，不经过群 agent（§0.8）。
  */
@@ -31,6 +27,7 @@ import type { JudgeEntry } from './presence-judge.js'
 import type { GroupPersonaSnapshot } from './group-persona.js'
 import type { GroupMemoryRecall } from './group-memory-contract.js'
 import type { CandidateFact } from '../../core/group-memory-extract.js'
+import type { RegistryFile } from '../../core/participant.js'
 
 export type { CompletePort, CompleteRequest, CompleteResult, PresenceView } from './presence-flow.js'
 export type { GroupSchedulerStats } from './presence-scheduler.js'
@@ -91,6 +88,13 @@ export interface PresenceDeps {
   /** 影子日志（`shadow` 下"本来想发什么"）；缺省 = 只写普通日志。 */
   /** 语义复核档位（P6-B）：`off` / `warn` / `enforce`；缺省 = `warn`。 */
   readonly guardMode?: () => string
+  /**
+   * 参与者注册表（P9-G4 §2.2）：**每次现取**；缺省 = 没装，全员"身份未确认"。
+   *
+   * 为什么由执行器持有、再转给判断层：注册表是判断输入（"谁在说话"），而执行器是
+   * 唯一同时看得到配置与判断入口的地方。装配侧只把"怎么读"递进来一次。
+   */
+  readonly registry?: () => RegistryFile | null
   readonly recordShadow?: (decision: {
     groupId: number
     action: 'reply' | 'join' | 'react'
@@ -184,13 +188,9 @@ export class GroupPresence {
   // ── 内部：合批定时器 ────────────────────────────────────────────────────
 
   /**
-   * 满足条件就武装一个合批定时器，**已经武装的绝不重排**。
-   *
-   * 重排会让热闹的群把窗口无限往后推——这正是"判断饥饿"的老根因。所以"最多等多久"
-   * 是**结构上**成立的（一次武装只判一次），不靠某个上限去算。
-   *
-   * 硬门槛优先：暂停中、同群在途、没有待判内容、还不到判断间隔时**不判断**，只记一次
-   * 跳过原因（等也没用，而且不能为了低延迟去撞限频）。等待时长见 `quietWaitMs`。
+   * 满足条件就武装一个合批定时器，**已经武装的绝不重排**——重排会让热闹的群把窗口无限
+   * 往后推，那正是"判断饥饿"的老根因。硬门槛优先：暂停中 / 同群在途 / 没待判内容 /
+   * 还不到间隔时都不判断，只记一次跳过原因。等待时长见 `quietWaitMs`。
    */
   private arm(groupId: number, settings: PresenceView): void {
     if (this.timers.has(groupId)) return
@@ -270,6 +270,8 @@ export class GroupPresence {
         this.sent.set(groupId, [...(this.sent.get(groupId) ?? []), text].slice(-SENT_MEMORY))
       },
       persona: (groupId) => this.personaSnapshot(groupId),
+      // 参与者注册表（P9-G4 §2.2）：没装就是 null —— 全员"身份未确认"，判断照常跑。
+      registry: () => this.deps.registry?.() ?? null,
       ...(this.deps.memory === undefined ? {} : { memory: this.deps.memory }),
       ...(this.deps.remember === undefined ? {} : { remember: this.deps.remember }),
       // 最后一道发送闸门：每次现取（不能装配时读一次，否则在途的模型结果会照发）。
@@ -295,12 +297,10 @@ export class GroupPresence {
       },
       ...(this.deps.recordShadow === undefined ? {} : { recordShadow: this.deps.recordShadow }),
       ...(this.deps.afterSpeak === undefined ? {} : {
-        onSpoken: (input: { groupId: number; action: 'reply' | 'join' | 'react'; text: string; messageId: number; atMs: number }) => {
-          // 话题**按群号**取（P9-G §1 的第二处修复）：`view().topic()` 是「唯一活跃群」的旧降级，
-          // 两个群都有消息时它返回 `null`，于是「说完之后贴表情 / 落地话题」那一层拿不到话题。
-          // 这里本来就知道群号（`input.groupId`），没有理由退回到猜。
-          const topic = this.timelines.scopedView().topic(input.groupId)
-          this.deps.afterSpeak?.({ ...input, topic })
+        // 话题**按群号**取（P9-G §1 的修复）：`view().topic()` 是「唯一活跃群」的旧降级，
+        // 两个群都有消息时它返回 null，于是「说完之后贴表情」那层什么都拿不到。
+        onSpoken: (input: Parameters<NonNullable<CycleContext['onSpoken']>>[0]) => {
+          this.deps.afterSpeak?.({ ...input, topic: this.timelines.scopedView().topic(input.groupId) })
         },
       }),
       noteSkip: (groupId, reason, nowMs, pending) => this.noteSkip(groupId, reason, nowMs, pending),
@@ -338,12 +338,9 @@ export class GroupPresence {
   /**
    * 跳过判断的记账 + 饥饿告警。
    *
-   * `starvationWarnMs` **只用来报警**，不改变调度（P7-B 走的就是保守方案，理由见
-   * `presence-cadence.ts` 的文件头：把上限真的接进调度会在特定配置下静默缩短合批窗口，
-   * 那种偏差没人能从日志里看出来）。
-   *
-   * 告警本身仍然必要：它把"限频/暂停/失败退避导致的安静"与"群里没人说话"分开——
-   * 否则运维看到的现象只是"她今天一句话没说"。
+   * `starvationWarnMs` **只用来报警**，不改变调度（理由见 `presence-cadence.ts` 文件头：
+   * 把上限真的接进调度会在特定配置下静默缩短合批窗口，而那种偏差没人能从日志看出来）。
+   * 告警本身仍然必要：它把"限频/暂停/退避导致的安静"与"群里没人说话"分开。
    */
   private noteSkip(groupId: number, reason: string, nowMs: number, pending: number): void {
     const warnMs = starvationWarnMs(this.settings())
@@ -369,12 +366,9 @@ export class GroupPresence {
   }
 
   /**
-   * "已经判到哪一条"。首次见到这个群时**只留最新那一条**，并把它记下来。
-   *
-   * 这是"热加载/重启不补发旧批次"的另一半：缓冲里那些在她上线之前就存在的消息不会被
-   * 回放。留最新这一条而不是从"此刻之后"才开始，是因为 `observe` 是流水线**先** `add`、
-   * **再**调进来的——此刻最新那条正是刚发生、最该被看见的那条；丢掉它，
-   * 群里要等到下一条消息才有判断，而那一批背景里还会缺掉引起话题的那一句。
+   * "已经判到哪一条"。首次见到这个群时**只留最新那一条**：这是"热加载/重启不补发旧批次"
+   * 的另一半（上线前的消息不回放）。留最新而不是从"此刻之后"开始，是因为 `observe` 是
+   * 流水线**先** `add`、**再**调进来的——最新那条正是刚发生、最该被看见的那条。
    */
   private cursorOf(groupId: number, ring: { lastSeq(): number }): number {
     const recorded = this.judgedSeq.get(groupId)

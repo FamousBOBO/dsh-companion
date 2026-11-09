@@ -715,6 +715,11 @@ override = {}
   "stickerMinIntervalMs": 600000,
   "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -1437,6 +1442,11 @@ override = {}
   "stickerMinIntervalMs": 600000,
   "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -2157,6 +2167,11 @@ override = {"batching":{"windowMs":20000}}
   "stickerMinIntervalMs": 600000,
   "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -2877,6 +2892,11 @@ override = {"admin":{"port":8790}}
   "stickerMinIntervalMs": 600000,
   "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -3597,6 +3617,11 @@ override = {"imageGen":{"model":"flux"}}
   "stickerMinIntervalMs": 600000,
   "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -4317,6 +4342,11 @@ override = {"tts":{"voice":"b"}}
   "stickerMinIntervalMs": 600000,
   "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -5037,6 +5067,11 @@ override = {"flood":{"windowSec":30}}
   "stickerMinIntervalMs": 600000,
   "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -5764,6 +5799,11 @@ override = {}
   "stickerMinIntervalMs": 600000,
   "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -6484,6 +6524,11 @@ override = {"keywordTriggers":[]}
   "stickerMinIntervalMs": 600000,
   "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -7211,6 +7256,11 @@ override = {"rss":{"pollIntervalMin":5}}
   "stickerMinIntervalMs": 600000,
   "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -7931,6 +7981,11 @@ override = {"groupEnabled":false}
   "stickerMinIntervalMs": 600000,
   "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -8651,6 +8706,11 @@ override = {}
   "stickerMinIntervalMs": 600000,
   "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -9371,6 +9431,11 @@ override = {"groupEnabled":true}
   "stickerMinIntervalMs": 600000,
   "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -10091,6 +10156,11 @@ override = {"admin":{"host":"127.0.0.1"}}
   "stickerMinIntervalMs": 600000,
   "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -10811,6 +10881,11 @@ override = {}
   "stickerMinIntervalMs": 600000,
   "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -11531,5 +11606,10 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
   "stickerMinIntervalMs": 600000,
   "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }

@@ -17,6 +17,8 @@ import { AmbientStore, presenceRuns } from '../../app/inbound/ambient-store.js'
 import { GroupPresence } from '../../app/inbound/presence-runtime.js'
 import { createHostComplete } from '../../adapters/dsh-host/completion.js'
 import { dataRootOfDshHome, readGroupPersona, type GroupPersonaDeps } from '../../adapters/dsh-host/group-persona.js'
+import { createParticipantRegistry } from '../../adapters/fs-store/participant-registry.js'
+import type { RegistryFile } from '../../core/participant.js'
 import { openGroupMemory, recallGroupMemory, rememberGroupFacts } from '../../adapters/dsh-host/group-memory.js'
 import { publishServiceToPeers } from '../../adapters/dsh-host/service-registry.js'
 import { afterSpeakHandler } from './presence-afterspeak.js'
@@ -38,6 +40,13 @@ import type { SubHost } from '../plugin-kit.js'
 export interface PresenceWiring {
   readonly ambient: AmbientStore
   readonly presence?: PresenceObserver
+  /**
+   * 参与者注册表的同步读法（P9-G4 §2.2）；没开注册表时缺省。
+   *
+   * 给**采集路径**用：那条路径在每条群消息上跑，等不了异步读盘。`fileSync()` 返回的是
+   * 上一次 load 的快照（装配时预热过一次，之后按 mtime 自己重读）。
+   */
+  readonly participants?: () => RegistryFile | null
   readonly dispose: () => void
 }
 
@@ -186,6 +195,61 @@ function presenceAppliesToAny(host: SubHost): boolean {
   return presenceRuns(host.config.presence ?? null)
 }
 
+/**
+ * 解析运行模式并把它记进启动日志；返回"每次现取"的那个函数。
+ *
+ * 为什么单独一个函数：这段要在 `wirePresence` 开头把两件事说清楚——**现在是什么模式**、
+ * 以及 `off` 时为什么仍然建执行器。它是"为什么关着还造对象"这条设计的唯一落点，
+ * 混在装配流程里会被下一段代码淹没，而它恰恰是最容易被后来者"优化掉"的一段。
+ */
+function logModeOnce(host: SubHost): () => GroupPresenceMode {
+  const modeNow = (): GroupPresenceMode => resolveMode(host.config.presence ?? null)
+  const mode = modeNow()
+  const modeNote = modeNoteOf(host.config.presence ?? null)
+  if (modeNote !== '') host.log(`presence: ${modeNote}`)
+  // P9-A2：**`off` 也照样建执行器**（几个 Map，不起定时器、不读盘）。原来的"off 直接
+  // return"会让 off→shadow 必须重启才生效，与 P5-B 承诺的热切换矛盾。现在跑不跑由
+  // `presenceAppliesTo` 每次现取模式决定：off 一条都不记，改回 off 下一条消息就停。
+  if (!modeRuns(mode)) host.log(`presence: mode=${mode}——不记旁听、不判断、不发（改配置即可开始，不必重启）`)
+  return modeNow
+}
+
+/**
+ * 参与者注册表的取用面（P9-G4 §2.2）；关着时返回 `null`。
+ *
+ * 三条：
+ *   1. `enabled` 为假 → **不造对象**（"关掉就回到旧行为"与旁听那条同一口径）；
+ *   2. `allowUnknownAsBot` **永远不参与判断**：它只是给运维看的一句声明（"我们不会
+ *      把未知当 bot"），代码里没有任何分支读它——真有分支就等于给了它一条生效路径；
+ *   3. 读盘失败不抛：`fileSync()` 拿不到就给 `null`，判断层按"全员未确认"走。
+ */
+function participantRegistryOf(host: SubHost): ReturnType<typeof createParticipantRegistry> | null {
+  const config = host.config.participants
+  if (config === undefined || config.enabled !== true) return null
+  try {
+    const registry = createParticipantRegistry({
+      file: config.file,
+      dshHome: () => host.dshHome,
+      log: host.log,
+    })
+    // 预热一次：让第一条群消息不必等一次读盘，也让"注册表坏了"在启动日志里就出现。
+    void registry.load().then((loaded) => {
+      if (loaded.kind === 'loaded') {
+        const groups = loaded.file.groups.length
+        const members = loaded.file.groups.reduce((sum, group) => sum + group.members.length, 0)
+        host.log(`participants: 注册表已加载（${String(groups)} 个群 / ${String(members)} 名成员）`)
+        if (loaded.problems.length > 0) host.log(`participants: 丢弃 ${String(loaded.problems.length)} 条不可用记录`)
+      } else if (loaded.kind === 'invalid') {
+        host.log(`participants: 注册表不可用（${loaded.problems.join('；')}）——所有人按"身份未确认"处理`)
+      }
+    }).catch(() => { /* load() 自己已经收敛了错误，这里只是兜底 */ })
+    return registry
+  } catch (error) {
+    host.log(`participants: 注册表装配失败（已忽略，全员按身份未确认）：${error instanceof Error ? error.message : String(error)}`)
+    return null
+  }
+}
+
 function registerSocialResource(host: SubHost, presence: GroupPresence): void {
   try {
     host.registerResource('group-social', socialResource({
@@ -267,20 +331,15 @@ export function wirePresence(
   fallbackPlatform: ChatPlatform,
 ): PresenceWiring {
   const ambient = new AmbientStore({ log: host.log })
-  // 模式解析（P5-B）：`mode` 优先，缺席时退回 `enabled` 的旧口径。
-  const modeNow = (): GroupPresenceMode => resolveMode(host.config.presence ?? null)
-  const mode = modeNow()
-  const modeNote = modeNoteOf(host.config.presence ?? null)
-  if (modeNote !== '') host.log(`presence: ${modeNote}`)
-  // P9-A2：**`off` 也照样建执行器**（几个 Map，不起定时器、不读盘）。原来的"off 直接
-  // return"会让 off→shadow 必须重启才生效，与 P5-B 承诺的热切换矛盾。现在跑不跑由
-  // `presenceAppliesTo` 每次现取模式决定：off 一条都不记，改回 off 下一条消息就停。
-  if (!modeRuns(mode)) host.log(`presence: mode=${mode}——不记旁听、不判断、不发（改配置即可开始，不必重启）`)
+  const modeNow = logModeOnce(host)
   // 说完之后的附加动作（表情包 / 弱反馈 / 话题落地）。装配一次，内部自带每群额度账本。
   const afterSpeak = afterSpeakHandler(host, () => host.config.presence ?? null)
   // 影子日志（`shadow` 模式的全部意义）：一行 JSON 落本地文件，供人工盲评。
   // 只记"本来想发什么 + 为什么"，**不带 message_id**——它没发出去。
   const shadowLog = shadowLogger(host)
+  // 参与者注册表（P9-G4 §2.2）：装配一次，之后按 mtime 自己判断要不要重读。
+  // 关着（`participants.enabled=false`）时**不造这个对象**——与"关掉就回到旧行为"同一条口径。
+  const registry = participantRegistryOf(host)
   const presence = new GroupPresence({
     config: () => host.config,
     clock: systemClock,
@@ -294,6 +353,8 @@ export function wirePresence(
     mode: modeNow,
     // 语义复核档位（P6-B）：配错/取不到按 warn（只记不拦）。
     guardMode: guardModeOf(host),
+    // 参与者身份（P9-G4 §2.2）：每次现取；没开注册表就是 null（全员"身份未确认"）。
+    ...(registry === null ? {} : { registry: () => registry.fileSync() }),
     recordShadow: shadowLog,
     remember: memoryWriter(host),
     ambient,
@@ -313,6 +374,7 @@ export function wirePresence(
   return {
     ambient,
     presence,
+    ...(registry === null ? {} : { participants: () => registry.fileSync() }),
     dispose: () => {
       try { releaseEvents() } catch { /* 释放必须幂等且不抛 */ }
       presence.dispose()

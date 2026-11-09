@@ -29,6 +29,7 @@ import type { JudgeEntry } from './presence-judge.js'
 import type { GroupPersonaSnapshot } from './group-persona.js'
 import { EMPTY_RECALL, type GroupMemoryRecall } from './group-memory-contract.js'
 import { extractCandidateFacts, type CandidateFact } from '../../core/group-memory-extract.js'
+import type { RegistryFile } from '../../core/participant.js'
 
 /** 她最近说过的话留几条（防重复；提示词里最多渲染 6 条）。 */
 export const SENT_MEMORY = 6
@@ -78,6 +79,8 @@ export interface CycleContext {
   readonly selfId: () => number
   /** 语义复核档位（P6-B）：`off` / `warn` / `enforce`。 */
   readonly guardMode: () => string
+  /** 参与者注册表（P9-G4 §2.2）：每次现取；拿不到给 `null`（全员"身份未确认"）。 */
+  readonly registry: () => RegistryFile | null
   /** 记一次真实的平台发送尝试（P9-A3）：成功失败都记。 */
   readonly noteSend: (input: { groupId: number; latencyMs: number; ok: boolean }) => void
   /** 影子日志（`shadow` 下"本来想发什么"）；缺省 = 不记。 */
@@ -240,6 +243,8 @@ function depsOf(ctx: CycleContext, groupId: number) {
     selfId: () => ctx.selfId(),
     // 语义复核档位（P6-B）：每次现取，后台改完立即生效。
     guardMode: () => ctx.guardMode(),
+    // 参与者注册表（P9-G4 §2.2）：每次现取。拿不到就是 null，全员按"身份未确认"处理。
+    registry: () => ctx.registry(),
     // 真实的平台发送尝试（P9-A3）：成功失败都记，耗时只含平台调用本身。
     noteSend: (input: { groupId: number; latencyMs: number; ok: boolean }) => ctx.noteSend(input),
     recordEvent: (event: { kind: 'proactive_message' | 'agent_reply'; messageId: number; text: string; atMs: number }) => {

@@ -712,5 +712,10 @@
     "stickerMinIntervalMs": 600000,
     "stickerMaxPerHour": 1,
     "replyMaxChars": 70
+  },
+  "participants": {
+    "enabled": false,
+    "file": "",
+    "allowUnknownAsBot": false
   }
 }

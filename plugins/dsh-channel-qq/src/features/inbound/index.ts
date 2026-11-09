@@ -37,7 +37,7 @@ import type { InjectionScanner } from '../../ports/injection.js'
 import type { SentLogReader } from '../../app/conversation/turns.js'
 import type { createAgentGateway } from '../../adapters/dsh-host/agents.js'
 import type { QQChannelConfig } from '../../config.js'
-import type { ChatPlatform } from '../../ports/platform.js'
+import type { ChatPlatform, QQApi } from '../../ports/platform.js'
 import type { MemoryEvidence } from '../../ports/memory.js'
 import type { KbEvidence } from '../../ports/kb.js'
 import type { GatewayErrorBus, PlatformParts, SubHost, SubPlugin } from '../plugin-kit.js'
@@ -48,10 +48,12 @@ import { createRuntimeNoteRefresher } from './runtime-note.js'
 import { approvalEnabled } from '../approval/store.js'
 import { ScreeningPacketComposer } from './screening-composer.js'
 import { wirePresence } from './presence-wiring.js'
+import { runtimeDepsOf } from './runtime-deps.js'
 import { isSlashCommandText } from '../../core/commands.js'
 import { rawText } from '../../core/message/parse.js'
 import type { AmbientStore } from '../../app/inbound/ambient-store.js'
 import type { PresenceObserver } from '../../app/inbound/group-ambient.js'
+import type { RegistryFile } from '../../core/participant.js'
 export { ScreeningPacketComposer } from './screening-composer.js'
 export { syncInstructionRegion, writeInstructionRegion, type InstructionRegionStatus } from './instruction-region.js'
 
@@ -63,7 +65,7 @@ export interface ChannelRuntime {
   readonly pipeline: InboundPipeline
 }
 
-interface RuntimeDeps {
+export interface RuntimeDeps {
   readonly config: QQChannelConfig
   readonly platform: ChatPlatform
   readonly gateway: ReturnType<typeof createAgentGateway>
@@ -94,6 +96,8 @@ interface RuntimeDeps {
   readonly ambient?: AmbientStore
   /** 自主接话执行器（缺省 = 只旁听、被 @ 时带背景，不主动开口）。 */
   readonly presence?: PresenceObserver
+  /** 参与者注册表（P9-G4 §2.2）：同步读法；没开注册表时缺省。 */
+  readonly participants?: () => RegistryFile | null
 }
 
 /** 会话登记表：房间 → 会话，四条件路径共用同一份并发保护。 */
@@ -238,6 +242,7 @@ function createRuntime(deps: RuntimeDeps): ChannelRuntime {
     packets,
     ...(deps.ambient === undefined ? {} : { ambient: deps.ambient }),
     ...(deps.presence === undefined ? {} : { presence: deps.presence }),
+    ...(deps.participants === undefined ? {} : { participants: deps.participants }),
     ...deps.adminCommand === undefined ? {} : { adminCommand: deps.adminCommand },
   })
   return { registry, turns, notices, pipeline }
@@ -326,28 +331,7 @@ export const inboundPlugin: SubPlugin = {
       ? 'policy: 注入特征不可用（坏表或读不到），入站不打标、出站不拦特征'
       : `policy: 注入特征表已加载（入站规则 ${bundle.scanner.ruleCount} 条）`)
     const presence = wirePresence(host, sentLogHub, parts.platform)
-    const runtime = createRuntime({
-      config,
-      platform: parts.platform,
-      gateway: host.bridge.agentGateway(),
-      health,
-      prompts: host.need('persona').composer,
-      log: host.log,
-      knowledge: () => host.get('knowledge')?.store ?? null,
-      ...lazyEvidence(host),
-      screen: { scanner: bundle === null ? null : bundle.scanner },
-      transcribe: (messageId: number) => transcribeOne(parts.api, config.stt, messageId, host.log),
-      openSentLog: (room: string) => sentLogHub.for(room),
-      onGatewayError: (room, detail) => gatewayErrors.handler?.(room, detail),
-      // context.v2 uses the companion agent's scoped runtime context instead.
-      runtimeNote: () => config.context.agentInstructions ? '' : runtimeNotes.note(),
-      turnHooks: turnHooksOf(host),
-      ambient: presence.ambient,
-      ...(presence.presence === undefined ? {} : { presence: presence.presence }),
-      // 审批网关（默认关；CHANNEL_QQ_APPROVAL=1 时生效）。命令先于 agent 处理、不经模型。
-      // 传取值函数而不是 `config.admins`：撤掉管理员后必须立刻失效。
-      ...approvalEnabled() ? { adminCommand: createAdminCommand(() => host.config.admins, host.log) } : {},
-    })
+    const runtime = createRuntime(runtimeDepsOf({ host, config, parts, health, gatewayErrors, runtimeNotes, sentLogHub, bundle, presence }))
     host.provide('inbound', {
       registry: runtime.registry,
       turns: runtime.turns,

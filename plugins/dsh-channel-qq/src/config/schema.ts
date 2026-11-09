@@ -29,6 +29,7 @@ import { ROOT_ENTRIES } from './sections/root.js'
 import { SESSION_RESET_GROUPS } from './sections/session-reset.js'
 import { KB_GROUPS } from './sections/kb.js'
 import { CONTACT_GROUPS } from './sections/contact.js'
+import { PARTICIPANTS_GROUPS } from './sections/participants.js'
 import { PRESENCE_GROUPS } from './sections/presence.js'
 import { SONG_GROUPS } from './sections/song.js'
 
@@ -59,7 +60,10 @@ export const SCHEMA: ConfigSchema = {
     ...CONTACT_GROUPS,
     // 点歌翻唱：插在 `presence` 之前（`presence-config.test.ts` 钉着"presence 是最后一个段"）。
     ...SONG_GROUPS,
-    // 群聊旁听与自主接话：同样**只追加在末尾**（段顺序 = 线上配置键顺序）。
+    // 群成员身份注册表（P9-G4 §2.2）：插在 presence **之前**。既有测试钉着
+    // 「presence 必须是最后一个段」（它的键位记录依赖这一条），所以新段只能往前插。
+    ...PARTICIPANTS_GROUPS,
+    // 群聊旁听与自主接话：这条**必须留在最后**（段顺序 = 线上配置键顺序，且 golden 快照依赖它）。
     ...PRESENCE_GROUPS,
   ],
 }

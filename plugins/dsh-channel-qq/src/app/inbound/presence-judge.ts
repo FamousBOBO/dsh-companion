@@ -27,6 +27,7 @@
  *   - 两条不变的口径：提示词被注入污染时解析仍然只认合法 JSON；她自己的话要短（群里一句话）。
  */
 
+import type { SenderKind } from '../../core/participant.js'
 import { personaPromptLines, type GroupPersonaSnapshot } from './group-persona.js'
 
 /** 送进判断的一条背景（= `AmbientEntry` 的投影：不带 seq）。
@@ -68,6 +69,14 @@ export interface JudgeEntry {
   readonly replyToMessageId?: number | null
   /** 平台 at 段的真实 @ 目标（P6-A）；**不含**自己与 @全体。 */
   readonly atIds?: readonly number[]
+  /**
+   * 发送者的身份类别（P9-G4 §3）；缺省 `undefined` = 这一轮没查注册表。
+   *
+   * 为什么缺省而不是默认 `'unknown'`：两者在提示词里都要渲染成"未确认"，但在**诊断**
+   * 上不同——"没查"是能力缺失，"查了但没登记"是事实。混成一个值之后，报告里
+   * "Unknown 保留率"就无法区分"她把人当未知"和"我们根本没装注册表"。
+   */
+  readonly senderKind?: SenderKind
 }
 
 /** 一次判断的全部输入。 */
