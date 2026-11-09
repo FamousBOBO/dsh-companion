@@ -11,16 +11,33 @@
  * 两条写路径会让同一条消息进两次、游标也会错位。
  */
 
-import { renderMessageLine } from '../../core/message/render.js'
+import { renderMessageContent, renderMessageLine } from '../../core/message/render.js'
 import type { ParsedInbound } from '../../core/message/parse.js'
+import { registryFor, resolveParticipant, type RegistryFile, type SenderKind } from '../../core/participant.js'
 import type { OneBotEvent } from '../../types.js'
 import {
   ambientLimitsOf, type AmbientStore, type PresenceSettings,
 } from './ambient-store.js'
+import type { GroupEventsScopedView } from './presence-timeline.js'
 
 /** 自主接话执行器（可缺省）：流水线只通知"这个群又有一条新的旁听"。 */
 export interface PresenceObserver {
   observe(groupId: number): void
+  /**
+   * **按群号**查询的时间线视图（P7-A）：组包时用它渲染"这个群刚发生过什么"。
+   *
+   * 为什么挂在执行器上而不另开一个服务：这块数据本来就只有执行器有（它自己维护时间线），
+   * 而组包路径已经拿着 `presence` 这个观察者了——再走一次跨插件服务解析只会多一条会坏的路径。
+   * 执行器关着（`presence.mode='off'`）时这里是 `undefined`，组包自然没有这一段。
+   */
+  scopedEventsView?(): GroupEventsScopedView
+  /**
+   * 记一次连续性上下文的注入结果（P7-C 的 `eventContextInjected` / `eventContextDenied`）。
+   *
+   * 为什么由组包路径回报：只有它知道这一段**到底有没有真的拼进包里**（群号非法、群没时间线、
+   * 视图抛错都会让它空手而归）。在执行器里自己数会把"没数据"和"没资格"混成一个数。
+   */
+  noteContinuity?(groupId: number, outcome: 'injected' | 'denied'): void
 }
 
 /** 本模块要用的 `presence` 配置项（判断与背景共用同一组投射上限）。 */
@@ -62,6 +79,15 @@ export function ambientTextOf(event: OneBotEvent, parsed: ParsedInbound, nowMs: 
   return line.replace(/\s+$/, '')
 }
 
+/**
+ * 一条旁听的**正文**：与 {@link ambientTextOf} 同一套取法（`renderMessageContent`），
+ * 但不带发送者抬头。没有正文时返回 `null`（与整行同一条判据）。
+ */
+export function ambientBodyOf(parsed: ParsedInbound): string | null {
+  const body = renderMessageContent(parsed)
+  return body === null ? null : body.replace(/\s+$/, '')
+}
+
 export interface CaptureInput {
   readonly ambient?: AmbientStore | undefined
   readonly presence?: PresenceObserver | undefined
@@ -71,6 +97,36 @@ export interface CaptureInput {
   readonly parsed: ParsedInbound
   readonly selfId?: number | undefined
   readonly nowMs: number
+  /**
+   * 参与者注册表（P9-G4 §2.2）：**每次现取**；缺省 = 没装注册表。
+   *
+   * 为什么由采集层查而不是流水线查：身份要在**采集现场**冻结（§2.3），
+   * 而"采集"就是这个函数。流水线只负责把端口递过来。
+   */
+  readonly registry?: (() => RegistryFile | null) | undefined
+}
+
+/**
+ * 采集现场冻结的发送者身份（P9-G4 §2.3）。
+ *
+ * 注册表拿不到时返回**空对象**（不带字段），而不是 `{ senderKind: 'unknown' }`：
+ * "没查"与"查了没登记"在诊断上是两件事——前者是能力缺失，后者是事实。
+ * 渲染时两者都写"未登记"，但报告里的 Unknown 保留率只该数后者。
+ */
+function frozenKindOf(input: CaptureInput, groupId: number, userId: number): { readonly senderKind?: SenderKind } {
+  try {
+    const registry = input.registry?.() ?? null
+    if (registry === null) return {}
+    const participant = resolveParticipant({
+      userId,
+      displayName: input.event.sender?.card?.trim() || input.event.sender?.nickname || '',
+      ...(input.selfId === undefined ? {} : { selfId: input.selfId }),
+      registry: registryFor(registry, groupId),
+    })
+    return { senderKind: participant.senderKind }
+  } catch {
+    return {}
+  }
 }
 
 /**
@@ -86,13 +142,26 @@ export function captureAmbient(input: CaptureInput): void {
   if (text === null) return
   const self = isSelfMessage(input.event, input.selfId)
   const ring = store.ring(input.groupId, ambientLimitsOf(input.settings))
+  const body = ambientBodyOf(
+    input.parsed.plainText.trim() === '' && input.parsed.text.trim() !== ''
+      ? { ...input.parsed, plainText: input.parsed.text }
+      : input.parsed,
+  )
+  const userId = input.event.user_id ?? 0
   const outcome = ring.add({
     messageId: typeof input.event.message_id === 'number' ? input.event.message_id : null,
-    userId: input.event.user_id ?? 0,
+    userId,
     name: input.event.sender?.card?.trim() || input.event.sender?.nickname || '',
     text,
+    ...(body === null ? {} : { body }),
     atMs: input.nowMs,
     self,
+    // 平台结构原样带走（P6-A）：判断时"谁回了谁、谁 @ 了谁"要用真事实，不能靠正文猜。
+    replyToMessageId: input.parsed.replyToMessageId,
+    atIds: input.parsed.atIds,
+    // 身份在**采集现场**冻结（P9-G4 §2.3）：注册表以后会变，而"这条消息当时属于哪种身份"
+    // 是历史事实。判断时再查等于用今天的注册表解释昨天的对话，回放也就没法复现。
+    ...frozenKindOf(input, input.groupId, userId),
   })
   if (outcome !== 'added' || self) return
   input.presence?.observe(input.groupId)

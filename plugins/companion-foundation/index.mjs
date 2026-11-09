@@ -18,6 +18,9 @@ import { registerHealthTools } from './health-tools.mjs';
 import { registerPulseTools } from './pulse-tools.mjs';
 import { createMemoryEngine, shareEngine, sharedEngineFor, VERSION as MEMORY_VERSION } from '../companion-memory/index.mjs?v=0.4.0';
 import { resolveSuitePaths } from './suite-paths.mjs';
+import { createGroupPersonaPort, publishGroupPersonaPort, resolveGroupPersonaPort } from './group-persona.mjs';
+import { createGroupMemoryStore, GROUP_MEMORY_RELATIVE_FILE } from './group-memory.mjs';
+import { publishCompanionService } from './port-publish.mjs';
 
 // The cognitive runtime is optional on purpose: if its files are missing or a module
 // fails to evaluate, the companion keeps running on the existing chat + memory path.
@@ -737,9 +740,124 @@ export function mountCompanion(ctx, root, options = {}) {
   if (agendaPublication?.verified !== true) {
     console.log(`[companion-foundation] the agenda service could NOT be published with a verified read-back (via=${String(agendaPublication?.via ?? 'none')}); reminder delivery will report not-wired`);
   }
+  // P0-A §4.1: `companionGroupPersona` — the group-visible slice of the persona document.
+  //
+  // Why a separate port instead of letting the group preset read the file: the group preset is a
+  // sibling row (§4.1 and the health incident of 2026-11-04) and cannot resolve `suite-paths` for
+  // another plugin; and the extraction rules (which sections may leave private chat at all) are
+  // exactly the rules that must live in one reviewed place, not in every consumer. The port reads
+  // the *same* file the system prompt above reads (`personaFile`), so a relocated or renamed
+  // persona can never leave the two views disagreeing.
+  //
+  // Publishing never throws and is never fatal: a group preset without a snapshot stays generic,
+  // which is honest; a crash here would take the whole foundation (chat, memory, tools) down with
+  // it for a prompt nicety.
+  let releaseGroupPersona = () => {};
+  try {
+    const groupPersonaPort = createGroupPersonaPort({
+      root,
+      ...(personaFile ? { personaFile } : {}),
+      personaId: suitePaths?.personaId ?? '',
+      // 来源标签跟着 `suite-paths` 的解析结果走：裸挂载（没有 suitePaths）时 index 用的就是
+      // 历史布局 `workspace/PERSONA.md`，标签必须说 legacy，不能冒充 config/persona.md。
+      source: suitePaths?.personaSource ?? 'legacy',
+    });
+    // `publishGroupPersonaPort` 一次发三条路：`ctx.provide`(cordis 契约) + process 注册表
+    // （裸 dataRoot 键，与消费端 `dirname(realpathSync(host.dshHome))` 同一个值）+ service-bridge。
+    // `root` 就是 dataRoot，不是 suiteRoot、不是 `data/home`——键错了是**静默**失效。
+    releaseGroupPersona = publishGroupPersonaPort(ctx, groupPersonaPort, {
+      root,
+      log: message => console.log(`[companion-foundation] group persona: ${message}`),
+    });
+    const published = groupPersonaPort.get();
+    console.log(published
+      ? `[companion-foundation] group persona snapshot published; version=${published.version}; source=${published.source}`
+      : '[companion-foundation] group persona port published without a snapshot (no readable persona file); group chats will stay generic');
+  } catch (error) {
+    console.log(`[companion-foundation] group persona port not published: ${error instanceof Error ? error.message : String(error)}`);
+  }
+  ctx.on('dispose', () => { try { releaseGroupPersona(); } catch { /* 释放必须幂等且不抛 */ } });
+
+  // P1 §5.1: the group-social store — group facts, member facts and the short-lived topic state.
+  //
+  // Why a **separate** database rather than rows in the main memory store: `companion-memory`'s
+  // `memories` table has no group dimension (`user_id`/`persona_id`/`world_id` only), and its
+  // `scopeMatches()` treats `worldId: ''` as visible-to-everyone — so impersonating a group with a
+  // world id would leak private-chat memory into group recall. The group store keeps `group_id` on
+  // every table and on every query, so isolation is structural instead of a convention.
+  //
+  // Mounting is best-effort on purpose: an unreadable store means "the group has no memory yet",
+  // which the chat path already renders honestly, while a thrown error here would take the whole
+  // foundation (chat, long-term memory, tools) down for an optional extra.
+  // **Lazy on purpose.** Opening the database at mount time would create a file (and hold a
+  // handle) for every deployment that never uses group chat — and on Windows an open handle makes
+  // the containing directory undeletable, which broke the integration test's fixture cleanup the
+  // first time this was written eagerly. So the store is created on the first actual call, and a
+  // mount that never touches group memory touches nothing on disk.
+  let groupMemory = null;
+  let groupMemoryReason = '';
+  let groupMemoryAttempted = false;
+  const openGroupMemoryStore = () => {
+    if (groupMemory !== null) return groupMemory;
+    if (groupMemoryAttempted) return null;
+    groupMemoryAttempted = true;
+    try {
+      groupMemory = createGroupMemoryStore({ root });
+      const status = groupMemory.status();
+      groupMemoryReason = status?.degraded === true ? String(status.reason ?? 'degraded') : '';
+      console.log(groupMemoryReason === ''
+        ? '[companion-foundation] group memory store ready (file=' + String(status?.file ?? GROUP_MEMORY_RELATIVE_FILE) + ')'
+        : '[companion-foundation] group memory store degraded (' + groupMemoryReason + '); group chats continue without memory');
+    } catch (error) {
+      groupMemoryReason = error instanceof Error ? error.message : String(error);
+      console.log('[companion-foundation] group memory store unavailable (' + groupMemoryReason + '); group chats continue without memory');
+    }
+    return groupMemory;
+  };
+  // The port is published even when the store is degraded: the consumer then gets the store's own
+  // empty answers rather than "no service", which keeps one code path (and one log line) in the
+  // group channel instead of two.
+  let releaseGroupMemory = () => {};
+  try {
+    const emptyQuery = { group: [], member: [], topic: null, dropped: ['no-store'], reason: 'no-store' };
+    const port = {
+      // Every method funnels through `openGroupMemoryStore()`: the first real call is what opens
+      // the file, so a deployment that never uses groups never creates one.
+      query: input => (openGroupMemoryStore() ? groupMemory.query(input) : emptyQuery),
+      status: () => (openGroupMemoryStore()
+        ? groupMemory.status()
+        : { groups: 0, facts: 0, memberFacts: 0, topics: 0, file: '', degraded: true, reason: groupMemoryReason }),
+      writeGroupFact: input => (openGroupMemoryStore() ? groupMemory.writeGroupFact(input) : { ok: false, reason: 'no-store' }),
+      writeMemberFact: input => (openGroupMemoryStore() ? groupMemory.writeMemberFact(input) : { ok: false, reason: 'no-store' }),
+      upsertTopic: input => (openGroupMemoryStore() ? groupMemory.upsertTopic(input) : { ok: false, reason: 'no-store' }),
+      topicState: (groupId, options) => (openGroupMemoryStore() ? groupMemory.topicState(groupId, options) : null),
+      forgetGroup: groupId => (openGroupMemoryStore() ? groupMemory.forgetGroup(groupId) : { ok: false, reason: 'no-store' }),
+    };
+    releaseGroupMemory = publishCompanionService({
+      root,
+      name: 'companionGroupMemory',
+      service: port,
+      ready: () => true,
+      log: message => console.log('[companion-foundation] group memory: ' + message),
+    });
+    ctx.provide?.('companionGroupMemory', port);
+  } catch (error) {
+    console.log('[companion-foundation] group memory port not published: ' + (error instanceof Error ? error.message : String(error)));
+  }
+  ctx.on('dispose', () => {
+    try { releaseGroupMemory(); } catch { /* 释放必须幂等且不抛 */ }
+    try { groupMemory?.close?.(); } catch { /* 关库失败只影响下次打开 */ }
+  });
   return {
     store, identity, memory, engine, cognitive,
     backend: sqliteBackend ? 'sqlite' : 'legacy',
     agenda: agendaPort,
+    // P0-A: the group-chat view of the persona, exposed on the mount result as well. The hosted
+    // service name is what `plugins/companion-group` and the QQ channel actually read; this getter
+    // is for callers that already hold the mount result (diagnostics, tests) and must not have to
+    // resolve the port again.
+    get groupPersona() {
+      try { return resolveGroupPersonaPort(ctx, root)?.get?.() ?? null; } catch { return null; }
+    },
   };
 }

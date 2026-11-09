@@ -695,11 +695,15 @@ override = {}
   "dailyUserCap": 2
  },
  "presence": {
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "socialGuard": "warn",
+  "batchQuietMs": 6000,
+  "starvationWarnMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -707,7 +711,17 @@ override = {}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -1410,11 +1424,15 @@ override = {}
   "dailyUserCap": 2
  },
  "presence": {
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "socialGuard": "warn",
+  "batchQuietMs": 6000,
+  "starvationWarnMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -1422,7 +1440,17 @@ override = {}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -2123,11 +2151,15 @@ override = {"batching":{"windowMs":20000}}
   "dailyUserCap": 2
  },
  "presence": {
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "socialGuard": "warn",
+  "batchQuietMs": 6000,
+  "starvationWarnMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -2135,7 +2167,17 @@ override = {"batching":{"windowMs":20000}}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -2836,11 +2878,15 @@ override = {"admin":{"port":8790}}
   "dailyUserCap": 2
  },
  "presence": {
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "socialGuard": "warn",
+  "batchQuietMs": 6000,
+  "starvationWarnMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -2848,7 +2894,17 @@ override = {"admin":{"port":8790}}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -3549,11 +3605,15 @@ override = {"imageGen":{"model":"flux"}}
   "dailyUserCap": 2
  },
  "presence": {
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "socialGuard": "warn",
+  "batchQuietMs": 6000,
+  "starvationWarnMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -3561,7 +3621,17 @@ override = {"imageGen":{"model":"flux"}}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -4262,11 +4332,15 @@ override = {"tts":{"voice":"b"}}
   "dailyUserCap": 2
  },
  "presence": {
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "socialGuard": "warn",
+  "batchQuietMs": 6000,
+  "starvationWarnMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -4274,7 +4348,17 @@ override = {"tts":{"voice":"b"}}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -4975,11 +5059,15 @@ override = {"flood":{"windowSec":30}}
   "dailyUserCap": 2
  },
  "presence": {
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "socialGuard": "warn",
+  "batchQuietMs": 6000,
+  "starvationWarnMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -4987,7 +5075,17 @@ override = {"flood":{"windowSec":30}}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -5695,11 +5793,15 @@ override = {}
   "dailyUserCap": 2
  },
  "presence": {
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "socialGuard": "warn",
+  "batchQuietMs": 6000,
+  "starvationWarnMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -5707,7 +5809,17 @@ override = {}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -6408,11 +6520,15 @@ override = {"keywordTriggers":[]}
   "dailyUserCap": 2
  },
  "presence": {
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "socialGuard": "warn",
+  "batchQuietMs": 6000,
+  "starvationWarnMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -6420,7 +6536,17 @@ override = {"keywordTriggers":[]}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -7128,11 +7254,15 @@ override = {"rss":{"pollIntervalMin":5}}
   "dailyUserCap": 2
  },
  "presence": {
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "socialGuard": "warn",
+  "batchQuietMs": 6000,
+  "starvationWarnMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -7140,7 +7270,17 @@ override = {"rss":{"pollIntervalMin":5}}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -7841,11 +7981,15 @@ override = {"groupEnabled":false}
   "dailyUserCap": 2
  },
  "presence": {
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "socialGuard": "warn",
+  "batchQuietMs": 6000,
+  "starvationWarnMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -7853,7 +7997,17 @@ override = {"groupEnabled":false}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -8554,11 +8708,15 @@ override = {}
   "dailyUserCap": 2
  },
  "presence": {
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "socialGuard": "warn",
+  "batchQuietMs": 6000,
+  "starvationWarnMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -8566,7 +8724,17 @@ override = {}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -9267,11 +9435,15 @@ override = {"groupEnabled":true}
   "dailyUserCap": 2
  },
  "presence": {
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "socialGuard": "warn",
+  "batchQuietMs": 6000,
+  "starvationWarnMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -9279,7 +9451,17 @@ override = {"groupEnabled":true}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -9980,11 +10162,15 @@ override = {"admin":{"host":"127.0.0.1"}}
   "dailyUserCap": 2
  },
  "presence": {
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "socialGuard": "warn",
+  "batchQuietMs": 6000,
+  "starvationWarnMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -9992,7 +10178,17 @@ override = {"admin":{"host":"127.0.0.1"}}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -10693,11 +10889,15 @@ override = {}
   "dailyUserCap": 2
  },
  "presence": {
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "socialGuard": "warn",
+  "batchQuietMs": 6000,
+  "starvationWarnMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -10705,7 +10905,17 @@ override = {}
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }
 
@@ -11406,11 +11616,15 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
   "dailyUserCap": 2
  },
  "presence": {
+  "mode": "",
   "enabled": false,
   "groups": [],
   "ambientMaxEntries": 40,
   "ambientTtlMs": 600000,
   "ambientMaxChars": 6000,
+  "socialGuard": "warn",
+  "batchQuietMs": 6000,
+  "starvationWarnMs": 25000,
   "judgeIntervalMs": 50000,
   "judgeMaxEntries": 15,
   "judgeMaxChars": 1200,
@@ -11418,6 +11632,16 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
   "judgeMaxTokens": 320,
   "speakMinIntervalMs": 300000,
   "speakMaxPerHour": 3,
+  "replyWindowMs": 600000,
+  "memoryBudgetChars": 800,
+  "stickers": false,
+  "stickerMinIntervalMs": 600000,
+  "stickerMaxPerHour": 1,
   "replyMaxChars": 70
+ },
+ "participants": {
+  "enabled": false,
+  "file": "",
+  "allowUnknownAsBot": false
  }
 }

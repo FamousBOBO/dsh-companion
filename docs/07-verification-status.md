@@ -38,6 +38,7 @@
 | `git clone` → `npm ci` | **`offline-test`** | **A 段**：干净克隆（克隆内 `git ls-files` = 1296 文件）→ `npm ci` **exit 0 / 2.7 s** | 路径为 `<临时目录>/含 空格 and CJK/dsh-companion`（**同时含空格与非 ASCII**） |
 | `npm run build` | **`offline-test`** | **A 段**：**exit 0 / 8.5 s**（channel-qq、memory-studio、media 三个模块构建） | 同上路径；仓库只存源码，此步必然存在 |
 | `npm run verify`（离线部分） | **`offline-test`** | **A 段**：**exit 0 / 44.0 s**；`unit` 8 模块通过 / 0 失败 / 1 无测试；`static` **25 项通过 / 0 失败**（扫描 1296 个文件）；`compose` **SKIPPED**（原因：未检测到 DSH 宿主——干净克隆里没有 `config/suite.json`，这一项天然跳过） | 同一路径形态 |
+| **发布前静态卫生：克隆地址不再误报** | **`offline-test`** | 2026-11-08（`feat/group-social-p0`）：为**本仓库自己的公开克隆地址**在 `author-name` 规则里加了唯一一条内建例外（§6.4b），并加 3 条自检项防放宽。本机实跑：`node scripts/verify.mjs --only=static` → **32 项通过 / 0 失败**；`npm run verify` → `unit` **9 通过 / 0 失败 / 1 无测试**、`static` **32 通过 / 0 失败**、`compose` **通过（194 个 loader 行）** | 修复前 README 的克隆命令会被 `author-name` 命中，`main` 的 CI 三平台因此全红；README 里的命令未改动 |
 | **路径形态：含空格 + 含中文（非 ASCII）** | **已实跑通过** | A 段整体 | 这条曾经是**红的**：验收脚本抓出过两个真 bug（`npm_config_workspaces` 泄漏与 `--workspace` 冲突；测试里用 `new URL(...).pathname` 取路径，在含空格/中文目录下拿到 `%E5%90%AB%20…` 编码串导致 ENOENT）。修复后转绿 |
 | **路径形态：跨盘符 + 含空格 + 含中文（同一次）** | **已实跑通过** | **D 段**：在**另一个盘**（`E:`，套件在 `D:`）建 `…\含 空格 and CJK\dsh-companion`，`git clone` exit 0 → `npm ci` **exit 0 / 2 s / 27 个包** → `npm run build` **exit 0** → `npm run verify` **exit 0**（`unit` 8 通过 / 1 无测试、`static` 25 通过、`compose` SKIPPED 同前）；测完目录已删除 | 三种形态在**同一次**验收里同时命中 |
 | 路径形态：深层嵌套（8 层 / 122 字符） | **部分验证**：克隆 + **套件根解析**已实跑通过（`tools/lib/paths.mjs#SUITE_ROOT` 解析出的正是那 122 字符路径，未被截断/跳层）；**完整 `npm ci`/`build`/`verify` 未在该形态下跑** | E 段 | 不要读成「深层路径整条通过」——只验证了克隆与路径解析 |
@@ -175,6 +176,50 @@
 > 边界仍然是**目录**边界：`home/expression/assets/`（图库原文件）与系统其它路径照样拒。
 
 
+### 2.9 群聊社交运行时 P5–P8（2026-11-08）：仍只有 `offline-test`，真实发送未开始
+
+P5–P8 交付见 `docs/10a-group-baseline-audit.md`（P5 基线与停发控制）、`docs/10b-group-gray-release.md`
+（灰度验收与运维手册）。**证据级别与 P0–P4 相同：只有 `offline-test`**；真实模型与真实 QQ
+发送（§5.1 的 B/C/D/E）**一项都没跑**。
+
+P9-A（上线前兼容性与可靠性审计）见 `docs/11-group-social-runtime-p9-acceptance.md`：修掉了
+四个真实缺陷（旧配置被静默停用、`off` 不热切换、发送耗时混入模型时间、文档描述与实现不符），
+**仍然是 `offline-test`**；P9 的 B/C/D/E/F 全部未执行。
+
+| 项 | 证据 | 说明 |
+|---|---|---|
+| 停发控制（`presence.mode`） | `presence-mode-core.test.ts` 8 例 + `presence-mode.test.ts` 7 例 + `presence-legacy-config.test.ts` 13 例 | 显式 mode 优先于 `enabled`；闸门**每次发送前现取**，在途模型结果也会被拦下；**旧配置走真实合成链路仍为 live**（P9-A1） |
+| `speakMaxPerHour=0` 的真实行为 | `docs/10a` §2.1（审计）+ 代码注释 | 旧实现把 0 当「没配」退回 3；现在额度 fail-closed，但**停发要用 `mode`** |
+| 社交场景（P6-A） | `group-scene.test.ts` 39 例 + `group-scene-prompt.test.ts` 10 例 | 只认平台 reply/at 段；判不准写「看不出」；渲染不含命令句 |
+| 四类语义复核（P6-B） | `group-social-guard.test.ts` 20 例 | 每类都配「必须放行」的反例；默认 `warn`（**只记不拦**） |
+| 多群连续性（P7-A） | `group-multi-room.test.ts` 10 例 + `companion-group` 18 例 | 按群号查询；非法/伪群号 fail-closed；系统段只留静态约定 |
+| 调度与诊断（P7-B/C） | `presence-cadence` / `presence-scheduler` 字段 + 单测 + `presence-send-timing.test.ts` 7 例 | `starvationWarnMs` **只报警不改调度**；三段耗时真正分开：模型 / 合批 / **平台发送本身**（P9-A3），失败也计入尝试 |
+| 后台诊断页（P8 §5.4） | `presence-resource.test.ts` 10 例 | 只读；群号脱敏末四位；**不含正文与完整 QQ 号**；无样本时给 `null` 不给 0；`running` 与 `mounted` 分开给（P9-A2） |
+| 离线评测 | `npm run eval:group` → PASS 49 / FAIL 0 / WARN 3 / 52 | WARN 从 4 降到 3：G30 已由代码闭环 |
+| 真实模型通道 | `npm run eval:group:llm`（`--selftest` 通过，绊线 0 次） | 通道就绪但**未配端点**，退出码 2；没有真实模型数据 |
+
+**明确没验证的**：真实模型的语义质量（四类 WARN 是否下降**没有结论**）、真实 QQ 发送/引用/
+表情投递、真人盲评、双群实机并发、`socialGuard` 阈值校准（默认 `warn` 期间一次都不会拦）。
+不要用离线绿灯抵消这些。
+### 2.8 群聊社交运行时 P0–P4（2026-11-08）：只有 `offline-test`
+
+按 `docs/09-group-social-runtime-p1-p4.md` 落地了人格快照（P0）、群体/成员记忆（P1）、
+五动作决策器（P2）、统一事件时间线与调度（P3）、表达约定与表情/反馈层（P4），外加 41 条离线（P6 补到 52 条）
+评测集。**证据级别只到 `offline-test`**：
+
+| 项 | 证据 | 说明 |
+|---|---|---|
+| 群记忆按群隔离 | `group-memory.test.mjs` 17 例 + 三张表 `group_id NOT NULL`（PRAGMA 断言） | 结构隔离，不是约定隔离 |
+| 决策解析与执行边界 | `group-social-decision.test.ts` 18 例 | 编造目标 / 超窗 / 超长 / 带 @ 全部拦下 |
+| 时间线与话题 | `group-topic.test.ts` 10 例、`group-events-memory.test.ts` 18 例 | 重推去重、双上限裁剪、不猜话题 |
+| 表达约定与连续性段 | `companion-group` 18 例 | 段 ≤400 字、服务缺失降级 |
+| 表情策略 / 弱反馈 | `group-expression-feedback.test.ts` 16 例 | 只判"要不要问图库"，不碰投递 |
+| 离线评测 | `npm run eval:group` → PASS 37 / FAIL 0 / WARN 4 / 41 | 三个硬门槛 100%（错误目标、坏输出、隐私沉默） |
+
+**明确没验证的**：真实群里的自主接话、真实模型判断力（4 条 WARN 就是代码侧判不了语义的部分）、
+表情包真实投递（图库 `delivery.enabled` 默认 false 且需授权）、弱反馈对表达的实际影响、
+调度节奏（6 秒合批 / 50 秒间隔）在真实活跃群里的表现。不要用离线绿灯抵消这些。
+
 ### 2.7 点歌翻唱（`dsh-channel-qq` 的 `song` 段）：`offline-test` + **`real-api` + 两条 `real-send`（2026-11-07）**
 
 链路：B站搜歌 → 下载音轨 → 副歌定位 → RVC 音色翻唱 → QQ 副歌语音条。
@@ -251,7 +296,10 @@
 
 **产品行为**
 
-- 群聊里发图 / 发语音出站、群内自主接话的真实触发。
+- 群聊里发图 / 发语音出站、群内自主接话的真实触发。群聊社交运行时（记忆 / 决策 / 时间线 /
+  表情 / 反馈 / 运行模式 / 语义复核）到 2026-11-08 只有 `offline-test`，详见 §2.8、§2.9、
+  `docs/09-group-social-runtime-p1-p4.md`、`docs/10a-group-baseline-audit.md` 与
+  `docs/10b-group-gray-release.md`。
 - 表情包系统（`companion-expression`）的宿主装载与真实发图：见 §2.6。图库、决策、管理入口只到
   `offline-test`；GIF 关键帧 / OCR / 向量召回 / QQ 内置 `face` 投递**未实现**。
 - 主动联系（contact）的真实平台发送与回执。
@@ -305,7 +353,7 @@
 |---|---|---|---|
 | 正文/身份 | `persona-<旧角色名>` | 旧角色名及其变体（含拼音） | **不豁免**——旧角色名在任何地方都不该出现 |
 | 正文/身份 | `author-path` | 盘符绝对路径指向 `Users/<用户名>` 或 `Bot/dsh-companion` | **不豁免**——作者路径在测试里也不行 |
-| 正文/身份 | `author-name` | 作者的个人标识（昵称变体、`<名>-<旧人格id>` 形式的用户号） | **不豁免** |
+| 正文/身份 | `author-name` | 作者的个人标识（昵称变体、`<名>-<旧人格id>` 形式的用户号）；**唯一例外**是本仓库自己的公开克隆地址，见 §6.4b | **不豁免** |
 | 正文/身份 | `legacy-persona-id` | 整词的旧人格 id | **不豁免** |
 | 密钥形状 | `openai-key` | `sk-` 开头的长串 | 跳过测试树 |
 | 密钥形状 | `github-token` | `ghp_` / `gho_` / `ghu_` / `ghs_` / `ghr_` + 长串 | 跳过测试树 |
@@ -371,6 +419,40 @@
 > **`.md` / `.mdx` 永远不能开豁免**：即使文档里写了标记也不生效（用探针文件验证过：把
 > 带标记的 `.md` 放进 `docs/` 会被正常报出来，删掉即绿）。这样「讲解这个机制的文档」不可能顺手把
 > 自己（或别的文档）白掉。本文因此也可以安全地用 `<规则名>` 举例。
+
+### 6.4b 唯一的内建例外：本仓库自己的公开克隆地址（`author-name`）
+
+安装文档必须给出一条**能直接复制运行**的克隆命令（`README.md` 的「克隆仓库」一节）：
+
+```bash
+git clone https://github.com/FamousBOBO/dsh-companion.git
+```
+
+这是**我们主动发布的入口地址**，不是作者的个人标识泄露。因此 `author-name` 规则在匹配前会把
+**这个精确地址**遮掉（`scripts/verify.mjs` 的 `maskPublicCloneUrl()`），其余文本原样扫描。
+遮罩是**等长**的（用 `x` 填满同样长度），所以报出来的行号仍是原文行号。
+
+| 写法（`<作者名>` 处填作者标识，`<仓库>` 处填本仓库名） | 结果 | 说明 |
+|---|---|---|
+| 上面那条克隆命令的等价写法：带 / 不带协议、带 / 不带 `.git`、带 / 不带 `www.` | **不报** | 同一个地址的不同写法 |
+| `作者 <作者名>`、`<作者名>-<旧人格id>` | **报 `author-name`** | 单独出现的作者名仍然泄露 |
+| `git@github.com:<作者名>/<仓库>.git`（SSH 形式） | **报 `author-name`** | 仓库里没有这种写法；真出现了应当由人判断，不白送豁免 |
+| `https://github.com/<作者名>/<别的仓库>`、`…/<仓库>-fork` | **报 `author-name`** | 别的仓库、或者以我们仓库名开头的**另一个**名字，都不是这个地址 |
+| `http://<作者名>@github.com/<仓库>` | **报 `author-name`** | 把作者名当 userinfo 用，仍属个人标识 |
+| `<盘符>:\Bot\<仓库>`、`<盘符>:\Users\<用户名>\…` | **报 `author-path`** | 本地绝对路径不受这条例外影响 |
+| markdown 里的 `leak-scan-allow` 标记 | 不生效 | 见 §6.4，`.md` 永远不能开豁免 |
+
+> 表格里用 `<作者名>` / `<仓库>` 占位是**故意的**，理由同 §6.4：这张表本身就在一个被扫描的 `.md`
+> 里，写真实字面量会把自己报成泄露（试过：写下真实作者名与本地路径后，`author-name` 和
+> `author-path` 立刻命中本节）。读这张表时按语义理解，不要照抄占位符。
+
+这条例外**只对 `author-name` 生效**，且**写死在代码里、没有对应的配置开关**——它绑定的是
+「本仓库自己的发布地址」这一件事。三条自检项会跟着 `static` 一起跑，防止例外被悄悄放宽：
+
+- `author-name 例外仅覆盖本仓库克隆地址`：克隆地址的等价写法必须不报，且 SSH 形式、别的仓库、
+  `-fork` 后缀、userinfo 写法必须照旧报；
+- `author-name 仍拦截单独出现的作者名`：作者名单独出现（`作者 <作者名>` 之类）必须报；
+- `author-path 不受克隆地址例外影响`：作者本地检出路径、`Users/<用户名>` 路径必须报。
 
 ### 6.5 绿灯覆盖了什么、没覆盖什么
 

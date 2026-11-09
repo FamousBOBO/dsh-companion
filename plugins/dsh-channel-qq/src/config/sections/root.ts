@@ -146,4 +146,7 @@ export const ROOT_ENTRIES: ReadonlyArray<readonly [string, FieldSpec | SectionFi
   // 群聊旁听与自主接话：**追加在末尾**——键顺序就是线上配置键顺序，往中间插一行
   // 会让 golden 快照的 diff 面从"尾部多一段"变成"整份重排"。
   ['presence', section('群聊旁听与接话', 'presence')],
+  // 群成员身份注册表（P9-G4 §2.2）：**追加在末尾**，理由同上。默认 enabled=false ——
+  // 不装注册表时所有人按「身份未确认」处理，这与升级前的行为一致（那时根本没有身份这个概念）。
+  ['participants', section('群成员身份', 'participants')],
 ]

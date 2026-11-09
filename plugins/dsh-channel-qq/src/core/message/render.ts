@@ -40,6 +40,23 @@ export interface RenderInput {
 }
 
 /**
+ * 一条消息的**正文**（不含发送者抬头、时间、消息号、@ 标记）。
+ *
+ * 为什么单独导出：P0 之后背景块要把"谁说的"和"说了什么"分开渲染（发送者身份只出现一次）。
+ * 从前那条背景行只有一种形态（整行），于是判断提示词里身份出现两遍，模型得猜哪个是真的。
+ * 现在两处用同一个函数算正文，拼法就不可能再漂。
+ *
+ * 取法与整行渲染完全一致：正文取 `plainText`；没有正文时用 `[图片]` / 表情字面兜底；
+ * 都没有则返回 `null`（纯空消息不值得占旁听额度）。
+ */
+export function renderMessageContent(parsed: ParsedInbound): string | null {
+  const stickerText = parsed.stickers.length > 0 ? parsed.stickers.map(stickerDisplay).join('') : ''
+  return parsed.plainText !== ''
+    ? parsed.plainText
+    : (parsed.imageUrls.length > 0 ? '[图片]' : (stickerText !== '' ? stickerText : null))
+}
+
+/**
  * 渲染一行；这一行没有任何可说的内容时返回 `null`（纯媒体消息由调用方决定怎么办）。
  */
 export function renderMessageLine(input: RenderInput): string | null {
@@ -51,10 +68,7 @@ export function renderMessageLine(input: RenderInput): string | null {
   //
   // 表情单独兜底：一条只有表情的消息（`[表情：困]`）没有正文，但那**就是**它的内容。
   // 以前这里会退到 `[图片]` 甚至 `(无文字)`，模型于是拿不到「他困了」这个意思。
-  const stickerText = parsed.stickers.length > 0 ? parsed.stickers.map(stickerDisplay).join('') : ''
-  const content = parsed.plainText !== ''
-    ? parsed.plainText
-    : (parsed.imageUrls.length > 0 ? '[图片]' : (stickerText !== '' ? stickerText : null))
+  const content = renderMessageContent(parsed)
   // 纯合并转发（无文字无图但有展开内容）也是"有得说"的消息。
   if (content === null && parsed.imageSummaries.length === 0 && (input.forwardText ?? '') === '') return null
   const time = new Date((event.time || Math.floor(input.nowMs / 1000)) * 1000)

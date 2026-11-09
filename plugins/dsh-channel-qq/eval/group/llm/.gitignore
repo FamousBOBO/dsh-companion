@@ -1,0 +1,4 @@
+# 真实模型通道的运行产物（每次覆盖写；生成物不入库）。
+# 与 eval/group/.gitignore 同一性质：这里会落 report.json / report.md / cases.jsonl，
+# 以及 --dump-prompts 时写出的生产提示词全文（本地受控，绝不入库）。
+out/

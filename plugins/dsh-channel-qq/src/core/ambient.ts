@@ -13,7 +13,9 @@
  * 兴趣判断则只看最近一段（`peekAfter`，不推进游标）。两者共用同一份条目。
  */
 
-/** 缓冲里的一条：保留真实发送者、消息号、时间与顺序。 */
+import type { SenderKind } from './participant.js'
+
+/** 缓冲里的一条：保留真实发送者、消息号、时间与顺序（P0：还要能分出"正文"与"抬头"）。 */
 export interface AmbientEntry {
   /** 群内单调递增序号；游标与"判断到哪了"都用它。 */
   readonly seq: number
@@ -23,12 +25,38 @@ export interface AmbientEntry {
   readonly userId: number
   /** 群名片或昵称；空串 = 不知道。 */
   readonly name: string
-  /** 已渲染的入站行（含发送者标识），只作背景资料。 */
+  /** 已渲染的入站行（含发送者标识），只作背景资料（被 @ 那条走 `take` 的交付用它）。 */
   readonly text: string
+  /**
+   * **正文**（不含发送者抬头）；缺省 = 消费方自己从 `text` 里剥。
+   *
+   * 为什么留两份：`text` 是给"被 @"那条路径的整行（时间 + 昵称 + QQ 号 + 消息号 + 正文），
+   * 而判断提示词要按"身份一次、正文一次"的固定结构渲染（P0 §4.3）。从整行里反解正文
+   * 要猜格式，留一份显式的正文就不必猜。
+   */
+  readonly body?: string
   /** 这条消息的时间（毫秒）。 */
   readonly atMs: number
   /** 她自己发的（回显 / 自主接话）。判断与背景都要能区分。 */
   readonly self: boolean
+  /**
+   * 这条消息**真实引用**了哪一条（平台 reply 段；没有就是 `null` / 缺省）。
+   *
+   * 为什么要一路带到缓冲里：P6 的"谁在回谁"只认平台结构（`core/group-scene.ts`
+   * 的文件头第 1 条）。等到判断时再回查要重新走一遍平台，而这里本来就在解析现场。
+   */
+  readonly replyToMessageId?: number | null
+  /** 这条消息**真实 @** 了谁（平台 at 段；**不含**自己与 @全体）。正文里的"@某某"不算。 */
+  readonly atIds?: readonly number[]
+  /**
+   * 这条消息的发送者身份（P9-G4 §3 的 `senderKind`）；缺省 `undefined` = 没查过。
+   *
+   * 为什么一路带到缓冲里，而不是判断时再查：身份来自注册表，而**注册表会变**（§2.3：
+   * `unknown` 变成 `known_bot` 要保留变更时间、历史事件的原始身份不许改）。在解析现场
+   * 冻结一份"这条消息当时属于哪种身份"，回放才能重算出与当时一致的结果——判断时再查
+   * 等于用今天的注册表去解释昨天的对话。
+   */
+  readonly senderKind?: SenderKind
 }
 
 /** 三重上限。 */

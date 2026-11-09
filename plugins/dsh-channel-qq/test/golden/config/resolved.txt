@@ -692,11 +692,15 @@
     "dailyUserCap": 2
   },
   "presence": {
+    "mode": "",
     "enabled": false,
     "groups": [],
     "ambientMaxEntries": 40,
     "ambientTtlMs": 600000,
     "ambientMaxChars": 6000,
+    "socialGuard": "warn",
+    "batchQuietMs": 6000,
+    "starvationWarnMs": 25000,
     "judgeIntervalMs": 50000,
     "judgeMaxEntries": 15,
     "judgeMaxChars": 1200,
@@ -704,6 +708,16 @@
     "judgeMaxTokens": 320,
     "speakMinIntervalMs": 300000,
     "speakMaxPerHour": 3,
+    "replyWindowMs": 600000,
+    "memoryBudgetChars": 800,
+    "stickers": false,
+    "stickerMinIntervalMs": 600000,
+    "stickerMaxPerHour": 1,
     "replyMaxChars": 70
+  },
+  "participants": {
+    "enabled": false,
+    "file": "",
+    "allowUnknownAsBot": false
   }
 }

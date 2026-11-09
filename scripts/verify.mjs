@@ -165,6 +165,52 @@ const SECRET_RULES = [
   ['bearer', /Bearer\s+[A-Za-z0-9._-]{24,}/],
 ];
 
+/* ── author-name exception: the repository's own published clone URL ──
+ *
+ * The install docs must show a command the user can paste as-is:
+ *
+ *     git clone https://github.com/FamousBOBO/dsh-companion.git
+ *
+ * The repository's own public address is not a leak — it is the entry point we publish. The
+ * `author-name` rule keeps its full force everywhere else: the author's name standing on its own
+ * ("作者 FamousBOBO"), in another path (`github.com/FamousBOBO/other`), or as a local checkout
+ * (`D:\Bot\dsh-companion` → `author-path`) is still reported. Only the exact clone address is
+ * masked, with an optional scheme, an optional `www.`, an optional `.git`, and a trailing
+ * boundary that refuses to extend the match into `-suffix` (`dsh-companion-fork` stays flagged)
+ * and a leading boundary that refuses to start mid-token (`evil.example/github.com/FamousBOBO/…`
+ * and `http://FamousBOBO@github.com/…` stay flagged, because there the name appears as an
+ * unrelated host prefix or as userinfo — neither is our published address).
+ *
+ * Deliberately NOT exempted, because widening this is how a leak rule quietly dies:
+ *   - the bare author name, in any casing, anywhere else;
+ *   - the SSH form (`git@github.com:FamousBOBO/...`) — it does not appear in the tree, and if it
+ *     ever does, a human should decide rather than inherit an exemption for free;
+ *   - markdown `// leak-scan-allow:` markers, which `allowedIn()` refuses for .md on purpose.
+ * The masking is length-preserving so reported line numbers stay exact.
+ */
+const PUBLIC_CLONE_URL =
+  /(?<![\w.@/-])(?:https?:\/\/)?(?:www\.)?github\.com\/FamousBOBO\/dsh-companion(?:\.git)?(?![\w-])/gi;
+const CLONE_URL_MASK = 'x';
+
+/**
+ * Mask the published clone URL. Length-preserving: every character stays in place, so a line
+ * number computed from the masked text is the same line number a reader would see.
+ * The mask is `x` — a character that belongs to no leak rule and to no ASCII word boundary,
+ * so a masked span can never `\b`-join with its neighbours into a new match.
+ */
+function maskPublicCloneUrl(text) {
+  return text.replace(PUBLIC_CLONE_URL, (m) => CLONE_URL_MASK.repeat(m.length));
+}
+
+/**
+ * The text a rule should actually match against. Only `author-name` gets the masked copy; every
+ * other rule (and the reported line count) is unaffected because the mask is length-preserving.
+ */
+function scannableFor(ruleName, text) {
+  if (ruleName !== 'author-name') return text;
+  return maskPublicCloneUrl(text);
+}
+
 /** Files whose own text is the rule table — scanning them is a guaranteed false positive. */
 const SCAN_SELF_EXCLUDE = new Set(['scripts/verify.mjs']);
 
@@ -307,6 +353,57 @@ function runStatic() {
     else record('static', label, 'failed', `解析出 ${JSON.stringify(urls)}`);
   }
 
+  // 1c. The author-name exception must stay exactly as narrow as it claims. These three checks
+  //     exist so the exception cannot be widened by accident: they fail the run the moment the
+  //     published clone address stops being exempt, or the moment a bare author name or a local
+  //     checkout path stops being a leak.
+  {
+    const label = 'author-name 例外仅覆盖本仓库克隆地址';
+    const samples = [
+      'git clone https://github.com/FamousBOBO/dsh-companion.git',
+      'git clone https://github.com/FamousBOBO/dsh-companion',
+      'git clone github.com/FamousBOBO/dsh-companion.git',
+      'git clone github.com/FamousBOBO/dsh-companion',
+      'https://www.github.com/FamousBOBO/dsh-companion.git',
+      'see [repo](https://github.com/FamousBOBO/dsh-companion) for details',
+    ];
+    const stillHits = [
+      '作者 FamousBOBO',
+      'maintained by famousbobo',
+      'git@github.com:FamousBOBO/dsh-companion.git',
+      'https://github.com/FamousBOBO/other-repo',
+      'https://github.com/FamousBOBO/dsh-companion-fork',
+      'https://example.com/FamousBOBO/dsh-companion',
+      // Not our address: userinfo before the host, and the bare name must stay visible.
+      'git clone http://FamousBOBO@github.com/FamousBOBO/dsh-companion.git',
+    ];
+    const missed = samples.filter((s) => scannableFor('author-name', s).match(/FamousBOBO|bobo-march7/i));
+    const leaked = stillHits.filter((s) => !scannableFor('author-name', s).match(/FamousBOBO|bobo-march7/i));
+    if (!missed.length && !leaked.length) record('static', label, 'ok');
+    else {
+      const why = [
+        missed.length ? `克隆地址仍被误报: ${JSON.stringify(missed)}` : '',
+        leaked.length ? `非克隆地址漏报: ${JSON.stringify(leaked)}` : '',
+      ].filter(Boolean).join('; ');
+      record('static', label, 'failed', why);
+    }
+  }
+  {
+    const label = 'author-name 仍拦截单独出现的作者名';
+    const samples = ['作者 FamousBOBO', 'author: bobo-march7', 'FamousBOBO@example.com'];
+    const missed = samples.filter((s) => !scannableFor('author-name', s).match(/FamousBOBO|bobo-march7/i));
+    if (!missed.length) record('static', label, 'ok');
+    else record('static', label, 'failed', `漏报: ${JSON.stringify(missed)}`);
+  }
+  {
+    const label = 'author-path 不受克隆地址例外影响';
+    const rule = LEAK_RULES.find(([name]) => name === 'author-path')[1];
+    const samples = ['D:\\Bot\\dsh-companion\\plugins', 'C:\\Users\\bobo\\Desktop', 'D:/Bot/dsh-companion'];
+    const missed = samples.filter((s) => !rule.test(scannableFor('author-path', s)));
+    if (!missed.length) record('static', label, 'ok');
+    else record('static', label, 'failed', `漏报: ${JSON.stringify(missed)}`);
+  }
+
   // 2. no build artifacts inside the tracked tree. Only real build outputs count:
   // most modules keep hand-written sources under lib/, so lib/ is NOT treated as an artifact.
   // A package that declares dsh.suite.prebuilt ships its bundle deliberately (it cannot be
@@ -345,9 +442,13 @@ function runStatic() {
           continue;
         }
         if (allowedIn(text, name, ext)) continue;
-        const m = re.exec(text);
+        // Only the author-name rule sees the masked text: the repository's own clone URL is the
+        // documented install entry point, not a leak. Every other rule — and every other
+        // occurrence of the author name — scans the file exactly as it is.
+        const scannable = scannableFor(name, text);
+        const m = re.exec(scannable);
         if (m) {
-          const line = text.slice(0, m.index).split('\n').length;
+          const line = scannable.slice(0, m.index).split('\n').length;
           hits.push(`${rel}:${line}`);
         }
       }
