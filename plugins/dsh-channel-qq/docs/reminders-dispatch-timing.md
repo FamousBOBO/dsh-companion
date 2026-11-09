@@ -305,13 +305,13 @@ reminders: dispatch id=<reminderId> at=<scheduledAt> occurrence=<id|none>
 | | 修复前 | 修复后 |
 |---|---|---|
 | 机制 | `setInterval(tick, 30_000)`（旧 `runner.ts:157`） | `WakeupTimer`（`features/reminders/wakeup.ts`）用 `Clock.setTimeout` 单次定时，**每拍跑完重算下一次** |
-| 何时醒 | 相位固定，跟 `at` 无关 | `nextWakeupDelayMs({ats, now, heartbeatMs})`（`schedule.ts`）= `min(下一条未触发的 at − now, 心跳)`；`≤0` ⇒ `MIN_WAKEUP_MS = 1`（不许排成 0ms 死循环） |
+| 何时醒 | 相位固定，跟 `at` 无关 | `planWakeup({ats, now, heartbeatMs, overdueGapMs})`（`schedule.ts`）= 未来项 `min(at − now, 心跳)` 与到期项 `min(overdueGap, 心跳)` **取更早的那个**；都没有 ⇒ 心跳。`MIN_WAKEUP_MS = 1` 只是"立刻"这一档的下界（不许排成 0 ms 死循环）。**第二轮**：到期项不再一律 1 ms，见 §11 |
 | 到点误差 | **下界 = 轮询间隔**（实测 29,955–30,058 ms） | 只剩"排程 → 取 `now()`"的毫秒级延迟 + 一拍投递耗时（见 §7 第 3 条） |
 | 心跳 | 就是轮询本身 | `start(heartbeatMs = 30_000)`（`runner.ts:164`）保留，兜三件事：**时钟漂移、系统休眠/唤醒、被外部手改过的提醒文件** |
 | 哪些 `at` 参与排程 | — | `wakeupAtsOf()`（`schedule.ts`）：`fired` 的不算；早于补发窗口的一次性提醒不算（它们归 `catch-up.ts` 收终态）。**过去的时刻照样参与**（⇒ 立刻醒，停机期间到期的下一拍就被看见） |
 | 看多少行 | 全表 `due()` | `store.list(MAX_ROWS_FOR_WAKEUP = 50)`（`runner.ts:52`，表按 `at` 升序，够用） |
 | 启动横幅 | `runner started (every 30000ms)` | `runner started (heartbeat 30000ms，按到期时刻唤醒)`（`runner.ts:184`）——**文案变了，日志检索要跟着改** |
-| 诊断 | — | `status().scheduled` / `WakeupTimer.state()` 给出 `armed / delayMs / arms / ticks` |
+| 诊断 | — | `status().scheduled` / `WakeupTimer.state()` 给出 `armed / delayMs / arms / ticks`；**第二轮**多一个 `status().backoff = { overduePasses, gapMs }`（见 §11.6） |
 | 建/删提醒后立刻重排 | — | `nudge.ts` 提供钩子：`setReminderNudge()` 在 `runner.start()` 装（`runner.ts:182`）、`dispose()` 里卸（`runner.ts:372`）。**写入侧已接**：`store.add()` / `remove()` / `resolve(…, 'failed')` 成功后各调一次 `nudgeReminders()`（`store.ts`，**事务提交之后、返回值之前**），所以运行中新建的"15 秒后"提醒也会立刻重排，不必等心跳 |
 | 假时钟可测 | 不能 | 定时器与 `now()` 全走 `ports/clock.ts` 的 `Clock`，`FakeClock` 能逐毫秒推进（`test/reminders-dispatch-timing.test.ts` 的 T1/T3/T6） |
 
@@ -323,9 +323,9 @@ reminders: dispatch id=<reminderId> at=<scheduledAt> occurrence=<id|none>
 | TTL | — | `DEFAULT_CLAIM_TTL_MS = 120_000`（`claim.ts:25`） |
 | 认领者标识 | — | `claimOwnerOf()` = `pid-<pid>#<seq>`（`dispatch.ts:31-33`）：**进程内唯一**，不只是"进程唯一" |
 | 状态机 | — | `claimStateOf()` 四态：`free`（没人领）/ `held`（别人且未过期，本拍跳过）/ `mine`（自己且未过期，幂等）/ `stale`（**过期**） |
-| 存储方法 | — | `store.claim(id, owner, now, ttl)`（`store.ts:303`）、`store.releaseClaim(id)`（`store.ts:309`）、`store.resolveStaleClaim(id, now)`（`store.ts:318`） |
+| 存储方法 | — | `store.claim(id, owner, now, ttl)`、`store.releaseClaim(id, owner?)`、`store.renewClaim(id, owner, now, ttl)`（第二轮加的续租，见 §10.6）、`store.resolveStaleClaim(id, now)` |
 | 过期认领 | — | **不重发**：盘上分不清"发之前崩"还是"发之后崩"，`resolveStaleClaim()` 走 `reduceMarkUnknown(..., 'claim-expired:unknown')` ⇒ 终态 `unknown`，等人工收敛 |
-| 什么时候放回 | — | `sent` / `unknown` 由 `markFired` / `markUnknown` 里 `clearClaim()` 顺手清；`skipped` / `dry-run` 走 `releaseAfterSkip()`（`dispatch.ts`）立刻放回，下一拍还能试 |
+| 什么时候放回 | — | `sent` / `unknown` 由 `markFired` / `markUnknown` 里 `clearClaim()` 顺手清；`skipped` / `dry-run` 走 `releaseAfterSkip()`（`dispatch.ts`）立刻放回，下一拍还能试。**第二轮加 owner**：只放自己的（`claim.by !== owner` ⇒ `STALE_STATE`，盘上不动） |
 | 抢不到怎么办 | 会重复外发 | 业务拒绝 `STALE_STATE`，本拍跳过，**不是失败**；日志 `<id> 本拍不发：… （别的实例/另一拍正在处理）` |
 | 存储替身没有 `claim()` | — | 退化成"进程内串行"并**明确写一行日志**说多实例防护不生效（不静默） |
 | `reason` 串 | — | `claim-expired:unknown`；`unknown` 的其它来源仍是 `unclassified` 或原始异常文本 |
@@ -578,6 +578,118 @@ TTL 的用途是"崩了之后别人能判定这一轮作废"，**不是**给发�
 > 第一轮的 T4（同一进程两个 runner）**保留为同进程回归**，但**不再**作为跨进程证明——
 > 同一进程里的两个 Store 共享 `OWNERS`、串行队列与锁实例，它们"互斥"只能证明进程内互斥。
 
+
+
+---
+
+## 11. 第二轮 P1-B：到期未消费不再 1 ms 空转
+
+### 11.1 问题
+
+第一轮对**任何**已经过去的时刻都排 `MIN_WAKEUP_MS = 1`（`schedule.ts`）。那只在
+"这一拍一定会消费掉它"时成立。现实里有大量**合法地不消费**的路径：
+
+| 现场 | 为什么不消费 |
+|---|---|
+| `dryRun`（默认就是 `true`） | 设计上整条入口零持久化写入 ⇒ 提醒永远保持 `fired=false` |
+| `skipped`：通道暂不可用 | 现在不该发，等它自己变好（不消耗） |
+| `skipped`：房间不在白名单 / 按群策略关掉 | 同上 |
+| `skipped`：日程 CAS 暂时阻断 | 同上 |
+| 积压 > `MAX_CATCH_UP_PER_TICK` | 这一拍只发了 3 条，剩下的仍然 due |
+
+于是下一拍 `wakeupAtsOf()` 仍看到那条 due ⇒ 1 ms ⇒ 又一拍 ⇒ **CPU 空转 + 日志刷屏**
+（`dryRun` 下还有一行"演练模式不落盘"每拍一条）。这不是"精度高"，是"没有调度状态"。
+
+### 11.2 模型：首次立即检查 + 未消费后退避（进程内状态，不落盘）
+
+`schedule.ts` 现在把到期项与未来项**分开算**：
+
+```
+下一次延迟 = min(
+  到期项 ? min(overdueGap, heartbeat) : ∞,
+  未来项 ? min(next.at − now, heartbeat) : ∞,
+  都没有 ? heartbeat
+)
+```
+
+- **未来项**：仍然精确到它的 `scheduledAt`（第一轮的精度一点没退）；
+- **到期项**：`overdueGapMs({ passes, heartbeatMs })`——
+  `passes === 0` ⇒ `BACKLOG_GAP_MS = 1_000`（有进展：积压按节奏继续）；
+  `passes > 0` ⇒ `1s × 2^passes`，**上限是心跳**；
+- 两者取更早的：一条 15 秒后的新提醒**不会**因为旁边有积压而等到退避间隔之后。
+
+"`passes`"（连续几拍没进展）由 `backoff.ts::WakeupBackoff` 维护，判据只有一条：
+
+> **到期项的数量比开拍前少了没有。** 少了（或本来就没有）⇒ 有进展 ⇒ 清零。
+
+为什么按**数量**而不是"这一拍发了几条"：`skipped` 与 `dryRun` 都是"一条没发但不是故障"；
+而认领被另一个进程抢走（本拍没发、但对方发掉了）会让数量变少 ⇒ 正确地算成"有进展"。
+
+**状态只在内存里**（一个 `WakeupBackoff` 实例）。dryRun 的硬不变量是"整条入口零持久化
+写入"，写一个 `retryAt` / 改 `attempts` 来实现退避就直接违反了它——所以这里连一个字段
+都不落盘。
+
+### 11.3 任务书 §3.4 那张表逐行对照
+
+| 状态 | 要求的下一次调度 | 实际 |
+|---|---|---|
+| 存在未来提醒 | `min(最近 scheduledAt − now, heartbeat)` | `planWakeup()` 的 future 分支，逐毫秒被 S1 钉住 |
+| 启动时发现已有到期提醒 | 立即执行一次检查 | `start()` 排 0 ms（`WakeupTimer.start()` → `arm(0)`）；S9 断言"只跑一拍就发出去" |
+| 本轮后仍有未消费到期提醒 | 心跳或有上限的退避 | `overdueGapMs()`：1s → 2s → … → heartbeat；S4/S5/S6 断言频率上限 |
+| dryRun 命中 | 不写盘，按心跳检查 | 退避稳定在心跳；S4 同时断言**盘上逐字节不变** |
+| 通道暂不可用 | 按退避/心跳重试，不得 1 ms 循环 | S6（2 分钟内 tick ≤ 40） |
+| 房间/绑定暂时不满足 | 不消耗提醒，按合理间隔重新检查 | S8（"跳过"日志 ≤ 20 条、`fired` 仍 false） |
+| 没有待处理提醒 | 心跳兜底 | `planWakeup({ats: []})` = heartbeat |
+| runner 已停表 | 不得继续创建密集定时器 | `dispose()` 撤定时器；S11 断言 dispose 之后 tick 归零 |
+
+### 11.4 没有做的事（以及为什么）
+
+- **没有把 `MIN_WAKEUP_MS` 改大**。改成 1000 只是把空转频率降下来，"这一拍有没有进展"
+  这个语义仍然不存在：积压批次与通道故障会共用同一个固定间隔——积压太慢、故障太快，
+  两头都不对。`MIN_WAKEUP_MS` 保留为"立刻"这一档的下界（`planWakeup` 的最终 `max()`）。
+- **没有靠"把提醒标成 fired"来消除空转**（任务书明确禁止）。S6/S8 都断言"提醒仍保留"。
+- **没有持久化退避状态**（见 §11.2）：那会直接破坏 dryRun 零写入与旧数据字节兼容。
+
+### 11.5 积压节流（任务书 §4）
+
+`batch.ts::takeBatch()` 保留每拍上限 `MAX_CATCH_UP_PER_TICK = 3`（一次性提醒计数，
+周期提醒不占额度）。第二轮补上的是**批次之间的间隔**：发完一批之后仍有 due ⇒
+`passes = 0` ⇒ 下一拍在 `BACKLOG_GAP_MS = 1_000` 之后。于是"每批 3 条、每批间隔 ≥ 1 秒"
+成为可断言的约定（S12），10 条同时到期大约 3–4 秒发完，而不是瞬间喷完或每毫秒一拍。
+
+**没有新增限速器**：真正的出口限速仍然只有 `out.push()` / `rateLimitMs` 一处
+（`outbound.ts`）。这里只控制"批次节奏"，不重复实现发送限速。
+
+### 11.6 可观测性
+
+`runner.status()` 多了一个只读字段：
+
+```jsonc
+"backoff": { "overduePasses": 3, "gapMs": 8000 }
+```
+
+`overduePasses` 在涨 = "到期项一直没被消费"（`dryRun` / 通道断开 / 房间不许发）；
+`gapMs` 是实际采用的下一拍间隔。**这两个数就是为了让"日志暴涨"能被一眼读成"passes 在涨"**
+——第一轮的现场只能看到"每秒被拦一次"，看不出是闸门在拦还是调度在空转。
+
+### 11.7 测试（`test/reminders-backoff.test.ts`，12 个用例）
+
+全部跑在 `FakeClock` 上，断言的是**频率**（tick 次数 / 最小间隔 / 日志条数），不靠真实等待：
+
+| 用例 | 钉住的东西 |
+|---|---|
+| S1 | `planWakeup()`：到期项按 `overdueGap`、未来项仍精确到 `scheduledAt`、两者取更早、都没有则心跳 |
+| S2 | `overdueGapMs()`：有进展 1s、没进展翻倍到心跳、心跳比基础间隔更小时不反超 |
+| S3 | `WakeupBackoff`：变少 = 有进展（清零）、没变少才累加、`reset()` 复位 |
+| S4 | dryRun + 过期提醒：`overduePasses ≥ 1`、`gapMs ≥ 1s`、**盘上逐字节不变** |
+| S5 | dryRun 跑 5 分钟：唤醒次数 ≤ 30（心跳封顶）、相邻唤醒最小间隔 ≥ 1s |
+| S6 | 通道不可用：发送 0 次、提醒保留、2 分钟内 tick ≤ 40 |
+| S7 | 通道恢复：**最多一个心跳内**补发一次（退避不饿死提醒） |
+| S8 | 房间不许发：`fired` 不写、1 分钟内"跳过"日志 ≤ 20 条且 ≥ 1 条（不静默） |
+| S9 | 启动时已有过期提醒：启动那一拍就补发（不先等心跳） |
+| S10 | 退避期间 `nudge`（新建提醒）：立刻重排，新提醒仍被处理 |
+| S11 | `dispose()` 之后：假时钟里 0 个定时器、tick 数不再增长 |
+| S12 | 10 条同时到期：每批 ≤ 3 条、相邻批次首条间隔 ≥ 1s、10 条全部 `fired`、有"按每拍上限"日志 |
 
 ---
 

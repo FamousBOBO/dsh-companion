@@ -136,6 +136,10 @@ async function pump(rounds = 3): Promise<void> {
  *
  * `stepMs` 是**步长**，不是"精度"：`FakeClock.advance()` 会把步长内所有到期定时器按时刻
  * 依次触发，所以按 `scheduledAt` 排的唤醒仍然精确到毫秒（T1 的迟到就是 0ms）。
+ *
+ * **第二轮**：不能再靠"`advance(0)` 反复推"收尾——到期未消费的退避（`schedule.ts`）
+ * 现在会给积压批次留 1 秒间隔，`advance(0)` 什么都不会触发。这也更贴近真实时间：
+ * 时间真的走过去，排程才该到期。步长里留给真实文件 IO 的时间也加了一档（每拍两笔写盘）。
  */
 async function advance(rig: Rig, ms: number, stepMs = 1_000): Promise<void> {
   await pump()
@@ -143,14 +147,8 @@ async function advance(rig: Rig, ms: number, stepMs = 1_000): Promise<void> {
   while (left > 0) {
     const step = Math.min(stepMs, left)
     rig.clock.advance(step)
-    await pump()
+    await pump(6)
     left -= step
-  }
-  // 收尾：还有"已经到点却挂着的"排程（积压分批 / MIN_WAKEUP_MS）就继续推到没有为止。
-  for (let i = 0; i < 200; i += 1) {
-    if (!rig.clock.live().some((timer) => timer.at <= rig.clock.now())) return
-    rig.clock.advance(0)
-    await pump(1)
   }
 }
 

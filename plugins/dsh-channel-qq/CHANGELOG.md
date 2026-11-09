@@ -51,6 +51,27 @@
     （M6）、活跃发送超过一拍第二进程认领被拒（M7）、认领过期收敛 `unknown` 且重启后状态正确（M8）。
   - 设计与取舍见 [docs/reminders-dispatch-timing.md](docs/reminders-dispatch-timing.md) §10。
 
+- **到期未消费的提醒导致 1 ms 反复唤醒（第二轮 P1-B）**：第一轮对**任何**已经过去的时刻都排
+  `MIN_WAKEUP_MS = 1`，只在"这一拍一定会消费掉它"时成立。而 `dryRun`（默认就是开的）、
+  通道暂不可用、房间不在白名单、日程暂时阻断、以及积压超过 `MAX_CATCH_UP_PER_TICK`
+  都**合法地不消费**——下一拍仍看到同一条 due ⇒ 1 ms ⇒ CPU 空转 + 日志刷屏。改成
+  "首次立即检查 + 未消费后退避"：
+  - `schedule.ts` 新增 `planWakeup()`：**到期项与未来项分开算**，取更早的那个。未来项仍然
+    精确到 `scheduledAt - now`（第一轮的精度一点没退）；到期项按 `overdueGapMs()` 给间隔。
+  - `backoff.ts::WakeupBackoff`（**纯内存**，不落盘）：判据只有一条——"到期项比开拍前少了没有"。
+    少了 ⇒ 有进展 ⇒ 间隔回到 `BACKLOG_GAP_MS = 1s`；没少（dryRun / 通道断开 / 房间不许发）⇒
+    翻倍，**上限是心跳**，所以通道恢复后最多等一个心跳就又看得见。
+  - **没有把 `MIN_WAKEUP_MS` 改大**：那只是把空转频率降下来，"这一拍有没有进展"这个语义仍然
+    不存在，积压与故障会共用同一个固定间隔，两头都不对。也**没有**为了消除空转而把提醒标成 `fired`。
+  - **积压节流**：保留每拍 3 条上限，补上批次间隔（≥1s）⇒ "每批 3 条、间隔 ≥1 秒"成为可断言的
+    约定（10 条大约 3–4 秒发完）。真正的出口限速仍然只有 `out.push()` / `rateLimitMs` 一处，
+    **不重复造限速器**。
+  - **可观测性**：`runner.status().backoff = { overduePasses, gapMs }`——passes 在涨就说明
+    "到期项一直没被消费"，这一档以前是**不可观测的**空转。
+  - 证据：`test/reminders-backoff.test.ts`（12 个假时钟用例，断言 tick 次数 / 最小间隔 /
+    日志条数上限，含 dryRun 5 分钟唤醒 ≤30 次、通道恢复后一个心跳内补发、dispose 后 tick 归零）。
+  - 设计与取舍见 [docs/reminders-dispatch-timing.md](docs/reminders-dispatch-timing.md) §11。
+
 ### 新增
 
 - **SnowLuma 能力面接入（审计 20261025_snowluma-capability-audit.md 落地）**：

@@ -20,10 +20,12 @@ import type { Reminder, ReminderStore } from './store.js'
 import { isHaltWorthyFault, SOFT_FAULT_LIMIT, SoftFaultTracker } from './store-contract.js'
 import { haltOnSoftFault, haltOnStorageFault, ScheduleHalt, type RunnerStatus } from './runner-status.js'
 import { flushPendingDispatches } from './runner-flush.js'
-import { CATCH_UP_MAX_TOTAL, CATCH_UP_WINDOW_MS } from './catch-up.js'
+import { MAX_CATCH_UP_PER_TICK, takeBatch } from './batch.js'
+import { CATCH_UP_WINDOW_MS } from './catch-up.js'
 import { REMINDER_OUTCOMES, outcomeOf, type ReminderOutcome } from './outcome.js'
 import { dispatchOne, claimOwnerOf, type DispatchDeps } from './dispatch.js'
-import { nextWakeupDelayMs, wakeupAtsOf } from './schedule.js'
+import { planWakeup, wakeupAtsOf } from './schedule.js'
+import { WakeupBackoff } from './backoff.js'
 import { WakeupTimer } from './wakeup.js'
 import { setReminderNudge } from './nudge.js'
 import { systemClock, type Clock } from '../../ports/clock.js'
@@ -38,15 +40,11 @@ import { systemClock, type Clock } from '../../ports/clock.js'
 export { REMINDER_OUTCOMES, outcomeOf }
 export type { ReminderOutcome }
 
-
 /**
- * **每拍最多补发几条**（终审 B7，默认 3 条）。
- *
- * 为什么需要：`due()` 会把所有"到点没过太久"的都列出来，`dryRun` 关掉的那一刻可能一次
- * 炸出一大批。3 条 ≈ 默认 30 秒一拍，20 条积压约 3.5 分钟发完——比"一秒 20 条"像人得多。
- * 超出的**不丢弃**：下一拍继续（`due()` 仍会选中它们）。
+ * **每拍最多补发几条一次性提醒**（终审 B7，默认 3 条）——**权威定义在 `batch.ts`**，
+ * 这里只做 re-export（`test/round4-qq.test.ts` 等从这里取）。
  */
-export const MAX_CATCH_UP_PER_TICK = 3
+export { MAX_CATCH_UP_PER_TICK }
 
 /** 算"下一条什么时候到点"时最多看多少行：提醒表按 `at` 升序，够了。 */
 const MAX_ROWS_FOR_WAKEUP = 50
@@ -91,6 +89,11 @@ export class ReminderRunner {
   /** 认领者标识（写进盘上：多实例排查时能读出"谁在发"）。 */
   private readonly owner = claimOwnerOf()
   private readonly log: (line: string) => void
+  /**
+   * **到期未消费的退避现场**（第二轮 P1-B）。状态机与增长曲线都在
+   * `backoff.ts::WakeupBackoff`——这里只持有它。
+   */
+  private readonly backoff = new WakeupBackoff()
 
   constructor(
     store: ReminderStore,
@@ -150,6 +153,7 @@ export class ReminderRunner {
       scheduled: this.wake !== null, halted: this.halt.halted,
       haltReason: this.halt.reason, haltedAt: this.halt.at,
       softFault: { streak: this.softFault.count(), code: this.softFault.lastCode(), limit: SOFT_FAULT_LIMIT },
+      backoff: this.backoff.snapshot(),
     }
   }
 
@@ -185,19 +189,44 @@ export class ReminderRunner {
   }
 
   /**
+   * **这一拍有没有进展**（第二轮 P1-B 的核心判据）。
+   *
+   * 判据与增长曲线都在 `backoff.ts::WakeupBackoff`（纯状态机 + 纯函数间隔）；这里只负责
+   * 取"开拍前/收拍后各几条到期项"。
+   *
+   * 为什么按**数量**判而不是"这一拍发了几条"：`skipped` 与 `dryRun` 都是"一条没发但不是
+   * 故障"；而认领被另一个进程抢走（本拍没发、对方发了）会让数量变少 ⇒ 正确地算成有进展。
+   */
+  private trackBackoff(before: number): void {
+    this.backoff.note(before, this.store.due(this.clock.now()).length)
+  }
+
+  /** 开拍前有几条到期项（`trackBackoff()` 的对照值；`takeBatch()` 会把它们消耗掉）。 */
+  private dueCount(): number {
+    return this.store.due(this.clock.now()).length
+  }
+
+  /**
    * 下一拍该等多久（毫秒）。
    *
    * 取值来自**盘上的提醒表**（与投递侧同一套判据，见 `schedule.ts::wakeupAtsOf`）；
    * 停表/正在跑时给心跳，避免"跑着的时候又醒一次"。
+   *
+   * **第二轮 P1-B**：到期项不再一律 1 ms。间隔由"连续几拍没进展"决定：有进展 ⇒ 1 秒
+   * （积压按节奏继续）；没进展（`dryRun` / 通道断开 / 房间不许发）⇒ 翻倍直到心跳。
+   * 未来提醒仍然精确到它的 `scheduledAt`，不受退避影响。
    */
   private nextDelayMs(heartbeatMs: number): number {
     if (this.halt.halted) return heartbeatMs
     const now = this.clock.now()
-    return nextWakeupDelayMs({
+    const delay = planWakeup({
       ats: wakeupAtsOf(this.store.list(MAX_ROWS_FOR_WAKEUP), CATCH_UP_WINDOW_MS, now),
       now,
       heartbeatMs,
+      overdueGapMs: this.backoff.gapFor(heartbeatMs),
     })
+    this.backoff.remember(delay)
+    return delay
   }
 
   /** 每次轮询同一时刻的 due 快照；单条失败只记日志，其它条继续。 */
@@ -218,83 +247,42 @@ export class ReminderRunner {
         // 具体判定在 `runner-flush.ts`（纯搬移：runner.ts 贴着 400 行硬上限）。
         await flushPendingDispatches({ store: this.store, redispatch: this.redispatch, log: this.log })
       }
+      // **第二轮 P1-B**：开拍前先数一次到期项，收尾时用"有没有变少"决定下一拍退避多久。
+      const overdueBefore = this.dueCount()
       await this.runDue()
       // **round18 P1（复审 17.1）**：这里才是"这一拍真的跑完了"——`runDue()` 正常返回、且
       // 没有因为 `running`/`halted` 提前 return（那两种情况在函数开头就返回了，走不到这里）。
       // 连击清零放在这，而不是 `start()` 的 `.then()`：后者会把"空转"算成"成功"。
       this.softFault.reset()
+      this.trackBackoff(overdueBefore)
       // **可观测性落点（能被 grep 的那一行）**：放在本拍收尾，这样"这一拍刚产生的积压"
       // 也能立刻出现在日志里（放在开头的话，第一次积压要等下一拍才看得到）。
-      // 运维看 `pendingDispatch value=` 就知道有没有积压；`overLimit` 涨了说明"有人得去看一眼"
-      // （终态不会自愈，这是运维动作而不是代码能解决的）。
-      const metrics = typeof this.store.dispatchDiagnostics === 'function'
-        ? this.store.dispatchDiagnostics()
-        : null
-      if (metrics !== null && (metrics.value > 0 || metrics.overLimit > 0)) {
-        this.log(`reminders: pendingDispatch value=${String(metrics.value)} oldestAgeMs=${String(metrics.oldestAgeMs)}`
-          + ` overLimit=${String(metrics.overLimit)}`)
-      }
+      this.logDispatchMetrics()
     } finally {
       this.running = false
     }
   }
 
   /**
-   * **取本拍要发的那批**（防雪崩的三道闸，终审 B7 + Lead 裁定的总量闸）。
+   * 记一行 `pendingDispatch` 指标（运维据此知道有没有积压）。
    *
-   * 顺序：① 太旧的收终态（`skipped-expired:too-old`）→ ② 积压超过 `CATCH_UP_MAX_TOTAL`
-   * 按**最老优先**丢弃（`skipped-expired:backlog-overflow`）→ ③ 只取 `MAX_CATCH_UP_PER_TICK` 条。
-   * 每一步都记日志：既不静默丢弃，也不在恢复瞬间刷屏。
+   * `overLimit` 涨了说明"有人得去看一眼"——那是终态，不会自愈，属于运维动作而不是代码能解决的。
+   */
+  private logDispatchMetrics(): void {
+    const metrics = typeof this.store.dispatchDiagnostics === 'function'
+      ? this.store.dispatchDiagnostics()
+      : null
+    if (metrics === null || (metrics.value === 0 && metrics.overLimit === 0)) return
+    this.log(`reminders: pendingDispatch value=${String(metrics.value)} oldestAgeMs=${String(metrics.oldestAgeMs)}`
+      + ` overLimit=${String(metrics.overLimit)}`)
+  }
+
+  /**
+   * **取本拍要发的那批**（防雪崩的三道闸）。策略与顺序在 `batch.ts`——`runner.ts` 贴着
+   * 400 行硬上限，而那段是"发哪几条"，与"什么时候醒"无关。
    */
   private async takeBatch(): Promise<Reminder[]> {
-    // **一律用注入的时钟判"到点"**（2026-11-10）：store 的查询方法都接受 `now`，但缺省是
-    // `Date.now()` —— 缺省值在假时钟下会让 due/expire/cap 读到与调度不同的时间，
-    // 于是"精度"与"补发窗口"在测试里根本不可复现（也让 T1/T6/T9 之类用例判红）。
-    const now = this.clock.now()
-    // **演练模式：一行持久状态都不写**（round5 D4）。淘汰/收编都是写操作，必须整个跳过——
-    // 否则"dryRun 开着"也会把超期的 daily/weekly 收成终态 ⇒ 永久停掉周期提醒。
-    if (this.dryRun?.() === true) return this.store.due(now)
-    // **task-66（设计 §6 调用方规则）**：收编失败是**存储故障**（reject）⇒ **终止本拍投递**，
-    // 不能捕获后继续用空数组绕过防雪崩。业务拒绝（NOT_APPLICABLE）才算"没有要收的"。
-    const expiredMutation = await this.store.expireStale(now)
-    const expired = expiredMutation.ok ? expiredMutation.value.map((row) => row.id) : []
-    if (expired.length > 0) {
-      this.log(`reminders: ${String(expired.length)} 条已超出补发窗口（${String(this.store.catchUpWindowMs)}ms）`
-        + ' → 收成终态 skipped-expired:too-old（不补发、也不假装还在等）')
-    }
-    const overflowMutation = await this.store.capBacklog(now)
-    const overflow = overflowMutation.ok ? overflowMutation.value.map((row) => row.id) : []
-    if (overflow.length > 0) {
-      this.log(`reminders: 因积压丢弃 ${String(overflow.length)} 条（skipped-expired:backlog-overflow，`
-        + `上限 ${String(CATCH_UP_MAX_TOTAL)} 条；最老优先丢，后台可见）`)
-      // **扔了哪几条要能看见**（只有数字等于没用）：日志打前 5 条（时间 + 截断文本）。
-      const dropped = typeof this.store.droppedItems === 'function' ? this.store.droppedItems(5) : []
-      for (const item of dropped) {
-        const when = new Date(item.at).toISOString().slice(11, 16)
-        this.log(`reminders: 丢弃明细 ${when} ${item.text}（${item.reason}）`)
-      }
-      // **清单可能不全**（Lead 的 P2）：一定要说清"这只是前 5 条"，别让人当成全部。
-      const total = typeof this.store.catchUpDiagnostics === 'function'
-        ? this.store.catchUpDiagnostics(now).droppedTotal
-        : overflow.length
-      if (total > dropped.length) {
-        this.log(`reminders: 丢弃明细只列了 ${String(dropped.length)} 条，**还有 ${String(total - dropped.length)} 条没列出**`
-          + `（后台 reminders.catchUp.droppedTotal=${String(total)}、droppedTruncated=true）`)
-      }
-    }
-    const backlog = this.store.due(now)
-    // **错过这一轮的周期提醒也要进本拍**（round5 D4）：它们不在 `due()` 里（`at` 已滑出窗口），
-    // 但需要被"推进到下一轮"——否则会永远卡在过去的时刻（既不响也不再走）。
-    const missed = typeof this.store.missedRounds === 'function' ? this.store.missedRounds(now) : []
-    // **每拍上限只对一次性提醒计数**（round5 D4）：周期提醒本来就不会被淘汰，不该被"积压"挤掉。
-    const repeats = backlog.filter((item) => item.repeat !== 'none')
-    const oneShots = backlog.filter((item) => item.repeat === 'none')
-    const pending = [...missed, ...repeats, ...oneShots.slice(0, MAX_CATCH_UP_PER_TICK)]
-    if (oneShots.length > MAX_CATCH_UP_PER_TICK) {
-      this.log(`reminders: 本拍到点 ${String(oneShots.length)} 条一次性提醒，按每拍上限 ${String(MAX_CATCH_UP_PER_TICK)} 条先发；`
-        + `其余 ${String(oneShots.length - MAX_CATCH_UP_PER_TICK)} 条下一拍继续（不丢弃、不插队）`)
-    }
-    return pending
+    return await takeBatch({ store: this.store, now: this.clock.now(), dryRun: this.dryRun?.() === true, log: this.log })
   }
 
   private async runDue(): Promise<void> {
@@ -320,6 +308,7 @@ export class ReminderRunner {
       markUnknown: async (id, reason) => { await this.store.markUnknown(id, reason, this.clock.now()) },
       haltDispatch: (reason, reminderId) => { this.haltDispatch(reason, reminderId) },
       log: this.log,
+      clock: this.clock,
     }
   }
 

@@ -304,6 +304,14 @@ reminders: dispatch reminderId=r_xxx scheduledAt=1794238800000 observedAt=179424
    `at` 精确定时）。它**不**包含：QQ 侧网络往返、`OutboundQueue` 的 `rateLimitMs` 排队、系统休眠期间
    的时间（`setTimeout` 跨休眠不保证按墙钟走，靠心跳兜）、以及进程没在跑的时间（那段时间由补发窗口管）。
    端到端"主人 23:40 收到"的保证比这个弱，别把它当 SLA。
+8. **到期未消费的提醒会退避**（第二轮新增）：`dryRun`（默认开）、通道暂不可用、房间不在白名单、
+   日程暂时阻断、积压超过每拍上限，这些情况**合法地不消费**提醒。以前下一拍仍会按 `MIN_WAKEUP_MS = 1`
+   立刻再醒 ⇒ 空转 + 日志刷屏。现在按"有没有进展"退避：有进展 ⇒ 1 秒（积压按节奏继续）；
+   没进展 ⇒ 翻倍，**上限是心跳**（所以通道恢复后最多等一个心跳就又看得见）。
+   **退避状态纯内存、不落盘**（落盘就会破坏 dryRun 的零写入与旧数据字节兼容），所以重启后退避
+   从零开始——那只是"启动第一拍立刻检查一次"，不影响正确性。
+   诊断面读 `runner.backoff = { overduePasses, gapMs }`：`overduePasses` 在涨就是"一直没被消费"。
+   设计见 [docs/reminders-dispatch-timing.md](docs/reminders-dispatch-timing.md) §11。
 
 **已知未加压范围**：`contact-*`（203 条）没有进"12 个 CPU 忙循环 + `--test-concurrency=8`"的加压矩阵
 （它与本批改动交集只有 share-port 与出站边界，上一轮压过）；本批加压覆盖的是 `round4-qq`、
