@@ -17,7 +17,9 @@
 
 import type { Reminder, ReminderStore } from './store.js'
 import { claimStateOf, DEFAULT_CLAIM_TTL_MS } from './claim.js'
+import { startClaimRenewal } from './claim-renewal.js'
 import { outcomeOf, type ReminderOutcome } from './outcome.js'
+import type { Clock } from '../../ports/clock.js'
 
 /**
  * 认领者标识：**必须进程内唯一**，不只是"进程唯一"。
@@ -95,6 +97,7 @@ export async function claimForDispatch(input: {
 export async function releaseAfterSkip(input: {
   readonly store: ReminderStore
   readonly id: string
+  readonly owner: string
   readonly dryRun: boolean
   readonly log: (line: string) => void
 }): Promise<void> {
@@ -102,7 +105,11 @@ export async function releaseAfterSkip(input: {
   // 与 `claimForDispatch` 同一套退化规则：替身没有 `releaseClaim()` 就没什么可放回的。
   if (typeof (input.store as { releaseClaim?: unknown }).releaseClaim !== 'function') return
   try {
-    await input.store.releaseClaim(input.id)
+    // **带 owner**：只放自己的。替别人放回会让对方下一次扫描重发一遍（而它可能正在发）。
+    const mutation = await input.store.releaseClaim(input.id, input.owner)
+    if (!mutation.ok) {
+      input.log(`reminders: ${input.id} 的认领没有放回（${mutation.code}：${mutation.message}）：这一轮不属于本进程，保持原样`)
+    }
   } catch (error) {
     input.log(`reminders: ${input.id} 的认领**没能放回**（${error instanceof Error ? error.message : String(error)}）：要等认领到期（TTL）后才会再被领取`)
   }
@@ -159,6 +166,8 @@ export interface DispatchDeps {
   /** 记账失败 ⇒ 停表（不许自动重发）。 */
   readonly haltDispatch: (reason: string, reminderId: string) => void
   readonly log: (line: string) => void
+  /** 续租用的时钟（缺省 = 不续租，老替身与单测不需要它）。 */
+  readonly clock?: Clock
 }
 
 /**
@@ -167,7 +176,7 @@ export interface DispatchDeps {
  * 顺序是契约，别换：
  *   1. 白名单/开关（`allow`）：不允许发的**不认领、不消耗**；
  *   2. 认领（落盘一次事务）：抢不到就本拍跳过——这是"多 worker 只发一次"的全部机制；
- *   3. 真发 + 记账；
+ *   3. 真发 + 记账（发送期间续租认领，见 `claim-renewal.ts`）；
  *   4. 无论什么结论都写一行**结构化日志**（`latenessMs` 是事后复盘的唯一硬证据）。
  *
  * `skipped` / `dry-run` 之后**放回认领**：这一轮什么都没发，下一拍还得能试。
@@ -188,8 +197,9 @@ export async function dispatchOne(deps: DispatchDeps, reminder: Reminder): Promi
     if (!claim.claimed) return true
     claimedAt = claim.claimedAt
   } catch (error) {
-    // 认领本身失败（存储故障）⇒ 本拍不发。这与"发不出去"不同：状态没动，下一拍还会试。
-    deps.log(`reminders: ${reminder.id} 认领抛错（${error instanceof Error ? error.message : String(error)}）→ 本拍不投递`)
+    // 认领本身失败（存储故障 / 抢不到跨进程锁）⇒ 本拍不发。这与"发不出去"不同：
+    // 状态没动，下一拍还会试。**绝不**在没有认领的情况下发送。
+    deps.log(`reminders: ${reminder.id} 认领失败（${error instanceof Error ? error.message : String(error)}）→ 本拍不投递`)
     return true
   }
   if (latenessMs > 1000) {
@@ -198,20 +208,10 @@ export async function dispatchOne(deps: DispatchDeps, reminder: Reminder): Promi
   }
 
   const sendStartedAt = deps.now()
-  let outcome: ReminderOutcome = 'unknown'
-  let reason: string | null = null
-  try {
-    outcome = outcomeOf(await deps.send(reminder))
-    if (outcome === 'unknown') reason = 'unclassified'
-  } catch (error) {
-    // 抛错 = "无法证明没发出去" ⇒ 与 contact 的 unknown 同口径：不重试。
-    outcome = 'unknown'
-    reason = error instanceof Error ? error.message : String(error)
-    deps.log(`reminders: send failed for ${reminder.id}: ${reason}`)
-  }
+  const sent = await sendPhase(deps, reminder, dryRun)
   const sendCompletedAt = deps.now()
 
-  const ok = await settle(deps, reminder, outcome, reason, dryRun)
+  const ok = await settle(deps, reminder, sent.outcome, sent.reason, dryRun)
   deps.log(formatDispatchLine({
     reminderId: reminder.id,
     scheduledAt: reminder.at,
@@ -221,10 +221,36 @@ export async function dispatchOne(deps: DispatchDeps, reminder: Reminder): Promi
     sendStartedAt,
     sendCompletedAt,
     attempt: typeof reminder.attempts === 'number' ? reminder.attempts + 1 : 1,
-    outcome: dryRun && outcome === 'sent' ? 'dry-run' : outcome,
-    reason,
+    outcome: dryRun && sent.outcome === 'sent' ? 'dry-run' : sent.outcome,
+    reason: sent.reason,
   }))
   return ok
+}
+
+/**
+ * **真发那一段**（含续租与异常归一）—— 从 `dispatchOne` 抽出来只是为了守住 60 行函数上限，
+ * 行为一字不改：抛错 = 无法证明没发出去 ⇒ `unknown`。
+ */
+async function sendPhase(
+  deps: DispatchDeps,
+  reminder: Reminder,
+  dryRun: boolean,
+): Promise<{ outcome: ReminderOutcome; reason: string | null }> {
+  // 发送期间续租：TTL 到期不等于"发送者死了"，只等于"没人证明它活着"。
+  const renewal = dryRun || deps.clock === undefined
+    ? null
+    : startClaimRenewal({ store: deps.store, id: reminder.id, owner: deps.owner, clock: deps.clock, log: deps.log })
+  try {
+    const outcome = outcomeOf(await deps.send(reminder))
+    return { outcome, reason: outcome === 'unknown' ? 'unclassified' : null }
+  } catch (error) {
+    // 抛错 = "无法证明没发出去" ⇒ 与 contact 的 unknown 同口径：不重试。
+    const reason = error instanceof Error ? error.message : String(error)
+    deps.log(`reminders: send failed for ${reminder.id}: ${reason}`)
+    return { outcome: 'unknown', reason }
+  } finally {
+    renewal?.stop()
+  }
 }
 
 /** 把四种结论落到状态上。返回 `false` = 本拍必须中止（记账失败已停表）。 */
@@ -253,7 +279,7 @@ async function settle(
     return true
   }
   // `sent`（演练下）/ `dry-run` / `skipped`：这一轮什么都没真发 ⇒ 放回认领，下一拍还能试。
-  await releaseAfterSkip({ store: deps.store, id: reminder.id, dryRun, log: deps.log })
+  await releaseAfterSkip({ store: deps.store, id: reminder.id, owner: deps.owner, dryRun, log: deps.log })
   if (outcome !== 'skipped') {
     // **终审 B2**：演练不许动任何持久状态——不写 `fired`、不推进 `at`、不改 `occurrence`。
     deps.log(`reminders: ${reminder.id} 演练过（dry-run），状态未改动，下一次到点还会响`)

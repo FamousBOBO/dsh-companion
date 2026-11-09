@@ -23,6 +23,34 @@
 - 证据档案：[docs/reminders-dispatch-timing.md](docs/reminders-dispatch-timing.md)（逐字段时间线、
   三段时间的归属、修复前后语义对照、未覆盖边界）。
 
+- **认领没有真正的跨进程互斥（第二轮 P1-A）**：第一轮的 `claim` 靠落盘 + 进程内串行队列，
+  两个**独立进程**可以各自读到 `claim=null`、各自写 claim、各自 rename——盘上最终只剩一个
+  claim，但**两条 QQ 消息都已经发出去了**。改成真·跨进程事务锁：
+  - **锁**：`src/adapters/fs-store/process-lock.ts`（`SqliteProcessMutex`）。用 `node:sqlite`
+    的 `BEGIN IMMEDIATE` 拿**内核级**文件锁（POSIX `fcntl` / Win32 `LockFileEx`），锁文件是
+    `<reminders.json>.lock.db`。**零新依赖**（Node 24 内置），**进程崩溃即自动释放**，
+    因此不需要 TTL，也不会"误删仍被活跃进程持有的锁"。
+  - **覆盖面是事务层而不是某个方法**：锁套在 `store-transaction.ts::transact()` 里，所以
+    `add/remove/markFired/markSent/markUnknown/resolve/expireStale/capBacklog/pruneFired/
+    claim/releaseClaim/renewClaim/...` **全部**受同一把锁约束——没有一个写方法能绕开。
+  - **事务基线改成锁内重读磁盘**（`readBaseline()`）：进程 A 认领并写盘后，进程 B 拿到锁重读
+    时看到的就是 `claim=<A>`，它的 reducer 于是回 `STALE_STATE`。这才是"同一轮只有一个发送者"。
+    读不出来/解码不合法 ⇒ `REFRESH_FAILED`，**绝不用旧内存快照硬写**。
+  - **抢不到锁不许发送**：超时抛 `LOCK_TIMEOUT`（暂时性故障，**不停表**），投递路径把它当
+    "本拍不发"。认领没成功 ⇒ `send()` 一次都不会被调用。
+  - **只放自己的认领**：`store.releaseClaim(id, owner)` 在 `claim.by !== owner` 时回 `STALE_STATE`
+    且盘上一个字都不改（替别人放回等于让对方的下一次扫描重发一遍，而对方可能正在发）。
+  - **发送期间续租**（`claim-renewal.ts`）：按 `TTL/3 = 40s` 续租，避免"我们还在发、认领先过期、
+    别的进程把它收成 unknown"导致一条真发出去的消息被记成"不确定"。续租失败只记日志，不改投递结论。
+  - **退化路径不静默**：没有 `node:sqlite` 时 `store.writeModel()` 返回 `in-process-only`，
+    并且每条跨进程测试都断言 `cross-process-lock`——悄悄退化会让测试立刻红。
+  - 语义：**at-most-once 倾向**，不宣称 exactly-once（没有平台幂等键）。
+  - 证据：`test/reminders-multiprocess.test.ts`（8 个**真子进程**用例 + IPC barrier）：同一条
+    只有一个赢家（M1）、两进程发送次数之和 **= 1**（M2）、改不同条不丢更新（M3）、认领写盘失败
+    发送 **0** 次（M4）、持锁进程被 `SIGKILL` 后另一进程立刻接手（M5）、owner 不匹配不许替人解锁
+    （M6）、活跃发送超过一拍第二进程认领被拒（M7）、认领过期收敛 `unknown` 且重启后状态正确（M8）。
+  - 设计与取舍见 [docs/reminders-dispatch-timing.md](docs/reminders-dispatch-timing.md) §10。
+
 ### 新增
 
 - **SnowLuma 能力面接入（审计 20261025_snowluma-capability-audit.md 落地）**：

@@ -2,10 +2,13 @@
  * **ReminderStore**（task-66 起按设计重写）：所有变更都走
  * `store-transaction.ts` 的事务——串行队列 + copy-on-write + 写盘成功后发布。
  *
- * 对外三条规矩：
- *   1. **业务拒绝**回 `{ ok:false, code, message }`（没改状态、没写盘）；
- *   2. **基础设施故障**（锁定 / 保存失败 / 队列满 / 重入 / 关闭）⇒ **reject** `ReminderStoreFault`；
- *   3. **查询不排队**，读最近一次已发布的**冻结**快照（写盘期间看到旧状态是允许的）。
+ * 对外三条规矩：① **业务拒绝**回 `{ ok:false, code, message }`（没改状态、没写盘）；
+ * ② **基础设施故障**（锁定 / 保存失败 / 队列满 / 重入 / 关闭）⇒ **reject**；③ **查询不排队**，
+ * 读最近一次已发布的**冻结**快照（写盘期间看到旧状态是允许的）。
+ *
+ * **第二轮 P1-A**：写事务外面套了一把**跨进程写锁**（`adapters/fs-store/process-lock.ts`），
+ * 事务基线改成**锁内重读的磁盘内容**。改之前两个独立进程可以各自读到 `claim=null`、
+ * 各自写 claim、各自发送——盘上最终只剩一个 claim，但两条消息都发出去了。
  */
 
 import * as path from 'node:path'
@@ -18,12 +21,16 @@ import {
 } from './catch-up.js'
 import { decodeReminderFile } from './store-load.js'
 import { toMutation, transact, SerialQueue } from './store-transaction.js'
-import type { Edit, Mutation, RecoveryReport, ReminderPersistence, StoreState, ValidationIssue } from './store-contract.js'
+import type {
+  Edit, Mutation, ProcessMutex, RecoveryReport, ReminderPersistence, StoreState, ValidationIssue,
+} from './store-contract.js'
 import { ReminderStoreFault, storeFault } from './store-contract.js'
 import { deepFreeze } from './store-freeze.js'
 import { ReminderFile } from './store-io.js'
+import { SqliteProcessMutex } from '../../adapters/fs-store/process-lock.js'
 import { reduceMarkUnknown, reducePruneFired, reduceRemove, reduceResolve } from './store-admin.js'
-import { clearClaim, reduceClaim, reduceReleaseClaim } from './claim.js'
+import { reduceMarkFired, reduceMarkFiredRebound } from './store-rounds.js'
+import { reduceClaim, reduceReleaseClaim, reduceRenewClaim } from './claim.js'
 import { nudgeIfChanged } from './nudge.js'
 export type { Reminder, Repeat } from './reminder-model.js'
 import {
@@ -60,6 +67,8 @@ export class ReminderStore {
   private readonly ownerKey: string
   /** 演练模式（`config.reminders.dryRun !== false`）：认领类写**整笔不发生**（见 `claim()`）。 */
   private readonly dryRun: boolean
+  /** **跨进程写锁**（第二轮 P1-A）。`null` = 本次运行时没有 `node:sqlite` ⇒ 只有进程内互斥。 */
+  private readonly mutex: ProcessMutex | null
   private state: StoreState | null = null
   private lock: ReadFailure | null = null
   private issues: readonly ValidationIssue[] = []
@@ -69,6 +78,7 @@ export class ReminderStore {
     config: QQChannelConfig['reminders'],
     host: StoreHostContext,
     persistence?: ReminderPersistence,
+    mutex?: ProcessMutex | null,
   ) {
     const opts = storeOptions(host)
     // **路径必须与老代码逐字一致**：`workspacePath` 为 null 时落到 `<dshHome>/channel-qq`。
@@ -82,6 +92,8 @@ export class ReminderStore {
     this.log = opts.log
     this.dryRun = config.dryRun !== false
     this.io = persistence ?? new ReminderFile(file, this.log)
+    // 锁文件与提醒文件**同目录同前缀**：同一个 `dataDir` 一定是同一把锁，不用再传参数。
+    this.mutex = mutex === undefined ? new SqliteProcessMutex(file, this.log) : mutex
     this.ownerKey = path.resolve(file)
     const existing = OWNERS.get(this.ownerKey)
     if (existing !== undefined && existing !== this) {
@@ -91,6 +103,15 @@ export class ReminderStore {
   }
 
   get file(): string { return this.ownerKey }
+
+  /**
+   * **本进程的写入模型**（诊断面要如实说，不许"看起来支持多进程"）：
+   * `cross-process-lock` = 所有写事务过同一把内核级锁；`in-process-only` = 只有进程内互斥，
+   * 第二个 DSH 写进程会重复外发。
+   */
+  writeModel(): 'cross-process-lock' | 'in-process-only' {
+    return this.mutex === null ? 'in-process-only' : 'cross-process-lock'
+  }
 
   // ── 事务入口 ─────────────────────────────────────────────────────────────
 
@@ -103,6 +124,7 @@ export class ReminderStore {
       state: () => this.state,
       publish: (next) => { this.state = next },
       persistence: this.io,
+      mutex: this.mutex === null ? undefined : this.mutex,
     }, operation, reducer)
   }
 
@@ -251,39 +273,11 @@ export class ReminderStore {
   }
 
   markFired(id: string, now = Date.now()): Promise<Mutation<Reminder>> {
-    return this.edit('markFired', (draft) => {
-      const item = draft.find((row) => row.id === id)
-      if (item === undefined) return { kind: 'reject', code: 'NOT_FOUND', message: `没有 id=${id} 的提醒` }
-      if (item.repeat === 'none') {
-        item.fired = true
-        item.firedAt = now
-      } else {
-        item.at = nextRoundAt(item, now)
-        item.fired = false
-        item.firedAt = now
-      }
-      delete item.sentFor
-      delete item.sentAt
-      // 一轮结束了 ⇒ 放掉认领（否则要等 TTL 过期，周期提醒的下一轮会被自己的旧认领挡住）。
-      clearClaim(item)
-      return { kind: 'changed', value: { ...item } }
-    })
+    return this.edit('markFired', (draft) => reduceMarkFired(draft, id, now))
   }
 
   markFiredRebound(id: string, occurrence: { id: string; revision: number } | null, now = Date.now()): Promise<Mutation<Reminder>> {
-    return this.edit('markFiredRebound', (draft) => {
-      const item = draft.find((row) => row.id === id)
-      if (item === undefined) return { kind: 'reject', code: 'NOT_FOUND', message: `没有 id=${id} 的提醒` }
-      item.at = nextRoundAt(item, now)
-      item.fired = false
-      item.firedAt = now
-      delete item.sentFor
-      delete item.sentAt
-      if (occurrence === null) delete item.occurrence
-      else item.occurrence = { ...occurrence }
-      clearClaim(item)
-      return { kind: 'changed', value: { ...item } }
-    })
+    return this.edit('markFiredRebound', (draft) => reduceMarkFiredRebound(draft, id, occurrence, now))
   }
 
   // ── 原子领取（2026-11-10：多 worker / 多次扫描只发一次） ─────────────────
@@ -296,10 +290,26 @@ export class ReminderStore {
     return this.edit('claim', (draft) => reduceClaim(draft, id, owner, now, ttlMs))
   }
 
-  /** **放回**：`skipped` / `dry-run` 之后立刻调用，让这条下一拍还能被领。 */
-  releaseClaim(id: string): Promise<Mutation<Reminder>> {
+  /**
+   * **放回**：`skipped` / `dry-run` 之后立刻调用，让这条下一拍还能被领。
+   *
+   * 带 `owner` 就只放自己的（第二轮 P1-A）：替别人放回等于让对方的下一次扫描重发一遍，
+   * 而对方可能正在发。
+   */
+  releaseClaim(id: string, owner?: string): Promise<Mutation<Reminder>> {
     if (this.dryRun) return Promise.resolve(this.dryRunSkip(id, 'releaseClaim'))
-    return this.edit('releaseClaim', (draft) => reduceReleaseClaim(draft, id))
+    return this.edit('releaseClaim', (draft) => reduceReleaseClaim(draft, id, owner))
+  }
+
+  /**
+   * **续租**（第二轮 P1-A）：发送比认领 TTL 还慢时把到期间往后推。
+   *
+   * 只有当前认领者能续（`by` 对不上 ⇒ `STALE_STATE`）。续租失败**不算发送失败**：
+   * 消息可能已经发出去了，所以调用方只记一行日志、不当成"没发"。
+   */
+  renewClaim(id: string, owner: string, now = Date.now(), ttlMs?: number): Promise<Mutation<Reminder>> {
+    if (this.dryRun) return Promise.resolve(this.dryRunSkip(id, 'renewClaim'))
+    return this.edit('renewClaim', (draft) => reduceRenewClaim(draft, id, owner, now, ttlMs))
   }
 
   /** **收敛过期认领**：盘上分不清"发之前崩"还是"发之后崩" ⇒ 按 `unknown` 收（不重试）。 */
@@ -359,23 +369,17 @@ export class ReminderStore {
   /** 关停：拒绝新写入并**排空**已受理的事务（没有"卸载补存"这回事）。 */
   async close(): Promise<void> {
     this.queue.close()
-    // **顺序是设计的不变量**：先关队列 → **排空** → 才释放注册表。
+    // **顺序是设计的不变量**：先关队列 → **排空** → 才释放注册表与跨进程锁。
     // 反过来（先释放再排空）会让"旧实例还在写、新实例已经建起来写同一文件"——
-    // 那是**静默双写**，比 `OWNER_CONFLICT` 明确拒绝糟得多。
-    // 测试侧必须 `await store.close()`；rig 助手要 async，不能靠 `void close()`。
+    // 那是**静默双写**，比 `OWNER_CONFLICT` 明确拒绝糟得多。测试侧必须 `await store.close()`。
     try {
       await this.queue.drain()
     } finally {
+      // 锁最后关：排空之后已无在途事务（锁本身是"每次 acquire 一个事务"，这里只拒绝后续 acquire）。
+      this.mutex?.close()
       if (OWNERS.get(this.ownerKey) === this) OWNERS.delete(this.ownerKey)
     }
   }
-}
-
-function nextRoundAt(item: Reminder, now: number): number {
-  const step = item.repeat === 'daily' ? 86_400_000 : 7 * 86_400_000
-  let next = item.at
-  do { next += step } while (next <= now)
-  return next
 }
 
 /** 恢复报告：**完整内容**比较（同 id 内容变化要算 `replaced`，不能只按 id 存在性计数）。 */
@@ -389,6 +393,5 @@ function diffOf(before: readonly Reminder[], after: readonly Reminder[]): Recove
     .map((row) => ({ before: beforeById.get(row.id) as Reminder, after: row }))
   return { loaded: after.length, removed, replaced, added }
 }
-
 export { toMutation }
 export type { Mutation, ReminderStoreFault }

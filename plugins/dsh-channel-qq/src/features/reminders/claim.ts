@@ -24,6 +24,33 @@ import { edited, rejected, unchanged } from './store-contract.js'
 /** 认领的默认有效期：够一次 QQ 发送（含分句与限速）走完，又不至于长到让提醒空等。 */
 export const DEFAULT_CLAIM_TTL_MS = 120_000
 
+/**
+ * **续租**（第二轮 P1-A）：发送比 TTL 还慢时，把到期间往后推，保持"活跃发送者"身份。
+ *
+ * 为什么需要：TTL 的用途是"崩了之后别的进程能判定这一轮作废"，不是"给发送掐表"。
+ * 如果一次发送（限速 + 多段 + 平台慢）超过 TTL，认领会在**我们还在发**的时候过期，
+ * 于是别的进程把这条判成 `stale` ⇒ 收敛成 `unknown` ⇒ 一条真发出去的消息被记成"不确定"。
+ * 续租把这两件事解耦：发送期间每 TTL/3 续一次，只有**进程真的不见了**才会过期。
+ *
+ * 只有持锁者能续：`by` 对不上就被拒（`STALE_STATE`），别人的租约续不了。
+ */
+export function reduceRenewClaim(
+  draft: Reminder[],
+  id: string,
+  owner: string,
+  now: number,
+  ttlMs = DEFAULT_CLAIM_TTL_MS,
+): Edit<Reminder> {
+  const item = draft.find((row) => row.id === id)
+  if (item === undefined) return rejected('NOT_FOUND', `没有 id=${id} 的提醒`)
+  const claim = item.claim ?? null
+  if (claim === null) return rejected('NOT_APPLICABLE', '这条没有认领，无需续租')
+  if (claim.by !== owner) return rejected('STALE_STATE', `认领属于 ${claim.by}，不是 ${owner}`)
+  if (claim.until <= now) return rejected('STALE_STATE', '认领已经过期，续租不成立（按 unknown 收敛）')
+  item.claim = { by: owner, at: claim.at, until: now + Math.max(1, ttlMs) }
+  return edited({ ...item })
+}
+
 /** 认领的三种现场（runner 据此决定"发/跳过/收敛成 unknown"）。 */
 export type ClaimState =
   /** 没人认领（或上一次已经放回）⇒ 可以领。 */
@@ -69,11 +96,25 @@ export function reduceClaim(
   return edited({ ...item })
 }
 
-/** **放回**（`skipped` / `dry-run` 之后立刻调用）：不动 `attempts`，只清认领。 */
-export function reduceReleaseClaim(draft: Reminder[], id: string): Edit<Reminder> {
+/**
+ * **放回**（`skipped` / `dry-run` 之后立刻调用）：不动 `attempts`，只清认领。
+ *
+ * **给了 `owner` 就只放自己的**（第二轮 P1-A）：这不是洁癖，而是硬不变量——
+ * 第二个进程替第一个"放回"会让它**在下一次扫描里被重新认领并重发一次**，
+ * 而第一个进程此刻可能正在发。所以归属不符时回 `STALE_STATE`（业务拒绝，不是故障），
+ * 盘上一个字都不改。
+ *
+ * 不传 `owner` 的行为与第一轮一致（无条件放回），只为兼容既有调用点与测试；
+ * **生产路径（`dispatch.ts`）一律带 owner**。
+ */
+export function reduceReleaseClaim(draft: Reminder[], id: string, owner?: string): Edit<Reminder> {
   const item = draft.find((row) => row.id === id)
   if (item === undefined) return rejected('NOT_FOUND', `没有 id=${id} 的提醒`)
-  if (item.claim === undefined || item.claim === null) return unchanged({ ...item })
+  const claim = item.claim ?? null
+  if (claim === null) return unchanged({ ...item })
+  if (owner !== undefined && claim.by !== owner) {
+    return rejected('STALE_STATE', `认领属于 ${claim.by}，不是 ${owner}：不许替别人放回`)
+  }
   delete item.claim
   return edited({ ...item })
 }

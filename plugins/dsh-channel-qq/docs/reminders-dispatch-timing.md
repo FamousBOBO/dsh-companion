@@ -379,8 +379,13 @@ attempt=1 outcome=sent
 4. **单进程内多个 runner 靠 `#seq` 区分，跨进程靠 `pid`**。所以：
    - 同进程装两次插件 ⇒ `pid-1234#1` / `pid-1234#2`，互不相认，只会有一个领到；
    - 两个进程 ⇒ pid 不同，正常；
-   - **边界**：若两个进程落在同一个 pid（不同 namespace 的容器共享 pid 号、或 pid 被复用），
-     标识会撞，这时"只发一次"退化成"靠 TTL 收敛成 unknown"。这是已知的边缘，不是常态。
+   - **边界（第二轮更新）**：若两个进程落在同一个 pid（不同 namespace 的容器共享 pid 号、
+     或 pid 被复用），认领者标识会撞。第二轮之后**这一条的后果变小但没消失**：写互斥已经
+     由跨进程锁保证（不会两个进程同时改同一行），但"我看到的 claim 是不是我自己写的"
+     仍然靠 `by` 里那个 pid——撞了就会把对方的认领判成 `mine`（幂等），于是**两边都发**。
+     所以：**同一数据目录不要跑两个 pid 相同的写进程**（容器共享 pid namespace 是唯一现实
+     场景）。要彻底消除，得给认领者一个随机 token（而不是 pid），本轮没做——它属于"平台
+     身份"问题，不是提醒子系统能独立解决的。
 5. **`quietHours` 在生产是 `[]`**（`companion.patch.yml:237`）。本事故**与免打扰无关**：
    全文 0 次 `quiet-hours`。反过来说，`CONTACT_DEFAULTS` 里默认是 `23:00–08:00`
    （`config/sections/contact.ts:31`）——**若用的是默认值，23:40 这条提醒本来会被免打扰拦住**，
@@ -464,6 +469,118 @@ attempt=1 outcome=sent
 
 ---
 
+## 10. 第二轮 P1-A：存储所有权模型（跨进程事务锁）
+
+第一轮把"只发一次"寄托在落盘的 `claim` 上，但**认领本身没有跨进程互斥**：两个独立进程
+各自读到 `claim=null`、各自写 claim、各自 rename，最后盘上只剩一个 claim，而**两条消息都
+已经发出去了**。磁盘的最终状态证明不了"只发了一次"。
+
+### 10.1 选的模型：真正的跨进程事务锁（不是严格单写者）
+
+| 选项 | 结论 | 理由 |
+|---|---|---|
+| 严格单写者（数据目录级进程锁，第二个进程启动即失败） | 不选 | 生产里"主控 + 独立 worker"是有意义的部署；把它禁掉等于拿功能换实现简单。而且"第二个进程必须启动失败"在 DSH 宿主里代价很大（整个插件行起不来） |
+| 手写 lock 文件 + TTL | 不选 | 任务是明确禁止的。TTL 短 ⇒ 误删仍被活跃进程持有的锁（直接导致重复外发）；TTL 长 ⇒ 崩溃后永久死锁。"崩溃恢复"和"不误删"在只有 TTL 一个旋钮时是**互相冲突**的 |
+| 现成文件锁库（`proper-lockfile` 等） | 不选 | 插件依赖只有 `silk-wasm` / `ws`，加一个运行时依赖要连带改发布与审计面 |
+| **SQLite 事务锁（`node:sqlite` 的 `BEGIN IMMEDIATE`）** | **选** | Node 24 内置（`engines.node >= 24`，`companion-foundation/group-memory.mjs` 已在用同一套取法），**零新依赖**；互斥由内核（POSIX `fcntl` / Win32 `LockFileEx`）提供；**进程崩溃即自动释放**，不需要 TTL，也不会误删活锁 |
+
+实现：`src/adapters/fs-store/process-lock.ts`（`SqliteProcessMutex`）。锁文件是
+`<reminders.json>.lock.db`——同目录 ⇒ 同一个 `dataDir` 一定是同一把锁，不需要额外配置。
+
+### 10.2 八条要求逐条对照
+
+| 任务书要求 | 落点 |
+|---|---|
+| ① 同一个存储文件对应同一把锁 | 锁文件名由提醒文件路径直接派生（`process-lock.ts` 构造函数），不可能配错 |
+| ② **所有**读-改-写事务都遵守同一把锁，不能只给 `claim()` 加锁 | 锁在 `store-transaction.ts::transact()` 里，是**事务层**而不是某个方法。`add/remove/markFired/markSent/setPendingDispatch/expireStale/capBacklog/resolve/pruneFired/claim/releaseClaim/renewClaim` 全部经过它——**没有一个写方法能绕开** |
+| ③ 拿到锁后**重新读磁盘**，不许用内存快照当基线 | `readBaseline()`（`store-transaction.ts`）在锁内 `readOnce()` + `decodeReminderFile()`；读失败/解码失败 ⇒ `REFRESH_FAILED`，**绝不用旧快照硬写** |
+| ④ 锁内完成"读 → 校验 → reducer → 原子写 → 发布" | `transact()` 的六步：取基线 → `structuredClone` 草稿 → `edit(draft)` → `validateCandidateOrThrow` → `replaceSerialized`（rename = 提交点）→ `publish` |
+| ⑤ 写成功后才释放锁 | `finally { lease?.release() }`，`release()` 走 `ROLLBACK`（见 §10.4） |
+| ⑥ 抢锁超时/暂时失败 ⇒ **不许继续发送**，返回可诊断的暂时失败 | 超时抛 `LockTimeoutError` ⇒ 事务抛 `LOCK_TIMEOUT`（**不在 `HALT_WORTHY` 里**：暂时性故障不该停表）。投递路径上 `dispatchOne()` 把"认领失败"当**本拍不发**并留一行日志——认领没成功就**绝不**调用 `send()` |
+| ⑦ 进程崩溃后有明确恢复策略；不许凭 TTL 删活锁 | 崩溃 = 内核释放文件锁。实测：`SIGKILL` 掉持锁进程后，另一个进程**1 ms** 就拿到了（`test/reminders-multiprocess.test.ts` M5 把它固化成用例）。这里**没有 TTL 可以误删** |
+| ⑧ 释放时校验 owner/token，禁止释放别人的锁 | 见 §10.4：跨进程那一半由"只有持有该打开事务的进程能对它 `ROLLBACK`"保证；进程内那一半由 lease 的 `token` 只能 release 一次保证——结构性不可能替别人解锁 |
+| ⑨ Windows 与 Linux 都验证 | Windows 为本机实机（`npm test` 全绿）；Linux 由 CI 跑同一套测试。锁用的是 SQLite 的跨平台文件锁，不是平台特化的 `flock`/`LockFileEx` 直调 |
+
+### 10.3 为什么锁里**不写任何数据**、释放用 `ROLLBACK`
+
+提醒数据不在 SQLite 里（它是独立的原子 rename），所以这个事务只当**互斥量**用。这不是
+审美，是实测出来的必要选择：
+
+- **rollback journal 模式下，持锁者 `COMMIT` 时若有竞争者在敲门，会随机抛
+  `database is locked`**（本机实测 10 次里 4 次）。持锁者"释放失败"会把锁泄漏到进程退出，
+  正是最不该出现的那类故障；
+- 同一压力下 `ROLLBACK` **10/10 成功**（含"写了行再回滚"）；
+- 附带两个好处：锁文件**0 字节**（没有任何需要在 schema 上迁移的状态），以及 dryRun
+  全程连锁文件都不会被创建。
+
+### 10.4 归属校验与"不许替别人解锁"
+
+三层，逐层收紧：
+
+1. **内核**：`BEGIN IMMEDIATE` 拿到的是排他写锁。别的进程连 `BEGIN` 都进不来，**没有
+   任何 API 能对别人的事务执行 `ROLLBACK`**；
+2. **进程内 lease**：`acquire()` 返回的 lease 带 `token`，`release()` 只能成功一次；
+   第二次返回 `false` 并留痕。`held !== token` 时不放锁、交给句柄关闭；
+3. **认领层的 owner**：`store.releaseClaim(id, owner)` 带 owner 之后，`reduceReleaseClaim`
+   在 `claim.by !== owner` 时回业务拒绝 `STALE_STATE`（盘上一个字都不改）。这条与锁无关，
+   但同样属于"不许替别人放开这一轮"——**替别人放回等于让对方的下一次扫描重发一遍，而
+   对方可能正在发**。
+
+### 10.5 认领硬性不变量（逐条）
+
+| 不变量 | 落点 / 证据 |
+|---|---|
+| 发送前 claim 已成功持久化 | `dispatchOne()` 的顺序：`claimForDispatch()` → `send()`。M2 里两个进程的发送次数之和 = 1 |
+| 认领失败绝不调用 QQ 发送 | `dispatchOne()` 的 `catch` 直接 `return true`（本拍不发）；M4：认领写盘失败 ⇒ 发送次数 **0** |
+| 同一提醒/同一 occurrence 只有一个有效发送者 | 锁 + 锁内重读基线 ⇒ 后到者的 reducer 看到 `claim=<前者>` ⇒ `STALE_STATE`。M1：只有一个进程认领成功 |
+| claim 过期**不自动重发**，按 `unknown` 收敛 | `claimStateOf()` 的 `stale` 分支 → `resolveStaleClaim()` → `reduceMarkUnknown(..., 'claim-expired:unknown')`。M8：发送 0 次、盘上 `unknownReason=claim-expired:unknown` |
+| `unknown` 不得被普通 tick 自动恢复 | `dueOf()` 只看 `!fired`；`reduceMarkUnknown` 对一次性提醒置 `fired=true`、对周期提醒推进 `at`。普通 tick 走不到它 |
+| 只有人工确认"确实没发送"才重新排队 | `store.resolve(id, 'failed')`（后台 `resolve` action）→ 清 `unknownAt` + `fired=false` + 删 `claim` |
+| 网络发送不在全局文件锁内等待 | 锁的持有范围只有"读 → reducer → 写盘"这一小段（毫秒级）；`send()` 在 `transact()` **返回之后**才调用（M7：发送期间第二进程认领被拒，但第一进程的发送不受锁影响） |
+| claim TTL 与发送超时协调（续租） | `claim-renewal.ts`：发送期间按 `TTL/3` 续租。见 §10.6 |
+| 没有平台幂等键 ⇒ **不宣称 exactly-once** | 本模型是 **at-most-once 倾向**（宁可等人工确认，也不自动重复外发）。文档与日志都不用 "exactly-once" |
+
+### 10.6 续租（TTL 与发送超时协调）
+
+TTL 的用途是"崩了之后别人能判定这一轮作废"，**不是**给发送掐表。一次真实发送可能比
+`DEFAULT_CLAIM_TTL_MS = 120_000` 还慢（出站队列限速 + 多段 + 平台慢）。不续租的话：
+我们还在发 → 认领先过期 → 别的进程判 `stale` → 收敛成 `unknown` → **一条真发出去的消息
+被记成"不确定"**。
+
+`startClaimRenewal()` 在 `send()` 期间按 `TTL/3 = 40 s` 续租，`finally` 里停掉。
+续租失败**只记日志**，不改投递结论（消息可能已经发出去了，把"续租失败"写成"没发出去"
+会直接导致重复外发）。
+
+### 10.7 退化路径（必须说出来，不许假装支持）
+
+`node:sqlite` 取不到时（只可能是被裁剪的运行时），`store.writeModel()` 返回
+**`in-process-only`**，并且写事务退回内存基线（只有进程内 `SerialQueue` 互斥）。
+这条**不静默**：诊断面 `writeModel()` 可读、日志会说明。
+`test/reminders-multiprocess.test.ts` 里每条用例都断言 `writeModel === 'cross-process-lock'`，
+所以"悄悄退化成单进程"会让测试立刻红——这是防止退化被忘记的唯一可靠办法。
+
+### 10.8 独立进程测试（`test/reminders-multiprocess.test.ts`）
+
+八个用例都 `fork` **真子进程**（独立 pid / 独立模块实例），用 IPC barrier 对齐并发起点，
+用假发送适配器计数，用假时钟固定"现在"，并在结束时清理临时目录与锁文件：
+
+| 用例 | 断言 |
+|---|---|
+| M1 两个进程同时认领同一提醒 | 只有一个 `claimed`；输的一方 `STALE_STATE`；盘上 claim 归赢家；`writeModel=cross-process-lock` |
+| M2 两个进程同时认领并尝试发送 | 发送次数之和 **严格 = 1**；发完 `fired=true`、`claim` 已清 |
+| M3 两个进程改不同提醒 | 两条更新**都在**（不丢更新） |
+| M4 认领写盘失败 | 投递路径发送 **0** 次；底层认领抛 `PERSIST_FAILED`；盘上未消耗、无残留 claim |
+| M5 持锁进程被 `SIGKILL` | 另一进程**立刻**能拿到锁并正常投递（不靠 TTL） |
+| M6 owner 不匹配 | 认领被挡（`STALE_STATE`）、放回也认出"不是我的"（`STALE_STATE`）、盘上租约与到期时刻都没变 |
+| M7 活跃发送超过一拍 | 第二进程认领被拒、发送 0 次；第一进程照常发完 |
+| M8 claim 过期 + 重启 | 发送 0 次、盘上 `claim-expired:unknown`、重启后 `fired=true` 且无 claim |
+
+> 第一轮的 T4（同一进程两个 runner）**保留为同进程回归**，但**不再**作为跨进程证明——
+> 同一进程里的两个 Store 共享 `OWNERS`、串行队列与锁实例，它们"互斥"只能证明进程内互斥。
+
+
+---
+
 ## 附录：复现本文数字的命令
 
 ```powershell
@@ -490,3 +607,6 @@ Get-Content -Raw -Encoding utf8 'data/workspace/reminders.json'
 
 > 提醒：`data/` 是活的数据目录。`contact.json` 的 `counters` 与 `lease` 会在采集之后继续变化，
 > 本文引用的 `counters` 值请按上面第 3 步重建，不要读当前值。
+
+---
+
