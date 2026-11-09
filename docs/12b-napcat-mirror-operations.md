@@ -174,28 +174,47 @@ SSE 侧：  GROUP MSG group=145326153 user=2818504677 msgId=237349890 len=51
 真实 NapCat SSE → group-mirror（校验/白名单/去重/有界队列）→ 假 OneBot WS → 假测试客户端
 ```
 
-两轮窗口合计 **6 + 25 分钟**，期间群里来了 5 条消息，全部穿过整条链路：
+四轮窗口合计 **6 + 25 + 45 + 40 分钟**。前四列是逐条核对过的送达记录：
 
-| 时刻 | 发送者 | 段结构 | 送达客户端 |
+| 时刻 | 发送者 | 段结构 | 处理 |
 |---|---|---|---|
-| 20:30:24 | Arona | `forward` | ✅ |
-| 20:42:08 | 守心丶 | `at+text` | ✅ |
-| 20:42:25 | 德谬歌 | `text` | ✅ |
-| 20:42:28 | 德谬歌 | `text` | ✅ |
-| 20:42:30 | 德谬歌 | `image` | ✅ |
+| 20:30:24 | Arona | `forward` | ✅ 送达 |
+| 20:42:08 | 守心丶 | `at+text` | ✅ 送达 |
+| 20:42:25 | 德谬歌 | `text` | ✅ 送达 |
+| 20:42:28 | 德谬歌 | `text` | ✅ 送达 |
+| 20:42:30 | 德谬歌 | `image` | ✅ 送达 |
+| 21:30:44 | 恩赫里亚 | `image` | ✅ 送达 |
+| 21:47:12 | 庭柯 | `at+text` | ✅ 送达 |
+| 21:47:15 | yling | `at+text+image` | ✅ 送达 |
+| 21:47:19 | 大魔王 | `image` | ✅ 送达 |
+| 21:47:45 | 小叽 | `image` | ⏱ 第三轮窗口到点退出（非丢失） |
+| 21:49:24 | ww | `text` | ✅ 送达（第四轮） |
+| 21:49:29 | 大魔王 | `text` | ✅ 送达 |
+| 21:49:30 | ww | `text` | ✅ 送达 |
+| 21:49:37 | 大魔王 | `record`（语音） | ✅ 送达 |
+| 21:50:14 | 德谬歌 | `text` | ✅ 送达 |
 
-25 分钟窗口的最终统计：
+45 分钟窗口的最终统计：
 
 | 统计 | 值 |
 |---|---|
 | SSE `connects` / `disconnects` | 1 / 0 |
-| `received` → `accepted` → `delivered` | 4 → 4 → 4 |
-| `rejected`（shape/oversize/type/group） | 0 / 0 / 0 / 0 |
+| `received` → `accepted` → `delivered` | 5 → 4 → 4 |
+| `rejected`（shape/oversize/**type**/group） | 0 / 0 / **1** / 0 |
 | `duplicates` / `dropped` | 0 / 0 |
-| 假 WS `connections` / `eventsSent` / `forbiddenActionAttempts` | 1 / 4 / **0** |
+| 假 WS `eventsSent` / `forbiddenActionAttempts` | 4 / **0** |
 | 客户端实收 | **4 条**，与 `delivered` 逐条一致 |
 
-每一条的字段数都是 **17**，与 NapCat 的 `arrayMsg` 完全一致：
+第四轮（21:48–21:50）另外收到 5 条，全部放行、零拒绝。
+
+累计：**13 条真实群消息穿过镜像**，段类型覆盖 `text` / `at+text` / `image` /
+`at+text+image` / `forward` / `record`（语音）六种。
+
+**那 1 条 `rejected.type` 是有意义的**：它证明过滤链在真实数据上真的被走到过——
+收到 5 帧、放行 4 条群消息、按"不是 `message/group`"拒掉 1 条。这不是失败计数，
+是"过滤器确实在按类型筛"的直接证据（离线测试只能证明形状，证明不了真实流量里会出现这种帧）。
+
+每条放行事件的字段数都是 **17**，与 NapCat 的 `arrayMsg` 完全一致：
 
 ```text
 font, group_id, group_name, message, message_format, message_id, message_seq,
@@ -204,8 +223,8 @@ sub_type, time, user_id
 ```
 
 - `message` 保持 **array** 格式（与生产 `messagePostFormat: array` 一致）；
-- 四种段类型都原样穿过：`text` / `at` / `image` / `forward`；
-- `@` 段保留（20:42:08 那条 `segs=at+text`，与 NapCat 日志里的 `@德谬歌 冲刺` 对得上）；
+- 六种段组合都原样穿过：`text` / `at+text` / `image` / `at+text+image` / `forward` / `record`；
+- `@` 段保留（21:47:12 那条与 NapCat 日志里的 `@ww 🎉 欢迎 ww 加入本群` 对得上）；
 - `sender` 四个字段齐全（`user_id / nickname / card / role`）；
 - 镜像**没有改写任何字段**——它只在旁边判断"放不放行"。
 
@@ -225,10 +244,11 @@ NapCat 日志里全部 25 条「接收」记录，群号**都是** `145326153`�
 
 ### 5.4 仍然没验证到的两件事
 
-1. **reply 引用**：20:25:55 那条 NapCat 明确标成 `[回复消息 …]`，但那一次探针只记了长度没记
-   段结构，所以 **`reply` 段能不能原样穿过镜像，目前没有直接证据**。后续窗口捕获到的
-   5 条里没有一条带 reply（`text` / `at+text` / `image` / `forward`）。
-   这一项保持"未验证"，不按"应该没问题"记账。
+1. **reply 引用**：20:25:55 那条 NapCat 标成 `[回复消息 …]`，但那一次探针只记了长度没记
+   段结构，所以 **`reply` 段能不能原样穿过镜像，目前没有直接证据**。此后 9 条真实事件里
+   没有一条带 reply（`text` / `at+text` / `image` / `at+text+image` / `forward`）。
+   这一项保持"未验证"，不按"应该没问题"记账——`at` 能过不等于 `reply` 能过，
+   两者在 OneBot v11 里是不同结构。
 2. **双群隔离**：只有一个授权群有流量，另一个群的隔离在真实数据上没验过（离线测试覆盖了
    T12 的形状，但没有第二份真实流量）。
 
@@ -295,7 +315,7 @@ Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
 | `offline-test` | ✅ | 28 项镜像测试 + 仓库原有全套（1635 例 channel、`npm run verify` 三段） |
 | `host-load` | ✅ | 真的起了镜像进程、连了真实 SSE、开了假 WS |
 | `real-api` | ✅ 仅检索 | 3 次真实 embedding 调用（见 §3）；**不是**群社交决策的评测 |
-| `real-inbound` | ✅ **已达成** | 5 条真实群消息穿过整条链路（§5），4 条在同一窗口内逐条到达假 WS 客户端并被完整保留 |
+| `real-inbound` | ✅ **已达成** | 13 条真实群消息穿过整条链路（§5），覆盖 4 个窗口 / 6 种段组合 |
 | `real-send` | ❌ | 结构性不可能：假 WS 没有真实 QQ 通路；`forbiddenActionAttempts: 0` 说明连尝试都没有 |
 
 **这轮可以读成"镜像链路可用"了**：真实群消息进来了、穿过了过滤层、到了假 WS 客户端、
