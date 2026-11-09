@@ -153,30 +153,76 @@ node --test "tools/group-mirror/test/*.test.mjs"
 
 ---
 
-## 5. 真实 SSE 连通性：连上了，但事件为 0
+## 5. 真实事件已穿过整条链路（real-inbound 达成）
 
-对新增的 `127.0.0.1:3002/_events` 做了两轮真实订阅：
+### 5.1 第一次真正收到
 
-| 轮次 | 时长 | 握手结果 | 连上 | 收到帧 |
-|---|---|---|---|---|
-| 裸探针（只读流，不装配镜像） | 5 分钟 | 无 token → 403；带 token → 200 + `text/event-stream` | — | **0** |
-| 镜像进程（白名单为空） | 60 秒 | — | `connects: 1, disconnects: 0` | **0** |
-| 镜像进程（白名单 = 生产授权群，挂了一个假测试客户端） | 160 秒 | — | `connects: 1, disconnects: 0`，假 WS 侧 `connections: 1` | **0** |
+三轮"零事件"之后，群里终于有人说话。**同一个探针、同一套配置、没有改任何东西**：
 
-三轮都是**真实订阅**，不是模拟。镜像侧的统计因此是干净的零：`received: 0`——
-连"收到但被过滤"都没有发生过。
+```text
+NapCat 侧：20:25:55 接收 <- 群聊 [.. (145326153)] [Arona(2818504677)]
+          [回复消息 [槑(1429709395)] @Arona 没连上😋] @槑 修完了再试试
+SSE 侧：  GROUP MSG group=145326153 user=2818504677 msgId=237349890 len=51
+          total=1 bytes=634 hist=[["message/group",1]]
+```
 
-**这是我要如实写下的一条限制**：链路本身是通的（握手 200、内容类型正确、NapCat 日志
-确认 `HTTP-SSE服务: 127.0.0.1:3002 已启动`），但在这段时间里**没有任何真实群消息**
-经过 NapCat。旁证：生产自己的 `conversation.jsonl` 最近 20 条记录的时间戳，间隔里出现过 3673 秒
-（约 1 小时）的空档；最后一条记录是 15:56:55，而三轮订阅覆盖的是 16:00–16:20——
-**整段时间生产侧一条消息都没有**。这不是镜像的问题，是没人说话。
+两边对得上：同一个群、同一个发送者、同一条消息，SSE 帧 634 字节。
 
-所以本轮**不能**声明 `real-inbound` 通过。能声明的只有：
+### 5.2 完整链路：事件到了假 WS 客户端
 
-- SSE 端点可达、鉴权生效（无 token 返回 403）；
-- 镜像进程能连上并保持连接（`connects: 1, disconnects: 0`）；
-- 事件通路本身被离线端到端测试证明可用（假源 → 假 WS 全链路 6 项）。
+```text
+真实 NapCat SSE → group-mirror（校验/白名单/去重/有界队列）→ 假 OneBot WS → 假测试客户端
+```
+
+6 分钟窗口，期间群里来了一条转发消息：
+
+| 统计 | 值 |
+|---|---|
+| SSE `connects` / `frames` / `disconnects` | 1 / 1 / 0 |
+| `received` → `accepted` → `delivered` | 1 → 1 → 1 |
+| `rejected`（shape/oversize/type/group） | 0 / 0 / 0 / 0 |
+| 假 WS `connections` / `eventsSent` / `forbiddenActionAttempts` | 1 / 1 / **0** |
+| 客户端实收 | **1 条**，与 `delivered` 一致 |
+
+事件结构完整穿过镜像（17 个字段）：
+
+```text
+font, group_id, group_name, message, message_format, message_id, message_seq,
+message_type, post_type, raw_message, real_id, real_seq, self_id, sender,
+sub_type, time, user_id
+```
+
+- `message` 保持 **array** 格式（与生产 `messagePostFormat: array` 一致），段类型 `forward`；
+- `sender` 四个字段齐全（`user_id / nickname / card / role`）；
+- 镜像**没有改写任何字段**——它只在旁边判断"放不放行"。
+
+### 5.3 为什么之前是零
+
+不是链路问题，是那三个时间窗里**群里确实没人说话**：
+
+| 时段 | 群里有消息吗 |
+|---|---|
+| 16:00–16:20（上一轮三轮订阅） | 没有；生产侧最后一条记录 15:56:55 |
+| 20:00–20:25 | 一条都没有 |
+| 20:25:55 | **有**，被捕获 |
+| 20:30:24 | **有**（转发消息），穿过整条链路 |
+
+NapCat 日志里全部 25 条「接收」记录，群号**都是** `145326153`（生产授权的那一个），
+私聊 0 条——白名单配置与实际行为一致。
+
+### 5.4 仍然没验证到的两件事
+
+1. **reply 引用**：两次真实事件分别是 `[回复消息 …]`（文本）和 `[转发消息]`，但捕获到的
+   SSE 帧里 `message` 段只显示 `forward`。20:25 那条的 reply 结构没被完整记录到
+   （探针当时只统计了长度）。这一项留在长窗口观察里继续看。
+2. **双群隔离**：只有一个授权群有流量，另一个群的隔离没法在真实数据上验（离线测试覆盖了）。
+
+### 5.5 一条旁证：生产侧的真实故障
+
+NapCat 日志里 19:17:29 有一条群消息正文是
+`LLM 响应错误: All chat models failed: AuthenticationError: Error code: 401 - Invalid API key`
+——那是群友在转贴报错，**不是**这套件的错误（本机 `modules.qq: false`，没有任何 QQ 出站能力）。
+但它说明生产那边的模型密钥当时确实有问题，与本轮无关。
 
 ---
 
@@ -234,8 +280,9 @@ Get-CimInstance Win32_Process -Filter "Name='node.exe'" |
 | `offline-test` | ✅ | 28 项镜像测试 + 仓库原有全套（1635 例 channel、`npm run verify` 三段） |
 | `host-load` | ✅ | 真的起了镜像进程、连了真实 SSE、开了假 WS |
 | `real-api` | ✅ 仅检索 | 3 次真实 embedding 调用（见 §3）；**不是**群社交决策的评测 |
-| `real-inbound` | ❌ | 0 条真实群消息（§5 已说明原因） |
-| `real-send` | ❌ | 结构性不可能：假 WS 没有真实 QQ 通路 |
+| `real-inbound` | ✅ **已达成** | 2 条真实群消息穿过整条链路（§5），其中 1 条到达假 WS 客户端并被完整保留 |
+| `real-send` | ❌ | 结构性不可能：假 WS 没有真实 QQ 通路；`forbiddenActionAttempts: 0` 说明连尝试都没有 |
 
-**别把这轮读成"镜像评测跑起来了"**：链路是通的、拦截是被证明过的、检索是真开的，
-但真实群消息一条都还没进来。要拿到 `real-inbound`，只需要在群里说几句话。
+**这轮可以读成"镜像链路可用"了**：真实群消息进来了、穿过了过滤层、到了假 WS 客户端、
+结构完整、零越权尝试。但**还不能读成"评测有结论"**——只有 2 条样本，而且没有接测试 DSH
+（G3 未做），所以没有任何"她会怎么反应"的数据。
