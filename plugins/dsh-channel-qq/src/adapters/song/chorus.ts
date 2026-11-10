@@ -14,6 +14,12 @@
  *   3. `ok !== true` 或 JSON 不可解析（这是脚本的**正常**失败协议）；
  *   4. IO 出问题（临时目录建不起来之类）。
  *
+ * 两个入口共用一个 `run()`：
+ *   - `locate`：找副歌（参数与加 `--start-at` 之前逐字一致）；
+ *   - `locateFrom`：起点由调用方给（"从头开始"），多传 `--start-at` 与 `--seconds`。
+ *     后者是**需要的长度**，脚本据此伸缩句尾视界。分成两个方法而不是一个带可选参数的
+ *     `locate`，是为了让"从头开始"这条路径上不可能顺手跑一次（结论会被丢掉的）副歌搜索。
+ *
  * 中间产物全部落在系统临时目录：接口没有 `workRoot`，而"绝不写仓库里除 data 之外的
  * 位置"是硬约束，所以这里是 `os.tmpdir()` 下的一次性目录，用完即删（异常路径也删）。
  */
@@ -156,35 +162,73 @@ async function readPayload(outFile: string, log: (line: string) => void): Promis
   return pick
 }
 
-export function createChorusPort(options: ChorusPortOptions): ChorusPort {
+/**
+ * 跑一次脚本并读回结果（`locate` 与 `locateFrom` 共用；差别只在多传的参数）。
+ *
+ * 四次失败全部收敛成 `null`：上层对"定位不可靠"的处理是"不猜 / 退回硬切"，
+ * 这里抛出去会把一次"这段可能不是最好听的那段"变成"整次点歌失败"。
+ */
+async function runScript(
+  options: ChorusPortOptions,
+  audioFile: string,
+  extraArgs: readonly string[],
+  signal: AbortSignal | undefined,
+): Promise<ChorusPick | null> {
   const { process: processPort, pythonPath, scriptPath, log, timeoutMs } = options
+  if (String(audioFile ?? '').trim() === '') {
+    log('song/chorus: 没有音频文件，跳过定位')
+    return null
+  }
+  let workDir: string | null = null
+  try {
+    workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dsh-song-chorus-'))
+    const outFile = path.join(workDir, 'chorus.json')
+    const runOptions = signal === undefined ? { timeoutMs } : { timeoutMs, signal }
+    const result = await processPort.run(
+      pythonPath, [scriptPath, '--input', audioFile, '--out', outFile, ...extraArgs], runOptions,
+    )
+    return await interpret(result, outFile, log)
+  } catch (error) {
+    // 走到这里说明是 IO/环境问题（临时目录建不起来、python 路径不存在被 ProcessPort
+    // 报成 code=-1 之前就炸了……）。同样不抛：上层只要一个"可靠 / 不可靠"的答案。
+    const reason = error instanceof Error ? error.message : String(error)
+    log(`song/chorus: 定位失败：${reason}`)
+    return null
+  } finally {
+    if (workDir !== null) {
+      await fs.rm(workDir, { recursive: true, force: true }).catch(() => { /* 删不掉不该影响结果 */ })
+    }
+  }
+}
 
+export function createChorusPort(options: ChorusPortOptions): ChorusPort {
   return {
-    async locate(audioFile: string, opts?: { readonly signal?: AbortSignal }): Promise<ChorusPick | null> {
-      if (String(audioFile ?? '').trim() === '') {
-        log('song/chorus: 没有音频文件，跳过定位')
-        return null
-      }
-      let workDir: string | null = null
-      try {
-        workDir = await fs.mkdtemp(path.join(os.tmpdir(), 'dsh-song-chorus-'))
-        const outFile = path.join(workDir, 'chorus.json')
-        const runOptions = opts?.signal === undefined
-          ? { timeoutMs }
-          : { timeoutMs, signal: opts.signal }
-        const result = await processPort.run(pythonPath, [scriptPath, '--input', audioFile, '--out', outFile], runOptions)
-        return await interpret(result, outFile, log)
-      } catch (error) {
-        // 走到这里说明是 IO/环境问题（临时目录建不起来、python 路径不存在被 ProcessPort
-        // 报成 code=-1 之前就炸了……）。同样不抛：上层只要一个"可靠 / 不可靠"的答案。
-        const reason = error instanceof Error ? error.message : String(error)
-        log(`song/chorus: 定位失败：${reason}`)
-        return null
-      } finally {
-        if (workDir !== null) {
-          await fs.rm(workDir, { recursive: true, force: true }).catch(() => { /* 删不掉不该影响结果 */ })
-        }
-      }
+    async locate(
+      audioFile: string,
+      opts?: { readonly needSeconds?: number; readonly signal?: AbortSignal },
+    ): Promise<ChorusPick | null> {
+      // **不传 `--seconds`**：那是"副歌段长"，用脚本自己的默认值（25 s），与加 `--start-at`
+      // 之前逐字一致——改它会改变"找哪一段"的判据。
+      // 但句尾视界要跟着"这条语音条最多多长"走，所以传 `--need`：它**只**影响
+      // `horizon_for()`（90 → 最多 240 s），不参与重复段落检测。少了它，副歌模式在
+      // 180 s 上限下也只能收到 ~90 s（实机真的踩到：83.5 s 就没了句尾可收）。
+      const need = Number.isFinite(opts?.needSeconds ?? Number.NaN)
+        ? Math.max(0, Math.round(opts?.needSeconds ?? 0))
+        : 0
+      const extra = need > 0 ? ['--need', String(need)] : []
+      return await runScript(options, audioFile, extra, opts?.signal)
+    },
+    async locateFrom(
+      audioFile: string,
+      startSeconds: number,
+      opts: { readonly seconds: number; readonly signal?: AbortSignal },
+    ): Promise<ChorusPick | null> {
+      // `--seconds` 在这里是**需要的长度**：脚本据此把句尾视界伸缩到
+      // `min(max(90, seconds+30), 240)`——180 秒的条要看到 210 秒才收得到句尾。
+      const seconds = Number.isFinite(opts.seconds) ? Math.max(0, opts.seconds) : 0
+      return await runScript(
+        options, audioFile, ['--start-at', String(startSeconds), '--seconds', String(seconds)], opts.signal,
+      )
     },
   }
 }

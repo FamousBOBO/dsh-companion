@@ -171,6 +171,8 @@ async function submitAuto(
       artist: pick.artist,
       bvid: selection.chosen.bvid,
       chorusAt: null,
+      // 自主选歌一律从副歌开始：操作员没说"从头"，而那一段是"最像这首歌"的部分。
+      startMode: 'chorus',
       keyUp,
       requestedAt: Date.now(),
     })

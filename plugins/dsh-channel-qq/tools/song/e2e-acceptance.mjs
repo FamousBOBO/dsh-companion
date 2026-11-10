@@ -12,6 +12,10 @@
  * 用法（在插件目录下，先 `npm run build`）：
  *   node tools/song/e2e-acceptance.mjs --song 晴天 --artist 周杰伦 --dry --keep out.mp3
  *   node tools/song/e2e-acceptance.mjs --song 晴天 --artist 周杰伦 --send
+ *   node tools/song/e2e-acceptance.mjs --song 晴天 --artist 周杰伦 --from start --send
+ *
+ * `--from chorus|start` 与工具的 `from` 同一枚举：chorus（默认，从副歌开始）/
+ * start（从头开始放，跳过副歌搜索）。`--chorus <秒>` 仍优先于 `--from`。
  *
  * 环境（缺一个就明确报错，不猜）：
  *   RVC_PYTHON / RVC_ROOT   RVC 解释器与仓库目录（必需）
@@ -72,7 +76,7 @@ const die = (code) => { throw new Stop(code) }
 
 /** 收参数（只认长选项，够用）。 */
 function parseArgs(argv) {
-  const out = { send: false, dry: false, song: '', artist: '', bvid: '', chorusSeconds: null, keep: '' }
+  const out = { send: false, dry: false, song: '', artist: '', bvid: '', chorusSeconds: null, from: 'chorus', keep: '' }
   for (let i = 0; i < argv.length; i += 1) {
     const token = argv[i]
     const next = () => argv[i + 1] ?? ''
@@ -82,11 +86,17 @@ function parseArgs(argv) {
     else if (token === '--artist') { out.artist = next(); i += 1 }
     else if (token === '--bvid') { out.bvid = next(); i += 1 }
     else if (token === '--chorus') { out.chorusSeconds = Number(next()); i += 1 }
+    // 与工具的 `from` 同一个枚举：chorus（默认，从副歌开始）/ start（从头开始放）。
+    else if (token === '--from') { out.from = next(); i += 1 }
     else if (token === '--keep') { out.keep = next(); i += 1 }
     else { console.error(`认不得的参数：${token}`); die(2) }
   }
   if (!out.send && !out.dry) { console.error('必须显式给 --dry（只做不发）或 --send（真发一条语音条）'); die(2) }
   if (out.song === '' && out.bvid === '') { console.error('要给 --song（歌名）或 --bvid'); die(2) }
+  if (out.from !== 'chorus' && out.from !== 'start') {
+    console.error(`--from 只认 chorus 或 start，收到「${out.from}」`)
+    die(2)
+  }
   return out
 }
 
@@ -242,6 +252,8 @@ async function main() {
       artist: args.artist,
       bvid: chosen.bvid,
       chorusAt: args.chorusSeconds,
+      // `--from start` 会跳过副歌搜索（起点固定 0）；`--chorus <秒>` 仍然优先。
+      startMode: args.from,
       keyUp,
       // 私聊房间的对方就是点歌人；演练模式没有收件人，给 null（额度不判）。
       requesterId: args.send ? target : null,
@@ -250,9 +262,11 @@ async function main() {
     log(`入队：${result.accepted ? '受理' : '未受理'} ${result.taskId ?? ''}（${result.note}）`)
     if (!result.accepted) die(5)
 
-    // 等终态（最长 10 分钟：分离 + 推理在这台机器上约 70–90 秒，慢机器要留余量）。
+    // 等终态（最长 25 分钟）。为什么是 25：3 分钟的条要跑 4–6 分钟分离 + 推理，而网关
+    // 嫌长时还会按 120 → 90 → 60 → 45 重做最多四次（每次都是一整轮翻唱）。10 分钟的
+    // 旧上限会在"真被 QQ 拒收、阶梯在往下走"这条最需要证据的路径上先超时结束。
     const terminal = ['sent', 'dry-run', 'failed', 'unknown-send', 'cancelled']
-    const waitUntil = Date.now() + 600_000
+    const waitUntil = Date.now() + 1_500_000
     for (;;) {
       const row = queue.status(20).find((task) => task.id === result.taskId)
       if (row !== undefined && terminal.includes(row.stage)) {

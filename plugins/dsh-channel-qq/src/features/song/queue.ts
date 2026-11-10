@@ -27,6 +27,7 @@ import {
   type SongLedgerData, type SongLedgerRow,
 } from './ledger.js'
 import { userQuotaRefusal } from './quota.js'
+import { startTextOf } from './args.js'
 import { runTask, type PipelineDeps } from './pipeline.js'
 import type { SongEnqueueResult, SongRequest, SongStage, SongTaskStatus } from './types.js'
 
@@ -220,7 +221,8 @@ export class SongQueue implements SongService {
     await this.write({ upsert: [row] })
     this.log(`song: 入队 ${id}（${request.song}${request.artist === '' ? '' : ` / ${request.artist}`}）→ ${request.room}`)
     this.schedule(task)
-    return { accepted: true, taskId: id, note: '收到啦，做好就发——副歌开始的那段语音条' }
+    // 受理话术要说清从哪开始：`start` 说"从头"，用户给了秒数就把秒数念出来（见 args.ts）。
+    return { accepted: true, taskId: id, note: `收到啦，做好就发——${startTextOf(request.startMode, request.chorusAt)}的那段语音条` }
   }
 
   /**

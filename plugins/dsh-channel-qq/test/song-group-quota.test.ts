@@ -184,6 +184,7 @@ function request(clock: Clock, overrides: Partial<SongRequest> = {}): SongReques
     artist: '周杰伦',
     bvid: 'BV1d4411N7zD',
     chorusAt: 0,
+    startMode: 'chorus',
     keyUp: 0,
     requestedAt: clock.now(),
     ...overrides,
@@ -202,6 +203,13 @@ function fakes(sendOutcome?: () => VoiceSendResult) {
   const chorus: ChorusPort = {
     async locate(): Promise<ChorusPick | null> {
       return { startSeconds: 84, endSeconds: 109, confidence: 0.9, method: 'x', repeats: 2, vocalRatio: 0.7, phraseEnds: [] }
+    },
+    // 这些用例的请求都带 `chorusAt`（0），走的是"用户给了时间"那条路，用不到手动起点。
+    async locateFrom(_audioFile, startSeconds): Promise<ChorusPick | null> {
+      return {
+        startSeconds, endSeconds: startSeconds + 25, confidence: 1.0,
+        method: 'manual-start', repeats: 0, vocalRatio: 0.7, phraseEnds: [],
+      }
     },
   }
   const cover: CoverPort = {

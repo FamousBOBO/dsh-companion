@@ -96,6 +96,19 @@ test('正常解析：固定 JSON → ChorusPick（字段名与单位都对上）
   assert.ok(logs.some((line) => line.includes('副歌 62.5–92.0s')))
 })
 
+test('句尾视界：`needSeconds` 会变成 `--need`，不传就没有这个参数', async () => {
+  const withNeed = makePort([{ out: JSON.stringify({ ok: true, start: 10, end: 35, confidence: 0.6 }) }])
+  await withNeed.port.locate('/tmp/a.wav', { needSeconds: 180 })
+  const args = withNeed.calls[0] ?? []
+  assert.equal(args[args.indexOf('--need') + 1], '180', '上限 180 s 要告诉脚本"句尾要看多远"')
+  // 段长仍然不能传：`--seconds` 会改掉"找哪一段"的判据。
+  assert.equal(args.includes('--seconds'), false, '副歌模式不许传 --seconds')
+
+  const without = makePort([{ out: JSON.stringify({ ok: true, start: 10, end: 35, confidence: 0.6 }) }])
+  await without.port.locate('/tmp/a.wav')
+  assert.equal((without.calls[0] ?? []).includes('--need'), false, '没给上限时保持旧参数')
+})
+
 test('句尾：乱序会排好、非有限数与负数被丢掉；没这个字段就给空数组', async () => {
   const messy = makePort([{
     out: JSON.stringify({
@@ -194,4 +207,49 @@ test('临时目录用完即删（连失败路径也删）', async () => {
   await failing.port.locate('/tmp/a.wav')
   const after = (await fs.readdir(tmpdir())).filter((name) => name.startsWith('dsh-song-chorus-')).length
   assert.equal(after, before, '一次运行不该留下临时目录')
+})
+
+// ── 脚本参数契约：`locate` 不传 `--start-at`，`locateFrom` 一定传 ────────────
+
+test('locate：参数里**没有** `--start-at`（默认行为一字不变）', async () => {
+  const { port, calls } = makePort([{ out: GOOD_JSON }])
+  await port.locate('/tmp/a.wav')
+  const args = calls[0] ?? []
+  assert.equal(args.includes('--start-at'), false, `找副歌不该传 --start-at：${args.join(' ')}`)
+  assert.equal(args.includes('--seconds'), false, `也不该传 --seconds（保持脚本默认 25 s）：${args.join(' ')}`)
+})
+
+test('locateFrom：传 `--start-at <起点>` 与 `--seconds <需要的长度>`（句尾视界靠它伸缩）', async () => {
+  const manual = JSON.stringify({
+    ok: true, start: 0.0, end: 180.0, confidence: 1.0, method: 'manual-start', repeats: 0,
+    vocalRatio: 0.72, phraseEnds: [47.5, 96.0, 172.0],
+  })
+  const logs: string[] = []
+  const { port, calls } = makePort([{ out: manual }], logs)
+  const pick = await port.locateFrom('/tmp/a.wav', 0, { seconds: 180 })
+
+  assert.ok(pick !== null)
+  assert.equal(pick.startSeconds, 0)
+  assert.equal(pick.method, 'manual-start')
+  assert.equal(pick.confidence, 1)
+  assert.deepEqual(pick.phraseEnds, [47.5, 96.0, 172.0], '句尾照样读回来（上层还要收尾）')
+  const args = calls[0] ?? []
+  assert.equal(args[args.indexOf('--start-at') + 1], '0', `--start-at 后面是起点：${args.join(' ')}`)
+  assert.equal(args[args.indexOf('--seconds') + 1], '180', `--seconds 后面是需要的长度：${args.join(' ')}`)
+  assert.ok(logs.some((line) => line.includes('0.0–180.0s')), `日志要报区间：${logs.join('\n')}`)
+})
+
+test('locateFrom：脚本失败同样收敛成 null（四类失败都不许抛）', async () => {
+  const cases: RunPlan[] = [
+    { result: { timedOut: true, code: null, durationMs: 30_000 } },
+    { result: { code: 1, stderr: "ModuleNotFoundError: No module named 'librosa'" } },
+    { out: JSON.stringify({ ok: false, reason: '音频太短' }) },
+    { out: '{oops' },
+  ]
+  for (const plan of cases) {
+    const { port } = makePort([plan])
+    assert.equal(await port.locateFrom('/tmp/a.wav', 0, { seconds: 180 }), null)
+  }
+  const empty = makePort([{ out: JSON.stringify({ ok: true, start: 0, end: 1, confidence: 1 }) }])
+  assert.equal(await empty.port.locateFrom('  ', 0, { seconds: 180 }), null, '空路径不白跑一次 python')
 })

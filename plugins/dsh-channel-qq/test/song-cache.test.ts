@@ -51,6 +51,7 @@ function request(overrides: Partial<SongRequest> = {}): SongRequest {
     artist: '周杰伦',
     bvid: BVID,
     chorusAt: null,
+    startMode: 'chorus',
     keyUp: 0,
     requestedAt: 1_700_000_000_000,
     ...overrides,
@@ -97,13 +98,14 @@ interface Fakes {
   readonly voice: VoicePort
   readonly gate: SendGatePort
   readonly calls: {
-    videoInfo: number; download: number; chorus: number; render: number; send: number; gate: number
+    videoInfo: number; download: number; chorus: number; chorusFrom: number; render: number
+    send: number; gate: number
   }
   readonly renderedSeconds: number[]
 }
 
 function fakes(options: FakeOptions = {}): Fakes {
-  const calls = { videoInfo: 0, download: 0, chorus: 0, render: 0, send: 0, gate: 0 }
+  const calls = { videoInfo: 0, download: 0, chorus: 0, chorusFrom: 0, render: 0, send: 0, gate: 0 }
   const renderedSeconds: number[] = []
   const bili: BiliPort = {
     async search(): Promise<readonly SongCandidate[]> { return [] },
@@ -125,6 +127,14 @@ function fakes(options: FakeOptions = {}): Fakes {
       return {
         startSeconds: 84, endSeconds: 109, confidence: 0.87,
         method: 'repeat+energy', repeats: 2, vocalRatio: 0.7, phraseEnds: [],
+      }
+    },
+    // `from='start'`：起点固定 0，只回句尾（45 s 处有一句唱完，落在上限 59 之内）。
+    async locateFrom(_audioFile, startSeconds): Promise<ChorusPick | null> {
+      calls.chorusFrom += 1
+      return {
+        startSeconds, endSeconds: startSeconds + 40, confidence: 1.0,
+        method: 'manual-start', repeats: 0, vocalRatio: 0.7, phraseEnds: [45],
       }
     },
   }
@@ -388,17 +398,18 @@ test('网关嫌长：每一档缩短都落一条成品缓存（键里的 seconds
       : { ok: true, messageId: 999, unknown: false, detail: '' },
   })
   const cache = fakeCache()
-  const { queue, cleanup } = makeQueue(f, { cache: cache.port })
+  // 180 的上限：阶梯 120 → 90 → 60 → 45，四次缩短之后第五次发成功。
+  const { queue, cleanup } = makeQueue(f, { cache: cache.port, config: { seconds: 180 } })
   try {
     await queue.load()
     const result = await queue.enqueue(request())
     const row = await settle(queue, result.taskId)
     assert.equal(row?.stage, 'sent', `第 5 次发送应当成功，实际 ${String(row?.stage)}`)
-    assert.deepEqual(f.renderedSeconds, [59, 45, 30, 20, 15], '阶梯一档一档走，副歌起点不变')
+    assert.deepEqual(f.renderedSeconds, [180, 120, 90, 60, 45], '阶梯一档一档走，起点不变')
     assert.equal(cache.calls.putClip, 5, '原本那条 + 四次缩短各落一次')
-    const expected = clipCacheKey(BVID, CID, 0, 84, 15)
-    assert.ok(cache.clips.has(expected), `15 s 那条要落在自己的键下（${expected}）`)
-    assert.notEqual(clipCacheKey(BVID, CID, 0, 84, 15), clipCacheKey(BVID, CID, 0, 84, 59))
+    const expected = clipCacheKey(BVID, CID, 0, 84, 45)
+    assert.ok(cache.clips.has(expected), `45 s 那条要落在自己的键下（${expected}）`)
+    assert.notEqual(clipCacheKey(BVID, CID, 0, 84, 45), clipCacheKey(BVID, CID, 0, 84, 180))
   } finally { cleanup() }
 })
 
@@ -423,5 +434,43 @@ test('命中 + 网关嫌长：按需补下载音轨再重做（缓存不能让�
     assert.deepEqual(f.renderedSeconds, [45])
     assert.equal(cache.calls.putClip, 1, '重做出来的那条也进缓存')
     assert.ok(cache.clips.has(clipCacheKey(BVID, CID, 0, 84, 45)), '45 s 的是另一个键')
+  } finally { cleanup() }
+})
+
+// ── 6. 两种起点互不命中（`from` 与缓存键的关系） ────────────────────────────
+
+test("from='start' 与副歌模式互不命中：成品键里的起点不同，方案缓存也不串味", async () => {
+  const f = fakes()
+  const cache = fakeCache()
+  const { queue, logs, cleanup } = makeQueue(f, { cache: cache.port })
+  try {
+    await queue.load()
+    // 先来一次副歌模式：定位 84，成品落在 c84 的键上，方案落在 plan 键上。
+    const first = await queue.enqueue(request({ dedupeKey: 'msg:c', id: taskIdOf('msg:c') }))
+    assert.equal((await settle(queue, first.taskId))?.stage, 'sent')
+    assert.equal(f.calls.chorus, 1)
+    assert.equal(cache.calls.putPlan, 1, '副歌模式要落方案')
+    const planKey = planCacheKey(BVID, CID, 0, 59)
+    assert.equal(cache.plans.get(planKey)?.chorusStart, 84)
+
+    // 再来一次"从头开始"：**不许**命中上面那条方案（那会让起点变成 84），也不许写方案。
+    const second = await queue.enqueue(request({
+      dedupeKey: 'msg:s', id: taskIdOf('msg:s'), startMode: 'start',
+    }))
+    const secondRow = await settle(queue, second.taskId)
+    assert.equal(secondRow?.stage, 'sent')
+    assert.equal(secondRow?.chorusStart, 0, '从头开始的起点必须是 0，而不是缓存里的 84')
+    assert.equal(f.calls.chorusFrom, 1, '起点自己算（脚本跳过副歌搜索，只给句尾）')
+    assert.equal(cache.calls.putPlan, 1, '从头开始的方案不进方案缓存（键里没有"从哪开始"）')
+    assert.equal(cache.plans.get(planKey)?.chorusStart, 84, '副歌方案不能被从头开始覆盖')
+    assert.ok(cache.clips.has(clipCacheKey(BVID, CID, 0, 0, 45)), '从头开始的成品落在 c0 的键上')
+    assert.ok(cache.clips.has(clipCacheKey(BVID, CID, 0, 84, 59)), '副歌那条仍在自己的键上')
+    assert.ok(logs.some((line) => line.includes('从头')), `日志要能看出这次是从头：\n${logs.join('\n')}`)
+
+    // 反过来：从头开始的成品不该让下一次副歌模式变成"起点 0"。
+    const third = await queue.enqueue(request({ dedupeKey: 'msg:c2', id: taskIdOf('msg:c2') }))
+    const thirdRow = await settle(queue, third.taskId)
+    assert.equal(thirdRow?.chorusStart, 84, '副歌模式仍然从 84 开始（方案命中）')
+    assert.equal(f.calls.chorus, 1, '方案缓存已经在了，不必再定位')
   } finally { cleanup() }
 })

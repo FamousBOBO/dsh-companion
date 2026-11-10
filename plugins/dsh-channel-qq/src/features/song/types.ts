@@ -45,6 +45,9 @@ export type SongStage =
  */
 export type SongEntry = 'dm' | 'group' | 'auto'
 
+/** 从哪里开始唱：`chorus` = 只唱副歌（默认）；`start` = 从头开始放（跳过副歌搜索）。 */
+export type SongStartMode = 'chorus' | 'start'
+
 /** 一次点歌请求（进队列时的快照）。 */
 export interface SongRequest {
   /** 稳定任务 id：`s-<毫秒>-<随机>`；目录名、日志、回执都用它。 */
@@ -70,6 +73,12 @@ export interface SongRequest {
   readonly bvid: string | null
   /** 用户给出的副歌时间（秒）；给了就跳过定位。 */
   readonly chorusAt: number | null
+  /**
+   * 从哪开始：见 `SongStartMode`；`chorusAt` 有值时一律是 `chorus`（工具面已收敛）。
+   *
+   * 与 `keyUp` 同理在**入队时就定死**：中途改会让一次任务的两个阶段说不清自己在做什么。
+   */
+  readonly startMode: SongStartMode
   /**
    * 换声时人声升几个半音（0 = 原调）。
    *
@@ -189,7 +198,23 @@ export interface BiliPort {
 
 /** 副歌定位能力。实现见 `adapters/song/chorus.ts`。 */
 export interface ChorusPort {
-  locate(audioFile: string, options?: { readonly signal?: AbortSignal }): Promise<ChorusPick | null>
+  locate(
+    audioFile: string,
+    options?: { readonly needSeconds?: number; readonly signal?: AbortSignal },
+  ): Promise<ChorusPick | null>
+  /**
+   * 手动起点（`startMode='start'`）：**跳过副歌搜索**，只算这个点之后的人声句尾。
+   *
+   * 为什么与 `locate` 分成两个方法：从头开始时那次搜索的结论一定会被起点 0 覆盖掉，
+   * 而它要花 5–9 秒。分成两个方法之后，"从头开始"这条路径上不可能顺手白跑一次搜索。
+   * `seconds` 是这次想要的长度上限，它决定句尾看多远（脚本按 `min(max(90, seconds+30), 240)` 伸缩）。
+   * 失败同样收敛成 `null`，由上层退回"按上限硬切"。
+   */
+  locateFrom(
+    audioFile: string,
+    startSeconds: number,
+    options: { readonly seconds: number; readonly signal?: AbortSignal },
+  ): Promise<ChorusPick | null>
 }
 
 /** 翻唱能力。实现见 `adapters/song/cover.ts`。 */

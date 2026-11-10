@@ -39,7 +39,7 @@ export interface SongConfig {
   readonly dryRun: boolean
   /** 第二道闸；与 `dryRun` 是与关系，两者都放开才可能真发。 */
   readonly allowExternalSend: boolean
-  /** 语音条长度上限（秒）；默认 59。实际长度会收在不超过它的最后一个人声句尾上。 */
+  /** 语音条长度上限（秒）；默认 180。实际长度会收在不超过它的最后一个人声句尾上。 */
   readonly seconds: number
   /** 副歌定位的置信度门槛（0–1）；低于它一律按"定位不可靠"处理。 */
   readonly minConfidence: number
@@ -77,7 +77,7 @@ export interface SongConfig {
   readonly downloadTimeoutMs: number
   /** 副歌定位的超时（毫秒）。 */
   readonly chorusTimeoutMs: number
-  /** 分离 + 推理的超时（毫秒）；这是最长的一段，默认 4 分钟。 */
+  /** 分离 + 推理的超时（毫秒）；这是最长的一段，默认 8 分钟（3 分钟语音条的余量）。 */
   readonly coverTimeoutMs: number
   /** 等 QQ 回执的超时（毫秒）；超时即"回执未知"，之后禁止自动重发。 */
   readonly sendTimeoutMs: number
@@ -109,12 +109,14 @@ export interface SongConfig {
 /**
  * 默认值。**每一项都是工程建议默认，不是用户决定**（出处见 `docs/karaoke-cover.md`）。
  *
- * `seconds=59`：QQ 语音上限附近留 1 秒余量。它只是一个**上限**——实际长度由定位出的
- * 句尾决定（收在一句歌词结束处），所以通常是 40–59 秒之间的某个值。副歌一段本身
- * 常常就是 20–40 秒，把上限放到 59 秒是把"能不能多听一句"交给歌本身。
+ * `seconds=180`：操作员要的"最长 3 分钟"。它只是一个**上限**——实际长度由定位出的
+ * 句尾决定（收在一句歌词结束处），所以常常明显更短。没要求时从副歌开始，要求"从头"
+ * 时从 0 秒开始（见 `SongStartMode`）。
  * `minConfidence=0.55`：低于这个数的定位宁可问用户，也不要从主歌中间切。
  * `prefixSeconds=12`：分离器需要上下文才能把人声与伴奏分开，太短的片段分离质量明显下降。
- * 四个超时按"本机实测 × 2.5 倍余量"给：下载 60 秒、定位 30 秒、翻唱 4 分钟、回执 30 秒。
+ * 四个超时按"本机实测 × 余量"给：下载 60 秒、定位 30 秒、翻唱 8 分钟、回执 30 秒。
+ * 翻唱那一段是 4 → 8 分钟：180 秒片段的分离 + 推理约为 45 秒片段的四倍（本机 45 秒
+ * 片段约 67 秒、250 秒音轨的分离约 89 秒），4 分钟只够跑完一条 90 秒左右的。
  */
 export const SONG_DEFAULTS: SongConfig = {
   enabled: false,
@@ -122,7 +124,7 @@ export const SONG_DEFAULTS: SongConfig = {
   groupEnabled: false,
   dryRun: true,
   allowExternalSend: false,
-  seconds: 59,
+  seconds: 180,
   minConfidence: 0.55,
   preferFemale: true,
   maleKeyUp: 12,
@@ -136,7 +138,7 @@ export const SONG_DEFAULTS: SongConfig = {
   ffmpegPath: 'ffmpeg',
   downloadTimeoutMs: 60_000,
   chorusTimeoutMs: 30_000,
-  coverTimeoutMs: 240_000,
+  coverTimeoutMs: 480_000,
   sendTimeoutMs: 30_000,
   maxQueue: 8,
   cacheEnabled: true,
@@ -156,9 +158,10 @@ export const SONG_GROUPS: FieldGroup[] = [
     id: 'song',
     label: '点歌翻唱（B站 → RVC 音色 → 语音条）',
     page: 'music',
-    help: '点一首歌的四步：B站找到原唱 → 下载音轨 → 定位副歌 → RVC 换成机器人的音色 → 发一条从副歌开始的语音条。'
+    help: '点一首歌的四步：B站找到原唱 → 下载音轨 → 定位副歌（或按"从头开始"跳过这一步）'
+      + ' → RVC 换成机器人的音色 → 发一条语音条（默认从副歌开始，最长 3 分钟）。'
       + '**默认全关**：外发能力要先在这里显式打开；外部程序路径空着就是"未配置"，后台会直接写明而不是猜。'
-      + '整条链路串行执行，一首歌通常 2–3 分钟；点完先回执，做好再发。',
+      + '整条链路串行执行，一首歌通常 2–6 分钟（长度上限越大越久）；点完先回执，做好再发。',
     fields: {
       enabled: b('启用点歌翻唱', SONG_DEFAULTS.enabled, {
         hot: 'live',
@@ -186,11 +189,12 @@ export const SONG_GROUPS: FieldGroup[] = [
         help: '第二道闸，默认为关。发出去的是**真实语音消息、撤不回**，所以与「演练模式」是两个独立的开关。',
       }),
       seconds: n('语音条长度上限（秒）', SONG_DEFAULTS.seconds, {
-        hot: 'live', min: 10, max: 59, step: 1, unit: '秒',
-        help: '默认 59 秒（QQ 语音上限附近留 1 秒余量）。它是一个**上限**：'
-          + '语音条从副歌起点开始，在不超这个长度的前提下尽量收在一句歌词的结束处'
-          + '（换气/句间停顿），所以实际可能明显更短（例如 47 秒）。'
-          + '网关嫌长时也会**保持同一个副歌起点**继续缩短，听到的仍是副歌开头。',
+        hot: 'live', min: 10, max: 180, step: 1, unit: '秒',
+        help: '默认 180 秒 = 最长 3 分钟。它是一个**上限**：语音条从副歌起点开始'
+          + '（要求"从头开始"时从 0 秒开始），在不超这个长度的前提下尽量收在一句歌词的结束处'
+          + '（换气/句间停顿）——实际长度取不超过它的**最后一个句尾**，所以常常明显更短'
+          + '（例如 47 秒）。网关嫌长时也会**保持同一个起点**继续缩短'
+          + '（120 → 90 → 60 → 45 秒）。',
       }),
       minConfidence: n('副歌定位置信度门槛', SONG_DEFAULTS.minConfidence, {
         hot: 'live', min: 0.2, max: 0.95, step: 0.01,
@@ -255,8 +259,9 @@ export const SONG_GROUPS: FieldGroup[] = [
       }),
       coverTimeoutMs: n('分离与推理超时（毫秒）', SONG_DEFAULTS.coverTimeoutMs, {
         hot: 'live', min: 30_000, max: 1_800_000, step: 1_000, unit: 'ms',
-        help: '人声分离 + 音色转换的最长时间。本机 320 秒歌分离约 89 秒、45 秒片段推理约 27 秒；'
-          + '只跑副歌附近的片段就是为了把这段时间压住。',
+        help: '人声分离 + 音色转换的最长时间，默认 8 分钟——这是 3 分钟语音条的余量：'
+          + '本机 45 秒片段约 67 秒、250 秒音轨的分离约 89 秒，180 秒的片段按比例明显更长。'
+          + '超时按翻唱失败处理，不会把半成品发出去。',
       }),
       sendTimeoutMs: n('等回执超时（毫秒）', SONG_DEFAULTS.sendTimeoutMs, {
         hot: 'live', min: 5_000, max: 300_000, step: 1_000, unit: 'ms',

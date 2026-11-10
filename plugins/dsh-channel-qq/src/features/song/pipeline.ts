@@ -66,16 +66,16 @@ export interface PipelineOutcome {
   readonly messageId: number | null
 }
 
-/** 网关嫌长时的缩短短度阶梯（都保持同一个副歌起点）。
+/** 网关嫌长时的缩短短度阶梯（都保持同一个起点）。
  *
- * 档位按 59 s 的基线往下排：45 s 已经明显短了但还是一整段副歌，30/20/15 是最后几档。
+ * 档位按 180 s 的基线往下排：120 s（两分钟，仍是完整的一大段）、90、60、45 是最后几档。
  * 每一档都比上一档短一大截——网关的上限是个数，卡在一两秒的差别上重做一次翻唱
- * （本机约 70 秒）换不来任何东西。 */
-const SHORTEN_STEPS = [45, 30, 20, 15] as const
+ * （本机几十秒到几分钟，随长度涨）换不来任何东西。 */
+const SHORTEN_STEPS = [120, 90, 60, 45] as const
 /** 短于这个长度就不再尝试缩短：再短就听不出是副歌了。
  *
- * 阶梯自己也会走完（最后一档 15 s），所以它是"下限的下限"——网关连 15 s 都不收时，
- * 多半不是长度问题，重做一次翻唱只会白花 70 秒。 */
+ * 阶梯自己也会走完（最后一档 45 s），所以它是"下限的下限"——网关连 45 s 都不收时，
+ * 多半不是长度问题，重做一次翻唱只会白花几分钟。 */
 const SHORTEST_SECONDS = 10
 
 /** `prepare.ts` 的实现（下载/定位/翻唱/缓存决策）；这个文件只负责顺序与发送。 */
@@ -193,7 +193,8 @@ async function removeWorkDir(deps: PipelineDeps, workDir: string): Promise<void>
 /**
  * 发送 + "网关嫌长"时的缩短重试。
  *
- * **缩短只改长度，不改起点**：`chorusStart` 一路不变，所以第二次听到的仍然是副歌开头。
+ * **缩短只改长度，不改起点**：`chorusStart` 一路不变，所以第二次听到的仍然是同一段的开头。
+ * 档位**只降不升**（见下面的 `slice(...).find(...)`），所以任何一次重做都比刚被拒的那条更短。
  * 重试次数上限就是 `SHORTEN_STEPS` 的长度，且**只对确定失败**重试——回执未知一律
  * 直接停止（那条可能已经到了）。
  *
@@ -224,13 +225,16 @@ async function sendWithShortenRetry(
       deps.log(`song: ${request.id} 回执未知，停止（不再重发）`)
       return { stage: 'unknown-send', detail: result.detail, messageId: null }
     }
-    const shorter = SHORTEN_STEPS[attempt]
+    // 下一档 = 第一个**比当前更短**的档位。为什么不是按下标取：初始长度是"不超过上限的
+    // 最后一个句尾"，常常已经短于第一档（例如上限 180、实际收在 85 秒）。照下标走会把
+    // 85 秒重做成 120 秒——比刚被拒的那条更长，白跑一次翻唱，还更可能再被拒。
+    const shorter = SHORTEN_STEPS.slice(attempt).find((step) => step < cover.seconds)
     if (shorter === undefined || !looksLikeLengthRejection(result.detail, cover.seconds)) {
       deps.log(`song: ${request.id} 发送失败（${result.detail}）`)
       return { stage: 'failed', detail: result.detail, messageId: null }
     }
     attempt += 1
-    deps.log(`song: ${request.id} 网关不接受 ${String(cover.seconds)}s，按 ${String(shorter)}s 重做（副歌起点不变）`)
+    deps.log(`song: ${request.id} 网关不接受 ${String(cover.seconds)}s，按 ${String(shorter)}s 重做（起点不变）`)
     // 通知账本"长度变了"：这一次翻唱的原因是网关拒收，不是用户改主意。
     await hooks.advance('covering', { chorusStart: prepared.chorusStart })
     try {

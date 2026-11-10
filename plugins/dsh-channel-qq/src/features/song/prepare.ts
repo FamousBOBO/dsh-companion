@@ -13,6 +13,12 @@
  *   3. **音轨是"按需"的**（`LazyAudio`）：命中成品时它一次都不下载。唯一会用到它的是
  *      "网关嫌长、要继续缩短"——那时必须重做一次翻唱，而重做需要音轨。**宁可多等几秒
  *      下载，也不要因为"缓存命中所以做不了"而少发一条语音条。**
+ *
+ * 起点的两条路径（`song/types.ts::SongStartMode`）：
+ *   - `chorus`（默认）：定位副歌，从那一秒开始收句尾；
+ *   - `start`（用户说"从头/整首"）：起点固定 0，**跳过副歌搜索**（`locateFrom`），
+ *     句尾照算——否则 0–180 秒里没有收尾点，只能硬切在上限上。
+ *     这条路径不读也不写**方案**缓存：方案键里没有"从哪开始"（理由见 `planFor`）。
  */
 
 import * as path from 'node:path'
@@ -132,7 +138,10 @@ async function locateChorus(
 ): Promise<ChorusSpan & { readonly confidence: number }> {
   let pick
   try {
-    pick = await deps.chorus.locate(audioFile, { signal })
+    // `needSeconds` 只喂给"句尾要看多远"（脚本的 `--need`）：不传的话视界停在 90 s 基线，
+    // 180 s 的上限在副歌模式下就永远拿不满（实机踩到：83.5 s 就没有句尾可收了）。
+    // 它**不**参与重复段落检测——段长仍用脚本默认值，判据因此不变。
+    pick = await deps.chorus.locate(audioFile, { needSeconds: config.seconds, signal })
   } catch (error) {
     throw new SongStepError('chorus', `副歌定位出错：${reasonOf(error, '未知错误')}`)
   }
@@ -145,6 +154,39 @@ async function locateChorus(
   }
   deps.log(`song: ${request.id} 副歌 ${pick.startSeconds.toFixed(1)}s（置信度 ${pick.confidence.toFixed(2)}）`)
   return { start: pick.startSeconds, phraseEnds: pick.phraseEnds, confidence: pick.confidence }
+}
+
+/**
+ * `startMode='start'`（"从头开始放"）：起点固定 0，**不跑副歌搜索**，但句尾仍要。
+ *
+ * 为什么不调 `chorus.locate`：它给出的起点会被 0 覆盖掉，而那次重复段落搜索要花 5–9 秒
+ * ——为了一次"结论一定会被丢掉"的搜索等 9 秒，是纯浪费。所以走 `locateFrom`
+ * （脚本的 `--start-at`）：跳过搜索，只算这个点之后的人声句尾。
+ *
+ * 为什么句尾不能省：0–180 秒里没有收尾点就只能硬切在上限上，听感像被掐断（见 `phrase.ts`）。
+ *
+ * 定位失败**不升级成点歌失败**：句尾给不出来只是"收尾不自然"，从 0 秒切一段仍然是一条
+ * 能发的语音条。丢一次点歌比收尾难看糟得多。
+ */
+async function locateFromStart(
+  deps: PipelineDeps,
+  request: SongRequest,
+  audioFile: string,
+  config: SongConfig,
+  signal: AbortSignal,
+): Promise<ChorusSpan & { readonly confidence: number }> {
+  try {
+    const pick = await deps.chorus.locateFrom(audioFile, 0, { seconds: config.seconds, signal })
+    if (pick !== null) {
+      deps.log(`song: ${request.id} 从头开始：起点 0s，句尾 ${String(pick.phraseEnds.length)} 个（${pick.method}）`)
+      return { start: 0, phraseEnds: pick.phraseEnds, confidence: 1 }
+    }
+  } catch (error) {
+    // 适配器本该把失败收敛成 null；真抛了也只记一行（理由同上：句尾不是点歌的前提）。
+    deps.log(`song: ${request.id} 句尾探测出错（${reasonOf(error, '未知错误')}），按上限硬切`)
+  }
+  deps.log(`song: ${request.id} 从头开始：没拿到句尾，按上限硬切`)
+  return { start: 0, phraseEnds: [], confidence: 1 }
 }
 
 /**
@@ -209,11 +251,22 @@ function cacheContextOf(
   }
 }
 
+/** 日志里怎么说这次的起点：`start` 模式说"从头"，否则说"副歌起点"。
+ *
+ * 为什么非要区分：两种模式下 `chorusStart` 都是个数，0.0 被读成"副歌在 0 秒"就是误导。 */
+function whereText(request: SongRequest): string {
+  return request.startMode === 'start' ? '从头' : '副歌起点'
+}
+
 /**
- * 定下这一段：用户给的时间 → 方案缓存 → 真定位。
+ * 定下这一段：用户给的时间 → 从头开始 → 方案缓存 → 真定位。
  *
  * 用户给的时间**优先于缓存**：那是这一次的明确要求，不是"上次的结论"。它也照样进
  * 成品缓存的查找（键里是起点与长度，与人怎么得出它无关）。
+ *
+ * **`start` 模式不查方案缓存**：方案键里只有 `bvid|cid|keyUp|上限`，没有"从哪开始"，
+ * 所以一条副歌方案（起点 84s）会被从头开始的请求命中，反过来也一样。成品键里
+ * `chorusStart=0` 与 `84` 天然不同，所以成品缓存照用（见 `cache-key.ts`）。
  */
 async function planFor(
   deps: PipelineDeps,
@@ -229,6 +282,16 @@ async function planFor(
     // 用户给的时间点没有配套的句尾：这一条按上限硬切（不猜句子边界）。
     const span: ChorusSpan = { start: request.chorusAt, phraseEnds: [] }
     return { chorusStart: span.start, seconds: clipSecondsFor(deps, request, span, config), confidence: 1, fromCache: false }
+  }
+  if (request.startMode === 'start') {
+    await hooks.advance('chorus')
+    const span = await locateFromStart(deps, request, await audio.get(), config, signal)
+    return {
+      chorusStart: span.start,
+      seconds: clipSecondsFor(deps, request, span, config),
+      confidence: span.confidence,
+      fromCache: false,
+    }
   }
   if (cache !== null) {
     const hit = await readPlan(cache)
@@ -271,7 +334,7 @@ export async function prepareSong(
 
   const hit = cache === null ? null : await readClip(cache, plan.chorusStart, plan.seconds)
   if (hit !== null) {
-    deps.log(`song: ${request.id} 命中缓存（跳过下载与翻唱，上次副歌 `
+    deps.log(`song: ${request.id} 命中缓存（跳过下载与翻唱，${whereText(request)} `
       + `${plan.chorusStart.toFixed(1)}s / ${plan.seconds.toFixed(1)}s）`)
     return preparedOf(plan, hit, audio, cache)
   }
@@ -286,7 +349,9 @@ export async function prepareSong(
   )
   await hooks.advance('covering', { chorusStart: plan.chorusStart, seconds: cover.seconds })
   if (cache !== null) {
-    await rememberPlan(cache, plan)
+    // 从头开始的方案**不进方案缓存**：方案键里没有"从哪开始"，写进去会让下一次
+    // "只唱副歌"命中起点 0（成品键里有起点，所以成品缓存照写、两边天然分开）。
+    if (request.startMode !== 'start') await rememberPlan(cache, plan)
     await rememberClip(cache, cover.chorusStart, cover.seconds, cover.voiceFile)
   }
   return preparedOf(plan, cover, audio, cache)

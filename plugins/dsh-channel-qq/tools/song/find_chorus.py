@@ -8,6 +8,13 @@
 
 用法：
     python find_chorus.py --input song.wav --out chorus.json [--seconds 25]
+    python find_chorus.py --input song.wav --out chorus.json --start-at 0 --seconds 180
+
+`--start-at <秒>`：**起点由调用方给定**（"从头开始放"就是 0）。传了它之后跳过
+重复段落/副歌搜索与人声对齐，`start` 直接等于它，`confidence` 固定 1.0、
+`method` 标 `manual-start`——这不是"猜"出来的结果，所以不伪装成定位置信度。
+句尾（`phraseEnds`）仍然从该点之后算，因为上层还是要收在一句歌词结束处。
+默认不传 = 原来的行为一字不变。
 
 输出（成功）：
     {"ok": true, "start": 62.5, "end": 92.0, "confidence": 0.71,
@@ -84,8 +91,20 @@
        长静音、以及一记重音之后的单个低帧都会被当成句尾；
      - 曲线起伏太小（段内高低差 < `PHRASE_MIN_SPAN`）时返回**空列表**：清唱/电音/
        纯器乐没有可信的句间下凹，这时诚实地说"没找到"，让上层退回硬切。
-   看多远由 `PHRASE_HORIZON_SEC` 决定：语音条有上限，更远的句尾用不上，
-   而把它们算进来只会把分位统计拖偏。
+   看多远由 `horizon_for()` 决定：`min(max(90, seconds + 30), 240)`。90 s 是基线
+   （语音条有上限，更远的句尾用不上，而把它们算进来只会把分位统计拖偏）；语音条上限
+   提到 180 s 之后需要"需要的长度 + 30 s"才收得到最后一句；240 s 封顶是因为再远的
+   "下凹"多半已经是间奏或下一段主歌了。实际视界在 `--diag` 的 `phraseHorizonSec` 里。
+
+## `--start-at`：起点由调用方给的模式（"从头开始放"）
+
+操作员的要求里有一种"从头开始放"，那种情况下副歌搜索的结论一定会被起点 0 覆盖掉。
+所以这个模式**跳过第 1–4 段**（重复段落搜索、相似度打分、聚类、人声对齐），把
+`start` 直接设为给定值，`confidence` 固定 `1.0`、`method` 标 `manual-start`
+（这不是猜出来的定位，所以不伪装成定位置信度）。`end = start + 段长`，保持
+`end - start == 段长` 这条不变式；`repeats` 给 0（没做过重复搜索，不能报次数）。
+第 5 段（句尾）**照算**，而且 `--seconds` 参与视界伸缩——否则 0–180 s 的条
+在 90 s 处就收不到句尾，只能硬切在上限上。
 
 ## 两个刻意的取舍
 
@@ -155,8 +174,13 @@ ALIGN_LOOKBACK_SEC = 2.0
 
 # 句尾检测（见文件头第 5 段）。
 #
-# 往后看多远：语音条最长 59 s，留一点余量就够；更远的句尾用不上，还会污染分位统计。
+# 往后看多远：基线 90 s（59 s 时代的语音条留的余量）；实际用 `horizon_for()` 按
+# `--seconds` 伸缩——180 s 的条要看到 210 s 才收得到最后一句。
 PHRASE_HORIZON_SEC = 90.0
+# 视界封顶：再远的"下凹"多半是间奏或下一段主歌，而且会把分位统计拖偏。
+MAX_PHRASE_HORIZON_SEC = 240.0
+# 视界多留多少余量：句尾必须能在"需要的长度"之后被看到，否则永远收不到那一句。
+PHRASE_HORIZON_EXTRA_SEC = 30.0
 # 段内高低差不到这个值时没有可信的"下凹"（清唱/电音/纯器乐），直接不给句尾。
 PHRASE_MIN_SPAN = 0.12
 # 阈值落在 20 分位（静音基线）与 70 分位（在唱）之间的这个比例上。
@@ -182,6 +206,16 @@ def percentile01(values, lo_p=10.0, hi_p=90.0):
 
 def clamp01(value):
     return float(min(1.0, max(0.0, value)))
+
+
+def horizon_for(seconds):
+    """句尾看多远（秒）：`min(max(90, seconds + 30), 240)`（见文件头第 5 段）。
+
+    为什么随 `--seconds` 伸缩：语音条的上限就是"要在这么远之内收一句"，而一个固定
+    90 s 的视界会让 180 s 的条在 90 s 处就没有候选句尾了——那等于上限定成 180 也白搭。
+    """
+    return float(min(max(PHRASE_HORIZON_SEC, float(seconds) + PHRASE_HORIZON_EXTRA_SEC),
+                     MAX_PHRASE_HORIZON_SEC))
 
 
 def vocal_activity(y, sr, hop):
@@ -338,7 +372,43 @@ def phrase_ends(activity, start_frame, horizon_sec):
     return ends, diagnostics
 
 
-def locate(path, seconds, align=True):
+def manual_start(start_at, duration, activity, segment_sec, horizon, started):
+    """`--start-at`：起点由调用方给（见文件头那一节）。返回 (结果 dict, 诊断 dict)。"""
+    # 起点夹到 `[0, duration-1]`：负数会让上层裁出"从结尾开始"的空文件，
+    # 而 `--start-at` 本身的值仍然优先（0 就是 0，不会被这里挪动）。
+    start = float(min(max(start_at, 0.0), max(0.0, duration - 1.0)))
+    start_frame = int(round(start * FPS))
+    end = float(min(start + segment_sec, duration))
+    scope = activity[start_frame:start_frame + int(round(segment_sec * FPS))]
+    # 人声比例照算（这是"这一段里有多少帧在唱"的测量，不是猜），只是不参与置信度。
+    vocal = float(np.mean(scope)) if scope.size > 0 else 0.0
+    ends, phrase_diag = phrase_ends(activity, start_frame, horizon)
+    diagnostics = {
+        "durationSec": round(duration, 1),
+        "startAt": round(start, 1),
+        "segmentSec": round(segment_sec, 1),
+        "vocalRatio": round(vocal, 4),
+        "phraseHorizonSec": round(horizon, 1),
+        "phraseEnds": ends,
+        "phrase": phrase_diag,
+        "elapsedSec": round(time.time() - started, 2),
+    }
+    return {
+        "ok": True,
+        "start": round(start, 1),
+        "end": round(end, 1),
+        # 起点是给定的，不是判出来的：1.0 表示"这条路径不产生定位不确定性"，
+        # 而 `method` 写明它来自 `--start-at`，免得诊断把 1.0 当成"猜得很准"。
+        "confidence": 1.0,
+        "method": "manual-start",
+        # 没做重复搜索就没有重复次数可说：给 0，不编一个"1 次"。
+        "repeats": 0,
+        "vocalRatio": round(vocal, 2),
+        "phraseEnds": ends,
+    }, diagnostics
+
+
+def locate(path, seconds, align=True, start_at=None, need=None):
     """主流程。返回 (结果 dict, 诊断 dict)。"""
     started = time.time()
     y, sr = librosa.load(path, sr=SAMPLE_RATE, mono=True, duration=MAX_ANALYZE_SEC)
@@ -346,6 +416,16 @@ def locate(path, seconds, align=True):
         return {"ok": False, "reason": "音频是空的（解码不出任何采样）"}, {}
     duration = len(y) / float(sr)
     hop = int(sr * HOP_SEC)
+    segment_sec = float(min(max(seconds, MIN_SEG_SEC), MAX_SEG_SEC))
+    # 句尾视界按"这条语音条最多多长"伸缩（`--need`），没有它才退回 `--seconds`。
+    # 两者刻意分开：`--seconds` 同时是副歌段长（参与重复段落检测），拿 180 去当段长
+    # 会把"找哪一段"的判据整个改掉；而视界只决定"往后看多远找句尾"。
+    horizon = horizon_for(seconds if need is None else max(float(seconds), float(need)))
+
+    # 人声活动在第 2、4、5 段都要用，先算好：`--start-at` 模式只需要它（与句尾）。
+    activity = vocal_activity(y, sr, hop)
+    if start_at is not None:
+        return manual_start(start_at, duration, activity, segment_sec, horizon, started)
 
     chroma = librosa.feature.chroma_stft(y=y, sr=sr, hop_length=hop, n_fft=2048)
     units = np.linalg.norm(chroma, axis=0)
@@ -353,9 +433,6 @@ def locate(path, seconds, align=True):
     chroma_unit = chroma / units
     frames = chroma_unit.shape[1]
 
-    activity = vocal_activity(y, sr, hop)
-
-    segment_sec = float(min(max(seconds, MIN_SEG_SEC), MAX_SEG_SEC))
     seg_frames = int(round(segment_sec * FPS))
     # lag >= seg_frames：不与自己重叠（见文件头第 1 段那条实测）。
     min_lag = int(max(round(MIN_LAG_SEC * FPS), seg_frames))
@@ -433,7 +510,8 @@ def locate(path, seconds, align=True):
     end_after = float(min(aligned_start + segment_sec, duration))
 
     # 第 5 段：副歌起点之后的人声句尾（上层据此把语音条收在句子结束处）。
-    ends, phrase_diag = phrase_ends(activity, int(round(aligned_start * FPS)), PHRASE_HORIZON_SEC)
+    # 视界随 `--seconds` 伸缩：180 s 的条要看到 210 s 才收得到最后一句。
+    ends, phrase_diag = phrase_ends(activity, int(round(aligned_start * FPS)), horizon)
 
     diagnostics = {
         "durationSec": round(duration, 1),
@@ -451,6 +529,7 @@ def locate(path, seconds, align=True):
         "alignCapSec": round(min(ALIGN_MAX_SEC, segment_sec), 1),
         # 句尾这条：阈值、高位、候选点都留着（"为什么这条语音条只有 47.5 s"看这里）。
         "phraseEnds": ends,
+        "phraseHorizonSec": round(horizon, 1),
         "phrase": phrase_diag,
         "elapsedSec": round(time.time() - started, 2),
     }
@@ -484,14 +563,24 @@ def main(argv):
     parser = argparse.ArgumentParser(description="定位一首歌的副歌起点，输出固定形状的 JSON")
     parser.add_argument("--input", required=True, help="输入音频（wav 优先，mp3/m4a 也可）")
     parser.add_argument("--out", required=True, help="输出 JSON 路径")
-    parser.add_argument("--seconds", type=float, default=25.0, help="期望的副歌长度（秒）")
+    parser.add_argument("--seconds", type=float, default=25.0,
+                        help="期望的副歌长度（秒）；--start-at 模式下它是语音条的目标长度，"
+                             "并参与句尾视界伸缩 min(max(90, seconds+30), 240)")
     parser.add_argument("--diag", action="store_true", help="把中间诊断也写进 JSON 的 _diag 字段")
     # 仅用于排查：关掉对齐就能看到"对齐前"的原始起点（诊断里两边都记着）。
     parser.add_argument("--no-align", action="store_true", help="关闭人声起点对齐（排查用）")
+    parser.add_argument("--start-at", type=float, default=None,
+                        help="起点由调用方给定（秒）：跳过副歌搜索与人声对齐，只算这个点之后的句尾。"
+                             "不传 = 原来的行为（见文件头）")
+    parser.add_argument("--need", type=float, default=None,
+                        help="这条语音条**最多**要多长（秒）：只影响句尾视界 horizon_for(need)，"
+                             "**不**参与副歌段长与重复段落检测。不传 = 用 --seconds 的值"
+                             "（副歌模式下那就等于段长 25，视界停在 90 s 基线）")
     args = parser.parse_args(argv)
 
     try:
-        result, diagnostics = locate(args.input, args.seconds, align=not args.no_align)
+        result, diagnostics = locate(args.input, args.seconds, align=not args.no_align,
+                                    start_at=args.start_at, need=args.need)
     except Exception as error:  # 读不了、解码失败、依赖缺失：一律按"定位不可靠"回报
         # 有些异常（librosa 的 NoBackendError）`str(error)` 是空串，只留类型名会让
         # "为什么不可靠"这句话完全没有信息量——所以补一句人能看懂的猜测。

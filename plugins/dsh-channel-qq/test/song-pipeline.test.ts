@@ -59,6 +59,7 @@ function request(overrides: Partial<SongRequest> = {}): SongRequest {
     artist: '周杰伦',
     bvid: 'BV1d4411N7zD',
     chorusAt: null,
+    startMode: 'chorus',
     keyUp: 0,
     requestedAt: 1_700_000_000_000,
     ...overrides,
@@ -72,6 +73,10 @@ interface FakeOptions {
   readonly chorusLowConfidence?: boolean
   /** 定位给出的句尾（默认空 = "这段太平"，流水线按上限硬切）。 */
   readonly chorusPhraseEnds?: readonly number[]
+  /** `from='start'` 时脚本给出的句尾（绝对秒数；默认空 = 没拿到句尾，按上限硬切）。 */
+  readonly startPhraseEnds?: readonly number[]
+  /** `from='start'` 时脚本失败（`null`）：点歌仍然要继续，只是硬切。 */
+  readonly startLocateFails?: boolean
   readonly renderFails?: boolean
   /** 第 n 次发送的结果（默认成功，messageId = 900 + n）。 */
   readonly sendOutcome?: (attempt: number) => VoiceSendResult
@@ -86,12 +91,17 @@ interface Fakes {
   readonly voice: VoicePort
   readonly gate: SendGatePort
   readonly clock: ReturnType<typeof fakeClock>
-  readonly calls: { search: number; videoInfo: number; download: number; chorus: number; render: number; send: number; gate: number }
+  readonly calls: {
+    search: number; videoInfo: number; download: number; chorus: number; chorusFrom: number
+    render: number; send: number; gate: number
+  }
   readonly renderedSeconds: number[]
 }
 
 function fakes(options: FakeOptions = {}): Fakes {
-  const calls = { search: 0, videoInfo: 0, download: 0, chorus: 0, render: 0, send: 0, gate: 0 }
+  const calls = {
+    search: 0, videoInfo: 0, download: 0, chorus: 0, chorusFrom: 0, render: 0, send: 0, gate: 0,
+  }
   const renderedSeconds: number[] = []
 
   const bili: BiliPort = {
@@ -121,6 +131,16 @@ function fakes(options: FakeOptions = {}): Fakes {
       return {
         startSeconds: 84, endSeconds: 109, confidence: 0.87,
         method: 'repeat+energy', repeats: 2, vocalRatio: 0.7, phraseEnds,
+      }
+    },
+    // `from='start'` 走这条：起点是调用方给的 0，脚本只回句尾（`--start-at`）。
+    async locateFrom(_audioFile, startSeconds, opts): Promise<ChorusPick | null> {
+      calls.chorusFrom += 1
+      if (options.startLocateFails === true) return null
+      return {
+        startSeconds, endSeconds: startSeconds + opts.seconds, confidence: 1.0,
+        method: 'manual-start', repeats: 0, vocalRatio: 0.7,
+        phraseEnds: options.startPhraseEnds ?? [],
       }
     },
   }
@@ -407,6 +427,108 @@ test('用户给了副歌时间：跳过自动定位，直接用那个点', async
     assert.equal(row.stage, 'sent')
     assert.equal(f.calls.chorus, 0, '给了时间就不该再跑定位脚本')
     assert.equal(row.chorusStart, 120)
+  } finally { cleanup() }
+})
+
+// ── 5b. 从头开始（from='start'） ────────────────────────────────────────────
+
+test("from='start'：不跑副歌定位，起点固定 0，句尾仍然收在一句歌词上", async () => {
+  // 起点 0；句尾 12（短于下限 20）/ 47.5 / 96 / 250（超过上限 180）。
+  const f = fakes({ startPhraseEnds: [12, 47.5, 96, 250] })
+  const { queue, cleanup, logs } = makeQueue(f, { config: { seconds: 180 } })
+  try {
+    await queue.load()
+    const result = await queue.enqueue(request({ startMode: 'start' }))
+    const row = await settle(queue, result.taskId)
+    assert.ok(row !== null)
+    assert.equal(row.stage, 'sent')
+    assert.equal(f.calls.chorus, 0, '从头开始绝不该再跑一遍副歌搜索（那几秒的结论会被丢掉）')
+    assert.equal(f.calls.chorusFrom, 1, '句尾还是要算一次（否则只能硬切）')
+    assert.equal(row.chorusStart, 0, '起点固定 0')
+    assert.deepEqual(f.renderedSeconds, [96], '在 [20,180] 里取最长的句尾，不是最接近上限的近似值')
+    assert.ok(logs.some((line) => line.includes('从头开始')), `日志要说清这次是从头开始：\n${logs.join('\n')}`)
+  } finally { cleanup() }
+})
+
+test("from='start'：脚本给不出句尾时退回按上限硬切，点歌不失败", async () => {
+  const f = fakes({ startLocateFails: true })
+  const { queue, cleanup, logs } = makeQueue(f, { config: { seconds: 180 } })
+  try {
+    await queue.load()
+    const result = await queue.enqueue(request({ startMode: 'start' }))
+    const row = await settle(queue, result.taskId)
+    assert.ok(row !== null)
+    assert.equal(row.stage, 'sent', `句尾给不出来只是收尾不自然，不该丢掉整次点歌：${String(row.detail)}`)
+    assert.equal(row.chorusStart, 0)
+    assert.deepEqual(f.renderedSeconds, [180], '没有句尾就按上限硬切')
+    assert.ok(logs.some((line) => line.includes('硬切')), `日志要说清是硬切：\n${logs.join('\n')}`)
+  } finally { cleanup() }
+})
+
+test("chorusSeconds 优先于 from：给了秒数就是 chorus 模式 + 那个点", async () => {
+  const f = fakes()
+  const { queue, cleanup } = makeQueue(f)
+  try {
+    await queue.load()
+    // 工具面已把"给了秒数"收敛成 `chorus`（见 args.ts::startModeOf），这里照那个形状入队。
+    const result = await queue.enqueue(request({ chorusAt: 120, startMode: 'chorus' }))
+    const row = await settle(queue, result.taskId)
+    assert.ok(row !== null)
+    assert.equal(row.chorusStart, 120, '用用户给的秒数')
+    assert.equal(f.calls.chorusFrom, 0, '给了秒数就不该走"从头"那条句尾探测')
+  } finally { cleanup() }
+})
+
+// ── 4c. 180 s 基线：上限与缩短阶梯 ──────────────────────────────────────────
+
+test('上限 180：句尾在 [20,180] 里取最长，超过 180 的一律不要', async () => {
+  // 起点 84；句尾换算成长度 6（低于下限）/ 90 / 179.5 / 181（超过上限）。
+  const f = fakes({ chorusPhraseEnds: [90, 174, 263.5, 265] })
+  const { queue, cleanup } = makeQueue(f, { config: { seconds: 180 } })
+  try {
+    await queue.load()
+    const result = await queue.enqueue(request())
+    const row = await settle(queue, result.taskId)
+    assert.ok(row !== null)
+    assert.equal(row.stage, 'sent')
+    assert.deepEqual(f.renderedSeconds, [179.5], '要最靠后且 ≤180 的那个句尾')
+    assert.equal(row.seconds, 179.5)
+  } finally { cleanup() }
+})
+
+test('缩短阶梯按 180 基线：180 → 120 → 90 → 60 → 45，走完就不再缩', async () => {
+  const f = fakes({
+    sendOutcome: () => ({ ok: false, messageId: null, unknown: false, detail: '发送失败：语音太长（record 超过上限）' }),
+  })
+  const { queue, cleanup } = makeQueue(f, { config: { seconds: 180 } })
+  try {
+    await queue.load()
+    const result = await queue.enqueue(request())
+    const row = await settle(queue, result.taskId, 5_000)
+    assert.ok(row !== null)
+    assert.equal(row.stage, 'failed', '网关一条都不收时只能失败（不许无限重做）')
+    assert.deepEqual(f.renderedSeconds, [180, 120, 90, 60, 45], '五档走完后停止')
+    assert.equal(f.calls.send, 5, '每次重做之后各发一次')
+  } finally { cleanup() }
+})
+
+test('缩短阶梯只降不升：实际长度已经短于第一档时，下一档直接跳过它', async () => {
+  // 上限 180 但句尾收在 85 → 网关拒收之后**不许**重做成 120（那比被拒的那条更长）。
+  const f = fakes({
+    chorusPhraseEnds: [169],
+    sendOutcome: (n) => n === 1
+      ? { ok: false, messageId: null, unknown: false, detail: '发送失败：语音太长' }
+      : { ok: true, messageId: 903, unknown: false, detail: '' },
+  })
+  const { queue, cleanup } = makeQueue(f, { config: { seconds: 180 } })
+  try {
+    await queue.load()
+    const result = await queue.enqueue(request())
+    const row = await settle(queue, result.taskId)
+    assert.ok(row !== null)
+    assert.equal(row.stage, 'sent')
+    assert.deepEqual(f.renderedSeconds, [85, 60], '85 之后第一个更短的档位是 60')
+    assert.equal(row.chorusStart, 84, '起点不变')
   } finally { cleanup() }
 })
 

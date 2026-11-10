@@ -18,6 +18,7 @@ import { stageText, taskIdOf } from './queue.js'
 import { describeCandidate, lookupSong, pickFemaleCover } from './select.js'
 import { femaleCoverQuery, keyUpFor, singerGender, type SingerGender } from './gender.js'
 import { requesterOf } from './quota.js'
+import { secondsArg, startModeOf, startTextOf, textArg } from './args.js'
 import type { BiliPort, SongCandidate, SongEntry } from './types.js'
 import type { SongConfig } from '../../config/sections/song.js'
 import type { ToolSpec } from '../../adapters/dsh-host/tools.js'
@@ -44,19 +45,6 @@ export interface SongToolDeps {
 
 /** 搜索结果最多留几条（再多用户也挑不过来）。 */
 const SEARCH_LIMIT = 8
-
-/** 从工具参数里收一个秒数（只认秒；认不出就当没给）。 */
-function secondsArg(value: unknown): number | null {
-  if (value === undefined || value === null || value === '') return null
-  const parsed = typeof value === 'number' ? value : Number(String(value))
-  if (!Number.isFinite(parsed) || parsed < 0) return null
-  return parsed
-}
-
-/** 文本参数（去空白；空串当没给）。 */
-function textArg(value: unknown): string {
-  return typeof value === 'string' ? value.trim() : ''
-}
 
 /**
  * 工具调用发生在哪个**QQ 房间**里：`agentId` 形如 `qq-dm-<号>` 或 `qq-group-<号>`，两种都返回房间键。
@@ -170,22 +158,35 @@ export function candidateLines(candidates: readonly SongCandidate[]): string {
   return candidates.map((candidate) => `- ${describeCandidate(candidate)}`).join('\n')
 }
 
+/** `qq_song_cover` 的工具描述（模型读它决定填什么参数；"从哪开始"的判据必须在这里说清）。 */
+const COVER_DESCRIPTION = '点歌：去B站找原唱，下载音轨，找出副歌，用机器人的音色翻唱，然后把那一段'
+  + '发成语音条（最长 3 分钟，默认从副歌开始）。私聊里人人可用；'
+  + '群聊里要先在后台打开「群聊点歌」，而且每人每天有额度。'
+  + '这一步只受理（会立刻回答），做好之后才发语音条；'
+  + '同名歌分不出来时会把候选列出来让主人挑。'
+  + '**从哪开始看用户原话**：说"从头/整首/前面也唱"就给 from=start（从 0 秒开始）；'
+  + '说"高潮/副歌/最high 那段"就给 from=chorus；没说就给 chorus（默认）。'
+  + '用户自己报了副歌在第几秒时用 chorusSeconds，它优先于 from。'
+
 function qqSongCover(deps: SongToolDeps): ToolSpec {
   return {
     name: 'qq_song_cover',
-    description: '点歌：去B站找原唱，下载音轨，找出副歌，用机器人的音色翻唱，然后把副歌那一段'
-      + '发成语音条。私聊里人人可用；群聊里要先在后台打开「群聊点歌」，而且每人每天有额度。'
-      + '这一步只受理（会立刻回答），做好之后才发语音条；'
-      + '同名歌分不出来时会把候选列出来让主人挑。',
+    description: COVER_DESCRIPTION,
     parameters: {
       type: 'object',
       properties: {
         song: { type: 'string', description: '歌名，例如「晴天」' },
         artist: { type: 'string', description: '歌手（给了就更准，例如「周杰伦」）' },
         bvid: { type: 'string', description: '已经选定的 B站视频 BV 号（有就跳过搜索）' },
+        from: {
+          type: 'string',
+          enum: ['chorus', 'start'],
+          description: '从哪里开始：chorus=只唱副歌（默认，没要求就用它）、start=从头开始放',
+        },
         chorusSeconds: {
           type: 'number',
-          description: '用户自己知道的副歌开始时间（秒）。给了就不再自动定位',
+          description: '用户自己知道的副歌开始时间（秒）。给了就从那一秒开始，不再自动定位，'
+            + '并且优先于 from',
         },
         messageId: {
           type: 'string',
@@ -296,6 +297,9 @@ async function submit(
   const dedupeKey = inbound === '' ? `${entry}:${facts.room}:${facts.song}:${String(deps.clock.now())}` : `msg:${inbound}`
   // 男声源升八度（`preferFemale` 关掉时也不升——那是操作员选的"别动我的音高"）。
   const keyUp = facts.config.preferFemale ? keyUpFor(picked.gender, facts.config.maleKeyUp) : 0
+  // 起点：用户报的秒数 > `from` > 默认副歌（判据在 `args.ts::startModeOf`）。
+  const chorusAt = secondsArg(args.chorusSeconds)
+  const startMode = startModeOf(args.from, chorusAt)
   const result = await deps.queue.enqueue({
     id: taskIdOf(dedupeKey),
     entry,
@@ -306,20 +310,22 @@ async function submit(
     song: facts.song === '' ? chosen.title : facts.song,
     artist: facts.artist,
     bvid: chosen.bvid,
-    chorusAt: secondsArg(args.chorusSeconds),
+    chorusAt,
+    startMode,
     keyUp,
     requestedAt: deps.clock.now(),
   })
-  deps.log(`song: qq_song_cover ${result.accepted ? '入队' : '未受理'}（${chosen.bvid}，keyUp=${String(keyUp)}）`)
+  deps.log(`song: qq_song_cover ${result.accepted ? '入队' : '未受理'}`
+    + `（${chosen.bvid}，${startMode}${chorusAt === null ? '' : `@${String(chorusAt)}s`}，keyUp=${String(keyUp)}）`)
   return {
     accepted: result.accepted,
     taskId: result.taskId,
     note: result.accepted
       ? `收到：用 B站「${chosen.title}」（${chosen.bvid}）做，`
-        + `最多 ${String(facts.config.seconds)} 秒，收在一句歌词结束处`
+        + `最多 ${String(facts.config.seconds)} 秒，${startTextOf(startMode, chorusAt)}，收在一句歌词结束处`
         + `${keyUp > 0 ? `（男声源，人声升高 ${String(keyUp)} 个半音）` : ''}，做好就发`
       : result.note,
-    source: { bvid: chosen.bvid, title: chosen.title, author: chosen.author, keyUp },
+    source: { bvid: chosen.bvid, title: chosen.title, author: chosen.author, keyUp, startMode },
   }
 }
 
