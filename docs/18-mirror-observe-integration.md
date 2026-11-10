@@ -23,6 +23,8 @@ The channel now accepts an explicit connection.mode of mirror-observe. This is a
 
 The actual DSH 0.2.2-rc.1 channel was booted against the fake WS in an isolated temporary home and workspace. Two synthetic group events reached it; the local completion recorder returned a valid join decision. The channel wrote presence-shadow.jsonl with mode shadow and the synthetic proposed message. Fake WS statistics: one connection, two delivered events, zero forbidden action attempts. All temporary host and recorder processes exited afterward. Evidence: ignored data/logs/integration-mirror-shadow-recorded and data/tmp/integration-acceptance/mirror-shadow-recorded/logs/presence-shadow.jsonl.
 
-This establishes a synthetic host observation loop, not real model decision quality. Real traffic, restart behavior and broader malformed-frame cases remain for acceptance. Do not connect a real production OneBot socket.
+This establishes a synthetic host observation loop, not real model decision quality. Real traffic and broader malformed-frame cases remain for acceptance. Do not connect a real production OneBot socket.
+
+Restart acceptance on 2026-11-11 reused the same isolated synthetic home and workspace across two successive host processes. Each run received two synthetic events, wrote a new shadow decision (one record after the first run, two after the second), and recorded zero forbidden actions. Both host processes and local recorder processes exited; temporary ports were released. Evidence: ignored data/logs/integration-mirror-restart-1794335787080-1 and -2. This covers a clean process restart, not crash recovery or real transport reconnection.
 
 The integrated test profile continues to have QQ disabled. No production connection or credentials were changed by this implementation.
