@@ -22,10 +22,14 @@ Fresh test settings retain disabled external sends, health collection and billin
 
 ## Remaining
 
-- Register the environment in Desktop and inspect rendered companion UI.
+- Rendered companion UI was inspected through the authenticated isolated host on 2026-11-11. Home displayed migrated memory/review counts and schedule; persona and settings rendered. Autonomous planning, real activities and runtime background switches remained off. This is browser UI evidence, not Desktop registration. Native Desktop registration remains blocked by failure to activate its open folder picker.
 - Full host captures completed for 14:00 and 22:40, each with Prompt Engine off and active. Wardrobe snapshot text was byte-identical across modes (195 and 181 characters respectively), with distinct daytime-everyday and night-window results. Captures used synthetic local completion and isolated temporary data. The system rule references the snapshot heading; actual outfit context appears once in the user message. Evidence: ignored data/logs/integration-day-night/summary.json and four request captures.
 - G3 mirror-observe implementation and synthetic host loop completed; see docs/18-mirror-observe-integration.md. Real traffic and decision-quality evidence remain outstanding.
 - Real model conversation, billed images and real QQ delivery remain unverified.
 - Resolve whether additional chat and media copies are needed.
 
 Private reports and launch records remain in ignored data directories.
+
+## Final regression pass
+
+Mirror reload now revalidates the path/transport boundary before reconnecting. Observation instances skip reset-command handling and approval receipt polling. Targeted transport, pipeline and section tests: 38 passed, zero failures. Full verify after these edits: unit 9, static 38, compose 1 passed; one package has no tests. Logs: data/logs/mirror-reload-regression.log and data/logs/verify-integration-final.log.

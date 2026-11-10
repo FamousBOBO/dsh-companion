@@ -72,6 +72,7 @@ export const platformPlugin: SubPlugin = {
     host.need('platform').client.start()
   },
   reload(host) {
+    assertMirrorBoundary(host.config, host.dshHome)
     const parts = host.get('platform')
     if (parts === undefined) return ['连接设置已保存，但 QQ 客户端尚未建立，下次启动生效']
     parts.client.reconnect(host.config.connection, host.config.accessToken)

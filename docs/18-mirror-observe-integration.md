@@ -11,6 +11,7 @@ The channel now accepts an explicit connection.mode of mirror-observe. This is a
 - Presence mode is constrained to shadow or off for an observation instance; a live setting makes the observation decision runner inactive.
 - The fake WS server remains an independent boundary: all actions are rejected there as well.
 - Observation instances mount only persona, observers, platform and inbound sections. Background job sections, outbound tools and the admin server are not mounted.
+- Reload revalidates the boundary before reconnecting. Inbound reset-command handling and approval receipt polling are disabled for observation instances.
 
 ## Evidence
 
