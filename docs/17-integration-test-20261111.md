@@ -18,7 +18,7 @@ Standard CLI export reported stopped source, no warnings. A dry-run preceded ide
 
 Source and target quick_check passed. Aggregate table row counts matched: memory 11394, runtime 13262, health 4976. These totals are not counts of individual memories. Every source table count was preserved. Imported reminders do not replay; health consent is reset.
 
-Fresh test settings retain disabled external sends, health collection and billing. Standard migration excludes credentials, chat history, media files, private logs and desktop login caches. Additional chat/media copy awaits clarification.
+Fresh test settings retain disabled external sends, health collection and billing. Standard migration excludes credentials, chat history, media files, private logs and desktop login caches. On 2026-11-11 the user explicitly selected standard assets only; additional chat history, images and voice are outside the requested migration scope. The standard migration is complete with the integrity evidence above.
 
 ## Remaining
 
@@ -26,7 +26,7 @@ Fresh test settings retain disabled external sends, health collection and billin
 - Full host captures completed for 14:00 and 22:40, each with Prompt Engine off and active. Wardrobe snapshot text was byte-identical across modes (195 and 181 characters respectively), with distinct daytime-everyday and night-window results. Captures used synthetic local completion and isolated temporary data. The system rule references the snapshot heading; actual outfit context appears once in the user message. Evidence: ignored data/logs/integration-day-night/summary.json and four request captures.
 - G3 mirror-observe implementation and synthetic host loop completed; see docs/18-mirror-observe-integration.md. Real traffic and decision-quality evidence remain outstanding.
 - Real model conversation, billed images and real QQ delivery remain unverified.
-- Resolve whether additional chat and media copies are needed.
+- Migration scope confirmed: standard assets only; no additional chat/media copy is required.
 
 Private reports and launch records remain in ignored data directories.
 
