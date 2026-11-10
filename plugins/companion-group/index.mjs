@@ -1,5 +1,13 @@
 import path from 'node:path';
 import { groupIdOf, groupToolDenial, markGroupReady, GROUP_ALLOWED_TOOLS } from './core.mjs?v=group-media-20261102-restrict3';
+// P7-A 之后这里只需要常量：动态内容（"这个群刚发生过什么"）搬到了组包路径，
+// 群号来自宿主路由，不再从全局端口推测。GROUP_CONTINUITY_SERVICE_NAME 与三个读取
+// 函数仍由 group-continuity.mjs 导出（构造/测试用），但本文件不再消费。
+import {
+  GROUP_CHAT_CONDUCT,
+  GROUP_CONTINUITY_ORDER,
+  GROUP_CONTINUITY_SECTION_NAME,
+} from './group-continuity.mjs';
 import { resolveDataRoot } from '../companion-foundation/suite-paths.mjs';
 
 export const name = 'companion-group-persona';
@@ -36,6 +44,22 @@ export function apply(ctx) {
   // Preset validation can run before the asynchronous QQ channel has registered
   // its tools. Bind the restriction at the first real step, before model entry.
   const restricted = new WeakSet();
+  // P7-A（§4.1 第 1 条）：这个系统段**只留静态的群聊表达约定**，不再从全局端口推测群身份。
+  //
+  // 为什么必须去掉那段动态内容：系统提示词段拿不到 `conversation.chatId`（宿主不把会话身份
+  // 传给 text 回调），于是旧实现只能在"唯一活跃群"时给数据——两个群同时活跃就两边都读不到，
+  // 那是**降级**，不是多群方案。现在「这个群刚发生过什么」由**组包路径**渲染
+  // （`PacketComposer.compose()` → `groupContinuityBlock`，群号来自宿主路由），
+  // 两条路径不重复注入同一件事。
+  //
+  // `interpolate: false`：段里是固定文案，但保留这条约束——将来若有人往这里加变量引用，
+  // 未知引用会让装配直接失败，宁可在评审时就被这条注释提醒一次。
+  ctx.systemPrompt.section({
+    name: GROUP_CONTINUITY_SECTION_NAME,
+    order: GROUP_CONTINUITY_ORDER,
+    interpolate: false,
+    text: () => GROUP_CHAT_CONDUCT,
+  });
   ctx.systemPrompt.section({ name: 'companion:group-persona', order: 50, interpolate: false, text: GROUP_PERSONA });
   const calls = new Map();
   const delivered = new Map();

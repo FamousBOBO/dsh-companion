@@ -69,6 +69,25 @@ function positive(value: number | undefined, fallback: number): number {
 }
 
 /**
+ * 额度类配置的取值：**0 是有效的 0，不是"没配"**。
+ *
+ * 这一条与上面那行的区别是安全方向。对**间隔**类（`judgeIntervalMs` / `speakMinIntervalMs`）
+ * 把 0 当"没配"退回默认是安全的：结果都是"少做点"。对**额度**类（`speakMaxPerHour`）
+ * 正好相反：0 退回默认 3 会让"我把它设成 0 想停发"变成"每小时还能说三次"——配置手滑
+ * 变成了更多的外发。所以额度这里 fail-closed：给 0 就是 0。
+ *
+ * 负数/NaN/undefined 仍然退默认（那不是刻意配置，是坏值）。
+ *
+ * **但停发不要依赖这个**：`speakMaxPerHour=0` 只能停"自主发言"，停不了表情包与将来的
+ * 其它出站路径，也不留下"本来想说什么"的诊断。真正的停发开关是
+ * `presence.mode`（见 `core/presence-mode.ts`）。
+ */
+function quota(value: number | undefined, fallback: number): number {
+  if (typeof value !== 'number' || !Number.isFinite(value) || value < 0) return fallback
+  return Math.trunc(value)
+}
+
+/**
  * 一个群的初始状态。
  *
  * `nowMs` 会被写进 `judgeAtMs` / `speakAtMs`：**这是故意的**——热加载之后第一件事
@@ -104,7 +123,7 @@ export function speakVerdict(
 ): PresenceVerdict {
   if (state.pauseUntilMs > nowMs) return veto('paused')
   if (nowMs - state.speakAtMs < positive(limits.speakMinIntervalMs, 300_000)) return veto('speak-cooldown')
-  if (recentSends(state, nowMs).length >= positive(limits.speakMaxPerHour, 3)) return veto('hour-quota')
+  if (recentSends(state, nowMs).length >= quota(limits.speakMaxPerHour, 3)) return veto('hour-quota')
   return OK
 }
 

@@ -13,15 +13,18 @@
     ".": "./index.mjs",
     "./boundary.mjs": "./boundary.mjs",
     "./core.mjs": "./core.mjs",
+    "./group-continuity.mjs": "./group-continuity.mjs",
     "./package.json": "./package.json"
   },
   "files": [
     "index.mjs",
     "boundary.mjs",
     "core.mjs",
-    "group-isolation.test.mjs"
+    "group-continuity.mjs",
+    "group-isolation.test.mjs",
+    "group-continuity.test.mjs"
   ],
   "scripts": {
-    "test": "node --test \"group-isolation.test.mjs\""
+    "test": "node --test \"group-isolation.test.mjs\" \"group-continuity.test.mjs\""
   }
 }

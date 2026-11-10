@@ -1,0 +1,17 @@
+{
+  "$comment": "镜像配置示例。真实配置放 data/home/companion/mirror.json（gitignore）。默认 enabled=false。",
+  "mirror": {
+    "enabled": false,
+    "source": "napcat-sse",
+    "sourceUrl": "http://127.0.0.1:3002/_events",
+    "sourceTokenEnv": "NAPCAT_MIRROR_EVENT_TOKEN",
+    "allowedGroups": [],
+    "fakeOneBotHost": "127.0.0.1",
+    "fakeOneBotPort": 3101,
+    "fakeOneBotTokenEnv": "DSH_MIRROR_FAKE_ONEBOT_TOKEN",
+    "maxQueueEntries": 200,
+    "maxEventBytes": 65536,
+    "dedupeTtlMs": 600000,
+    "collectBody": false
+  }
+}

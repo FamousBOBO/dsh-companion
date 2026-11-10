@@ -1,19 +1,13 @@
 /** 入站流水线：一条 QQ 消息 → 一包交给模型的内容。
  *
- * 七步顺序**不能重排**（每步都依赖上一步）：
- *   1. **准入**（不是消息 / 群关着 / 认不出房间 → 丢）；
- *   2. **解析**（`core/message/parse`）；
- *   3. **取材**（`inbound/materials`：语音、文件、引用、图片——**重活**）；
- *   4. **渲染**（`core/message/render` 的纯函数）；
- *   5. **判定**（`core/trigger`；旁听与被叫到都发生在这一步之前，见 `group-ambient`）；
- *   6. **攒批**（`core/batching` + `inbound/batch-flush`）；
- *   7. **组包投递**（`conversation/prompt-composer`；私聊/注入两条路在 `inbound/delivery`）。
+ * 七步顺序**不能重排**：准入 → 解析 → 取材（重活） → 渲染 → 判定 → 攒批 → 组包投递。
+ * 旁听与被叫到都发生在判定之前（见 `group-ambient`）；私聊/注入两条路在 `inbound/delivery`。
  *
- * 这一层没有 `node:*`：副作用与时间都经端口注入（Clock / Random / Http / AgentGateway），
- * 所以不需要真的 QQ 或真的宿主就能跑（R8）。
+ * 这一层没有 `node:*`：副作用与时间都经端口注入，所以不需要真的 QQ 或真的宿主就能跑（R8）。
  */
 
 import type { OneBotEvent } from '../../types.js'
+import type { RegistryFile } from '../../core/participant.js'
 import { parseInbound, type ParsedInbound } from '../../core/message/parse.js'
 
 import { renderMessageLine } from '../../core/message/render.js'
@@ -108,6 +102,8 @@ export interface PipelineDeps {
   readonly ambient?: AmbientStore
   /** 自主接话执行器；缺省 = 只旁听（被 @ 时带上背景），不主动开口。 */
   readonly presence?: PresenceObserver
+  /** 参与者注册表（P9-G4 §2.2）：每次现取；缺省 = 没装，全员按"身份未确认"处理（不是"全是人"）。 */
+  readonly participants?: () => RegistryFile | null
 }
 
 export class InboundPipeline {
@@ -191,6 +187,8 @@ export class InboundPipeline {
         parsed,
         selfId: config.selfId,
         nowMs: this.deps.clock.now(),
+        // 注册表交给采集层现取：采集是每条群消息都跑的热路径，"谁来查身份"定在一处。
+        ...(this.deps.participants === undefined ? {} : { registry: this.deps.participants }),
       })
     }
     const called = event.message_type === 'private'

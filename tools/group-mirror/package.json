@@ -1,0 +1,13 @@
+{
+  "name": "dsh-companion-group-mirror",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "NapCat 群消息只读镜像 + 本机假 OneBot WS（P9-G）。默认关闭；任何 action 一律拒绝。",
+  "scripts": {
+    "test": "node --test test/"
+  },
+  "dependencies": {
+    "ws": "^8.18.0"
+  }
+}

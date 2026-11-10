@@ -19,6 +19,7 @@ import type { Clock } from '../src/ports/clock.js'
 import { AmbientStore } from '../src/app/inbound/ambient-store.js'
 import { GroupPresence } from '../src/app/inbound/presence-runtime.js'
 import type { CompletePort, CompleteResult, PresenceView } from '../src/app/inbound/presence-flow.js'
+import type { GroupPersonaSnapshot } from '../src/app/inbound/group-persona.js'
 import { FakeClock, FakePlatform, settle } from './fakes/contact.js'
 
 const START = new Date(2026, 10, 1, 22, 0, 0).getTime()
@@ -30,6 +31,20 @@ const LIMITS: AmbientLimits = { maxEntries: 40, ttlMs: 600_000, maxChars: 6_000 
 const SILENT = '{"speak":false,"reply":"","why":"寒暄，没有可补充的内容"}'
 /** 「说」的回复。 */
 const SPEAK = '{"speak":true,"reply":"手持的话把快门提到 1/250 试试，糊多半是手抖。","why":"具体的摄影参数问题"}'
+
+/** P0 用的快照：断言"提示词读的是快照"而不是写死的文案。 */
+const PERSONA: GroupPersonaSnapshot = {
+  version: 'abc12345',
+  personaId: 'bot',
+  identity: '叫阿七，喜欢拍照。',
+  personality: '话不多，但会说具体的。',
+  speakingStyle: '短句、口语。',
+  interests: ['摄影参数'],
+  knownExperiences: ['拍过一整年的月亮'],
+  publicFacts: ['住在杭州'],
+  interactionBoundaries: ['不谈别人的家事'],
+  source: 'config/persona.md',
+}
 
 function view(over: Partial<PresenceView> = {}): PresenceView {
   return {
@@ -82,6 +97,12 @@ function harness(over: {
   clock?: FakeClock
   ambient?: AmbientStore
   platform?: FakePlatform
+  /** 人格快照提供者（P0）；缺省 = 取不到（走降级人格）。 */
+  persona?: () => GroupPersonaSnapshot | null
+  /** 运行模式（P5-B）；缺省不传 = 没有闸门（旧装配，按 live）。 */
+  mode?: () => string
+  /** 影子日志收集（P5-B）。 */
+  readonly shadowOut?: Array<Record<string, unknown>>
 } = {}): Harness {
   const clock = over.clock ?? new FakeClock(over.start ?? START)
   const logs: string[] = []
@@ -108,6 +129,11 @@ function harness(over: {
     recordSent: async (groupId, messageId, text) => {
       sentLog.push({ groupId, messageId, text })
     },
+    // 人格快照：默认给"取不到"，只有专门测 P0 接线的用例才传 `persona`。
+    persona: over.persona ?? (() => null),
+    // 模式闸门：只有专门测 P5-B 的用例才传；不传 = 旧装配（按 live）。
+    ...(over.mode === undefined ? {} : { mode: over.mode }),
+    ...(over.shadowOut === undefined ? {} : { recordShadow: (decision) => { over.shadowOut?.push({ ...decision }) } }),
   })
   let nextId = 1000
   const ringOf = (groupId: number) => ambient.ring(groupId, LIMITS)
@@ -347,6 +373,78 @@ test('热加载：新实例不补发旧缓冲，只有上线之后的新消息�
     assert.ok(!prompt.includes(text), `旧批次不该被回放：${text}`)
   }
   assert.equal(h.platform.count(), 1)
+})
+
+// ── 人格快照（P0）：每轮现取、改动立刻生效、取不到就明说降级 ──────────────────
+
+test('人格快照进提示词：身份来自快照，不是写死的文案', async () => {
+  const h = harness({ judge: SILENT, persona: () => PERSONA })
+  await firstJudgment(h)
+  const prompt = h.judge.calls[0] ?? ''
+  assert.match(prompt, /【你是谁（群聊可见的人格快照）】/)
+  assert.match(prompt, /身份：叫阿七/)
+})
+
+test('快照每轮现取：人格文件改了（版本号变了）下一轮判断就用新的', async () => {
+  let current = PERSONA
+  const h = harness({ judge: SILENT, persona: () => current })
+  await firstJudgment(h)
+  assert.match(h.judge.calls[0] ?? '', /身份：叫阿七/)
+  current = { ...PERSONA, version: 'def67890', identity: '改过名字了，叫小八。' }
+  await firstJudgment(h)
+  assert.match(h.judge.calls[1] ?? '', /身份：改过名字了，叫小八/)
+  assert.match(h.judge.calls[1] ?? '', /快照版本 def67890/)
+})
+
+test('取不到快照：提示词明说降级，判断照常做（不阻断主动接话）', async () => {
+  const h = harness({ judge: SILENT, persona: () => null })
+  await firstJudgment(h)
+  assert.equal(h.judge.calls.length, 1, '拿不到人格也要照常判断')
+  assert.match(h.judge.calls[0] ?? '', /【人格快照不可用】/)
+  assert.ok(h.logs.some((line) => line.includes('人格快照不可用')), h.logs.join('\n'))
+})
+
+test('取快照抛错：只降级、不冒泡（这条路径上异常等于这一轮少一段人格）', async () => {
+  const h = harness({
+    judge: SILENT,
+    persona: () => {
+      throw new Error('foundation boom')
+    },
+  })
+  await firstJudgment(h)
+  assert.equal(h.judge.calls.length, 1)
+  assert.match(h.judge.calls[0] ?? '', /【人格快照不可用】/)
+  assert.ok(h.logs.some((line) => line.includes('取人格快照抛错')), h.logs.join('\n'))
+})
+
+// ── 消息身份（P0）：背景带发送者与消息号，她自己的话标成"自己" ──────────────────
+
+test('背景渲染带上真实消息号与发送者：模型能对上"哪条是谁说的"', async () => {
+  const h = harness({ judge: SILENT, persona: () => PERSONA })
+  // 用**真实写入形态**（`renderMessageLine` 的产物）：时间在前、昵称(QQ号) 在后、带 #消息号。
+  h.push(GROUP, '2026-11-01 22:00 小王(10001) #501：晚上拍月亮老是糊', {
+    messageId: 501, name: '小王', userId: 10_001,
+  })
+  await h.tick(300_000)
+  h.push(GROUP, '2026-11-01 22:05 小李(10002) #502：是不是得用三脚架', {
+    messageId: 502, name: '小李', userId: 10_002,
+  })
+  await h.tick(50_000)
+  const prompt = h.judge.calls[0] ?? ''
+  assert.match(prompt, /\[消息 501\] \[成员 小王 \/ QQ 10001\]/)
+  assert.match(prompt, /\[消息 502\] \[成员 小李 \/ QQ 10002\]/)
+  // 身份只出现一次：不再靠整行里的"昵称(QQ号)"再重复一遍
+  assert.equal(prompt.split('10001').length - 1, 1)
+})
+
+test('她自己刚发的回灌进旁听时带 body：背景里标成"你（自己）"，不是群友说的', async () => {
+  const h = harness({ judge: SPEAK, persona: () => PERSONA })
+  await firstJudgment(h)
+  assert.equal(h.platform.count(), 1)
+  const live = h.ambient.ring(GROUP, LIMITS).live(h.clock.now())
+  const tail = live[live.length - 1]
+  assert.equal(tail?.self, true)
+  assert.equal(tail?.body, tail?.text, '回灌那条的 body 就是正文（它没有发送者抬头）')
 })
 
 // ── 开关与卸载 ──────────────────────────────────────────────────────────────

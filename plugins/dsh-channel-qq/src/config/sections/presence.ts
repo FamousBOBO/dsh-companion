@@ -17,11 +17,21 @@
  * 都写了后果。
  */
 
-import { b, list, n, type FieldGroup } from '../dsl.js'
+import { b, e, list, n, type FieldGroup } from '../dsl.js'
 
 /** `presence` 段的形状；字段定义与默认值见下面 `PRESENCE_GROUPS`（唯一来源）。 */
 export interface PresenceConfig {
-  /** 总开关（默认 false）：关着时整条旁听/判断/自主发言路径都不跑。 */
+  /**
+   * 运行模式（P5-B）：`''`（未指定，按 `enabled` 推断）/ `off` / `shadow` / `live`。
+   *
+   * **默认值必须是空串**（P9-A1）：`DEFAULT_CONFIG` 由 schema 生成，若默认写 `'off'`，
+   * 合成器会给每一份旧配置补上 `mode:'off'`，于是 `enabled:true` 的老部署升级后被静默停用。
+   * 空串让 `resolveMode` 退回 `enabled` 口径，旧配置行为逐字节不变。
+   *
+   * 显式写了 `mode` 之后它**优先于** `enabled`：写了 `shadow` 就不会发消息。
+   */
+  mode: string
+  /** 总开关（默认 false）：关着时整条旁听/判断/自主发言路径都不跑。`mode` 缺席时的旧口径。 */
   enabled: boolean
   /** 白名单群号；空数组 = 谁都不启用。 */
   groups: number[]
@@ -31,7 +41,13 @@ export interface PresenceConfig {
   ambientTtlMs: number
   /** 每群旁听缓冲的总字数上限（与条数上限**双**淘汰）。 */
   ambientMaxChars: number
-  /** 两次兴趣判断之间的最小间隔（毫秒）：短时间内的消息合成一批再判。 */
+  /** 合批静默窗口（毫秒）：一批消息攒这么久再判断。 */
+  batchQuietMs: number
+  /** 语义复核档位（P6-B）：`off` / `warn` / `enforce`；默认 `warn`（只记不拦）。 */
+  socialGuard: string
+  /** 一批消息等待判断的上限（毫秒）：只用于饥饿告警。 */
+  starvationWarnMs: number
+  /** 两次兴趣判断之间的最小间隔（毫秒）。 */
   judgeIntervalMs: number
   /** 送进一次判断的旁听条数上限。 */
   judgeMaxEntries: number
@@ -47,6 +63,16 @@ export interface PresenceConfig {
   speakMaxPerHour: number
   /** 自主发言的字数上限（一至两句，不截断：超了按"这轮不说"处理）。 */
   replyMaxChars: number
+  /** 允许引用的时间窗（毫秒）：比这更老的消息不许 reply。 */
+  replyWindowMs: number
+  /** 群记忆注入的字数预算（§5.4 建议 600–800）。 */
+  memoryBudgetChars: number
+  /** 自主发言之后是否允许配一张表情包（P4 §8.2）。默认关闭。 */
+  stickers: boolean
+  /** 两张图之间的最小间隔（毫秒）。 */
+  stickerMinIntervalMs: number
+  /** 每小时最多几张图。 */
+  stickerMaxPerHour: number
 }
 
 export const PRESENCE_GROUPS: FieldGroup[] = [
@@ -57,6 +83,25 @@ export const PRESENCE_GROUPS: FieldGroup[] = [
     help: '在群里先旁听、觉得够相关才自己说一句。**默认关**：关着时与旧行为逐字节一致，'
       + '不记旁听、不调用模型、不发任何一条自主消息。只对白名单群生效。',
     fields: {
+      // 读法：装配侧每次现取（live）；最后一道发送闸门**每次发送前**再读一次。
+      //
+      // **默认值是空串，不是 'off'**（P9-A1 修的真 bug）：`DEFAULT_CONFIG` 由 schema 生成，
+      // 所以这里写 'off' 会让**每一份旧配置在合成后都带一个 mode:'off'** —— resolveMode
+      // 看到显式值就照办，于是旧用户明明配了 enabled:true，升级后被静默停用。空串表示
+      // '没指定'，resolveMode 才会退回 enabled 口径（旧行为逐字节不变）。
+      mode: e('运行模式', '', [
+        ['', '按总开关推断（旧配置口径：enabled 开着就是 live）'],
+        ['off', '关闭：不判断、不发'],
+        ['shadow', '影子：真判断、真校验、只记不发'],
+        ['live', '线上：真的会发（白名单 + 限频）'],
+      ], {
+        hot: 'live',
+        page: 'groups',
+        help: '三档语义见 docs/10a 与 docs/10b：off 什么都不做；shadow 收消息、调模型、走完所有校验，'
+          + '但**一条都不发**，只把「本来想发什么、为什么」记进本地影子日志；live 才会真的发到群里。'
+          + '留空（默认）时按下面的总开关推断：enabled:true 视为 live —— 旧配置升级后行为不变。'
+          + '**停发请改这一项，不要用 speakMaxPerHour=0**：那个只停自主发言，停不了表情包。',
+      }),
       // 读法：入站流水线与判断执行器每包/每次判断前经 config() 现取（live）。
       enabled: b('启用旁听与自主接话', false, {
         hot: 'live',
@@ -101,6 +146,40 @@ export const PRESENCE_GROUPS: FieldGroup[] = [
         help: '每群旁听的总字数上限，与条数上限**双**淘汰（谁先到就按谁淘汰最老的）。'
           + '它防的是"40 条全是长文"，那时按条数限制根本不够。默认 6000 字是工程建议。',
       }),
+      socialGuard: e('语义复核', 'warn', [
+        ['off', '不做语义复核（连日志都不记）'],
+        ['warn', '只记日志与影子日志，不拦（默认）'],
+        ['enforce', '真的拦下（这一轮不说话）'],
+      ], {
+        hot: 'live',
+        page: 'groups',
+        help: 'P6-B 的四条事实型复核（复读自己 / 争执不掺和 / 定向对话不加入 / 重复抢答）。'
+          + '默认 warn：重叠阈值（≥90%）与 40 分钟窗没有在真实群聊上校准过，'
+          + '先观测「语义复核命中」的条数与理由，再决定是否切 enforce。',
+      }),
+      batchQuietMs: n('合批静默窗口', 6_000, {
+        hot: 'live',
+        page: 'groups',
+        min: 1_000,
+        max: 60_000,
+        step: 1_000,
+        unit: 'ms',
+        help: '往上数消息安静这么久才把这一批送去判断（毫秒）。它管的是"读得懂上下文"：'
+          + '太短会把一句话拆成两批，太长会让她对着过时的话题接话。默认 6 秒。'
+          + '**与判断间隔分开**：那个管省钱，这个管读得懂。',
+      }),
+      starvationWarnMs: n('一批消息的最长等待', 25_000, {
+        hot: 'live',
+        page: 'groups',
+        min: 5_000,
+        max: 300_000,
+        step: 5_000,
+        unit: 'ms',
+        help: '一批消息**最多**等这么久就必须（在允许判断的前提下）判一次（毫秒），默认 25 秒。'
+          + '它只在"允许判断"之后起作用：冷却中、失败退避中、同群在途时仍然不会判断，'
+          + '所以不会为了低延迟去撞硬限频。作用范围只在**持续有流量的群**——被冷落的批次'
+          + '靠它不会被无限顺延。达到上限但被硬门槛挡住时，会记一条饥饿告警。',
+      }),
       judgeIntervalMs: n('两次判断的最小间隔', 50_000, {
         hot: 'live',
         page: 'groups',
@@ -108,9 +187,8 @@ export const PRESENCE_GROUPS: FieldGroup[] = [
         max: 600_000,
         step: 5_000,
         unit: 'ms',
-        help: '两次兴趣判断之间至少隔这么久（毫秒），这段时间里来的消息合进下一批。'
-          + '它是**省钱的闸**：默认 50 秒 ≈ 每个活跃群每小时最多一次判断，'
-          + '再密只会让模型调用变成按消息计费。',
+        help: '两次判断之间至少隔这么久（毫秒）。它是**省钱的闸**：默认 50 秒 ≈ 每个活跃群'
+          + '每小时最多一次判断，再密只会让模型调用变成按消息计费。',
       }),
       judgeMaxEntries: n('送进判断的条数上限', 15, {
         hot: 'live',
@@ -170,6 +248,54 @@ export const PRESENCE_GROUPS: FieldGroup[] = [
         unit: '次/小时',
         help: '硬额度：一个群一小时内最多自己开口几次（成功的才计数，判断失败不算）。'
           + '默认 3 次是工程建议；想让她更安静就调小它，而不是关掉接话。',
+      }),
+      replyWindowMs: n('允许引用的时间窗', 600_000, {
+        hot: 'live',
+        page: 'groups',
+        min: 30_000,
+        max: 3_600_000,
+        step: 30_000,
+        unit: 'ms',
+        help: 'reply 只能引用时间窗以内的消息（毫秒）：引一条十分钟前的消息等于答非所问。'
+          + '默认 10 分钟。超出窗口的引用会被代码拦下，这一轮就不说话。',
+      }),
+      memoryBudgetChars: n('群记忆注入预算', 800, {
+        hot: 'live',
+        page: 'groups',
+        min: 100,
+        max: 4_000,
+        step: 100,
+        unit: '字',
+        help: '一次判断里"群体记忆 + 成员记忆"总共允许多少字（中文按字符算）。'
+          + '默认 800 字（计划建议 600～800）：再多会把这一轮真正要说的话挤掉；'
+          + '超预算时先丢推测、再丢成员记忆，最后才动群体记忆。',
+      }),
+      stickers: b('允许自主发言配表情包', false, {
+        // `live`：消费方（presence-afterspeak 的 settingsOf）每次现取，改完立即生效。
+        hot: 'live',
+        page: 'groups',
+        help: '打开后，自主发言可能再配一张表情包（发不发、发哪张由 companion-expression 决定）。'
+          + '默认**关闭**：它依赖图库已授权并自带冷却与审核，未配置时会一直"没有合适的图"。'
+          + '打开前先确认图库那边真的可用，否则日志里只会多出一串 declined。',
+      }),
+      stickerMinIntervalMs: n('两张图的最小间隔', 600_000, {
+        hot: 'live',
+        page: 'groups',
+        min: 60_000,
+        max: 7_200_000,
+        step: 60_000,
+        unit: 'ms',
+        help: '两次配图之间至少隔这么久（毫秒），默认 10 分钟。与文字限频**分开**：'
+          + '文字说多了是啰嗦，图发多了是刷屏。',
+      }),
+      stickerMaxPerHour: n('每小时最多几张图', 1, {
+        hot: 'live',
+        page: 'groups',
+        min: 1,
+        max: 6,
+        step: 1,
+        unit: '张',
+        help: '每群每小时最多配几张图，默认 1。连续两张图在任何群里都像机器人。',
       }),
       replyMaxChars: n('自主发言字数上限', 70, {
         hot: 'live',
