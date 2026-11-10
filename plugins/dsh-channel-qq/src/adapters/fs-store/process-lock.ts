@@ -70,6 +70,21 @@ export class LockTimeoutError extends Error {
   }
 }
 
+/**
+ * **本运行时没有跨进程锁**（第三轮 P2）：`node:sqlite` 取不到，或锁文件打不开。
+ *
+ * 与 `LockTimeoutError` 必须分开——那是"竞争，稍后再试"，这是"这台机器永远拿不到锁"。
+ * 混成一个码会把"永久写不了"报成"竞争激烈"，运维会一直等一个不会来的自愈。
+ * 行为上两者都是 **fail-closed**：不许写入、更不许无锁写入。
+ */
+export class ProcessLockUnavailableError extends Error {
+  readonly code = 'LOCK_UNAVAILABLE'
+  constructor(readonly detail: string) {
+    super(`本运行时没有可用的跨进程写锁（${detail}）：拒绝在无锁状态下写入`)
+    this.name = 'ProcessLockUnavailableError'
+  }
+}
+
 /** `node:sqlite` 里我们真正用到的那点形状（不把实验性类型铺到调用方）。 */
 interface SqliteDb {
   exec(sql: string): void
@@ -140,8 +155,15 @@ export class SqliteProcessMutex implements ProcessMutex {
     if (this.closed) throw new Error('跨进程写锁已关闭')
     if (this.held !== null) throw new Error('同一把跨进程写锁被重复获取（上一笔没 release）')
     const mod = sqlite()
-    if (mod === null) throw new Error('本运行时没有 node:sqlite，无法提供跨进程写锁')
-    const db = openHandle(mod, this.file)
+    // **能力不可用是"永远"，不是"这次竞争激烈"**：抛专用错误，让上层报 `LOCK_UNAVAILABLE`。
+    if (mod === null) throw new ProcessLockUnavailableError('本运行时没有 node:sqlite')
+    let db: SqliteDb
+    try {
+      db = openHandle(mod, this.file)
+    } catch (error) {
+      // 打不开锁文件（权限、只读盘、目录不存在…）同样是"这台机器拿不到锁"，不是超时。
+      throw new ProcessLockUnavailableError(`打不开锁文件 ${this.file}：${error instanceof Error ? error.message : String(error)}`)
+    }
     const token = `pid-${String(process.pid)}-${randomBytes(6).toString('hex')}`
     const started = Date.now()
     for (;;) {

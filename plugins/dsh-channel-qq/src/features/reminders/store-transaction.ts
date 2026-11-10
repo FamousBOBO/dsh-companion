@@ -168,19 +168,31 @@ export async function transact<T>(
 }
 
 /**
- * 抢跨进程锁（`null` = 本次部署没有跨进程锁，退回单进程语义）。
+ * 抢跨进程锁（`null` = 调用方明确不要跨进程锁，退回单进程语义）。
  *
- * **超时必须抛 `LOCK_TIMEOUT`，而且不许降级成"没锁也写"**：抢不到锁意味着另一个进程
- * 正在改同一份文件，这时凭内存快照写盘会把对方刚写的 claim 覆盖掉——那正是要防的重复外发。
- * 故障语义是"暂时性"：状态没动、什么都没发生，下一拍再试。
+ * **两种失败必须分开报**（第三轮 P2）：
+ *   - `LOCK_TIMEOUT`：另一个进程正在写，**稍后再试会好**（不停表、也不许无锁写）；
+ *   - `LOCK_UNAVAILABLE`：本运行时没有可用的锁（`node:sqlite` 缺失 / 锁文件打不开），
+ *     **不会自愈**。混成超时会让"永远写不了"看起来像"竞争激烈"，运维会一直等下去。
+ *
+ * 两者都 **fail-closed**：绝不允许降级成"没锁也写"——凭内存快照写盘会把对方刚写的 claim
+ * 覆盖掉，那正是要防的重复外发。
  */
 async function acquireLease(ctx: TxContext, operation: string): Promise<MutexLease | null> {
   if (ctx.mutex === undefined) return null
   try {
     return await ctx.mutex.acquire(ctx.lockTimeoutMs)
   } catch (error) {
-    // 超时与其他"锁不可用"（打不开锁文件等）语义相同：这一笔**没发生**，不许无锁写入。
-    const waited = error instanceof Error ? error.message : String(error)
-    throw storeFault('LOCK_TIMEOUT', operation, `跨进程写锁不可用（${waited}）：拒绝在无锁状态下写入`, error)
+    const detail = error instanceof Error ? error.message : String(error)
+    if (isLockUnavailable(error)) {
+      throw storeFault('LOCK_UNAVAILABLE', operation, `跨进程写锁能力不可用（${detail}）：拒绝在无锁状态下写入`, error)
+    }
+    // 超时与其他暂时性"锁不可用"语义相同：这一笔**没发生**，不许无锁写入。
+    throw storeFault('LOCK_TIMEOUT', operation, `跨进程写锁不可用（${detail}）：拒绝在无锁状态下写入`, error)
   }
+}
+
+/** 判据只有一条：错误自己声明了 `LOCK_UNAVAILABLE`（适配器抛出，不靠文案匹配）。 */
+function isLockUnavailable(error: unknown): boolean {
+  return String((error as { code?: unknown }).code ?? '') === 'LOCK_UNAVAILABLE'
 }

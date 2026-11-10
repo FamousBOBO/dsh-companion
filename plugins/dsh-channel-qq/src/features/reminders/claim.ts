@@ -20,9 +20,68 @@
 import type { Reminder } from './reminder-model.js'
 import type { Edit } from './store-contract.js'
 import { edited, rejected, unchanged } from './store-contract.js'
+import { reduceMarkUnknown } from './store-admin.js'
 
 /** 认领的默认有效期：够一次 QQ 发送（含分句与限速）走完，又不至于长到让提醒空等。 */
 export const DEFAULT_CLAIM_TTL_MS = 120_000
+
+/**
+ * **认领前的快照预期**（第三轮 P1-A：写入互斥 ≠ 决策用了最新状态）。
+ *
+ * 只加锁是不够的：拿锁只保证"没有人同时在写"，不保证**调用方手里那个对象还代表同一轮**。
+ * 周期提醒发完后 `at` 被推进到下一轮、`occurrence` 换绑，而某个实例可能仍握着推进前的快照；
+ * 它进锁后若只检查"存在 / 没 fired / 没人认领"，就会把**下一轮**领走并发出去——
+ * 于是同一轮重复发一次、下一轮又被跳过一次。
+ *
+ * 所以关键决策必须带**预期值**进锁，由 reducer 在锁内（草稿来自锁内重读的磁盘）逐项比对。
+ * 任何一项不符都是 `STALE_STATE`：不写盘、不发送。
+ */
+export interface ClaimExpectation {
+  /** 调用方以为这一轮的 `at`。 */
+  readonly expectedAt: number
+  /**
+   * 调用方以为这一轮的日程绑定。**`null` 明确表示"这一轮没绑日程"**——
+   * 不是"不检查"（把缺省当成通配会让换绑前后的快照都能认领成功）。
+   */
+  readonly expectedOccurrence: { readonly id: string; readonly revision: number } | null
+}
+
+/**
+ * **过期认领的收敛预期**（第三轮 P1-B）。
+ *
+ * "我看到的 claim 已过期"与"事务执行时它仍过期"是两件事：期间持有者可能续租成功。
+ * 不带预期去清认领，会把别人**正在进行的**发送标记成 `unknown` 并放掉它的锁。
+ */
+export interface StaleClaimExpectation {
+  readonly expectedOwner: string
+  readonly expectedUntil: number
+}
+
+/** occurrence 的规范化比较：`undefined` 与 `null` 都是"没绑"，逐字段比 `id` 与 `revision`。 */
+function sameOccurrence(
+  a: Reminder['occurrence'],
+  b: Reminder['occurrence'],
+): boolean {
+  const left = a ?? null
+  const right = b ?? null
+  if (left === null || right === null) return left === right
+  return left.id === right.id && left.revision === right.revision
+}
+
+/**
+ * 快照是否仍代表同一轮（**锁内比较**：`item` 必须是事务里刚重读出来的那一行）。
+ *
+ * 判据只有 `at` 与 `occurrence`：其余字段（正文、房间、绑定的目标）改起来不影响"这一轮是第几轮"，
+ * 无必要扩大 CAS 范围——判据越宽，误拒越多，而误拒的代价是"该发的没发"。
+ */
+export function sameRound(item: Reminder, expect: ClaimExpectation): boolean {
+  return item.at === expect.expectedAt && sameOccurrence(item.occurrence, expect.expectedOccurrence)
+}
+
+/** 一行普通人能读的期望值描述（**注意 `occurrence` 也打**：只打 `at` 时分不清换绑前后）。 */
+export function describeRound(at: number, occurrence: { id: string; revision: number } | null): string {
+  return occurrence === null ? `at=${String(at)} occurrence=null` : `at=${String(at)} occurrence=${occurrence.id}@${String(occurrence.revision)}`
+}
 
 /**
  * **续租**（第二轮 P1-A）：发送比 TTL 还慢时，把到期间往后推，保持"活跃发送者"身份。
@@ -73,7 +132,8 @@ export function claimStateOf(item: Reminder | undefined, owner: string, now: num
 /**
  * **领一次**（同步 reducer，落盘交给事务）。
  *
- * 拒绝三种情况：没有这条、已经 `fired`（终态不再领）、别人正持有（`held`）。
+ * 拒绝五种情况：没有这条、已经 `fired`（终态不再领）、**快照已不是同一轮**、
+ * 别人正持有（`held`）、**还没到 `at`**。
  * **`stale` 不在这里拒绝**——过期认领由 runner 先收敛成 `unknown`（`resolveStaleClaim`），
  * 然后这条就不会再被领；在这里放行会让"结果未知"的条目被重发一遍。
  */
@@ -83,10 +143,18 @@ export function reduceClaim(
   owner: string,
   now: number,
   ttlMs = DEFAULT_CLAIM_TTL_MS,
+  expect?: ClaimExpectation,
 ): Edit<Reminder> {
   const item = draft.find((row) => row.id === id)
   if (item === undefined) return rejected('NOT_FOUND', `没有 id=${id} 的提醒`)
   if (item.fired) return rejected('NOT_APPLICABLE', '这条已经触发过，不再领取')
+  // **快照 CAS（第三轮 P1-A）**：`item` 来自锁内重读的磁盘，`expect` 来自调用方手里的旧对象。
+  // 两者不同 ⇒ 这一轮已经被别人推进/换绑了 ⇒ 我这一票作废（不写盘、不发送）。
+  if (expect !== undefined && !sameRound(item, expect)) {
+    return rejected('STALE_STATE',
+      `快照已过期（期望 ${describeRound(expect.expectedAt, expect.expectedOccurrence)}，盘上 ${describeRound(item.at, item.occurrence ?? null)}）：不认领`);
+  }
+  if (item.at > now) return rejected('STALE_STATE', `还没到点（at=${String(item.at)} > now=${String(now)}）：不许提前认领`)
   const state = claimStateOf(item, owner, now)
   if (state.kind === 'held') return rejected('STALE_STATE', `已被 ${state.by} 认领到 ${String(state.until)}`)
   if (state.kind === 'stale') return rejected('STALE_STATE', `上一次认领（${state.by}）已过期，结果未知，不重复发送`)
@@ -122,4 +190,36 @@ export function reduceReleaseClaim(draft: Reminder[], id: string, owner?: string
 /** 清认领的公共片段（`markFired` / `markUnknown` 复用，保证"一轮结束就放锁"）。 */
 export function clearClaim(item: Reminder): void {
   delete item.claim
+}
+
+/**
+ * **收敛过期认领**（第三轮 P1-B：带预期值的 CAS）。
+ *
+ * 为什么不能直接 `reduceMarkUnknown(...)`：调用方是**根据内存快照**判断"这个 claim 过期了"，
+ * 而判断与事务执行之间，持有者完全可能已经续租成功（`claim-renewal.ts` 每 TTL/3 续一次）。
+ * 不带预期去清，会把别人**正在进行的发送**标成 `unknown` 并放掉它的认领——
+ * 那正好制造一次"真发出去了却被记成不确定"，甚至下一拍被重发。
+ *
+ * 锁内必须同时成立：提醒存在、有 claim、`by` 与 `until` 都与预期一致、**且此刻确实已过期**。
+ * 任何一项不符 ⇒ `STALE_STATE`（业务拒绝，盘上一个字都不改）。`now` 必须是**事务内取的时间**。
+ */
+export function reduceResolveStaleClaim(
+  draft: Reminder[],
+  id: string,
+  expect: StaleClaimExpectation,
+  now: number,
+): Edit<Reminder> {
+  const item = draft.find((row) => row.id === id)
+  if (item === undefined) return rejected('NOT_FOUND', `没有 id=${id} 的提醒`)
+  const claim = item.claim ?? null
+  if (claim === null) return rejected('STALE_STATE', '盘上已经没有认领了（对方已收尾）：不必收敛')
+  if (claim.by !== expect.expectedOwner) {
+    return rejected('STALE_STATE', `认领已经易主（期望 ${expect.expectedOwner}，盘上 ${claim.by}）：不许清别人的认领`)
+  }
+  if (claim.until !== expect.expectedUntil) {
+    return rejected('STALE_STATE',
+      `认领已被续租（期望到 ${String(expect.expectedUntil)}，盘上到 ${String(claim.until)}）：对方还在发，不许收敛`)
+  }
+  if (claim.until > now) return rejected('STALE_STATE', `认领还没过期（到 ${String(claim.until)} > now=${String(now)}）：不许收敛`)
+  return reduceMarkUnknown(draft, id, 'claim-expired:unknown', now)
 }

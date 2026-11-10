@@ -377,15 +377,14 @@ attempt=1 outcome=sent
    换句话说：5 秒是**调度精度**指标，不是**用户感知精度**指标。事故复盘里的桶 D（1,071 ms）
    就是这一段在本机的实测值，可作参考基线。
 4. **单进程内多个 runner 靠 `#seq` 区分，跨进程靠 `pid`**。所以：
-   - 同进程装两次插件 ⇒ `pid-1234#1` / `pid-1234#2`，互不相认，只会有一个领到；
+   - 同进程装两次插件 ⇒ `pid-1234#1#<uuid>` / `pid-1234#2#<uuid>`，互不相认，只会有一个领到；
    - 两个进程 ⇒ pid 不同，正常；
-   - **边界（第二轮更新）**：若两个进程落在同一个 pid（不同 namespace 的容器共享 pid 号、
-     或 pid 被复用），认领者标识会撞。第二轮之后**这一条的后果变小但没消失**：写互斥已经
-     由跨进程锁保证（不会两个进程同时改同一行），但"我看到的 claim 是不是我自己写的"
-     仍然靠 `by` 里那个 pid——撞了就会把对方的认领判成 `mine`（幂等），于是**两边都发**。
-     所以：**同一数据目录不要跑两个 pid 相同的写进程**（容器共享 pid namespace 是唯一现实
-     场景）。要彻底消除，得给认领者一个随机 token（而不是 pid），本轮没做——它属于"平台
-     身份"问题，不是提醒子系统能独立解决的。
+   - **边界（第三轮更新）**：第二轮曾担心"两个进程落在同一个 pid（容器共享 pid namespace）时
+     认领者标识会撞"。**这一条已经修掉**：owner 现在是 `pid-<pid>#<seq>#<uuid>`，唯一性由随机
+     令牌承担，pid 与序号只留作诊断（`claimOwnerOf()` / `shortOwner()`，见 §12.5，C12 钉住
+     "同 pid 两次创建 runner 得到不同 owner、100 个 owner 无重复"）。
+     **剩下的边界**：令牌本身必须**每个 runner 实例只生成一次**——每次 `claim()` 重新生成会让
+     续租与释放都找不到自己的租约（已在 `runner.ts` 的字段初始化里定死）。
 5. **`quietHours` 在生产是 `[]`**（`companion.patch.yml:237`）。本事故**与免打扰无关**：
    全文 0 次 `quiet-hours`。反过来说，`CONTACT_DEFAULTS` 里默认是 `23:00–08:00`
    （`config/sections/contact.ts:31`）——**若用的是默认值，23:40 这条提醒本来会被免打扰拦住**，
@@ -500,6 +499,12 @@ attempt=1 outcome=sent
 | ⑦ 进程崩溃后有明确恢复策略；不许凭 TTL 删活锁 | 崩溃 = 内核释放文件锁。实测：`SIGKILL` 掉持锁进程后，另一个进程**1 ms** 就拿到了（`test/reminders-multiprocess.test.ts` M5 把它固化成用例）。这里**没有 TTL 可以误删** |
 | ⑧ 释放时校验 owner/token，禁止释放别人的锁 | 见 §10.4：跨进程那一半由"只有持有该打开事务的进程能对它 `ROLLBACK`"保证；进程内那一半由 lease 的 `token` 只能 release 一次保证——结构性不可能替别人解锁 |
 | ⑨ Windows 与 Linux 都验证 | Windows 为本机实机（`npm test` 全绿）；Linux 由 CI 跑同一套测试。锁用的是 SQLite 的跨平台文件锁，不是平台特化的 `flock`/`LockFileEx` 直调 |
+| ⑩ **写入互斥不等于决策用了最新状态** | 第二轮只解决了前半句。第三轮补 `expectedAt` / `expectedOccurrence` 快照 CAS、认领后二次闸门、过期收敛 CAS 与全局唯一 owner——见 **§12** |
+
+> **第三轮的两处修订**（读 §10 时请连着一看）：
+> ① 第 ⑥ 行的"超时"现在分成两档——`LOCK_TIMEOUT`（竞争，稍后再试）与
+> `LOCK_UNAVAILABLE`（运行时没有锁能力，**不自愈**、同样 fail-closed），见 §12.6；
+> ② 第 ⑧ 行的"认领层 owner"从 `pid-<pid>#<seq>` 换成 `pid-<pid>#<seq>#<uuid>`，见 §12.5。
 
 ### 10.3 为什么锁里**不写任何数据**、释放用 `ROLLBACK`
 
@@ -533,7 +538,11 @@ attempt=1 outcome=sent
 | 发送前 claim 已成功持久化 | `dispatchOne()` 的顺序：`claimForDispatch()` → `send()`。M2 里两个进程的发送次数之和 = 1 |
 | 认领失败绝不调用 QQ 发送 | `dispatchOne()` 的 `catch` 直接 `return true`（本拍不发）；M4：认领写盘失败 ⇒ 发送次数 **0** |
 | 同一提醒/同一 occurrence 只有一个有效发送者 | 锁 + 锁内重读基线 ⇒ 后到者的 reducer 看到 `claim=<前者>` ⇒ `STALE_STATE`。M1：只有一个进程认领成功 |
-| claim 过期**不自动重发**，按 `unknown` 收敛 | `claimStateOf()` 的 `stale` 分支 → `resolveStaleClaim()` → `reduceMarkUnknown(..., 'claim-expired:unknown')`。M8：发送 0 次、盘上 `unknownReason=claim-expired:unknown` |
+| **旧快照不得对已经变化的轮次做决策** | 认领带 `expectedAt` / `expectedOccurrence` 在锁内 CAS；不符 ⇒ `STALE_STATE`、盘上不动。C1/C2/C3/C5 |
+| **投递只用锁内最新对象** | `ClaimOutcome.reminder` 是 reducer 返回的那一行；`send`/`recordSent`/`markUnknown`/日志全部用它。C4/C5 |
+| **认领后二次闸门** | 拿到最新对象后再 `allow()` 一遍；不通过 ⇒ 用当前 owner 放回、本拍不发、放回失败记日志。C6/C7 |
+| claim 过期**不自动重发**，按 `unknown` 收敛 | `claimStateOf()` 的 `stale` 分支 → `resolveStaleClaim(…, expectStale)` → `reduceResolveStaleClaim`。M8/C9 |
+| **过期收敛带 CAS（by/until/仍过期）** | 对方续租或已收尾 ⇒ `STALE_STATE`、盘上不动。C8/C10/C11 |
 | `unknown` 不得被普通 tick 自动恢复 | `dueOf()` 只看 `!fired`；`reduceMarkUnknown` 对一次性提醒置 `fired=true`、对周期提醒推进 `at`。普通 tick 走不到它 |
 | 只有人工确认"确实没发送"才重新排队 | `store.resolve(id, 'failed')`（后台 `resolve` action）→ 清 `unknownAt` + `fired=false` + 删 `claim` |
 | 网络发送不在全局文件锁内等待 | 锁的持有范围只有"读 → reducer → 写盘"这一小段（毫秒级）；`send()` 在 `transact()` **返回之后**才调用（M7：发送期间第二进程认领被拒，但第一进程的发送不受锁影响） |
@@ -577,6 +586,10 @@ TTL 的用途是"崩了之后别人能判定这一轮作废"，**不是**给发�
 
 > 第一轮的 T4（同一进程两个 runner）**保留为同进程回归**，但**不再**作为跨进程证明——
 > 同一进程里的两个 Store 共享 `OWNERS`、串行队列与锁实例，它们"互斥"只能证明进程内互斥。
+>
+> **第三轮补充**：`M1`–`M8` 只证明"不能同时写"。快照 CAS / 二次闸门 / 收敛 CAS / 身份唯一 /
+> fail-closed 的 14 条证明在 `test/reminders-claim-cas.test.ts`（C1–C14，见 §12.7），
+> 两套共用 `test/process-peer.ts` 的 fork/barrier 骨架。
 
 
 
@@ -690,6 +703,122 @@ TTL 的用途是"崩了之后别人能判定这一轮作废"，**不是**给发�
 | S10 | 退避期间 `nudge`（新建提醒）：立刻重排，新提醒仍被处理 |
 | S11 | `dispose()` 之后：假时钟里 0 个定时器、tick 数不再增长 |
 | S12 | 10 条同时到期：每批 ≤ 3 条、相邻批次首条间隔 ≥ 1s、10 条全部 `fired`、有"按每拍上限"日志 |
+
+
+## 12. 第三轮：快照 CAS、身份唯一性、fail-closed
+
+第二轮的结论是"两个进程不能同时写同一份文件"。第三轮补的是**另一半**：
+
+> 写入互斥 ≠ 业务决策用了最新状态。
+
+拿锁只保证"没有人同时在写"，不保证**调用方手里那个对象还代表同一轮**。周期提醒发完后
+`at` 被推进到下一轮、`occurrence` 换绑；某个实例仍握着推进前的快照，它进锁后若只检查
+"存在 / 没 fired / 没人认领"，就会把**下一轮**提前领走并发出去——同一轮重复发一次、
+下一轮又被跳过一次。锁一点没坏，判断错了。
+
+### 12.1 P1-A：认领带快照 CAS
+
+`store.claim(id, owner, now, ttl, expect)`，`expect = { expectedAt, expectedOccurrence }`。
+`reduceClaim()` 在**锁内**（草稿来自锁内重读的磁盘）逐项比对：
+
+| 检查 | 为什么必须有 |
+|---|---|
+| 提醒仍存在 | 可能刚被删/被淘汰 |
+| `item.at === expectedAt` | 周期提醒推进后就不是同一轮了 |
+| `occurrence` **完整**比较 `id` 与 `revision` | 只比 id 会把"日程改期"当成同一轮（换绑后必然发错时间） |
+| **`null` 也是值** | 把"未传"当"不检查"等于给旧快照开一条后门；解绑/新绑必须算不同轮 |
+| 尚未 `fired` | 终态不再领（原有语义） |
+| 没有别人**有效**的 claim | 原有语义 |
+| `item.at <= now` | **不许提前认领**；否则"到点判定"形同虚设 |
+
+任何一项不符 ⇒ `STALE_STATE`：**不写盘、不发送、`attempts` 也不 +1**（认领没发生）。
+
+范围**刻意不扩大**：只比 `at` 与 `occurrence`。正文、房间、目标改了不影响"这是第几轮"，
+把判据放宽会让"该发的没发"——误拒的代价比误放更高。
+
+### 12.2 认领成功后只能用锁内最新对象
+
+`ClaimOutcome` 多一个 `reminder: Reminder | null`（= reducer 返回的那一行）。`dispatchOne()`
+从认领那一句之后**改用 `claim.reminder`**：`send`、`recordSent`、`markUnknown`、结构化日志的
+`scheduledAt`、二次闸门全部用它，绝不再回退到拍头快照。
+
+两处容易写错、都用测试钉住了：
+- 日志 `attempt`：认领已经由 `reduceClaim` 把 `attempts` 加过 1，若再手工 +1 就每次多算一次；
+  演练下没认领，这时才自己 +1（C4/C5 覆盖）；
+- 周期提醒：`at` 推进与 `occurrence` 换绑必须是**同一次写盘**（既有约定），而"推进一次"
+  的正确性依赖 CAS——两个进程同时投递时只能推进一轮（C4 断言 `at` 只前进了一天）。
+
+### 12.3 认领之后的二次闸门
+
+认领前的 `allow()` 用的是拍头快照。拿到锁内最新对象后**再看一遍**：
+
+1. 认领前保留快速检查（不浪费一次写盘）；
+2. 认领成功后对最新对象再 `allow()`；
+3. 不允许 ⇒ 用**当前 owner** `releaseClaim()`，然后本拍跳过；
+4. 放回失败**必须记日志**（"没能放回"），不能假定它成功了；
+5. 发送前绝不回退到旧对象。
+
+### 12.4 P1-B：过期认领的收敛也要 CAS
+
+`resolveStaleClaim(id, now, expectStale)`，`expectStale = { expectedOwner, expectedUntil }`。
+锁内必须同时成立：提醒存在、claim 存在、`by` 与 `until` 都与预期一致、**且此刻确实过期**。
+
+没有它会发生什么：B 的旧快照显示"过期"，A 在发送过程中续租成功（`claim-renewal.ts` 每
+TTL/3 续一次），B 进事务后不重新比对就把 A **正在进行的**发送标成 `unknown` 并放掉它的锁——
+一条真发出去的消息被记成"不确定"，甚至下一拍被重发。
+
+四种竞争结果的落点：A 已续租 ⇒ B 收敛失败（C8）；A 已收尾（claim 没了）⇒ B 收敛失败；
+原样过期 ⇒ 允许收敛成 `unknown`（C9）；收敛写盘失败 ⇒ fail-closed，既不当作已收敛也不重发（C11）。
+
+### 12.5 P1-C：owner 改为全局唯一令牌
+
+原来是 `pid-<pid>#<seq>`。**pid 只在同一个 PID namespace 内唯一**：容器/沙箱共享同一份
+提醒文件时两边都可能是 `pid-1#1`，标识撞车 ⇒ `claimStateOf()` 把对方的认领判成 `mine`
+⇒ 两边都发。
+
+现在是 `pid-<pid>#<seq>#<uuid>`：pid 与序号只留作诊断，唯一性由随机令牌承担。
+两条纪律：**每个 runner 实例只生成一次**（每次 `claim()` 重新生成会让续租与释放都找不到
+自己的租约）；**令牌不进普通日志**——`shortOwner()` 只留 `pid-N#seq`（日志会被贴进 issue）。
+
+### 12.6 P2：没有跨进程锁 ⇒ fail-closed，而且是 `LOCK_UNAVAILABLE`
+
+第二轮在 `node:sqlite` 缺失时会退回 `in-process-only`（可以写，只是没有跨进程保护）。那等于
+**悄悄把"防重复外发"关掉**，比直接失败更糟。现在：
+
+| 情形 | 故障码 | 行为 |
+|---|---|---|
+| 另一个进程正在写 | `LOCK_TIMEOUT` | 本笔没发生，下一拍再试（**暂时性**，不停表） |
+| 运行时没有 `node:sqlite` / 锁文件打不开 | `LOCK_UNAVAILABLE` | **拒绝写入**（**不自愈**的装配故障） |
+| 调用方**显式**传 `mutex: null` | — | `in-process-only`（测试替身/明确单进程路径） |
+
+两个码必须分开：混成一个会把"永远写不了"报成"竞争激烈"，运维会一直等一个不会来的自愈。
+`writeModel()` 现在是三档：`cross-process-lock` / `unavailable` / `in-process-only`，
+**生产构造永远不会自动落到第三档**。启动时就记一行说明"本运行时没有跨进程锁，写入将被拒绝"。
+
+### 12.7 测试（`test/reminders-claim-cas.test.ts`，14 个用例，全部真子进程）
+
+骨架抽到 `test/process-peer.ts`（与 `reminders-multiprocess.test.ts` 共用一套 fork/barrier/
+种子/读盘）——子进程协议只该有一处定义，否则一边改了另一边会悄悄跑偏。
+
+| 用例 | 钉住的东西 |
+|---|---|
+| C1 | 周期提醒已推进：旧快照认领被 `STALE_STATE` 拒，盘上 `at`/`attempts`/`claim` 都不变 |
+| C2 | 换绑：revision 不同**或**一边是 `null` 都必须拒；完全一致时必须放行 |
+| C3 | 还没到点：正确快照也不许提前认领 |
+| C4 | 两进程同时投递同一条周期提醒：只发一次，且 `at` **只推进一轮** |
+| C5 | 过期快照 ⇒ 不投递；快照一致 ⇒ 按认领后那一轮记账 |
+| C6 | 认领期间闸门关掉：二次 `allow` 拦住、放回认领、一次都不发、`fired` 不写 |
+| C7 | 放回写盘失败：日志里必须留下"没能放回" |
+| C8 | A 续租后 B 的收敛被拒（`STALE_STATE`），盘上认领仍归 A 且 `until` 在未来 |
+| C9 | 原样过期的认领：允许收敛成 `unknown`、清 claim、一次性提醒转终态 |
+| C10 | claim 已消失 / 已易主：收敛一律失败，状态不动 |
+| C11 | 收敛写盘失败：一次都不发、不假装收敛、必须留痕 |
+| C12 | 同 pid 的两个 runner owner 不同；100 个 owner 无重复；脱敏串不含令牌 |
+| C13 | `LOCK_UNAVAILABLE` 的锁替身 ⇒ 写入报 `LOCK_UNAVAILABLE`，盘上逐字节不变 |
+| C14 | `node:sqlite` 在但锁文件写不出来 ⇒ 同样 `LOCK_UNAVAILABLE` + fail-closed |
+
+`reminders-multiprocess.test.ts` 同时改成复用 `process-peer.ts`，并给 `dispatch` 类用例补上
+`expectAt`（生产路径一律带预期值——测试不传就测不到 CAS）。
 
 ---
 

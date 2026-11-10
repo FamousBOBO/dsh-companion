@@ -171,12 +171,20 @@ npm run verify     # 类型 + 测试 + 分层 + 体积，全绿再继续
 ### 投递前先落盘"认领"（防重复外发）
 
 每次真发之前，runner 会先在同一份 `reminders.json` 上**落盘领一次**（`claim = {by, at, until}`，
-TTL 120 秒，`by` 是 `pid-<pid>#<seq>`，见 `features/reminders/claim.ts`）。四个后果：
+TTL 120 秒，`by` 是 `pid-<pid>#<seq>#<uuid>`，见 `features/reminders/claim.ts`）。六个后果：
 
 - **多实例 / 多拍只发一次**：第二个扫描者拿到业务拒绝 `STALE_STATE`，本拍跳过（以前只有进程内一个
   `running` 布尔量，跨进程毫无保护）；
+- **旧快照不许认领**（第三轮）：认领带 `expectedAt` / `expectedOccurrence`，锁内重读的盘上状态
+  若不是同一轮（`at` 变了、`occurrence` 的 `id`/`revision` 变了、解绑或新绑）⇒ `STALE_STATE`，
+  **不写盘、不发送、`attempts` 也不 +1**。没这条的话，周期提醒发完推进 `at` 之后，握着旧快照的
+  实例会把**下一轮**提前发出去（同一轮重发一次、下一轮被跳过）。还没到 `at` 同样不许领；
+- **认领成功只用锁内最新对象**：`ClaimOutcome.reminder` 是锁内那一行，`send` / 记账 / 日志
+  `scheduledAt` 全部用它。认领前后各过一次 `allow()`；二次不过就用当前 owner 放回并跳过，
+  **放回失败会记日志**（不假定成功）；
 - **认领过期 = 结果未知** ⇒ 收敛成 `unknown`（`claim-expired:unknown`），**不重发**（盘上分不清
-  "发之前崩"还是"发之后崩"，重发就是重复外发）；
+  "发之前崩"还是"发之后崩"，重发就是重复外发）。收敛也带 CAS（`expectedOwner` + `expectedUntil`）：
+  对方在这期间**续租成功**或已收尾 ⇒ 拒绝收敛、盘上不动（否则会把正在进行的发送记成"不确定"）；
 - `skipped` / `dry-run` 之后**立刻放回**，否则周期提醒的下一轮会被自己的旧认领挡住。
   **只放自己的**：`releaseClaim(id, owner)` 在 `claim.by !== owner` 时回 `STALE_STATE`（替别人
   放回等于让对方的下一次扫描重发一遍，而对方可能正在发）；
@@ -186,10 +194,14 @@ TTL 120 秒，`by` 是 `pid-<pid>#<seq>`，见 `features/reminders/claim.ts`）�
 **认领靠什么互斥**（第二轮补的）：不是进程内队列，而是 `node:sqlite` 的 `BEGIN IMMEDIATE`
 （内核级文件锁，锁文件 `<reminders.json>.lock.db`）。锁套在**事务层**，所以所有读-改-写都受
 同一把锁约束，并且事务基线是**锁内重读的磁盘内容**——两个独立进程不再可能各自读到
-`claim=null` 再各自发送。`node:sqlite` 不可用时 `store.writeModel()` 会如实报
-`in-process-only`（不假装支持多进程）。语义是 **at-most-once 倾向**，不是 exactly-once
-（没有平台幂等键）。设计与证据见
-[docs/reminders-dispatch-timing.md](docs/reminders-dispatch-timing.md) §10。
+`claim=null` 再各自发送。
+
+**锁不可用时是 fail-closed**（第三轮）：`node:sqlite` 缺失或锁文件打不开 ⇒ 写入一律抛
+`LOCK_UNAVAILABLE`（**不是** `LOCK_TIMEOUT`：那是"竞争，稍后再试"，这是"这台机器永远拿不到锁"），
+`store.writeModel()` 如实报 `unavailable` / `cross-process-lock`，**不会静默退化成无锁写入**。
+`in-process-only` 只出现在调用方**显式**传 `mutex: null` 的测试替身上。语义是 **at-most-once
+倾向**，不是 exactly-once（没有平台幂等键）。设计与证据见
+[docs/reminders-dispatch-timing.md](docs/reminders-dispatch-timing.md) §10 / §12。
 
 **结构化日志**（`grep 'reminders: dispatch'`，**不含正文**——日志会被贴进 issue）：
 
@@ -293,9 +305,11 @@ reminders: dispatch reminderId=r_xxx scheduledAt=1794238800000 observedAt=179424
    **2026-11-10 补充**：投递前的**认领**（`claim`）在 dryRun 下**整笔不发生**（`store.claim()` 自己就挡，
    不依赖调用方记得传探针——`T9` 断言演练多拍之后盘上逐字节不变）。代价：**演练不验并发**——
    "两个实例同时扫会不会重复发"只能在非演练下复现。
-   **第二轮补充**：跨进程并发现在有**真子进程**覆盖（`test/reminders-multiprocess.test.ts`，8 个用例），
-   但那些用例都跑在 `dryRun=false` 上；"演练中崩溃重启仍零写入"这一条依旧只由"整条入口零写入"的
-   设计保证，没有崩溃注入测试。
+   **第二轮补充**：跨进程并发现在有**真子进程**覆盖（`test/reminders-multiprocess.test.ts`，8 个用例，
+   骨架在 `test/process-peer.ts`），但那些用例都跑在 `dryRun=false` 上；"演练中崩溃重启仍零写入"
+   这一条依旧只由"整条入口零写入"的设计保证，没有崩溃注入测试。
+   **第三轮补充**：`test/reminders-claim-cas.test.ts`（14 个真子进程用例）同样跑在 `dryRun=false`
+   上；快照 CAS 在演练下**不会发生**（演练压根不认领），所以"演练 + 并发决策"这一组合仍然未覆盖。
 6. **周期提醒与一次性提醒的优先级**：每拍 3 条的上限**只对一次性提醒计数**，周期提醒永远进本拍
    （否则一条 daily 会把一次性提醒饿死）。反向的"上百条周期提醒同时到点时一次性提醒会不会被拖"，
    已有 `R5-6`（50 daily + 5 一次性 ⇒ 3 拍内一次性全部发出）覆盖到这个量级，**更大规模未测**。
@@ -312,6 +326,14 @@ reminders: dispatch reminderId=r_xxx scheduledAt=1794238800000 observedAt=179424
    从零开始——那只是"启动第一拍立刻检查一次"，不影响正确性。
    诊断面读 `runner.backoff = { overduePasses, gapMs }`：`overduePasses` 在涨就是"一直没被消费"。
    设计见 [docs/reminders-dispatch-timing.md](docs/reminders-dispatch-timing.md) §11。
+9. **认领者令牌进不了日志，只能看脱敏串**（第三轮新增）：`claim.by` 现在是
+   `pid-<pid>#<seq>#<uuid>`，日志里只打 `pid-N#seq`（`shortOwner()`）。排障时**不能**靠日志
+   复原出完整 owner——那是"能不能续租/释放/收敛"的凭据，日志会被整段贴进 issue。
+   好处是容器共享 PID namespace 时也不会撞（同 pid 两个 runner 必得不同 owner，C12 钉住）。
+10. **快照 CAS 判据只有 `at` 与 `occurrence`**（第三轮新增，别读大）：正文/房间/目标/重复方式
+   改了**不影响** CAS——它们不改变"这是第几轮"。反过来，如果有人将来加一种"能改变轮次语义"
+   的字段（比如独立的 `roundIndex`），必须同时把它加进 `ClaimExpectation`，否则 CAS 会出现
+   盲区。这是**约定**，不是编译器能挡住的。
 
 **已知未加压范围**：`contact-*`（203 条）没有进"12 个 CPU 忙循环 + `--test-concurrency=8`"的加压矩阵
 （它与本批改动交集只有 share-port 与出站边界，上一轮压过）；本批加压覆盖的是 `round4-qq`、

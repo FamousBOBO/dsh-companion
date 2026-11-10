@@ -72,6 +72,45 @@
     日志条数上限，含 dryRun 5 分钟唤醒 ≤30 次、通道恢复后一个心跳内补发、dispose 后 tick 归零）。
   - 设计与取舍见 [docs/reminders-dispatch-timing.md](docs/reminders-dispatch-timing.md) §11。
 
+- **写入互斥 ≠ 决策用了最新状态（第三轮 P1-A / P1-B / P1-C / P2）**：第二轮的跨进程锁只保证
+  "两个进程不能同时写"，**不保证调用方手里的对象还代表同一轮**。周期提醒发完后 `at` 被推进、
+  `occurrence` 换绑，而某个实例仍握着推进前的快照——它进锁后只要"存在/没 fired/没人认领"
+  就能认领成功，于是**同一轮重复发一次、下一轮被跳过一次**。四处改动：
+  - **认领带快照 CAS**：`store.claim(id, owner, now, ttl, { expectedAt, expectedOccurrence })`。
+    `reduceClaim()` 在**锁内**（草稿来自锁内重读的磁盘）比对 `at` 与 `occurrence`（`id` + `revision`
+    完整比、`null` 也算值），并新增"**还没到 `at` 不许提前认领**"。任何不符 ⇒ `STALE_STATE`，
+    **不写盘、不发送、`attempts` 也不 +1**。判据刻意不扩大到正文/房间/目标：误拒的代价
+    （该发的没发）比误放更高。
+  - **认领成功只能用锁内最新对象**：`ClaimOutcome.reminder` 是 reducer 返回的那一行；
+    `dispatchOne()` 从认领之后改用 `claim.reminder`，`send` / `recordSent` / `markUnknown` /
+    结构化日志的 `scheduledAt` / 二次闸门全部用它。顺带修正 `attempt` 的口径（非演练下
+    `reduceClaim` 已 +1，不再重复加）。
+  - **认领后二次闸门**：认领前保留快速 `allow()`；认领成功后对最新对象**再看一遍**，
+    不允许就用当前 owner `releaseClaim()` 并跳过本拍；**放回失败必须记日志**（"没能放回"），
+    不许假定成功。
+  - **过期收敛带 CAS**：`resolveStaleClaim(id, now, { expectedOwner, expectedUntil })`。锁内必须
+    同时满足"claim 仍是原 owner、原 until、且此刻确实过期"。否则 A 正在续租（`TTL/3` 续一次）
+    时，B 拿着旧快照就把 A **正在进行的**发送标成 `unknown` 并放掉它的锁——一条真发出去的
+    消息被记成"不确定"，甚至下一拍重发。
+  - **owner 全局唯一**（P1-C）：`pid-<pid>#<seq>` 只在同一个 PID namespace 内唯一，容器/沙箱
+    共享提醒文件时两边都可能是 `pid-1#1`，撞了就会把对方的认领判成 `mine` ⇒ 两边都发。
+    现在是 `pid-<pid>#<seq>#<uuid>`；pid 与序号只留作诊断，令牌**不进普通日志**
+    （`shortOwner()` 只留 `pid-N#seq`）。令牌**每个 runner 实例只生成一次**——每次重新生成
+    会让续租与释放都找不到自己的租约。
+  - **fail-closed + 两个故障码分开**（P2）：`LOCK_TIMEOUT` = 竞争（暂时性、稍后再试）；
+    新增 `LOCK_UNAVAILABLE` = 运行时**根本没有**跨进程锁（`node:sqlite` 缺失 / 锁文件打不开，
+    **不自愈**）。混成一个会把"永远写不了"报成"竞争激烈"。`writeModel()` 三档：
+    `cross-process-lock` / `unavailable` / `in-process-only`，**生产构造不会自动落到第三档**
+    （只有调用方显式传 `mutex: null` 才是它）；`unavailable` 时**所有写入一律拒绝**，启动即记一行说明。
+  - 顺带的结构整理（守 400 行上限）：`diffOf` → `store-recovery.ts`；`load()` / `clearReadLock()`
+    的流程 → `store-boot.ts`（`StoreIo` 边界，行为等价）。
+  - 证据：`test/reminders-claim-cas.test.ts`（14 个**真子进程**用例 C1–C14：旧快照被拒、
+    revision 必须完整比、未到点不许领、两进程投递周期提醒只推进一轮、二次闸门、放回失败留痕、
+    续租 vs 收敛、原样过期可收敛、易主/消失不许收敛、收敛写盘失败 fail-closed、同 pid owner
+    不同 / 100 个无重复、`LOCK_UNAVAILABLE` 两种来源）。fork/barrier 骨架抽到
+    `test/process-peer.ts`，与 `reminders-multiprocess.test.ts` 共用。
+  - 设计与取舍见 [docs/reminders-dispatch-timing.md](docs/reminders-dispatch-timing.md) §12。
+
 ### 新增
 
 - **SnowLuma 能力面接入（审计 20261025_snowluma-capability-audit.md 落地）**：

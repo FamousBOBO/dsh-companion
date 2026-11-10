@@ -17,22 +17,44 @@
 
 import type { Reminder, ReminderStore } from './store.js'
 import { claimStateOf, DEFAULT_CLAIM_TTL_MS } from './claim.js'
+import type { ClaimExpectation } from './claim.js'
 import { startClaimRenewal } from './claim-renewal.js'
 import { outcomeOf, type ReminderOutcome } from './outcome.js'
 import type { Clock } from '../../ports/clock.js'
+import { randomUUID } from 'node:crypto'
 
 /**
- * 认领者标识：**必须进程内唯一**，不只是"进程唯一"。
+ * 认领者标识：**必须全局唯一**，不能只靠 pid + 进程内序号。
  *
- * 为什么加序号：同一个进程里可以有两个 runner（插件被装配两次、或测试里同时跑两个宿主）。
- * 只用 `pid` 时两者标识相同 ⇒ `claimStateOf()` 把对方的认领判成 `mine`（"我自己已经领过"），
- * 于是两边都发一次——那正是这一层要防的重复外发。pid + 序号之后，跨进程靠 pid 区分，
- * 同进程靠序号区分，两种重复都挡得住。
+ * 为什么：pid 只在**同一个 PID namespace** 内唯一。容器/沙箱共享提醒文件时，两边的 pid 完全
+ * 可能都是 1，进程内序号也都是 1 ⇒ 标识撞车 ⇒ `claimStateOf()` 把对方的认领判成 `mine`
+ * （"我自己已经领过"）⇒ **两边都发**。pid 与序号只留作诊断信息，唯一性由随机令牌承担。
+ *
+ * 纪律：
+ *   - **每个 runner 实例生成一次**（`runner.ts` 的字段初始化），续租/释放/收敛全部复用同一个它；
+ *     每次 `claim()` 重新生成会让续租与释放都找不到自己的租约。
+ *   - **不进普通日志**：随机令牌只是归属凭据，排障看 pid 与序号就够了（见 `shortOwner()`）。
  */
 let ownerSeq = 0
 export function claimOwnerOf(pid: number = process.pid): string {
   ownerSeq += 1
-  return `pid-${String(pid)}#${String(ownerSeq)}`
+  return `pid-${String(pid)}#${String(ownerSeq)}#${randomUUID()}`
+}
+
+/**
+ * 日志用的**脱敏**认领者标识：只留 `pid-N#seq`，丢掉随机令牌。
+ *
+ * 为什么不在日志里打全串：令牌是"能不能续租/释放/收敛"的凭据，日志会被整段贴进 issue。
+ */
+export function shortOwner(owner: string): string {
+  const parts = owner.split('#')
+  return parts.length >= 2 ? `${parts[0]}#${parts[1]}` : owner
+}
+
+/** 一行普通人能读的"这一轮是谁"（`at` + `occurrence` 一起打，否则分不清换绑前后）。 */
+function roundOf(item: Reminder): string {
+  const occurrence = item.occurrence ?? null
+  return (occurrence === null ? `at=${String(item.at)} occurrence=null` : `at=${String(item.at)} occurrence=${occurrence.id}@${String(occurrence.revision)}`)
 }
 
 export interface ClaimOutcome {
@@ -41,13 +63,26 @@ export interface ClaimOutcome {
   readonly claimedAt: number | null
   /** `true` = 上一次认领过期、已按 unknown 收敛（本拍不发）。 */
   readonly stale: boolean
+  /**
+   * **认领成功时，锁内最新的那一行**（第三轮 P1-A：投递链的**唯一权威对象**）。
+   *
+   * 为什么必须有它：调用方手上的 `reminder` 是**拍头的内存快照**，从它到认领之间，
+   * 别的实例可能已经把这一轮推进/换绑（周期提醒发完就会推进 `at`）。既然 reducer 用的是
+   * 锁内重读的磁盘草稿，那"发什么、记什么、日志写什么"就必须用**同一份**草稿，
+   * 否则日志里的 `scheduledAt` 与事实不是同一轮，`recordSent()` 也可能按旧 `at` 记账。
+   */
+  readonly reminder: Reminder | null
 }
 
 /**
  * **领一次**（非 dryRun 才落盘）。三种结局：
- *   - `claimed`：本拍由我们发；
- *   - `!claimed && !stale`：别人正持有（或已触发）⇒ 本拍跳过，**不是失败**；
+ *   - `claimed`：本拍由我们发；`reminder` 是**锁内最新的那一行**（必须用它继续投递）；
+ *   - `!claimed && !stale`：别人正持有 / 快照已过期 / 已触发 ⇒ 本拍跳过，**不是失败**；
  *   - `stale`：上一次认领过期 ⇒ 盘上分不清"发之前崩"还是"发之后崩" ⇒ 收敛成 `unknown`，不重发。
+ *
+ * 两处 CAS（第三轮）：
+ *   ① 认领带 **`expect`**（`at` + `occurrence`）：锁内重读的盘上状态已不是同一轮 ⇒ 拒；
+ *   ② 收敛过期认领带 **`expectStale`**（`by` + `until`）：对方在这期间续租成功 ⇒ 拒，不许清它的锁。
  *
  * `dryRun` 下**不认领**：演练承诺"整条入口零写入"（round6 D4 / round4 B2），而认领会落盘。
  * 代价是演练不验并发——已写进 `docs/reminders-dispatch-timing.md` 的"未覆盖项"。
@@ -61,36 +96,50 @@ export async function claimForDispatch(input: {
   readonly log: (line: string) => void
 }): Promise<ClaimOutcome> {
   const { store, reminder, owner, now, dryRun, log } = input
-  if (dryRun) return { claimed: true, claimedAt: null, stale: false }
+  if (dryRun) return { claimed: true, claimedAt: null, stale: false, reminder }
   // **老测试替身**（`fakeReminderStore` 之类）只实现投递用得到的那几个方法。缺 `claim()` 时
   // 退化成"进程内串行"（修复前的行为）并**说出来**：生产里的 `ReminderStore` 一定有它，
   // 所以这条只在替身上出现；静默跳过会让"多实例只发一次"看起来生效却其实没跑。
   if (typeof (store as { claim?: unknown }).claim !== 'function') {
     log(`reminders: ${reminder.id} 的 store 不支持认领（没有 claim()），退化成进程内串行：多实例并发防护不生效`)
-    return { claimed: true, claimedAt: null, stale: false }
+    return { claimed: true, claimedAt: null, stale: false, reminder }
   }
   const state = claimStateOf(reminder, owner, now)
   if (state.kind === 'stale') {
     // **不重发**：过期认领意味着"上一次可能已经发出去了"。按未知收敛，等人工确认。
+    // 收敛**必须带预期值**：这期间对方可能刚好续租成功（`claim-renewal.ts`），
+    // 无条件清会把一个正在进行的发送记成 unknown。
     try {
-      await store.resolveStaleClaim(reminder.id, now)
-      log(`reminders: ${reminder.id} 上一次认领（${state.by}，到 ${String(state.until)}）已过期，结果未知`
-        + ' → 记为 unknown，不自动重发（人工确认后再收敛）')
+      const mutation = await store.resolveStaleClaim(reminder.id, now, {
+        expectedOwner: state.by,
+        expectedUntil: state.until,
+      })
+      if (mutation.ok) {
+        log(`reminders: ${reminder.id} 上一次认领（${shortOwner(state.by)}，到 ${String(state.until)}）已过期，结果未知`
+          + ' → 记为 unknown，不自动重发（人工确认后再收敛）')
+      } else {
+        log(`reminders: ${reminder.id} 本拍不收敛过期认领：${mutation.message}（对方仍在发或已收尾，等下一拍）`)
+      }
     } catch (error) {
       log(`reminders: ${reminder.id} 的过期认领**没写进盘**（${error instanceof Error ? error.message : String(error)}）：盘上仍是旧认领，下一拍还会碰到同一个现场`)
     }
-    return { claimed: false, claimedAt: null, stale: true }
+    return { claimed: false, claimedAt: null, stale: true, reminder: null }
   }
-  const mutation = await store.claim(reminder.id, owner, now, DEFAULT_CLAIM_TTL_MS)
+  const expect: ClaimExpectation = {
+    expectedAt: reminder.at,
+    expectedOccurrence: reminder.occurrence ?? null,
+  }
+  const mutation = await store.claim(reminder.id, owner, now, DEFAULT_CLAIM_TTL_MS, expect)
   if (!mutation.ok) {
     if (mutation.code === 'STALE_STATE') {
-      log(`reminders: ${reminder.id} 本拍不发：${mutation.message}（别的实例/另一拍正在处理）`)
+      log(`reminders: 本拍不发 ${reminder.id}（${roundOf(reminder)}）：${mutation.message}`)
     } else {
       log(`reminders: ${reminder.id} 认领被拒（${mutation.code}：${mutation.message}）`)
     }
-    return { claimed: false, claimedAt: null, stale: false }
+    return { claimed: false, claimedAt: null, stale: false, reminder: null }
   }
-  return { claimed: true, claimedAt: mutation.value.claim?.at ?? now, stale: false }
+  // **锁内最新那一行**：`mutation.value` 来自 reducer 的草稿（= 锁内重读的磁盘 + 本笔改动）。
+  return { claimed: true, claimedAt: mutation.value.claim?.at ?? now, stale: false, reminder: mutation.value }
 }
 
 /** **放回认领**（`skipped` / `dry-run` 之后）：这一轮什么都没发，让下一拍还能试。 */
@@ -175,52 +224,71 @@ export interface DispatchDeps {
  *
  * 顺序是契约，别换：
  *   1. 白名单/开关（`allow`）：不允许发的**不认领、不消耗**；
- *   2. 认领（落盘一次事务）：抢不到就本拍跳过——这是"多 worker 只发一次"的全部机制；
- *   3. 真发 + 记账（发送期间续租认领，见 `claim-renewal.ts`）；
- *   4. 无论什么结论都写一行**结构化日志**（`latenessMs` 是事后复盘的唯一硬证据）。
+ *   2. 认领（一次事务 + 快照 CAS）：抢不到就本拍跳过——这是"多 worker 只发一次"的全部机制；
+ *   3. **认领成功后对锁内最新对象再做一次 `allow()`**：认领前的检查用的是拍头快照，
+ *      而 CAS 通过意味着"同一轮"，但房间/开关可以在这一瞬之间变（配置热改）；
+ *   4. 真发 + 记账（发送期间续租认领，见 `claim-renewal.ts`）；
+ *   5. 无论什么结论都写一行**结构化日志**（`latenessMs` 是事后复盘的唯一硬证据）。
+ *
+ * **从第 3 步起，唯一权威对象是 `claim.reminder`**（锁内最新那一行）：`send` / `recordSent` /
+ * `markUnknown` / 日志 `scheduledAt` 全部用它，绝不再回退到 `reminder`。
  *
  * `skipped` / `dry-run` 之后**放回认领**：这一轮什么都没发，下一拍还得能试。
  */
 export async function dispatchOne(deps: DispatchDeps, reminder: Reminder): Promise<boolean> {
   const observedAt = deps.now()
-  const latenessMs = observedAt - reminder.at
   if (!deps.allow(reminder)) {
     deps.log(`reminders: 跳过 ${reminder.id}（当前不可投递：开关关闭或房间不在白名单）`)
     return true
   }
   const dryRun = deps.dryRun()
   let claimedAt: number | null = null
+  let current = reminder
   try {
     const claim = await claimForDispatch({
       store: deps.store, reminder, owner: deps.owner, now: observedAt, dryRun, log: deps.log,
     })
     if (!claim.claimed) return true
     claimedAt = claim.claimedAt
+    // **认领成功就换对象**：从这里往下只有锁内最新那一行算数。
+    if (claim.reminder !== null) current = claim.reminder
   } catch (error) {
     // 认领本身失败（存储故障 / 抢不到跨进程锁）⇒ 本拍不发。这与"发不出去"不同：
     // 状态没动，下一拍还会试。**绝不**在没有认领的情况下发送。
     deps.log(`reminders: ${reminder.id} 认领失败（${error instanceof Error ? error.message : String(error)}）→ 本拍不投递`)
     return true
   }
+  // **二次闸门**（第三轮 P1-A）：认领前的检查用的是拍头快照；拿到锁内最新对象后必须再看一遍。
+  if (!deps.allow(current)) {
+    deps.log(`reminders: ${current.id} 认领后复查不允许投递（开关/白名单在认领期间变了）→ 放回认领、本拍不发`)
+    // 放回失败必须说出来：`releaseAfterSkip` 内部会记日志，这里不能假定它成功。
+    await releaseAfterSkip({ store: deps.store, id: current.id, owner: deps.owner, dryRun, log: deps.log })
+    return true
+  }
+  const latenessMs = observedAt - current.at
   if (latenessMs > 1000) {
     // **迟到必须自己说出来**（任务书第三阶段第 9 条：`latenessMs`）。正常按时不刷这行噪音。
-    deps.log(`reminders: ${reminder.id} 迟到 latenessMs=${String(latenessMs)}（计划 ${String(reminder.at)}，观察 ${String(observedAt)}）`)
+    deps.log(`reminders: ${current.id} 迟到 latenessMs=${String(latenessMs)}（计划 ${String(current.at)}，观察 ${String(observedAt)}）`)
   }
 
   const sendStartedAt = deps.now()
-  const sent = await sendPhase(deps, reminder, dryRun)
+  const sent = await sendPhase(deps, current, dryRun)
   const sendCompletedAt = deps.now()
 
-  const ok = await settle(deps, reminder, sent.outcome, sent.reason, dryRun)
+  const ok = await settle(deps, current, sent.outcome, sent.reason, dryRun)
   deps.log(formatDispatchLine({
-    reminderId: reminder.id,
-    scheduledAt: reminder.at,
+    reminderId: current.id,
+    scheduledAt: current.at,
     observedAt,
     latenessMs,
     claimedAt,
     sendStartedAt,
     sendCompletedAt,
-    attempt: typeof reminder.attempts === 'number' ? reminder.attempts + 1 : 1,
+    // 非演练：`current` 是认领后的锁内对象，`attempts` **已经**由 `reduceClaim` 加过 1；
+    // 演练：压根没认领，所以这里自己 +1（否则演练日志的 `attempt` 会永远是上一次的值）。
+    attempt: dryRun
+      ? (typeof current.attempts === 'number' ? current.attempts : 0) + 1
+      : (typeof current.attempts === 'number' ? current.attempts : 1),
     outcome: dryRun && sent.outcome === 'sent' ? 'dry-run' : sent.outcome,
     reason: sent.reason,
   }))
