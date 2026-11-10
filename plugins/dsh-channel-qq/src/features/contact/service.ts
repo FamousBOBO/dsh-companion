@@ -232,6 +232,9 @@ async function outboundBudget(deps: ContactServiceDeps, input: OutboundBudgetInp
     counters: snapshot.counters,
     runtime,
     room: input.room,
+    // **2026-11-10 修复**：到点提醒只判物理可行性（通道/绑定），不借主动消息的
+    // 免打扰/冷却/配额/退避。缺省 `undefined` ⇒ `proactive`，contact 自己的判据一字不变。
+    ...(input.profile === undefined ? {} : { profile: input.profile }),
   })
   const allowed = decision.verdict === 'send'
   if (!allowed) deps.log(`contact: 共享闸门拦下 ${input.sender} → ${input.room}（${decision.reason}）`)

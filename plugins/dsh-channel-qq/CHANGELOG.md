@@ -1,5 +1,116 @@
 ## [Unreleased]
 
+### 修复
+
+- **到点提醒迟到 42 分钟（2026-11-09 事故，热修）**：一条 `2026-11-09 23:40` 的提醒实际
+  `00:22:10` 才发出（`latenessMs=2530430`）。**时间不是在"到期检测"或"QQ 发送"丢的**，
+  而是丢在**共享闸门**：提醒借了主动消息的判据，被 23:21 一次普通回复留下的会话冷却
+  （`perRoomCooldownMs=3600000`）挡到 00:21:52；日志里 84 条 `被共享闸门拦下（cooldown:room）`
+  就是那 84 拍。残余 ~17.5 秒来自固定 30 秒轮询的粒度。四处改动：
+  - **判据分档**：`contact.outboundBudget()` 新增 `profile: 'proactive' | 'reminder'`。到点提醒走
+    `reminder` 档，**只判通道与绑定**（`no-channel` / `binding-invalid`）；免打扰/冷却/配额/退避不再参与。
+    提醒发成功后**照样** `contact.account()` 记账 ⇒ 主动消息侧仍把提醒算作"刚说过话"（单向）。
+    缺省档 `proactive` = 修复前逐条不变。
+  - **按到期时刻唤醒**：`runner` 的 `setInterval(30_000)` 换成"算下一条 `scheduledAt`，到点才醒"
+    （`features/reminders/schedule.ts` + `wakeup.ts`），没有未来提醒时退回心跳。误差不再有 30 秒下界。
+  - **投递前原子认领**：`claim = {by, at, until}`（TTL 120s）落盘一次事务，多实例/多拍只发一次；
+    过期认领按 `unknown`（`claim-expired:unknown`）收敛，**不重发**。`store.claim/releaseClaim/resolveStaleClaim`。
+  - **结构化投递日志**：`reminders: dispatch reminderId= scheduledAt= observedAt= latenessMs= claimedAt=
+    sendStartedAt= sendCompletedAt= attempt= outcome= reason=`，**不含正文**；`latenessMs > 1000` 时额外先打一行迟到告警。
+- **时间解析显式用 `Asia/Shanghai`**：`parseWhen` / `qq_remind_at` 的墙上时间不再走宿主隐式时区
+  （换 `TZ` 会让同一条 "YYYY-MM-DD HH:mm" 落到另一个瞬间），统一走 `core/schedule/wall-clock.ts`；
+  不存在/非法的墙上时间（夏令时跳变、分量越界）如实回 `ok:false`，绝不换一个瞬间。
+- 证据档案：[docs/reminders-dispatch-timing.md](docs/reminders-dispatch-timing.md)（逐字段时间线、
+  三段时间的归属、修复前后语义对照、未覆盖边界）。
+
+- **认领没有真正的跨进程互斥（第二轮 P1-A）**：第一轮的 `claim` 靠落盘 + 进程内串行队列，
+  两个**独立进程**可以各自读到 `claim=null`、各自写 claim、各自 rename——盘上最终只剩一个
+  claim，但**两条 QQ 消息都已经发出去了**。改成真·跨进程事务锁：
+  - **锁**：`src/adapters/fs-store/process-lock.ts`（`SqliteProcessMutex`）。用 `node:sqlite`
+    的 `BEGIN IMMEDIATE` 拿**内核级**文件锁（POSIX `fcntl` / Win32 `LockFileEx`），锁文件是
+    `<reminders.json>.lock.db`。**零新依赖**（Node 24 内置），**进程崩溃即自动释放**，
+    因此不需要 TTL，也不会"误删仍被活跃进程持有的锁"。
+  - **覆盖面是事务层而不是某个方法**：锁套在 `store-transaction.ts::transact()` 里，所以
+    `add/remove/markFired/markSent/markUnknown/resolve/expireStale/capBacklog/pruneFired/
+    claim/releaseClaim/renewClaim/...` **全部**受同一把锁约束——没有一个写方法能绕开。
+  - **事务基线改成锁内重读磁盘**（`readBaseline()`）：进程 A 认领并写盘后，进程 B 拿到锁重读
+    时看到的就是 `claim=<A>`，它的 reducer 于是回 `STALE_STATE`。这才是"同一轮只有一个发送者"。
+    读不出来/解码不合法 ⇒ `REFRESH_FAILED`，**绝不用旧内存快照硬写**。
+  - **抢不到锁不许发送**：超时抛 `LOCK_TIMEOUT`（暂时性故障，**不停表**），投递路径把它当
+    "本拍不发"。认领没成功 ⇒ `send()` 一次都不会被调用。
+  - **只放自己的认领**：`store.releaseClaim(id, owner)` 在 `claim.by !== owner` 时回 `STALE_STATE`
+    且盘上一个字都不改（替别人放回等于让对方的下一次扫描重发一遍，而对方可能正在发）。
+  - **发送期间续租**（`claim-renewal.ts`）：按 `TTL/3 = 40s` 续租，避免"我们还在发、认领先过期、
+    别的进程把它收成 unknown"导致一条真发出去的消息被记成"不确定"。续租失败只记日志，不改投递结论。
+  - **退化路径不静默**：没有 `node:sqlite` 时 `store.writeModel()` 返回 `in-process-only`，
+    并且每条跨进程测试都断言 `cross-process-lock`——悄悄退化会让测试立刻红。
+  - 语义：**at-most-once 倾向**，不宣称 exactly-once（没有平台幂等键）。
+  - 证据：`test/reminders-multiprocess.test.ts`（8 个**真子进程**用例 + IPC barrier）：同一条
+    只有一个赢家（M1）、两进程发送次数之和 **= 1**（M2）、改不同条不丢更新（M3）、认领写盘失败
+    发送 **0** 次（M4）、持锁进程被 `SIGKILL` 后另一进程立刻接手（M5）、owner 不匹配不许替人解锁
+    （M6）、活跃发送超过一拍第二进程认领被拒（M7）、认领过期收敛 `unknown` 且重启后状态正确（M8）。
+  - 设计与取舍见 [docs/reminders-dispatch-timing.md](docs/reminders-dispatch-timing.md) §10。
+
+- **到期未消费的提醒导致 1 ms 反复唤醒（第二轮 P1-B）**：第一轮对**任何**已经过去的时刻都排
+  `MIN_WAKEUP_MS = 1`，只在"这一拍一定会消费掉它"时成立。而 `dryRun`（默认就是开的）、
+  通道暂不可用、房间不在白名单、日程暂时阻断、以及积压超过 `MAX_CATCH_UP_PER_TICK`
+  都**合法地不消费**——下一拍仍看到同一条 due ⇒ 1 ms ⇒ CPU 空转 + 日志刷屏。改成
+  "首次立即检查 + 未消费后退避"：
+  - `schedule.ts` 新增 `planWakeup()`：**到期项与未来项分开算**，取更早的那个。未来项仍然
+    精确到 `scheduledAt - now`（第一轮的精度一点没退）；到期项按 `overdueGapMs()` 给间隔。
+  - `backoff.ts::WakeupBackoff`（**纯内存**，不落盘）：判据只有一条——"到期项比开拍前少了没有"。
+    少了 ⇒ 有进展 ⇒ 间隔回到 `BACKLOG_GAP_MS = 1s`；没少（dryRun / 通道断开 / 房间不许发）⇒
+    翻倍，**上限是心跳**，所以通道恢复后最多等一个心跳就又看得见。
+  - **没有把 `MIN_WAKEUP_MS` 改大**：那只是把空转频率降下来，"这一拍有没有进展"这个语义仍然
+    不存在，积压与故障会共用同一个固定间隔，两头都不对。也**没有**为了消除空转而把提醒标成 `fired`。
+  - **积压节流**：保留每拍 3 条上限，补上批次间隔（≥1s）⇒ "每批 3 条、间隔 ≥1 秒"成为可断言的
+    约定（10 条大约 3–4 秒发完）。真正的出口限速仍然只有 `out.push()` / `rateLimitMs` 一处，
+    **不重复造限速器**。
+  - **可观测性**：`runner.status().backoff = { overduePasses, gapMs }`——passes 在涨就说明
+    "到期项一直没被消费"，这一档以前是**不可观测的**空转。
+  - 证据：`test/reminders-backoff.test.ts`（12 个假时钟用例，断言 tick 次数 / 最小间隔 /
+    日志条数上限，含 dryRun 5 分钟唤醒 ≤30 次、通道恢复后一个心跳内补发、dispose 后 tick 归零）。
+  - 设计与取舍见 [docs/reminders-dispatch-timing.md](docs/reminders-dispatch-timing.md) §11。
+
+- **写入互斥 ≠ 决策用了最新状态（第三轮 P1-A / P1-B / P1-C / P2）**：第二轮的跨进程锁只保证
+  "两个进程不能同时写"，**不保证调用方手里的对象还代表同一轮**。周期提醒发完后 `at` 被推进、
+  `occurrence` 换绑，而某个实例仍握着推进前的快照——它进锁后只要"存在/没 fired/没人认领"
+  就能认领成功，于是**同一轮重复发一次、下一轮被跳过一次**。四处改动：
+  - **认领带快照 CAS**：`store.claim(id, owner, now, ttl, { expectedAt, expectedOccurrence })`。
+    `reduceClaim()` 在**锁内**（草稿来自锁内重读的磁盘）比对 `at` 与 `occurrence`（`id` + `revision`
+    完整比、`null` 也算值），并新增"**还没到 `at` 不许提前认领**"。任何不符 ⇒ `STALE_STATE`，
+    **不写盘、不发送、`attempts` 也不 +1**。判据刻意不扩大到正文/房间/目标：误拒的代价
+    （该发的没发）比误放更高。
+  - **认领成功只能用锁内最新对象**：`ClaimOutcome.reminder` 是 reducer 返回的那一行；
+    `dispatchOne()` 从认领之后改用 `claim.reminder`，`send` / `recordSent` / `markUnknown` /
+    结构化日志的 `scheduledAt` / 二次闸门全部用它。顺带修正 `attempt` 的口径（非演练下
+    `reduceClaim` 已 +1，不再重复加）。
+  - **认领后二次闸门**：认领前保留快速 `allow()`；认领成功后对最新对象**再看一遍**，
+    不允许就用当前 owner `releaseClaim()` 并跳过本拍；**放回失败必须记日志**（"没能放回"），
+    不许假定成功。
+  - **过期收敛带 CAS**：`resolveStaleClaim(id, now, { expectedOwner, expectedUntil })`。锁内必须
+    同时满足"claim 仍是原 owner、原 until、且此刻确实过期"。否则 A 正在续租（`TTL/3` 续一次）
+    时，B 拿着旧快照就把 A **正在进行的**发送标成 `unknown` 并放掉它的锁——一条真发出去的
+    消息被记成"不确定"，甚至下一拍重发。
+  - **owner 全局唯一**（P1-C）：`pid-<pid>#<seq>` 只在同一个 PID namespace 内唯一，容器/沙箱
+    共享提醒文件时两边都可能是 `pid-1#1`，撞了就会把对方的认领判成 `mine` ⇒ 两边都发。
+    现在是 `pid-<pid>#<seq>#<uuid>`；pid 与序号只留作诊断，令牌**不进普通日志**
+    （`shortOwner()` 只留 `pid-N#seq`）。令牌**每个 runner 实例只生成一次**——每次重新生成
+    会让续租与释放都找不到自己的租约。
+  - **fail-closed + 两个故障码分开**（P2）：`LOCK_TIMEOUT` = 竞争（暂时性、稍后再试）；
+    新增 `LOCK_UNAVAILABLE` = 运行时**根本没有**跨进程锁（`node:sqlite` 缺失 / 锁文件打不开，
+    **不自愈**）。混成一个会把"永远写不了"报成"竞争激烈"。`writeModel()` 三档：
+    `cross-process-lock` / `unavailable` / `in-process-only`，**生产构造不会自动落到第三档**
+    （只有调用方显式传 `mutex: null` 才是它）；`unavailable` 时**所有写入一律拒绝**，启动即记一行说明。
+  - 顺带的结构整理（守 400 行上限）：`diffOf` → `store-recovery.ts`；`load()` / `clearReadLock()`
+    的流程 → `store-boot.ts`（`StoreIo` 边界，行为等价）。
+  - 证据：`test/reminders-claim-cas.test.ts`（14 个**真子进程**用例 C1–C14：旧快照被拒、
+    revision 必须完整比、未到点不许领、两进程投递周期提醒只推进一轮、二次闸门、放回失败留痕、
+    续租 vs 收敛、原样过期可收敛、易主/消失不许收敛、收敛写盘失败 fail-closed、同 pid owner
+    不同 / 100 个无重复、`LOCK_UNAVAILABLE` 两种来源）。fork/barrier 骨架抽到
+    `test/process-peer.ts`，与 `reminders-multiprocess.test.ts` 共用。
+  - 设计与取舍见 [docs/reminders-dispatch-timing.md](docs/reminders-dispatch-timing.md) §12。
+
 ### 新增
 
 - **SnowLuma 能力面接入（审计 20261025_snowluma-capability-audit.md 落地）**：

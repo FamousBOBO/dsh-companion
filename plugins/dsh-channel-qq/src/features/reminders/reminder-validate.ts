@@ -76,6 +76,19 @@ function checkOptionalFields(row: Record<string, unknown>, path: string, issues:
   optionalNumber('sentFor'); optionalNumber('sentAt')
   optionalNumber('dispatchAbandonedAt'); optionalString('dispatchAbandonReason')
   optionalNumber('expiredAt'); optionalString('expiredReason')
+  // 2026-11-10：认领与尝试次数（老文件没有就不带 ⇒ 字节不变；有就必须合法）。
+  optionalNumber('attempts')
+
+  const claim = row.claim
+  if (claim !== undefined && claim !== null) {
+    if (typeof claim !== 'object' || Array.isArray(claim)) bad('claim', '必须是对象或 null')
+    else {
+      const cast = claim as Record<string, unknown>
+      if (typeof cast.by !== 'string' || cast.by.trim() === '') bad('claim.by', '必须是非空字符串')
+      if (!isFiniteNumber(cast.at)) bad('claim.at', '必须是有穷数')
+      if (!isFiniteNumber(cast.until)) bad('claim.until', '必须是有穷数')
+    }
+  }
 
   const occurrence = row.occurrence
   if (occurrence !== undefined && occurrence !== null) {
