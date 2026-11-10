@@ -47,6 +47,8 @@
           - id: companion-foundation
             isolate:
               companionAgenda: true
+              companionGroupPersona: true
+              companionGroupMemory: true
             name: 'file://${SUITE_ROOT}/plugins/companion-foundation/index.mjs'
 #@@begin:media
           # 媒体层（识图 / TTS / 生图）：能力默认全关，开关在 <dataDir>/home/media/config.json，

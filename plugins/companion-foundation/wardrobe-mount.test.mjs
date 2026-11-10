@@ -243,3 +243,23 @@ test('群聊会话里不注入私聊衣柜的具体衣物', async (t) => {
   assert.equal(group.ok, false);
   assert.equal(group.code, 'wardrobe-unavailable-in-group');
 });
+
+test('Prompt Engine 开关不改变衣柜事实，且事实段先于风格段', async t => {
+  const root = buildRoot(t);
+  const configFile = path.join(root, 'home/companion/prompt-engine.config.json');
+  const { hooks, internals } = mount(t, root);
+  await internals.engine.initialize();
+  t.after(() => internals.promptEngine?.dispose());
+  const before = await hooks.get('agent/pre-step')(stepEvent('session-a'), async () => decision('你好'));
+  fs.writeFileSync(configFile, JSON.stringify({ enabled: true, mode: 'active', interactionMode: 'chat' }));
+  const after = await hooks.get('agent/pre-step')(stepEvent('session-a'), async () => decision('你好'));
+  assert.equal(wardrobeSection(after)?.text, wardrobeSection(before)?.text);
+  const snapshot = after.messages.at(-1);
+  const names = snapshot.source.sections.map(section => section.name);
+  assert.ok(names.indexOf('companion-prompt-profile') > names.indexOf('companion-wardrobe'));
+  const text = snapshot.content[0].text;
+  const wardrobe = wardrobeSection(after).text;
+  const style = snapshot.source.sections.find(section => section.name === 'companion-prompt-profile').text;
+  assert.ok(text.indexOf(wardrobe) < text.indexOf(style));
+  assert.equal(text.split(wardrobe).length - 1, 1);
+});

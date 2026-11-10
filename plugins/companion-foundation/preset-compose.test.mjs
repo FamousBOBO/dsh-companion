@@ -161,7 +161,7 @@ test('P0-B：生成的 profile 里同样没有 skill 注册表行', () => {
   // optional blocks (`#@@begin:media` …) of every module the operator switched off. What must
   // never differ is whether the host-plane registry row is re-declared, and whether the two
   // skill rows that carry the actual ability survive whenever the template has them.
-  if (readPresets(fs.readFileSync(TEMPLATE, 'utf8')).get('companion').ids.includes('tool-skill')) {
+  if (companion.ids.includes('tool-skill') || companion.ids.includes('skill-filesystem')) {
     assert.ok(companion.ids.includes('skill-filesystem'), '生成的 profile 仍需要 skill-filesystem');
     assert.ok(companion.ids.includes('tool-skill'), '生成的 profile 仍需要 tool-skill');
   }

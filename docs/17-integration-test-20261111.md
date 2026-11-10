@@ -1,0 +1,31 @@
+# Integrated test environment — 2026-11-11
+
+The development branch combines main (group runtime and song updates), reminder round 2, Prompt Engine refinements, and visual identity / wardrobe v2. Original checkouts retain all local edits; source snapshots were saved before integration. Nothing was pushed or deployed to production.
+
+## Evidence
+
+- npm ci and build passed on Node 24.14.0 / npm 11.9.0.
+- Full verify with fixture persona: unit 9 passed, static 38 passed, compose 1 passed (199 loader lines). Paste-search has no tests.
+- Preset and wardrobe regressions: 13 passed. Prompt Engine activation preserves wardrobe text byte for byte and appends style after facts.
+- Group evaluation: 49 PASS, 0 FAIL, 3 existing model-dependent WARN (G06/G10/G41). Evaluator self-tests, channel layers and size checks passed.
+- Existing installed Desktop runtime 0.2.2-rc.1 was extracted into ignored test data with its runtime support payload. This local arrangement does not distribute a host.
+- Missing companionGroupPersona and companionGroupMemory isolate declarations were added after the actual host rejected session creation.
+- Authenticated homepage, memory summary and companion state returned HTTP 200; business APIs succeeded. Preset listing and companion session creation succeeded. No model prompt was submitted.
+
+## Migration
+
+Standard CLI export reported stopped source, no warnings. A dry-run preceded identity-adopt import of six files into isolated test data. Production persona id was preserved; persona text was copied after backing up the target template.
+
+Source and target quick_check passed. Aggregate table row counts matched: memory 11394, runtime 13262, health 4976. These totals are not counts of individual memories. Every source table count was preserved. Imported reminders do not replay; health consent is reset.
+
+Fresh test settings retain disabled external sends, health collection and billing. Standard migration excludes credentials, chat history, media files, private logs and desktop login caches. Additional chat/media copy awaits clarification.
+
+## Remaining
+
+- Register the environment in Desktop and inspect rendered companion UI.
+- Repeat full host capture for 14:00 and 22:40 with Prompt Engine on/off; mount-level comparison passed.
+- Finish G3 mirror-observe and isolation checks before collecting real shadow decisions. Mirror ingress is not decision-quality evidence.
+- Real model conversation, billed images and real QQ delivery remain unverified.
+- Resolve whether additional chat and media copies are needed.
+
+Private reports and launch records remain in ignored data directories.
