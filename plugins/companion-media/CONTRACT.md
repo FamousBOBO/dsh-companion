@@ -134,7 +134,7 @@
 | 工具 | v0.1 | v0.2 | 说明 |
 |---|---|---|---|
 | `companion_media_status` | 有 | **保留** | 语义相同（多返回 `states`/`catalog`） |
-| `companion_media_draw` | 有 | **保留，签名收窄** | `prompt`,`negative?`,`dryRun?`；`source/style/outfit/composeTags/context` 移除（衣柜/标签转换属旧栈） |
+| `companion_media_draw` | 有 | **保留** | `prompt`,`negative?`,`subject?`,`outfit?`,`dryRun?`；`source/style/composeTags/context` 移除（标签转换属旧栈）。**2026-11-10 变更**：`subject=companion` 时角色身份与当前服装由 `resolveCompanionVisualState()` 自动注入（见 §9 与 `companion-foundation/WARDROBE-STATE-CONTRACT.md` §6），模型不再需要也不应在 `outfit` 里自己写衣服；`outfit` 保留给显式换装，仍只接受英文。**视觉身份是强制条件**：身份缺失 / 不可读 / 无效 / 与当前 persona 不匹配 / 只有中文外观时，调用在任何 provider 请求之前被拒绝（`MEDIA_VISUAL_IDENTITY_REQUIRED`，`details.missing` 指明缺的是 `identity` 还是 `identity-english`），`outfit` 不能绕过；`subject=other` 一律 `MEDIA_BAD_INPUT`，空 `subject` 保持旧行为（不注入、不校验身份） |
 | `companion_media_speak` | 有 | **保留，签名收窄** | `text`,`provider?`；`emotion/instructions/context` 移除（改在配置里写 `instruction`） |
 | `companion_media_job` | 有 | **保留** | 语义相同 |
 | `companion_media_inspect` | 有 | **移除** | 识图只留合同，工具不得绕过开关 |
@@ -304,7 +304,7 @@
 | `inspectImage({source, path, bytes, …})` 识图 | **不存在**。调用会得到 `MEDIA_DISABLED`（合同见 `visionContract()`）。要启用必须另立阶段审批 |
 | `speak({emotion, instructions, context})` | `synthesize({text, provider?})`；表演指令写在配置 `tts.providers['breeze-tts-2'].instruction` |
 | `autoSpeak()` 自动语音 | **不存在**（主动外发不属媒体模块） |
-| `draw({source, style, outfit, composeTags, context})` | `generateImage({prompt, negative, dryRun})`；衣柜/标签转换/翻译属旧栈，已移除 |
+| `draw({source, style, outfit, composeTags, context})` | `generateImage({prompt, negative, dryRun})`；标签转换/翻译属旧栈，已移除。`subject=companion` 时身份与当前服装**自动注入**；显式 `outfit`（英文）仍可覆盖，旧调用不会失效 |
 | `warm()/releaseWeights()/runtimeStatus()` | **不存在**（不管理本地模型） |
 | `deliver()/plan()/recordDelivery()` | **不存在**：媒体层只产出 `handoff`，投递归通道 |
 | `screenInspect()` / 屏幕帧 | **不存在**（屏幕输入不在本期范围） |

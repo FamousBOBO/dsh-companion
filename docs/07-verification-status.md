@@ -267,6 +267,34 @@ P9-A（上线前兼容性与可靠性审计）见 `docs/11-group-social-runtime-
 > ③ **女声优先依赖一份手写歌手名单 + 标题字面标记**，不是查询接口。没命中就是 `unknown`，
 > 此时**不升调**（升错比不升更糟）。这份名单注定不全。
 
+### 2.8 衣柜昼夜状态化 + 视觉身份（`companion-foundation` / `companion-media`）：`offline-test` + `compose` + `host-real`
+
+分支 `feat/companion-visual-identity-wardrobe`（基线 `origin/main` @ `0a545ff`，2026-11-10）。
+实现与验收细则见 `docs/14-wardrobe-state-upgrade.md`；接口权威见
+`plugins/companion-foundation/WARDROBE-STATE-CONTRACT.md`。
+
+| 项 | 级别 | 证据 |
+|---|---|---|
+| 衣柜 v2 数据结构（`contexts` 场景条件 / 五槽位保留 / `outfits` / 带 `until` 的 `overrides`） | **`offline-test`** | `node --test "plugins/companion-foundation/*.test.mjs"` → **206 项全通过**（2026-11-10，含本轮 P0-B 新增 5 项）。新增 `wardrobe-state.test.mjs` 25 项覆盖 §11.1/§11.2 全表 |
+| v1 → v2 迁移可逆 | **`offline-test`** | `旧版 v1 衣柜可以迁移，并且可以回滚`：`.v1.bak` 与原文**逐字节相等**；回滚后仍按 v1 正确读取。迁移**不从扁平清单臆造组合**（`outfits: []` + 明确报缺失） |
+| 昼夜切换（22:20 居家 / 22:40 睡衣 / 02:00 / 06:50 / 07:10） | **`offline-test`** | 表驱动断言，墙上时钟全部注入；跨午夜 `[22:30,24:00)∪[00:00,07:00)` 与 22:29/07:00 边界都有断言 |
+| 「白天覆盖不挡睡衣」「上一轮说要出门不延续」 | **`offline-test`** | `overrideAppliesTo()` + 两个用例；`planned` 计划槽位与未来日程明确**不**作为「正在发生」的证据 |
+| 人格隔离 / 群聊隔离 / 缺睡衣明确报错 | **`offline-test`** | 别人格无文件 → `wardrobe-missing-for-persona`；`qq-group-*` → `wardrobe-unavailable-in-group`（工具与写入都拒绝）；缺场景组合 → `no-outfits-for-context` 且**不回落** |
+| Prompt 注入（静态 section 无衣物 + `agent/pre-step` 每轮一次 ≤480 字符 + 与工具同源） | **`offline-test`（宿主边界）** | `wardrobe-mount.test.mjs` 7 项：真实 `mountCompanion` + 真实 hook，断言静态 section 不含任何衣物、step 1 注入一次、step 2 不注入、快照与 `companion_wardrobe_detail` 逐字段一致 |
+| 生图身份 + 服装自动注入（深夜睡衣 / 白天常服 / 夜间外出 / other 不注入 / 缺英文拒绝） | **`offline-test`** | `node --test "plugins/companion-media/test/*.test.mjs"` → **162 项全通过**；NAI 用例断言进图 caption 同时含身份与当场服装，且不含中文、不注入别人格身份 |
+| **缺失 Visual Identity 时的生图拒绝** | **`offline-test` + `host-real`（已修）** | 闸门 `companionPictureGate()` 一处判定，`dryRun` 与真实调用同源。13 项回归（`visual-identity-gate.test.mjs`）：缺身份 / 文件损坏 / 结构无效 / 人格不匹配 / 只有中文外观 / 传了 outfit 也绕过不了 —— 逐条断言 **POST 0**；有效身份断言 **POST 1**。真实宿主复验：缺身份 `MEDIA_VISUAL_IDENTITY_REQUIRED` 且网络记录器 **0 命中**，补上身份后同一次运行里记录器 **1 命中**。见 `docs/16-p0-fixes.md` §1 |
+| **companion 预设可创建会话** | **`offline-test` + `host-real`（已修）** | 预设曾重复声明宿主 plane 的 `skill` 注册表服务，导致 `session/create` 一律失败。删掉该行后真实宿主（**不加任何修复补丁**）`session/create` 成功、一轮对话跑完，62 个工具含 `skill`、技能目录完整。5 项回归盯着「预设不得声明裸 `skill`」。见 `docs/16` §2 |
+| **媒体层数据根与 foundation 一致** | **`offline-test` + `host-real`（已修）** | `resolveDataDir()` 改为复用 `suite-paths.mjs#resolveDataRoot()`，不再有第二套实现。8 项回归覆盖优先级与「`data/media/config.json` 不得覆盖 `<dataDir>/media/config.json`」；真实宿主 `GET /api/companion-media/status` 报 `dataDir=<dev-clone>/data-dev`、`configFile=<dev-clone>/data-dev/media/config.json`，诱饵 `data/media/config.json` 未被读取。见 `docs/16` §3 |
+| 视觉身份数据 | **需操作者填写** | 仓库内没有任何原作/外貌数据（审计：`visual-identity` 关键词在五个远端分支上 **0 命中**）。`home/companion/visual-identity.json` 缺失或该 persona 无条目时，拒绝已成立的生图调用并报 `missing:["identity"]`（不再画一张没有脸的图） |
+| 零计费验收抓包 | **`offline-test`（脚本 + 证据文件）** | `node scripts/wardrobe-acceptance.mjs --root <dataRoot>` 产出 `logs/wardrobe-v2-<date>/acceptance.{json,txt}`：时钟表、五个场景可用性、`dryRun` 的 `visual` 块、源码 sha256。脚本内的 `fetchImpl` **拒绝任何网络请求**，所以它不可能产生一次计费调用 |
+| 宿主合成 | **`compose`** | `npm run verify --only=compose` → **195 个 loader 行**（2026-11-10，本机宿主 `0.2.1-rc.3`）：`preset-companion`、`companion-foundation`、`companion-media` 均在合成结果里 |
+| **真实对话里的注入正文抓包** | **`host-real`（第②阶段已完成）** | 真实宿主 `0.2.1-rc.3` + `companion-dev` + `data-dev`：`session/create`（preset `companion`）→ `session/prompt`，把 `llm-pi-ai` 指到本地记录器抓下**完整请求体**。14:00 注入 `日常常服 / daytime-everyday`（195 字符 ≈172 tokens），22:40 注入 `睡衣 / night-window`（181 字符 ≈163 tokens），与离线判定**逐字节相同**；静态段 91 字符且**不含任何衣物名**；工具查询结果与注入正文同源。记录见 `docs/15-wardrobe-host-acceptance.md` 与 `<dataDir>/logs/wardrobe-host-acceptance/record/` |
+| **真实计费生图** | **未验证** | 全部 `dryRun` / `mockFetch` / 本地记录器；按 `AGENTS.md` 规则 2，需操作者显式授权才可跑一张 |
+
+> 措辞模板：「衣柜解析、工具合同、Prompt 注入与生图注入在离线与合成层面有 206 + 162 项断言和
+> 一份零计费抓包；**真实会话的注入正文已在真实宿主上抓取并复核**（见 `docs/15`），
+> **三个 P0 缺陷（缺身份仍生图 / 预设重复注册 `skill` / 媒体层数据根）已修并在真实宿主上复验**
+> （见 `docs/16`），**真实计费生图仍未验证**。」
 
 
 **宿主与链路**

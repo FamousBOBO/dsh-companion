@@ -109,13 +109,13 @@ function registerTools(ctx, service) {
     {}, async () => service.status());
 
   register('companion_media_draw',
-    '生成一张图片（可能计费）。直接构思纯英文画面提示词。按 NovelAI 的自然语言写法使用完整英文句子，把主体放在前半段，再说明动作、人物位置、环境、镜头、光线和画风。只写可见画面。给陪伴角色画自拍或肖像时，先读 companion_wardrobe_detail(scope=today)，用 subject=companion 和 outfit 传当前衣物的英文细节；也可用 subject=companion、dryRun=true 查看当前着装。不要发明衣物或写与当前着装矛盾的描述。dryRun 不发网络请求。成功后按 handoff 交给当前会话的图片发送工具。失败不自动重试。',
+    '生成一张图片（可能计费）。直接构思纯英文画面提示词。按 NovelAI 的自然语言写法使用完整英文句子，把主体放在前半段，再说明动作、人物位置、环境、镜头、光线和画风。只写可见画面。给陪伴角色画图（自拍、肖像、生活照、表情图）时用 subject=companion，并要求自己只写场景、动作、表情、镜头、光线和画风：角色身份与当前服装（含场景与原因）由媒体层从可信数据自动注入，不要自己描述衣服，也不要再把衣柜里的衣物抄进 prompt。想确认这次会注入什么，用 subject=companion、dryRun=true 查看 visual 字段。只有当用户明确要求「换一套衣服来画」时，才用 outfit 传英文衣物短语；同时应先调 companion_outfit_set 更新衣柜，否则下次出图又回到衣柜里的衣服。dryRun 不发网络请求。成功后按 handoff 交给当前会话的图片发送工具。失败不自动重试。',
     {
-      prompt: { type: 'string', required: true, description: '直接写英文画面，例如：A young woman rests her hands on a cafe windowsill and looks out at the rain. Frame her from the waist up in soft afternoon light.' },
+      prompt: { type: 'string', required: true, description: '直接写英文画面，例如：A young woman rests her hands on a cafe windowsill and looks out at the rain. Frame her from the waist up in soft afternoon light. 只写场景、动作、表情、镜头、光线、画风；不要把衣服写进来（身份与服装由媒体层注入）。' },
       negative: { type: 'string', description: '可选英文反向提示词，例如 blurry background, distorted hands。NovelAI 会合并已配置的反向预设。' },
-      subject: { type: 'string', description: '自拍或以陪伴角色为主体时填 companion；其他图片省略。' },
-      outfit: { type: 'string', description: 'subject=companion 时填写当前衣物的英文名词短语，例如 a pale blue cardigan over a white cotton blouse, and a navy pleated skirt。包含衣物、颜色与可见细节，服务会加进实际提示词。' },
-      dryRun: { type: 'boolean', description: 'true 只校验参数（含 NAI 预设族与分辨率），不发起生成。dry-run 成功不代表已产出图片。' },
+      subject: { type: 'string', description: '自拍或以陪伴角色为主体时填 companion（会自动注入角色身份与当前服装）；其他图片省略。' },
+      outfit: { type: 'string', description: '一般留空。留空时媒体层自动注入衣柜解析出的当前服装（英文权威文本），这是默认且推荐的做法。只有用户明确要求换装（或本次就是特殊造型）时，才用英文在这里写这套衣服，并同时调用 companion_outfit_set 更新衣柜。' },
+      dryRun: { type: 'boolean', description: 'true 只校验参数（含注入的身份/服装、NAI 预设族与分辨率），不发起生成。dry-run 成功不代表已产出图片。' },
     },
     async (args, exec) => service.generateImage({
       prompt: args.prompt, negative: args.negative, subject: args.subject, outfit: args.outfit,

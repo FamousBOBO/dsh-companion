@@ -12,9 +12,13 @@ import { presetFamilyFor, resolvePreset } from './presets.mjs';
 import { previewResolution } from './resolution.mjs';
 import { imageAdapter, ttsAdapter, adapterCatalog } from './adapters/registry.mjs';
 import { visionContract, visionRefusal } from './vision.mjs';
-import { readSuiteConfig, resolvePersonaId } from './persona.mjs';
+import { resolvePersonaId, readSuiteConfig } from './persona.mjs';
 import { redactText } from './secrets.mjs';
-import { wardrobeDetail } from '../../companion-foundation/wardrobe.mjs';
+// The two authorities for a companion picture: who she is, and what she is wearing right
+// now. Both come from `companion-foundation`, keyed by the same persona id, through one
+// read-only call — the media layer never reads the wardrobe file itself, never sees another
+// persona's data, and cannot drift from what the chat prompt says.
+import { resolveCompanionVisualState } from '../../companion-foundation/visual-identity.mjs';
 
 /**
  * The media service — the single business facade.
@@ -301,6 +305,100 @@ export function createMediaService({
     return cap;
   }
 
+  /**
+   * The single companion-picture gate.
+   *
+   * A `subject=companion` picture claims to be **this** character, so both halves of that
+   * claim have to come from authoritative data: who she is (`visual-identity.json`) and what
+   * she is wearing right now (the wardrobe resolver). This gate is the one place that decides
+   * whether the claim can be honoured.
+   *
+   * Three rules follow from that, and each one is deliberate:
+   *  - **Identity is mandatory.** A missing, unreadable, invalid or wrong-persona identity
+   *    refuses the call. Drawing the clothes without the character produces a picture that
+   *    *looks* authoritative and is wrong — worse than saying "no identity configured".
+   *  - **An explicit `outfit` replaces only the clothing half.** Before this gate existed it
+   *    also bypassed the identity; that is exactly how a picture of "the companion" could end
+   *    up with no face, so the identity requirement is not waivable.
+   *  - **One rule, two renderings.** `dryRun` reports the refusal block; a real call returns it
+   *    as an error. Same predicate, so "what dryRun predicted" cannot drift from "what a real
+   *    call did".
+   *
+   * The refusal happens here — before the ledger, before the provider adapter, and therefore
+   * before any network request.
+   *
+   * @param {object} visual - `resolveCompanionVisualState()` result
+   * @param {{personaId?: string, sessionId?: string|null, outfit?: string}} [options]
+   * @returns {{ok: boolean, refusal: object|null, report: object}}
+   */
+  function companionPictureGate(visual, { personaId = '', sessionId = null, outfit = '' } = {}) {
+    const explicitOutfit = typeof outfit === 'string' ? outfit.trim() : '';
+    if (explicitOutfit && (!/[a-z]/i.test(explicitOutfit) || /[^\x20-\x7e]/u.test(explicitOutfit))) {
+      return {
+        ok: false,
+        refusal: { code: Code.BAD_INPUT, message: 'outfit 必须使用英文衣物短语', details: { missing: ['outfit'] } },
+        report: companionVisualReport(visual, { outfit: explicitOutfit }),
+      };
+    }
+
+    const missing = [];
+    // Identity first: it is the part that cannot be substituted by the model or by an
+    // argument, and it is the part the acceptance run found was never enforced.
+    if (visual.identity?.state !== 'configured') missing.push('identity');
+    else if (!visual.identityClause) missing.push('identity-english');
+    if (!explicitOutfit && !(visual.wardrobe?.clothingClause ?? '')) missing.push('wardrobe');
+
+    const report = companionVisualReport(visual, { outfit: explicitOutfit });
+    if (!missing.length) return { ok: true, refusal: null, report };
+
+    const identityMissing = missing.includes('identity') || missing.includes('identity-english');
+    const message = identityMissing
+      ? `当前无法为陪伴角色生图：${missing.includes('identity-english') ? '视觉身份缺少英文外观描述' : '没有可用的视觉身份'}（${visual.identity?.code ?? 'identity-missing'}）；先在 home/companion/visual-identity.json 里为该人格配置身份，画面提示词必须是英文`
+      : `当前无法确定角色着装（${visual.wardrobe?.code ?? 'unresolved'}）；先设置衣柜，或显式传英文 outfit`;
+
+    return {
+      ok: false,
+      refusal: {
+        code: identityMissing ? Code.VISUAL_IDENTITY_REQUIRED : Code.BAD_INPUT,
+        message,
+        details: {
+          missing,
+          personaId: personaId || visual.personaId || '',
+          sessionId: sessionId == null ? null : String(sessionId),
+          identity: {
+            state: visual.identity?.state ?? 'not-configured',
+            code: visual.identity?.code ?? 'identity-missing',
+            file: 'home/companion/visual-identity.json',
+          },
+          wardrobe: { code: visual.wardrobe?.code ?? 'unresolved', context: visual.wardrobe?.context ?? '' },
+          outfitSource: explicitOutfit ? 'explicit-arg' : 'wardrobe-resolver',
+          hint: 'This call sent no request to any provider.',
+        },
+      },
+      report,
+    };
+  }
+
+  /** The structured `visual` block reported by `dryRun`, a refusal, and a success alike. */
+  function companionVisualReport(visual, { outfit = '' } = {}) {
+    if (!visual) return null;
+    return {
+      personaId: visual.personaId,
+      identity: visual.identity?.state ?? 'not-configured',
+      name: visual.identity?.name ?? '',
+      context: visual.wardrobe?.context ?? '',
+      contextLabel: visual.wardrobe?.contextLabel ?? '',
+      outfitId: visual.wardrobe?.outfitId ?? '',
+      reason: visual.wardrobe?.reason ?? '',
+      isOverride: visual.wardrobe?.isOverride === true,
+      pieces: visual.wardrobe?.pieces ?? {},
+      missing: visual.missing,
+      outfitSource: outfit ? 'explicit-arg' : 'wardrobe-resolver',
+      injectedClause: visual.wardrobe?.clothingClause ?? '',
+      identityClause: visual.identityClause ?? '',
+    };
+  }
+
   async function generateImage({
     prompt, negative = '', subject = '', outfit = '', dryRun = false,
     requireEnglish = false, sessionId = null, signal = null,
@@ -320,17 +418,59 @@ export function createMediaService({
 
     const badInput = message => ({ ok: false, error: { code: Code.BAD_INPUT, message } });
     if (subject && subject !== 'companion') return badInput('subject 只支持 companion，也可留空');
+    // ── companion subject: identity + current outfit are injected **here**, not by the model ──
+    //
+    // Before this change the model had to read the wardrobe with a tool and then write the
+    // English clothes itself, in an `outfit` argument. That is the drift the brief names:
+    // the model's sentence and the wardrobe's answer were two different facts, and at 02:40
+    // both of them described daytime clothes. Now one read-only resolver
+    // (`resolveCompanionVisualState`) supplies the character identity **and** the clothes she
+    // is wearing right now, both keyed by the current persona, and the tool description no
+    // longer asks for either.
+    //
+    // `outfit` is still accepted so an old caller (or an explicit "draw her in this outfit"
+    // request) keeps working; when it is present it *replaces* the wardrobe clause and is
+    // reported as `outfitSource: 'explicit-arg'` — never silently mixed. It does **not**
+    // replace the identity: a picture of the companion without her face is not the companion.
+    let visual = null;
     if (subject === 'companion') {
-      const current = wardrobeDetail(dataDir, { scope: 'today', now: now() });
-      if (!current.items.length) return badInput('当前衣柜没有着装，请先设置当前衣物');
-      if (typeof outfit !== 'string' || !outfit.trim()) {
-        if (dryRun) return { ok: true, dryRun: true, provider: id, outfitRequired: true, outfit: {
-          date: current.date, items: current.items, instruction: current.instruction,
-        } };
-        return badInput('请先读取当前衣物，再在 outfit 里直接写出英文衣物细节');
+      // Group sessions are refused by the resolver itself (a group must not read the private
+      // wardrobe); the media layer then reports that instead of drawing with a guess.
+      // Same default the foundation uses (`DSH_COMPANION_PERSONA_ID` → config/suite.json →
+      // `bot`), so the media layer and the chat prompt cannot disagree about *whose*
+      // identity and clothes are being drawn.
+      const persona = resolvePersonaId({ env, suiteConfig: readSuiteConfig(suiteRoot) });
+      visual = resolveCompanionVisualState({
+        root: dataDir,
+        personaId: persona.id || '',
+        sessionId: String(sessionId ?? ''),
+        now: now().getTime(),
+      });
+      const gate = companionPictureGate(visual, { personaId: persona.id || '', sessionId, outfit });
+      if (!gate.ok) {
+        // Refuse **before** the ledger and before any provider call. `dryRun` reports the same
+        // block as data instead of as an error, so a caller can check without spending.
+        if (dryRun) {
+          return {
+            ok: true,
+            dryRun: true,
+            provider: id,
+            wouldSend: '不发起任何网络请求',
+            visualRequired: true,
+            visual: gate.report,
+            refusal: gate.refusal,
+          };
+        }
+        return { ok: false, error: gate.refusal };
       }
-      if (!/[a-z]/i.test(outfit) || /[^\x20-\x7e]/u.test(outfit)) return badInput('outfit 必须使用英文衣物短语');
-      prompt = `${String(prompt ?? '').trim()}\nThe companion wears ${outfit.trim().replace(/[.]+$/, '')}.`;
+      const clothingClause = (typeof outfit === 'string' && outfit.trim()
+        ? outfit.trim()
+        : (visual.wardrobe?.clothingClause ?? '')).replace(/[.]+$/, '');
+      const identityClause = visual.identityClause ?? '';
+      const promptParts = [String(prompt ?? '').trim()];
+      promptParts.push(`${identityClause}.`);
+      promptParts.push(`The companion wears ${clothingClause}.`);
+      prompt = promptParts.filter(Boolean).join('\n');
     }
     if (requireEnglish && (!/[a-z]/i.test(prompt ?? '') || [prompt, negative].some(value => /[^\x20-\x7e\r\n\t]/u.test(value ?? '')))) {
       return badInput('请直接使用英文填写 prompt 和 negative，并使用英文标点');
@@ -338,6 +478,10 @@ export function createMediaService({
 
     if (dryRun) {
       const dry = { ok: true, dryRun: true, provider: id, wouldSend: '不发起任何网络请求' };
+      // Report exactly what the automatic injection resolved, so a dry run can be used to
+      // verify the picture's clothes without spending anything (brief §11.4). The block comes
+      // from the same builder the gate used, so `dryRun` and a real call cannot disagree.
+      if (visual) dry.visual = companionVisualReport(visual, { outfit });
       if (id === 'nai') {
         const preset = resolveNaiPrompt(section,{prompt,negative});
         dry.preset = { family: preset.family, applied: preset.applyDefaults, positive: preset.positive, negative: preset.negative, warnings: preset.warnings };
@@ -405,6 +549,19 @@ export function createMediaService({
           mustSend: `调用 qq_sticker action=send_image 并传 file=${artifact.absolutePath}`,
         },
         meta: result.meta ?? {},
+        // Which identity/outfit the picture was actually drawn with. Recorded so a later
+        // audit can answer "was this image consistent with the wardrobe?" without re-running
+        // the resolver. Identity is recorded too: the gate now requires it, so the record has
+        // to say which identity the picture was actually drawn with.
+        visual: visual ? {
+          personaId: visual.personaId,
+          identity: visual.identity?.state ?? 'not-configured',
+          identityName: visual.identity?.name ?? '',
+          context: visual.wardrobe?.context ?? '',
+          outfitId: visual.wardrobe?.outfitId ?? '',
+          reason: visual.wardrobe?.reason ?? '',
+          outfitSource: typeof outfit === 'string' && outfit.trim() ? 'explicit-arg' : 'wardrobe-resolver',
+        } : null,
       };
     } catch (error) {
       const failure = toFailure(error);

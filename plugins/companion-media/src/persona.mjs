@@ -1,5 +1,15 @@
 import fs from 'node:fs';
 import path from 'node:path';
+// The suite has exactly one authority for "where does runtime data live". This plugin used
+// to answer that question itself (`options.dataDir` → `DSH_COMPANION_DATA_DIR` →
+// `<suiteRoot>/data`) and never read `config/suite.json`, so an installation that pointed
+// `dataDir` anywhere but the default had its media config, logs and ledger land in
+// `<suiteRoot>/data/media` while the foundation read `<custom>/home/companion/...`.
+// The operator then enabled image generation in `<custom>/media/config.json` and the host
+// kept answering `MEDIA_DISABLED`, because it was reading a file that did not exist.
+// Importing the foundation's resolver removes the second implementation rather than
+// teaching it the same rules twice.
+import { resolveDataRoot } from '../../companion-foundation/suite-paths.mjs';
 
 /**
  * personaId resolution.
@@ -34,14 +44,26 @@ export function readSuiteConfig(suiteRoot) {
 }
 
 /**
- * Data directory resolution: explicit option → `DSH_COMPANION_DATA_DIR` →
- * `<suiteRoot>/data`. Runtime output never lands inside the source tree.
+ * Data directory resolution — a thin, documented view over
+ * `companion-foundation/suite-paths.mjs#resolveDataRoot()`.
+ *
+ * Order (unchanged, and now identical to what the foundation and the suite CLI use):
+ *   1. explicit `dataDir` option (tests and embedded callers)
+ *   2. `DSH_COMPANION_DATA_DIR`
+ *   3. `config/suite.json` → `dataDir`
+ *   4. root `package.json` → `dsh.suite.dataDir`
+ *   5. `<suiteRoot>/data` (the historical default, still what an unconfigured suite gets)
+ *
+ * The `source` vocabulary is kept from the old signature (`option` / `env` /
+ * `config/suite.json:dataDir` / …) so a log line or a report that quoted it stays readable.
+ *
+ * @param {{dataDir?: string, env?: Record<string, string|undefined>, suiteRoot?: string|null}} [options]
+ * @returns {{dir: string, source: string, notes: string[]}}
  */
 export function resolveDataDir({ dataDir = '', env = process.env, suiteRoot = '' } = {}) {
   const explicit = String(dataDir || '').trim();
-  if (explicit) return { dir: path.resolve(explicit), source: 'option' };
-  const fromEnv = String(env?.DSH_COMPANION_DATA_DIR || '').trim();
-  if (fromEnv) return { dir: path.resolve(fromEnv), source: 'env' };
-  if (suiteRoot) return { dir: path.resolve(suiteRoot, 'data'), source: 'suite-root' };
-  return { dir: path.resolve('data'), source: 'cwd' };
+  if (explicit) return { dir: path.resolve(explicit), source: 'option', notes: [] };
+  const resolved = resolveDataRoot({ env, suiteRoot: suiteRoot || null });
+  const source = resolved.source === 'env:DSH_COMPANION_DATA_DIR' ? 'env' : resolved.source;
+  return { dir: resolved.dataRoot, source, notes: resolved.notes ?? [] };
 }

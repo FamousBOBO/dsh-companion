@@ -10,7 +10,10 @@ import { createIdentity } from './identity.mjs?v=0.4.0';
 import { mountQqConversation } from './qq-conversation.mjs?v=progress-optional3-20261031';
 import { createHostLlmAdapter } from './host-llm.mjs?v=0.4.0';
 import { createAutonomyPorts, lifeSection } from './autonomy.mjs?v=reading-20261101-v2';
-import { renderWardrobePrompt, wardrobeDetail, setOutfit } from './wardrobe.mjs?v=0.1.0';
+import { renderWardrobeConstraint, wardrobeDetail, setOutfit } from './wardrobe.mjs?v=0.2.0';
+import { renderWardrobeSnapshot, resolveWardrobeState } from './wardrobe-state.mjs?v=0.2.0';
+import { collectLifeEvidence } from './wardrobe-evidence.mjs?v=0.2.0';
+import { resolveCompanionVisualState } from './visual-identity.mjs?v=0.2.0';
 import { contactSharePort } from './contact-share-port.mjs';
 import { describeShareChain } from './share-diagnostics.mjs';
 import { SHARE_TOOL_NAME, shareCandidateForActivity } from './share-producer.mjs';
@@ -211,14 +214,16 @@ export function mountCompanion(ctx, root, options = {}) {
     },
   });
 
-  // Wardrobe: the current outfit is a real, deterministic variable, not model invention.
+  // Wardrobe rule (v2). This section is now a **short static truthfulness constraint** and
+  // carries no clothing at all: the current outfit arrives per turn through `agent/pre-step`
+  // (`renderWardrobeSnapshot`), computed by the same resolver the tools and the media layer
+  // use. Keeping the items out of a static section is what removes the double injection and
+  // the "today's rotation pretending to be what she wears right now" problem.
   ctx.systemPrompt.section({
     name: 'companion:wardrobe',
     order: 63,
     interpolate: false,
-    text: () => {
-      try { return renderWardrobePrompt(root, Date.now()); } catch { return ''; }
-    },
+    text: renderWardrobeConstraint(),
   });
 
   // Live pulse (心跳). This section deliberately contains **no data** — only the rule that keeps
@@ -488,6 +493,29 @@ export function mountCompanion(ctx, root, options = {}) {
       careText = typeof prompt?.text === 'string' ? prompt.text : '';
     } catch { careText = ''; }
     const injectedWithCare = injected + (careText ? '\n' + careText : '');
+    // Current wardrobe snapshot (wardrobe v2, `design` §5 of the upgrade brief). Computed
+    // inside the **existing** first-step snapshot: no extra model call, no extra tool
+    // latency, no dependence on what the previous turn said. The resolver reads the same
+    // document the tools and the media layer read, so all three agree by construction.
+    // `renderWardrobeSnapshot` returns the "cannot determine" form when nothing resolves —
+    // it never invents clothes — and is bounded to 480 characters so the prompt budget is
+    // not meaningfully affected.
+    let wardrobeText = '';
+    try {
+      const evidence = collectLifeEvidence({ runtime: cognitive, bound, sessionId, now: Date.now() });
+      const state = resolveWardrobeState({
+        root,
+        // The persona comes from the identity binding (which is validated against
+        // config/suite.json), so a persona switch inside one process cannot read the
+        // previous persona's wardrobe file.
+        personaId: bound?.persona ?? suitePaths?.personaId ?? '',
+        sessionId,
+        now: Date.now(),
+        activity: evidence.activity,
+        schedule: evidence.schedule,
+      });
+      wardrobeText = renderWardrobeSnapshot(state, { maxChars: 480 });
+    } catch { wardrobeText = ''; }
     // Prompt Engine (P0 §9). Runs inside the **existing** first-step snapshot: it reads the
     // same user message, the same memory text and the same working memory, and returns one more
     // section. It has its own char budget, so the memory (2400) and runtime (320) budgets above
@@ -512,13 +540,14 @@ export function mountCompanion(ctx, root, options = {}) {
         }
       } catch { promptText = ''; promptSections = []; }
     }
-    const finalInjected = injectedWithCare + (promptText ? '\n' + promptText : '');
+    const finalInjected = injectedWithCare + (wardrobeText ? '\n' + wardrobeText : '') + (promptText ? '\n' + promptText : '');
     return { ...decision, messages: [...decision.messages, createUserMessage({ content: [{ type: 'text', text: finalInjected }],
       source: { kind: 'companion-memory', form: 'snapshot', sections: [{ name: 'companion-identity', text: identityText },
         ...(memoryText ? [{ name: 'companion-memory', text: memoryText }] : []),
         ...(cognitiveText ? [{ name: 'companion-working-memory', text: cognitiveText }] : []),
         ...(pulseText ? [{ name: 'companion-pulse', text: pulseText }] : []),
         ...(careText ? [{ name: 'companion-care', text: careText }] : []),
+        ...(wardrobeText ? [{ name: 'companion-wardrobe', text: wardrobeText }] : []),
         ...promptSections] } })],
     };
   }, { prepend: true });
@@ -569,14 +598,41 @@ export function mountCompanion(ctx, root, options = {}) {
     {}, async (_args, bound, exec) => ({ ...store.status(), identity: bound,
       memory: sqliteBackend ? await engine.status({ sessionId: sessionIdOf(exec ?? {}) }) : memory.status() }));
   register('companion_identity', 'Read the actual desktop user binding, original QQ identity, persona, and current session. Use this to resolve who the current user is; do not infer identity from names mentioned in memories.', {}, (_args, bound) => bound);
-  register('companion_wardrobe_detail', 'Read the character wardrobe and the current outfit variable. scope=today returns what she is wearing today; scope=slot lists one slot; scope=all lists the whole wardrobe. Use it before describing clothes; never invent items not in the wardrobe.', {
-    scope: { type: 'string', enum: ['today', 'slot', 'all'] },
-    slot: { type: 'string', enum: ['upper', 'lower', 'whole', 'feet', 'extra'] },
-  }, (args) => wardrobeDetail(root, { scope: args.scope ?? 'today', slot: args.slot ?? '', now: Date.now() }));
-  register('companion_outfit_set', 'Set today’s outfit for the character from existing wardrobe item ids or exact names. This is a real variable used by the wardrobe prompt, not a claim that clothes were bought or changed in the physical world.', {
-    itemIds: { type: 'array', items: { type: 'string' } },
-    instruction: { type: 'string' },
-  }, (args) => setOutfit(root, { itemIds: args.itemIds ?? [], instruction: args.instruction ?? '', now: Date.now() }), 'write');
+  register('companion_wardrobe_detail',
+    'Read the character wardrobe and the outfit she is wearing right now. scope=today (default) returns the resolved current outfit with its scene (everyday/home/sleep/outdoor/special), why that scene was chosen (`reason`), `outfitId`, whether it comes from an explicit override, and which slots are empty (`missing`). scope=slot lists one slot; scope=all lists the whole inventory; scope=contexts reports, per scene, whether a complete outfit exists. Use it before describing clothes; never invent items that are not in the wardrobe. Pass `context` only when the user explicitly asks about another scene.',
+    {
+      scope: { type: 'string', enum: ['today', 'slot', 'all', 'contexts'] },
+      slot: { type: 'string', enum: ['upper', 'lower', 'whole', 'feet', 'extra'] },
+      context: { type: 'string', enum: ['everyday', 'home', 'sleep', 'outdoor', 'special'] },
+    },
+    (args, bound, exec) => wardrobeDetail(root, {
+      scope: args.scope ?? 'today', slot: args.slot ?? '', context: args.context ?? '',
+      now: Date.now(), personaId: bound?.persona ?? suitePaths?.personaId ?? '', sessionId: sessionIdOf(exec),
+    }));
+  register('companion_outfit_set',
+    'Change the character’s current clothes from existing wardrobe item ids or exact names. This writes a timed override that takes effect immediately and expires by itself (default: end of the local day); it is not a claim that clothes were bought or changed in the physical world. Optional `context` says which scene the change belongs to (a daytime `home` change does not stop the night switch to sleepwear). Optional `until` is YYYY-MM-DD, an ISO time, or Unix ms. `clearOverride` removes the active override instead of writing one.',
+    {
+      itemIds: { type: 'array', items: { type: 'string' } },
+      instruction: { type: 'string' },
+      context: { type: 'string', enum: ['everyday', 'home', 'sleep', 'outdoor', 'special'] },
+      until: { type: 'string' },
+      clearOverride: { type: 'boolean' },
+    },
+    (args, bound, exec) => setOutfit(root, {
+      itemIds: args.itemIds ?? [], instruction: args.instruction ?? '', context: args.context ?? '',
+      until: args.until, clearOverride: args.clearOverride === true, now: Date.now(),
+      personaId: bound?.persona ?? suitePaths?.personaId ?? '', sessionId: sessionIdOf(exec),
+    }), 'write');
+  register('companion_visual_state',
+    'Read the character visual state used for image generation: identity (name, original work, invariant appearance) and the current outfit, both for the current persona. Read-only; it returns `missing` when identity or wardrobe data is absent, so an image must not be described as the character when this says it is not configured.',
+    {},
+    (_args, bound, exec) => {
+      const evidence = collectLifeEvidence({ runtime: cognitive, bound, sessionId: sessionIdOf(exec), now: Date.now() });
+      return resolveCompanionVisualState({
+        root, personaId: bound?.persona ?? suitePaths?.personaId ?? '', sessionId: sessionIdOf(exec),
+        now: Date.now(), activity: evidence.activity, schedule: evidence.schedule,
+      });
+    });
   register('companion_recall', sqliteBackend
     ? 'Search the local memory database (facts, preferences, relationship notes, imported AstrBot records, recent conversation) with keyword and semantic channels. Returns ids, source and reality labels; summaries and character experiences are not verified user facts.'
     : 'Search local confirmed facts, visible AstrBot memory snapshots, and recent user conversation by keywords and Chinese bigrams. Returns source and reality labels; summaries and character experiences are not verified user facts.',

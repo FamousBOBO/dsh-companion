@@ -613,17 +613,44 @@ async function checkDataRootParity() {
   } catch (err) {
     record('static', label, 'failed', err.message);
   }
+  // Same question for the media layer, which used to answer it with its own rules and therefore
+  // mounted at `<suiteRoot>/data/media` while the rest of the suite read `<dataDir>` (docs/15 §9).
+  // A separate record row keeps the failure attributable to one plugin.
+  const mediaLabel = '数据目录解析一致（CLI ↔ 媒体层）';
+  const mediaPersona = path.join(SUITE_PATHS.plugins, 'companion-media', 'src', 'persona.mjs');
+  if (!fs.existsSync(mediaPersona)) {
+    record('static', mediaLabel, 'skipped', 'companion-media/src/persona.mjs 不存在');
+    return;
+  }
+  try {
+    const { dataPaths } = loadConfig();
+    const mod = await import(new URL(`file://${mediaPersona.replace(/\\/g, '/')}`).href);
+    const mediaRoot = mod.resolveDataDir
+      ? mod.resolveDataDir({ env: process.env, suiteRoot: SUITE_PATHS.root }).dir
+      : null;
+    if (!mediaRoot) {
+      record('static', mediaLabel, 'skipped', '媒体层没有导出 resolveDataDir()');
+      return;
+    }
+    const same = path.resolve(mediaRoot) === path.resolve(dataPaths.root);
+    record('static', mediaLabel, same ? 'ok' : 'failed', same ? path.resolve(mediaRoot) : `CLI=${dataPaths.root} 媒体=${mediaRoot}`);
+  } catch (err) {
+    record('static', mediaLabel, 'failed', err.message);
+  }
 }
 
 /* ────────────────────────── compose ───────────────────────── */
 function runCompose() {
   section('compose — 宿主合成检查');
   let host;
+  let dataHome;
   try {
-    const { config } = loadConfig();
+    const { config, dataPaths } = loadConfig();
     host = config.dsh || {};
+    dataHome = dataPaths.home;
   } catch {
     host = {};
+    dataHome = path.join(SUITE_ROOT, 'data', 'home');
   }
   const exe = host.executable && fs.existsSync(host.executable) ? host.executable : '';
   const cli = host.moduleRoot
@@ -645,7 +672,11 @@ function runCompose() {
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: '1',
-      DSH_HOME: path.join(SUITE_ROOT, 'data', 'home'),
+      // The profile lives under the **configured** data root, not under `data/`: a suite
+      // that sets `dataDir: "data-dev"` (an isolated dev install) would otherwise compose
+      // against a profile that does not exist and fail with exit 1 for the wrong reason.
+      // Same rule the data-root parity check already enforces for the plugins.
+      DSH_HOME: dataHome,
     },
   });
   const out = `${res.stdout || ''}${res.stderr || ''}`;
@@ -659,7 +690,11 @@ function runCompose() {
 
 /* ─────────────────────────── drive ────────────────────────── */
 if (want('unit')) runUnit();
-if (want('static')) runStatic();
+// `runStatic()` ends by returning `checkDataRootParity()`, which is async. Without the `await`
+// the process printed the summary and exited before those rows were recorded, so the data-root
+// parity check — the one that exists to catch two plugins disagreeing about where runtime data
+// lives — silently never ran. (Pre-existing on `origin/main`; found while fixing P0-C.)
+if (want('static')) await runStatic();
 if (want('compose')) runCompose();
 
 console.log('\n═══ 汇总 ═══');

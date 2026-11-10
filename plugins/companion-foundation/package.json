@@ -49,10 +49,17 @@
     "./prompt-plan.mjs": "./prompt-plan.mjs",
     "./prompt-lint.mjs": "./prompt-lint.mjs",
     "./PROMPT-ENGINE-CONTRACT.md": "./PROMPT-ENGINE-CONTRACT.md",
+    "./wardrobe-schema.mjs": "./wardrobe-schema.mjs",
+    "./wardrobe-context.mjs": "./wardrobe-context.mjs",
+    "./wardrobe-state.mjs": "./wardrobe-state.mjs",
+    "./wardrobe-evidence.mjs": "./wardrobe-evidence.mjs",
+    "./visual-identity.mjs": "./visual-identity.mjs",
+    "./WARDROBE-STATE-CONTRACT.md": "./WARDROBE-STATE-CONTRACT.md",
     "./package.json": "./package.json"
   },
   "files": [
     "*.mjs",
+    "*.md",
     "qq-autonomy-policy.txt",
     "PROMPT-ENGINE-CONTRACT.md",
     "test-fixtures/",

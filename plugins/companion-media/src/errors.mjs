@@ -14,6 +14,10 @@ export const Code = Object.freeze({
   PROVIDER_UNKNOWN: 'MEDIA_PROVIDER_UNKNOWN',
   PROVIDER_NOT_IMPLEMENTED: 'MEDIA_PROVIDER_NOT_IMPLEMENTED',
   VISION_LOCKED: 'MEDIA_VISION_LOCKED',
+  // A companion picture needs an operator-authored visual identity. Refusing is the point:
+  // drawing the clothes without the character produces a picture that looks authoritative
+  // and is wrong, which is worse than saying "no identity configured yet".
+  VISUAL_IDENTITY_REQUIRED: 'MEDIA_VISUAL_IDENTITY_REQUIRED',
   CONFIG_INVALID: 'MEDIA_CONFIG_INVALID',
   PARAM_OUT_OF_RANGE: 'MEDIA_PARAM_OUT_OF_RANGE',
   AUTH_FAILED: 'MEDIA_AUTH_FAILED',
