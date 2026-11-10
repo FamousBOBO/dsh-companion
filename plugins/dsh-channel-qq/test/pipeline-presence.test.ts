@@ -51,6 +51,7 @@ function conversation(key: string) {
 }
 
 interface HarnessOptions {
+  mirror?: boolean
   /** 有 presence 配置就按 §0.1 的部署值给齐；`false` / 缺省 = 根本没有这一段（旧配置）。 */
   presence?: 'on' | 'off' | { enabled?: boolean; groups?: number[]; judgeMaxEntries?: number }
   requireMention?: boolean
@@ -74,6 +75,7 @@ function harness(opts: HarnessOptions = {}) {
   const conv = conversation('group-145326153')
   const presence = opts.presence ?? 'off'
   const config = {
+    connection: { mode: opts.mirror ? 'mirror-observe' : 'forward' },
     groupEnabled: true,
     requireMention: opts.requireMention !== false,
     debug: opts.debug === true,
@@ -95,6 +97,7 @@ function harness(opts: HarnessOptions = {}) {
           presence: {
             // 'on' 用 §0.1 的部署值；给对象时只覆盖指定字段。
             enabled: true,
+            ...(opts.mirror ? { mode: 'shadow' } : {}),
             groups: [GROUP],
             ambientMaxEntries: 40,
             ambientTtlMs: 600_000,
@@ -463,6 +466,17 @@ test('presence.enabled=false（配了白名单但总开关关着）：与旧版�
 // ── 8. 主人特权（2026-11-06）：主人在群里说话必须回，旁人照样可以不回 ──────────
 
 const OWNER = 90010001
+
+test('mirror: mentions and owner messages only enter ambient, without attachment IO or turns', async () => {
+  const h = harness({ presence: 'on', mirror: true, admins: [OWNER] })
+  await h.pipeline.handle(groupEvent(OWNER, 'look at this', 8101, { at: true, voice: true, file: true }))
+  await h.pipeline.handle(groupEvent(200, 'another message', 8102, { at: true }))
+  assert.equal(ambientOf(h.store).length, 2)
+  assert.equal(h.submitted.length, 0)
+  assert.equal(h.composeCalls.length, 0)
+  assert.deepEqual(h.paid, [])
+  assert.deepEqual(h.sttCalls, [])
+})
 
 test('主人在群里说话（没有 @）：照常组包并提交回合，不被 requireMention 拦下', async () => {
   const h = harness({ presence: 'on', admins: [OWNER] })

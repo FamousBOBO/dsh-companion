@@ -15,6 +15,7 @@ import { platformOf } from '../../adapters/onebot/platform.js'
 import { OutboundQueue } from '../../outbound.js'
 import { createHealthProbe } from './probe.js'
 import { systemClock } from '../../ports/clock.js'
+import { assertMirrorBoundary } from './mirror-boundary.js'
 import type { SubPlugin } from '../plugin-kit.js'
 
 /** 模块级最新 platform.api 引用（platform 装配时更新；未连接时 null）。 */
@@ -25,6 +26,7 @@ export const platformPlugin: SubPlugin = {
   watches: ['connection', 'accessToken'],
   apply(host) {
     const { config } = host
+    assertMirrorBoundary(config, host.dshHome)
     const client = new OneBotClient(config.connection, config.accessToken, host.log)
     // Connection telemetry contains no account IDs, message data or credentials.
     const publishConnection = (connected = client.isConnected()) => {

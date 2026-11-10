@@ -24,7 +24,7 @@ Fresh test settings retain disabled external sends, health collection and billin
 
 - Register the environment in Desktop and inspect rendered companion UI.
 - Full host captures completed for 14:00 and 22:40, each with Prompt Engine off and active. Wardrobe snapshot text was byte-identical across modes (195 and 181 characters respectively), with distinct daytime-everyday and night-window results. Captures used synthetic local completion and isolated temporary data. The system rule references the snapshot heading; actual outfit context appears once in the user message. Evidence: ignored data/logs/integration-day-night/summary.json and four request captures.
-- Finish G3 mirror-observe and isolation checks before collecting real shadow decisions. Mirror ingress is not decision-quality evidence.
+- G3 mirror-observe implementation and synthetic host loop completed; see docs/18-mirror-observe-integration.md. Real traffic and decision-quality evidence remain outstanding.
 - Real model conversation, billed images and real QQ delivery remain unverified.
 - Resolve whether additional chat and media copies are needed.
 

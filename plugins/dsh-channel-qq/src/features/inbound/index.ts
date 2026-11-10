@@ -251,6 +251,11 @@ function createRuntime(deps: RuntimeDeps): ChannelRuntime {
 /** 事件分发：旁路观察先跑（同步、发射后不管），通知进裁决，消息进流水线。 */
 async function dispatch(host: SubHost, runtime: ChannelRuntime, event: OneBotEvent): Promise<void> {
   try {
+    if (host.config.connection.mode === 'mirror-observe') {
+      if (event.post_type !== 'message' || event.message_type !== 'group') return
+      await runtime.pipeline.handle(event)
+      return
+    }
     // 安全门控在一切之前：不通过的消息不进观察者、不进组包、不进 agent。
     host.get('channelHealth')?.onInbound()
     if (host.get('access')?.allow(event) === false) return
@@ -361,6 +366,7 @@ export const inboundPlugin: SubPlugin = {
   },
   // 与原实现一致：client.start() 之后立刻重挂历史会话（发射后不管）。
   start(host) {
+    if (host.config.connection.mode === 'mirror-observe') return
     const registry = host.need('inbound').registry
     void (async () => {
       await registry.reattachAll()

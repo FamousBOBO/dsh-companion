@@ -25,7 +25,7 @@ import { IMAGE_GROUPS } from './image.js'
 /** Channel configuration. One row, one account. Values live in the profile's user patch layer. */
 export interface ConnectionConfig {
   /** forward = the plugin dials NapCat's WS server; reverse = the plugin hosts a WS server NapCat dials into. */
-  mode: 'forward' | 'reverse'
+  mode: 'forward' | 'reverse' | 'mirror-observe'
   /** forward: NapCat WS URL. reverse: listen URL, e.g. ws://127.0.0.1:8082 (port is the bind port). */
   url: string
 }
@@ -121,6 +121,7 @@ export const CHAT_GROUPS: FieldGroup[] = [
       mode: e('连接方向', 'forward', [
         ['forward', '插件拨号（forward）'],
         ['reverse', '插件监听（reverse）'],
+        ['mirror-observe', '只读镜像（仅旁听与影子决策）'],
       ], { hot: 'reload' }),
       // 默认空串 = 未配置。出厂就给一个 localhost 地址意味着"新装的插件立刻开始
       // 对着一个不存在的端口重连"，那不是默认值，那是故障预演。
