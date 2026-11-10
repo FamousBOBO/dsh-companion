@@ -46,8 +46,11 @@ export const MODULES = Object.freeze([
     dedupeKey: '',
     scenes: ALL_PROFILES,
     operators: [],
-    charBudget: 60,
-    render: () => '【本轮写法】以下条目只说明这一轮该怎么写，不改变人格、身份与已知事实；没出现的条目就是本轮不需要，不要自行补上。',
+    charBudget: 40,
+    // Contract-level "this does not change the persona / do not invent missing modules" lives once,
+    // in `companion:prompt-contract` (the static section). Repeating it in every dynamic block is
+    // the duplication the P3 pass removes; this header now only frames what follows.
+    render: () => '【本轮写法】以下条目只管这一轮怎么写；没出现的就是这一轮不需要。',
   },
   {
     id: 'mode.chat-frame',
@@ -57,8 +60,10 @@ export const MODULES = Object.freeze([
     dedupeKey: 'mode',
     scenes: ['chat'],
     operators: [],
-    charBudget: 110,
-    render: () => '【闲聊】按熟人聊天来：直接回应他说的那件事，通常一两句，需要再展开。可以反问、接梗、说自己的看法；不写成文章，不铺陈场景。',
+    charBudget: 60,
+    // "不铺陈场景 / 不写成文章" duplicated the anti-ai style module and pulled narration rules
+    // into plain chat; only the positive requirement stays.
+    render: () => '【闲聊】像熟人聊天：直接回应他那件事，通常一两句，需要再展开。',
   },
   {
     id: 'mode.companion-frame',
@@ -112,8 +117,10 @@ export const MODULES = Object.freeze([
     dedupeKey: 'thinking',
     scenes: ALL_PROFILES,
     operators: [],
-    charBudget: 80,
-    render: () => '【思考·引导】内部想清楚再落笔，思考过程不外露，正文只给结论和他用得上的细节。',
+    charBudget: 40,
+    // "Think it through, do not show the working" is not a scene instruction for a model that
+    // already reasons; kept only as the one line that still changes output shape.
+    render: () => '【思考·引导】思考过程不外露，正文只给结论和他用得上的细节。',
   },
   {
     id: 'thinking.structured',
@@ -145,8 +152,10 @@ export const MODULES = Object.freeze([
     dedupeKey: '',
     scenes: ALL_PROFILES,
     operators: ['DIG'],
-    charBudget: 130,
-    render: () => '【DIG·辨认】先弄清这句话真正在说什么、在意什么，再回应那件事；不复述他的原话，不替他补全没说出口的意思，不把猜测当事实。',
+    charBudget: 60,
+    // DIG owns "what did he actually mean"; the "do not restate his words" half moves to the
+    // anti-AI style module so exactly one module carries it.
+    render: () => '【DIG·辨认】先弄清这句话真正在说什么、在意什么，再回应那件事；不替他补全没说出口的意思，不把猜测当事实。',
   },
   {
     id: 'operator.lore',
@@ -178,8 +187,11 @@ export const MODULES = Object.freeze([
     dedupeKey: '',
     scenes: ALL_PROFILES,
     operators: ['REVIEW'],
-    charBudget: 130,
-    render: () => '【REVIEW·自检】写完快速核对：有没有编造事实、复述原话、答非所问、结尾硬加建议。有问题就地改，不输出检查清单，不拖长回复。',
+    charBudget: 60,
+    // REVIEW used to re-state the truthfulness check that `style.universal` and the Foundation
+    // continuity section already own. What is left is the review-only behaviour: self-check
+    // quietly, never print a checklist, never lengthen the reply.
+    render: () => '【REVIEW·自检】写完快速核对有没有答非所问或硬加建议；有问题就地改，不输出检查清单，不拖长回复。',
   },
   {
     id: 'style.anti-ai-chat',
@@ -189,8 +201,11 @@ export const MODULES = Object.freeze([
     dedupeKey: '',
     scenes: ['chat'],
     operators: [],
-    charBudget: 200,
-    render: () => '【像人聊天】别复述他的话再回应；不必每次先肯定再解释；小问题别答成小作文；不强行补一句下一步建议。允许短回一句、吐槽或直接换话题。',
+    charBudget: 100,
+    // The single owner of "do not restate him, do not answer a small question with an essay".
+    // DIG no longer repeats the restating rule, and the chat frame no longer repeats the length
+    // rule, so one module covers both without contradicting them.
+    render: () => '【像人聊天】别复述他的话再回应；小问题别答成小作文，不强行补一句下一步建议。允许短回一句、吐槽或直接换话题。',
   },
   {
     id: 'style.emotional-companion',
@@ -255,7 +270,7 @@ export const MODULES = Object.freeze([
     dedupeKey: '',
     scenes: ALL_PROFILES,
     operators: [],
-    charBudget: 200,
+    charBudget: 40,
     render: () => '【通用】不编造现实事实与共同经历；不确定就说不知道。',
   },
 ]);
@@ -268,7 +283,7 @@ for (const module of MODULES) {
 }
 
 /** 完整版：普通聊天/陪伴/叙事都按这套降低频率。 */
-const ANTI_DEEPSEEK_FULL = '【降低套话】以下是**降频提示，不是禁词**：对偶式“不是X，而是Y”“不像X，更像Y”、微微/一瞬/一拍一类填充词、抽象比喻、动作后解释情绪、连续并列短句、段尾强行总结、固定转折词。通过风格指导降低出现频率，不破坏正常中文表达，“不是”“没有”“其实”照常使用。';
+const ANTI_DEEPSEEK_FULL = '【降低套话】降频提示，不是禁词：对偶式“不是X，而是Y”“不像X，更像Y”、微微/一瞬/一拍这类填充词、抽象比喻、动作后解释情绪、连续并列短句、段尾强行总结、固定转折词。靠风格指导降频，不破坏正常中文表达，“不是”“没有”“其实”照常用。';
 
 /** task 档用的精简版：任务回答里几乎没有叙事，只留真正会犯的几条。 */
 const ANTI_DEEPSEEK_TASK = '【降低套话】少用对偶句、抽象比喻、动作后解释情绪和段尾强行总结；这些是降频提示不是禁词，正常中文照写。';

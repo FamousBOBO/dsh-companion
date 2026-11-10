@@ -63,6 +63,18 @@ export const SAFE_DEFAULTS = {
   // QQ idle compaction calls a model, so it is off unless explicitly enabled. Top-level on
   // purpose: it is not a module switch (see docs/02 §2.4.1).
   qqIdleCompaction: false,
+  // System-prompt layering switches (docs/09-prompt-baseline.md). Each one toggles a block of
+  // the profile patch template; the defaults are what an ordinary companion session wants, and
+  // every switch is documented at the block it controls.
+  prompt: {
+    // 陪伴会话需要文件/Shell/后台任务工具吗？默认不要：这些工具会往 system prompt 里注入
+    // 约 1,470 字的编码规则段，并把工具清单撑大。做维护时再打开。
+    companionDevTools: false,
+    // 宿主 harness-dev-context（当前 checkout / Web GUI 地址两行）默认关掉。
+    harnessDevContext: false,
+    // 宿主 ui-deliverables 的交付卡片说明默认关掉（陪伴预设不装载 present 工具）。
+    deliverableHints: false,
+  },
   safety: {
     // Anything that can spend money or reach another human stays off by default.
     autoSend: false,

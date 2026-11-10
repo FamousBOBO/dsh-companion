@@ -77,13 +77,28 @@ export function initialState(sessionId = '') {
 
 const QUOTE_PAIRS = [['「', '」'], ['『', '』'], ['“', '”'], ['"', '"'], ['‘', '’']];
 
-/** 成对对白引号：`他说：「……」`。单个引号不算。 */
+/**
+ * 成对对白引号：`他说：「……」`。单个引号不算。
+ *
+ * 全角引号（「」『』“”‘’）在任何语境下都是写作/对白标记，可以直接当证据。
+ * ASCII 双引号不同：技术文本里到处是 `use "strict mode"`、`set "proxy" env var`，
+ * 把它当对白会让一句配置说明被路由成 roleplay。所以 ASCII 引号要求**引号内真的有汉字**
+ * 才算对白——`他说 "hello"`、`set "proxy" env var` 都不再触发，而 `"你终于来了"` 仍然触发。
+ * 这正是任务书 §6.3 第 6 条要的：技术问题不能被误判成戏。
+ */
 function hasDialogueQuote(text) {
-  return QUOTE_PAIRS.some(([open, close]) => {
+  for (const [open, close] of QUOTE_PAIRS) {
     const first = text.indexOf(open);
-    if (first < 0) return false;
-    return text.indexOf(close, first + 1) > first;
-  });
+    if (first < 0) continue;
+    const second = text.indexOf(close, first + 1);
+    if (second <= first) continue;
+    if (open === '"' || open === "'") {
+      const quoted = text.slice(first + 1, second);
+      if (!/\p{Script=Han}/u.test(quoted)) continue;
+    }
+    return true;
+  }
+  return false;
 }
 
 /** `*抬手把门带上*` 这类动作标记。 */
@@ -117,7 +132,7 @@ function taskSignal(text) {
 function sceneDeixis(text) {
   const secondPerson = /(你|妳)/.test(text);
   if (!secondPerson) return false;
-  return /(回来|回家|门口|楼下|屋里|房间|外面|这里|这里|那天|那年|刚才|等一下|等我|别再|还没|走了|坐下|抬头|转头|手里|身后|身边)/.test(text);
+  return /(回来|回家|门口|楼下|屋里|房间|外面|这里|那天|那年|刚才|等一下|等我|别再|还没|走了|坐下|抬头|转头|手里|身后|身边)/.test(text);
 }
 
 /** 抽象情绪表达（"如果那天我没有离开，你会不会挽留我"）：单独出现只算情绪交流。 */

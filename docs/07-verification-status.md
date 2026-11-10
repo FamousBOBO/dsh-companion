@@ -321,8 +321,8 @@ P9-A（上线前兼容性与可靠性审计）见 `docs/11-group-social-runtime-
 | 文风检测（只统计+理由码、不回传原文、正常中文不误伤、chat 档不检测白描） | `offline-test` | `prompt-lint.test.mjs` **14 项** |
 | 引擎编排（关闭惰性、shadow 不改消息、预算、LRU、黑名单、planner 缺失降级、配置热更新、dispose） | `offline-test` | `prompt-engine.test.mjs` **29 项**；其中 7 项用**假宿主 LLM** 跑通 Planner 路径：合法规划进 Writer 指导、purpose=`companion-prompt-plan` 且 sessionId 独立、`allowFallback:false`（一次预算=一次物理生成）、坏 JSON 一次修复、两次失败降级、字段越界截断、Guided 档零调用 |
 | 与 foundation 现有 Hook 集成（默认关闭不注册 Section、开启独立 `companion-prompt-profile`、原有身份/记忆注入逐字节不变、只在 step 1、reject/aborted 不变、群聊与私聊互不串档、引擎崩溃不影响聊天、不写记忆） | `offline-test` + **`host-load`** | `prompt-engine-mount.test.mjs` **12 项**；其中一轮用**已安装桌面的真实宿主模组**（`DSH_COMPANION_MODULE_ROOT` 指向桌面 `node_modules`）跑通，与 `cognitive-mount.test.mjs` 的 8 项一起 20/20 通过 |
-| `companion-foundation` 合计 | `offline-test` | **360 项 / 351 通过 / 0 失败 / 9 跳过**（Prompt Engine 新增 146 项：15+23+17+17+19+14+29+12；其余 214 项为原有测试） |
-| 整仓 `npm run verify` | `offline-test` | `unit` **9 模块全绿**（`dsh-paste-search` 无测试）；`compose` 仍为 SKIPPED（本 worktree 没跑 `npm run setup`，CI 正常现象） |
+| `companion-foundation` 合计 | `offline-test` | **365 项 / 356 通过 / 0 失败 / 9 跳过**（Prompt Engine 146 项：15+23+17+17+19+14+29+12；P4 路由样例新增 4 项；其余 215 项为原有测试） |
+| 整仓 `npm run verify` | `offline-test` | `unit` **9 模块全绿**（`dsh-paste-search` 无测试）；`static` **33 项全绿**；`compose` **194 个 loader 行**（本 worktree 已跑过 `npm run setup`） |
 | **真实模型调用**（Planner / Strict 审查 / 修正） | **未验证** | Planner 代码路径只有"不可用时降级"这一半被断言；真实 provider 调用、超时、Token 计数**都没跑过** |
 | **真实场景质量验收**（四组固定测试集 × 四条对照） | **未验证** | 需要真实模型输出与人工评分，且要用操作者自己的 Persona 与历史 |
 
@@ -331,7 +331,53 @@ P9-A（上线前兼容性与可靠性审计）见 `docs/11-group-social-runtime-
 > 规划器的真实模型调用与真实场景质量验收**都没有做**」。
 
 > 关于 `static` 段那一项 `✗ author-name — README.md:197`：它在本 worktree 的父提交（`052943f`，即 `origin/main`）
-> 上**同样失败**，是既有问题，不是本次改动引入的。
+> 上**同样失败**，是既有问题，不是本次改动引入的。2026-11-09 已按"唯一一条审计豁免"修掉：
+> `README.md` 里的`git clone https://github.com/<owner>/dsh-companion` 是**公开克隆地址**，
+> 不是作者身份泄漏。`scripts/verify.mjs` 现在只对这一条规则、只对这一种 URL 形态做剥离，
+> 干净文本里出现这个名字仍然算失败。`static` 因此从 32/1 变成 **33/0**。
+
+### 2.9 Prompt 分层清理（2026-11-09）：`offline-test` + `host-load` + 一条 `real-model`
+
+设计说明见 `docs/09-prompt-baseline.md` → `docs/10-prompt-layers.md` → `docs/11-prompt-routing.md`，
+验收见 `docs/12-prompt-verification.md`，未修项见 `docs/13-prompt-followups.md`。
+
+**这一节分开声明四件事**，不要合并成一句"已优化"：改了哪些层、每层的证据到哪一级、
+真实模型输出看到了什么、哪些明确没测。
+
+| 项 | 级别 | 证据 |
+|---|---|---|
+| 原生开发提示词归属表（11 段 Section 逐段归到插件与层级，含"宿主没有只关 Section 的开关"这一结论） | `source-review` | `docs/09-prompt-baseline.md` §3；逐段读宿主源码确认注册点 |
+| `disabled: true` 只能按条目关整个插件的实证 | `offline-test` | 用 `--patch` 探测补丁跑 `--dump-config`，`harness-dev-context` / `ui-deliverables` 行从启用变为 `disabled: true` |
+| 陪伴预设去开发化（模板可选块 + `config/suite.json` 的 `prompt.*` 三个开关） | `offline-test` | `scripts/setup.mjs` 的 `activePatchBlocks()` 单测；`verify --only=static` 三条新断言（默认不装开发工具 / 默认裁掉两段宿主提示 / 开关能把块加回来） |
+| Foundation 静态 Section 压缩（continuity 634→309、agenda 299→239、wardrobe 273→178、pulse 95→93） | `offline-test` + **`real-capture`** | 离线挂载实测 1,072 字；真实抓包 system prompt 5,881 字（基线 10,361） |
+| Prompt Contract 生命周期（恒注册一次、off 时渲染空串、off→active→off 热切换） | `offline-test` | `prompt-engine-mount.test.mjs` 13 项，含新增的热切换测试 |
+| 动态模块减重（chat 512→404、companion 513→446、task 280→247、roleplay 409→363） | `offline-test` + `real-capture` | `prompt-modules.test.mjs` 上限断言；真实抓包同值 |
+| 路由有限修正（ASCII 引号不再当对白证据；`sceneDeixis` 词表去重） | `offline-test` | `prompt-router.test.mjs` 27 项，含计划 §6.3 的 7 条对话样例 |
+| 宿主真实装载 | **`host-load`** | 测试实例 3199 真实启动；`agentPresets/list` 返回 companion 预设未标 broken；system prompt 逐段核对 |
+| 工具清单与 Schema 开销 | **`real-capture`** | 56→46 个工具；35,274→26,621 字符（−24.5%） |
+| 真实模型响应质量 | **`real-model`（10 轮合成样本）** | `data/logs/p5-capture.json`；人格一致、心率/衣柜/记忆如实、日程不虚构；**发现 2 个缺陷见 §2.9.1** |
+| 真实 QQ / 语音 / 提醒投递 | **未验证** | 需另行授权 |
+| Persona 精简 | **未做（按计划禁止）** | 真实 `config/persona.md` 逐字节未改；建议稿见 `docs/persona-simplification-example.md` |
+
+#### 2.9.1 这次抓包暴露的两个缺陷（已记录，未修）
+
+| 缺陷 | 现象 | 归属 |
+|---|---|---|
+| task 档正文为空 | 「用一句话解释幂等」的答案全部落在 `reasoning` 块，`text` 为空 | 写法模块缺少"答案写在正文"的正面要求；不是本次改动引入 |
+| 思考过程漏进正文 | implicit 档回复开头是"他在问…我不该编造…"的自我分析 | 同上；`style.universal` 没有"不要解释你的思路" |
+
+两者都写在 `docs/13-prompt-followups.md` §1/§2，修法要点与测试口径也一并记录。
+
+#### 2.9.2 结论措辞
+
+> 「陪伴预设的系统提示词从 **10,361** 字降到 **5,881** 字（−43.2%），其中 4,004 字是宿主原生
+> 开发智能体说明，2,338 字是给"能改 DSH 本体"的编码智能体看的编码规则段与交付卡片说明，
+> 这些在陪伴会话里全部消失；工具从 **56** 个降到 **46** 个。人格、记忆检索、运行时、日程、
+> 群聊隔离与写记忆闸门**一条没动**，开发预设（standard / ptc / cordis）的 `pwsh`/`fs`/
+> `jobs`/`skill` 工具**全部原位**。
+> 真实模型响应用 10 轮合成样本验过：人格与语气一致、心率/衣柜/记忆如实回答、日程不虚构；
+> 同时发现 task 档会把答案只写进 reasoning、implicit 档会把自我分析写进正文两个既有缺陷，
+> 已单独记录，本次未修。」
 
 ## 4. 怎么把某条证据从「未验证」升一级
 

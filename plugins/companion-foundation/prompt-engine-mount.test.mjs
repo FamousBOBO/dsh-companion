@@ -62,13 +62,19 @@ async function preStep(hooks, sessionId, text, step = 1) {
   return { entered, snapshot, sections, text: snapshot?.content?.[0]?.text ?? '' };
 }
 
-test('默认关闭：不注册 prompt-contract，也不追加任何 prompt 内容', async t => {
+test('默认关闭：只注册一个恒空契约 Section，不追加任何 prompt 内容', async t => {
   const root = buildRoot(t);
   const { sections, hooks, internals } = mount(t, root);
   await internals.engine.initialize();
 
   assert.equal(internals.promptEngine.mode, 'off');
-  assert.equal(sections.some(section => section.name === 'companion:prompt-contract'), false, '关闭时不注册静态 Section');
+  // 契约 Section 恒注册一次（生命周期一致），但 off 时渲染为空串；宿主在拼接前会把空串
+  // Section 丢掉（dsh-system-prompt `renderPrompt` 的 length > 0 过滤），所以系统提示词
+  // 仍与不带引擎的版本逐字节相同。
+  const contract = sections.find(section => section.name === 'companion:prompt-contract');
+  assert.ok(contract, 'off 时也注册，用于之后的 off→active 切换');
+  const offText = typeof contract.text === 'function' ? contract.text({}) : contract.text;
+  assert.equal(offText, '', 'off 时契约文本为空，不占字符');
 
   const entered = await preStep(hooks, 'session-a', '你好');
   assert.equal(entered.sections.some(section => section.name === 'companion-prompt-profile'), false, '关闭时没有 prompt section');
@@ -229,15 +235,47 @@ test('Prompt Engine 不写任何记忆：注入前后记忆库事件数不变', 
   assert.equal(after.stats.events, before.stats.events, 'pre-step 不产生记忆事件');
 });
 
-test('配置关闭后再次挂载：既不注册 Section，也不追加内容', async t => {
+test('配置关闭后再次挂载：Section 注册但为空，不追加内容', async t => {
   const root = buildRoot(t);
   writePromptConfig(root, { enabled: false, mode: 'active' });
   const { sections, hooks, internals } = mount(t, root);
   await internals.engine.initialize();
   assert.equal(internals.promptEngine.mode, 'off');
-  assert.equal(sections.some(section => section.name === 'companion:prompt-contract'), false);
+  const contract = sections.find(section => section.name === 'companion:prompt-contract');
+  const text = typeof contract?.text === 'function' ? contract.text({}) : contract?.text;
+  assert.equal(text, '', 'enabled=false 时契约文本为空');
   const entered = await preStep(hooks, 'session-a', '早');
   assert.equal(entered.sections.some(section => section.name === 'companion-prompt-profile'), false);
+});
+
+test('off → active → off 热切换：契约文本跟随配置，不留残留', async t => {
+  // 任务书 §4.5：挂载时 mode 为 off、之后配置切 active，必须能拿到契约；切回 off 必须干净。
+  const root = buildRoot(t);
+  writePromptConfig(root, { enabled: false, mode: 'off' });
+  const { sections, hooks, internals } = mount(t, root);
+  await internals.engine.initialize();
+
+  const contract = sections.find(section => section.name === 'companion:prompt-contract');
+  assert.ok(contract, 'off 时契约 Section 已注册');
+  const readContract = () => (typeof contract.text === 'function' ? contract.text({}) : contract.text);
+  assert.equal(readContract(), '', 'off 时为空');
+
+  // 切到 active：引擎每轮重读配置，Section 不需要重新注册。
+  writePromptConfig(root, { enabled: true, mode: 'active' });
+  assert.equal(internals.promptEngine.mode, 'active');
+  const activeText = readContract();
+  assert.ok(activeText.length > 0, 'active 后不重新挂载也能拿到契约文本');
+  assert.match(activeText, /动态写法模块/);
+
+  const entered = await preStep(hooks, 'session-a', '在吗');
+  assert.ok(entered.sections.some(section => section.name === 'companion-prompt-profile'), 'active 时有写法模块');
+
+  // 切回 off：契约重新变空，写法模块消失。
+  writePromptConfig(root, { enabled: false, mode: 'off' });
+  assert.equal(internals.promptEngine.mode, 'off');
+  assert.equal(readContract(), '', 'off 后契约重新为空，不残留');
+  const after = await preStep(hooks, 'session-a', '在吗', 2);
+  assert.equal(after.sections.some(section => section.name === 'companion-prompt-profile'), false, 'off 后不再追加写法模块');
 });
 
 test('返回的 mount 结果仍然暴露原有句柄（engine / cognitive / agenda）', async t => {

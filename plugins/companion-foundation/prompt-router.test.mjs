@@ -271,3 +271,76 @@ test('maxHistoryTurns 生效：超出上限的历史不会改变结论', () => {
   const result = routeTurn({ config: baseConfig, sessionId: 's1', message: '嗯', history, previousState: initialState('s1'), now: 1 });
   assert.ok(result.diagnostics.historyTurns <= baseConfig.routing.maxHistoryTurns);
 });
+
+/* ── P4 §6.3：任务书逐条对话样例（每条都钉住"证据"与"不越界"两侧） ── */
+
+test('§6.3-1/2/3 寒暄与接话：chat/normal，短句不丢上下文，也不机械复述', () => {
+  const greet = routeTurn({ config: baseConfig, sessionId: 's1', message: '哈喽喽', history: [], now: 1 });
+  assert.equal(greet.route.mode, 'chat');
+  assert.equal(greet.route.intensity, 'normal');
+
+  // 「对啊」「还没呢」必须停在前一轮的模式上，不能因为太短就换档。
+  for (const [message, prior] of [['对啊', '今天下雨了'], ['还没呢', '你吃饭了没']]) {
+    const first = routeTurn({ config: baseConfig, sessionId: 's1', message: prior, history: [], now: 1 });
+    const second = routeTurn({ config: baseConfig, sessionId: 's1', message, history: [{ role: 'user', text: prior }], previousState: first.state, now: 2 });
+    assert.equal(second.route.mode, 'chat', `${message} 应停留在 chat`);
+    assert.equal(second.route.intensity, 'normal');
+    assert.equal(second.state.turns, first.state.turns + 1, '上下文轮数照常累加');
+  }
+});
+
+test('§6.3-4/5 同一句假设：无场景 ⇒ companion；前文已有场景 ⇒ 允许 subtle 承接', () => {
+  const sentence = '如果那天我没走，你会不会留我？';
+
+  const noScene = routeTurn({ config: baseConfig, sessionId: 's1', message: sentence, history: [], now: 1 });
+  assert.equal(noScene.route.mode, 'companion', '没有场景证据就不能当 RP');
+  assert.notEqual(noScene.route.profile, 'implicit-roleplay');
+  assert.ok(noScene.route.evidence.includes('bounded:abstract-emotion-not-roleplay'));
+
+  // 用真实的结构信号建立场景（动作 + 对白），再问同一句。
+  let state = routeTurn({ config: baseConfig, sessionId: 's1', message: '*把伞往他那边偏了偏*', history: [], now: 1 }).state;
+  const quoted = routeTurn({ config: baseConfig, sessionId: 's1', message: '「你怎么来了？」', history: [], previousState: state, now: 2 });
+  assert.equal(quoted.route.mode, 'roleplay');
+  assert.equal(quoted.route.intensity, 'subtle', '单条信号只到 subtle');
+  state = quoted.state;
+
+  const withScene = routeTurn({
+    config: baseConfig, sessionId: 's1', message: sentence,
+    history: [{ role: 'user', text: '「你怎么来了？」' }], previousState: state, now: 3,
+  });
+  assert.equal(withScene.route.mode, 'roleplay', '有场景证据时可以自然承接');
+  assert.equal(withScene.route.intensity, 'subtle', '承接不等于升级成 immersive');
+});
+
+test('§6.3-6 技术问题不被误判成戏：ASCII 引号不是场景证据', () => {
+  // 英文/技术文本里的 ASCII 引号曾经被当成成对对白，把配置说明路由成 roleplay。
+  for (const message of ['use "strict mode" in the config', 'set "proxy" env var', '他说 "hello"']) {
+    const result = routeTurn({ config: baseConfig, sessionId: 's1', message, history: [], now: 1 });
+    assert.notEqual(result.route.mode, 'roleplay', `技术文本不应进 roleplay: ${message}`);
+    assert.ok(!result.route.evidence.includes('scene-signal:dialogue'), `ASCII 引号不该算对白证据: ${message}`);
+  }
+  // 中文对白仍然成立（全角引号与"引号内是中文"的 ASCII 引号都算）。
+  for (const message of ['「你怎么来了？」', '"你终于来了"']) {
+    const result = routeTurn({ config: baseConfig, sessionId: 's1', message, history: [], now: 1 });
+    assert.equal(result.route.mode, 'roleplay', `中文对白应能建立场景: ${message}`);
+  }
+  assert.equal(routeTurn({ config: baseConfig, sessionId: 's1', message: '分析一下 RP 路由代码', history: [], now: 1 }).route.mode, 'task');
+});
+
+test('§6.3-7 稳定 RP 中途问技术问题：临时 task，之后能回到原场景', () => {
+  let state = routeTurn({ config: baseConfig, sessionId: 's1', message: '*把伞往他那边偏了偏*', history: [], now: 1 }).state;
+  state = routeTurn({ config: baseConfig, sessionId: 's1', message: '「你怎么来了？」', history: [], previousState: state, now: 2 }).state;
+  state = routeTurn({ config: baseConfig, sessionId: 's1', message: '「顺路。」', history: [], previousState: state, now: 3 }).state;
+
+  const technical = routeTurn({ config: baseConfig, sessionId: 's1', message: '这个函数怎么改', history: [], previousState: state, now: 4 });
+  assert.equal(technical.route.mode, 'task');
+  assert.equal(technical.route.intensity, 'normal', '回答技术问题时不带扮演规则');
+  assert.deepEqual(technical.state.resume, { mode: 'roleplay', intensity: 'subtle' }, '现场被保留');
+
+  const back = routeTurn({
+    config: baseConfig, sessionId: 's1', message: '「你先别走。」',
+    history: [{ role: 'user', text: '这个函数怎么改' }], previousState: technical.state, now: 5,
+  });
+  assert.equal(back.route.mode, 'roleplay', '任务结束后一次闲聊不清空已形成的场景');
+  assert.ok(back.route.evidence.includes('resume:scene'));
+});

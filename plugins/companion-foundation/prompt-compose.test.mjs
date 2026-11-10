@@ -68,10 +68,10 @@ test('稳定排序：priority 降序，同优先级按目录声明顺序；文�
   assert.ok(!result.text.startsWith('\n') && !result.text.endsWith('\n'));
 });
 
-test('chat 档：8 个模块、合计 ≤560 字，且不带白描/环境描写/小说等叙事要求', () => {
+test('chat 档：8 个模块、合计 ≤450 字，且不带白描/环境描写/小说等叙事要求', () => {
   const result = compose('chat');
   assert.equal(result.budgetChars, 600);
-  assert.ok(result.chars <= 560, `chat 档 ${result.chars} 字，超过 560`);
+  assert.ok(result.chars <= 450, `chat 档 ${result.chars} 字，超过 450`);
   assert.ok(result.chars <= result.budgetChars, 'chars 必须 ≤ budgetChars');
   assert.equal(result.selectedModules.length, 8);
   assert.deepEqual(result.selectedModules.map(entry => entry.id), [
@@ -143,19 +143,24 @@ test('数量上限本身仍然生效：把上限调到 2 时按顺序整模块�
 });
 
 test('预算裁剪：按优先级从低到高整模块丢弃，正文绝不被截断', () => {
+  // 160 字预算下，前三个整模块（32 + 1 + 31 + 1 + 54 = 119）装得下，第四个就超了。
   const tight = compose('chat', { budgets: { chat: 160 } });
   assert.equal(tight.budgetChars, 160);
   assert.ok(tight.chars <= 160, `裁剪后 ${tight.chars} 字仍超预算 160`);
   const kept = tight.selectedModules.map(entry => entry.id);
-  assert.deepEqual(kept, ['route.header', 'mode.chat-frame'], '只保留优先级最高的两个整模块');
-  assert.equal(tight.text, [bodyOf('route.header', 'chat'), bodyOf('mode.chat-frame', 'chat')].join('\n'));
+  assert.deepEqual(kept, ['route.header', 'mode.chat-frame', 'operator.dig'], '只保留装得下的整模块');
+  assert.equal(tight.chars, 119);
+  assert.equal(
+    tight.text,
+    ['route.header', 'mode.chat-frame', 'operator.dig'].map(id => bodyOf(id, 'chat')).join('\n'),
+  );
   for (const entry of tight.selectedModules) {
     assert.ok(tight.text.includes(bodyOf(entry.id, 'chat')), `${entry.id} 正文被截断`);
   }
   const dropped = tight.skippedModules.filter(entry => entry.reason === 'budget').map(entry => entry.id);
   assert.deepEqual(dropped, [
     'style.universal', 'style.anti-deepseek', 'style.anti-ai-chat',
-    'thinking.guided', 'operator.review', 'operator.dig',
+    'thinking.guided', 'operator.review',
   ]);
   assert.deepEqual(tight.state.trimmed, dropped);
   // 每个被丢的模块都在 skippedModules 里，且 text 里没有半个模块
@@ -167,10 +172,10 @@ test('预算裁剪：按优先级从低到高整模块丢弃，正文绝不被�
 test('预算极小时也存在合法结果：只保留装得下的整模块，绝不返回半个模块', () => {
   const result = compose('chat', { budgets: { chat: 60 } });
   assert.equal(result.budgetChars, 120, '预算下限 120 由钳制保证');
-  // header 56 + '\n' + chat-frame 61 = 118 ≤ 120；再多一个模块就超了
-  assert.deepEqual(result.selectedModules.map(entry => entry.id), ['route.header', 'mode.chat-frame']);
-  assert.equal(result.text, [bodyOf('route.header', 'chat'), bodyOf('mode.chat-frame', 'chat')].join('\n'));
-  assert.equal(result.chars, 118);
+  // header 32 + '\n' + chat-frame 31 + '\n' + dig 54 = 119 ≤ 120；再多一个模块就超了
+  assert.deepEqual(result.selectedModules.map(entry => entry.id), ['route.header', 'mode.chat-frame', 'operator.dig']);
+  assert.equal(result.text, ['route.header', 'mode.chat-frame', 'operator.dig'].map(id => bodyOf(id, 'chat')).join('\n'));
+  assert.equal(result.chars, 119);
   assert.ok(result.chars <= result.budgetChars);
   // 单模块也装不下时返回空文本，而不是切一半
   const single = trimModulesToBudget([{ module: { id: 'only' }, text: 'x'.repeat(200) }], 120);

@@ -149,12 +149,17 @@ test('模块正文长度符合合同目标上限（header/mode/thinking/operator
   }
 });
 
-test('chat 档全部模块合计 ≤560 字，task 档 ≤470 字', () => {
+test('chat 档全部模块合计 ≤450 字，task 档 ≤430 字（P3 §5.4 减重目标）', () => {
   const chatChars = totalChars('chat');
   const taskChars = totalChars('task');
-  assert.ok(chatChars <= 560, `chat 档合计 ${chatChars} 字，超过 560`);
-  assert.ok(taskChars <= 470, `task 档合计 ${taskChars} 字，超过 470`);
+  // 计划 §5.4 的目标是 chat 档 250–350 字。首轮落在 404 字（模块边界不可再拆，见
+  // docs/10-prompt-layers.md §8），因此把上限钉在 450 以免悄悄长回去；再往下压需要
+  // 调模块目录本身，不属于"清理"范围。
+  assert.ok(chatChars <= 450, `chat 档合计 ${chatChars} 字，超过 450`);
+  assert.ok(taskChars <= 430, `task 档合计 ${taskChars} 字，超过 430`);
   assert.ok(chatChars > 0 && taskChars > 0);
+  // 相对改动前的 512 必须真的降下来
+  assert.ok(chatChars < 512, `chat 档没有变短：${chatChars}`);
 });
 
 test('chat 档正文不含白描 / 环境描写 / 小说等小说写作要求', () => {
@@ -207,9 +212,13 @@ test('roleplay-narrative 档注入叙事规则关键词；task 档不含扮演�
 });
 
 test('四种算子各有边界，LORE 与 ARC 明确支持跳过', () => {
+  // P3 §5.4-1：DIG 只负责「听懂他到底在说什么」，「不复述原话」统一归 style.anti-ai-chat。
+  // 这条断言把唯一归属钉住，避免两边各写一份又互相矛盾。
   const dig = rendered(MODULES.find(module => module.id === 'operator.dig'));
-  assert.ok(dig.includes('不复述'));
-  assert.ok(dig.includes('不把猜测当事实'));
+  assert.ok(!dig.includes('不复述'), 'DIG 不再重复「不复述」，该规则归 style.anti-ai-chat');
+  assert.ok(dig.includes('不替他补全') && dig.includes('不把猜测当事实'));
+  const antiAi = rendered(MODULES.find(module => module.id === 'style.anti-ai-chat'), 'chat');
+  assert.ok(antiAi.includes('别复述他的话'), '「不复述」必须有一个唯一归属');
 
   const lore = rendered(MODULES.find(module => module.id === 'operator.lore'));
   assert.ok(lore.includes('跳过'));
@@ -222,10 +231,11 @@ test('四种算子各有边界，LORE 与 ARC 明确支持跳过', () => {
   assert.ok(arc.includes('不靠制造冲突'));
   assert.ok(arc.includes('本轮不推进也完全可以'));
 
+  // P3 §5.4-2：REVIEW 只留「按需自检」的行为，真实性约束归 Foundation 与 style.universal。
   const review = rendered(MODULES.find(module => module.id === 'operator.review'));
+  assert.ok(!review.includes('编造事实'), 'REVIEW 不再重复真实性检查，该约束归 Foundation');
   assert.ok(review.includes('不输出检查清单'));
   assert.ok(review.includes('不拖长回复'));
-  // 禁止为满足模板而生成冗长思考
   assert.ok(review.includes('拖长') || review.includes('冗长'));
 });
 
@@ -247,7 +257,7 @@ test('anti-deepseek 只降低频率，不把「不是」「没有」「其实」
   const module = MODULES.find(entry => entry.id === 'style.anti-deepseek');
   const text = rendered(module, 'chat');
   assert.ok(text.includes('不是禁词'));
-  assert.ok(text.includes('通过风格指导降低出现频率'));
+  assert.ok(text.includes('降频') && text.includes('靠风格指导降频'));
   assert.ok(text.includes('不破坏正常中文表达'));
   assert.ok(text.includes('不是') && text.includes('没有') && text.includes('其实'));
   for (const word of ['微微', '一瞬', '一拍', '抽象比喻', '连续并列短句', '段尾强行总结', '固定转折词']) {

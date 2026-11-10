@@ -116,11 +116,21 @@ export function currentOutfit(wardrobe, now, timeZone = 'Asia/Shanghai') {
   return { date, source: 'daily', instruction: '', items: picked };
 }
 
-function itemLine(item) {
+function itemLine(item, { withDescription = true } = {}) {
   const label = WARDROBE_SLOT_LABELS[item.slot] ?? item.slot;
-  return `${label}：${item.name}${item.description ? `（${item.description}）` : ''}`;
+  const description = withDescription && item.description ? `（${item.description}）` : '';
+  return `${label}：${item.name}${description}`;
 }
 
+/**
+ * The wardrobe section, deliberately compact.
+ *
+ * It runs in every request, and the per-item descriptions are the expensive part: they are
+ * flavour text the character needs only when actually describing an outfit. So the section
+ * carries the slot → item names plus the tendency (enough to answer "今天穿什么" consistently),
+ * and `companion_wardrobe_detail` supplies the descriptions on demand. The factual constraint
+ * ("this is real, do not invent") stays because it is what stops an invented outfit.
+ */
 export function renderWardrobePrompt(root, now, timeZone = 'Asia/Shanghai', maxChars = 900) {
   const wardrobe = loadWardrobe(root);
   const outfit = currentOutfit(wardrobe, now, timeZone);
@@ -129,12 +139,12 @@ export function renderWardrobePrompt(root, now, timeZone = 'Asia/Shanghai', maxC
   if (wardrobe.tendency) lines.push(`整体服饰倾向：${wardrobe.tendency}`);
   if (outfit.items.length > 0) {
     lines.push(`今天穿（${outfit.date}${outfit.source === 'explicit' ? '，用户/剧情指定' : '，按衣柜轮换'}）：`);
-    for (const item of outfit.items) lines.push(`- ${itemLine(item)}`);
+    for (const item of outfit.items) lines.push(`- ${itemLine(item, { withDescription: false })}`);
     if (outfit.instruction) lines.push(`换装说明：${outfit.instruction}`);
   } else {
     lines.push('衣柜里还没有可穿的衣物；不要凭空编造穿着。');
   }
-  lines.push('这是当前真实着装；被问到穿着时按这里回答，需要更多细节再调用 companion_wardrobe_detail。不要声称衣柜里没有的衣服。');
+  lines.push('这是当前真实着装；需要衣物的细节描述再调用 companion_wardrobe_detail，不要声称衣柜里没有的衣服。');
   return lines.join('\n').slice(0, maxChars);
 }
 

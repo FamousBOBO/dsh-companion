@@ -9,8 +9,11 @@
 
 配置文件：`<dataDir>/home/companion/prompt-engine.config.json`。
 
-- **文件不存在** ⇒ 引擎处于 `off`，不注册任何 System Prompt Section，不往消息里追加任何内容，
-  不读记忆、不调模型。行为与旧版本逐字节一致。
+- **文件不存在** ⇒ 引擎处于 `off`，不往消息里追加任何内容，不读记忆、不调模型。
+  契约 Section（`companion:prompt-contract`）**仍然注册一次**，但渲染为空串——
+  宿主在拼接前会丢掉空串 Section，所以 System Prompt 与不带引擎的版本逐字节一致。
+  这样做的原因是生命周期一致：挂载时 `off`、之后配置改成 `active`，也能立刻拿到契约；
+  详见 `docs/10-prompt-layers.md` §5。
 - **配置坏了**（非法 JSON、非法枚举、越界数字）⇒ 逐字段回落默认值，`status().configError` 记录原因；
   聊天不受影响。
 - **`enabled: false` 拥有最高关闭优先级**：写了 `mode: "active"` 也不会生效。
