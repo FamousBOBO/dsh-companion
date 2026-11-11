@@ -192,12 +192,12 @@ QQ 发送**。下面每一行都写着"改了什么 + 用什么命令证明的"�
 | 工具可见性三层诊断（P0-2） | `offline-test` | `adapters/dsh-host/tool-visibility.ts`：模块是否挂载 / 四个 `expression_*` 是否注册 / 全局与每个活会话作用域里是否可见 / QQ 发送器是否可见；三态（`yes`/`no`/`unknown`，读不出来不许说「没有」），一句话结论按上游到下游报第一个缺口。`test/tool-visibility.test.ts` **11 项**。后台状态快照新增 `expressionVisibility` 一格（脱敏：只有工具名与三态） |
 | 素材权限与结果码诊断（P1） | `offline-test` | `companion-expression/src/diagnostics.mjs`：图库/审核态计数、按会话算可用素材数（**同一套** `scopesFor()` + 可见性硬门，不另写 SQL 语义）、最近一次候选/发图的结果码与 `message_id`、最近投递记录；读不出来给 `null` 不给 `0`。`test/diagnostics.test.mjs` **7 项**。运维入口 `plugins/companion-expression/scripts/diagnose.mjs`（只读；`--json` / `--dm` / `--group`），在独立数据目录实跑过一次：`delivery.enabled=关`、图库 0 素材、dm/group 各自给出 `peer-not-approved` / `group-capture-disabled` |
 | 「无 `message_id` 不记为已发送」（P2 第 10 条） | `offline-test` | `src/delivery.mjs` 的 `statusOf()` 原先把 `{ok:true}` 但无回执记成 `sent`；现在记 `unknown`（显式 `status=failed/unknown` 照它自己的话）。`test/expression-chain-p2.test.mjs` **6 项**把 docs/11 P2 第 7–10 条钉在一起：无候选不随机挑图 / `reply` 只认候选 `assetId` / 同轮最多一张 / 无回执不算发过且不重投 |
-| 整体离线验证 | `offline-test` | 开发 worktree：`npm test --workspace=@dsh-companion/channel-qq` → **1782 tests / 1781 pass / 0 fail / 1 skip**（该 skip 是既有的「真实会话文件逐帧解码」用例）；`plugins/companion-expression` `node --test "test/*.test.mjs"` → **227/227 通过**；`npm run verify` → `unit` 9 模块通过 0 失败、`static` 32 通过 0 失败、`compose` **SKIPPED**（本机 `doctor` 探测不到宿主 CLI 入口，见下一行） |
+| 整体离线验证 | `offline-test` | 开发 worktree：`npm test --workspace=@dsh-companion/channel-qq` → **1783 tests / 1782 pass / 0 fail / 1 skip**（该 skip 是既有的「真实会话文件逐帧解码」用例）；`plugins/companion-expression` `node --test "test/*.test.mjs"` → **227/227 通过**；`npm run verify` → `unit` 9 模块通过 0 失败、`static` 32 通过 0 失败、`compose` **SKIPPED**（本机 `doctor` 探测不到宿主 CLI 入口，见下一行）；channel-qq 的 `check:size` / `check:layers` / `check:syntax` / `check:admin` 全通过 |
 | 宿主装载（`host-load`） | **未验证** | 开发 worktree 的 `doctor` 报 `[失败] 宿主 CLI 入口 — 宿主目录里找不到 CLI 入口`：本机装的是 `0.2.2-rc.1`，CLI 在 `app.asar` 内而不是 `resources/app/dsh`，`tools/lib/host.mjs` 的推导路径对不上。**这是环境差异，不是本次改动引入的**（基线 `verify` 的 `compose` 同样 SKIPPED）。因此 `expression_*` 工具在真宿主上是否注册、是否有会话可见、发送器是否可见，**本轮没有实测证据**——诊断代码已经就位，但「诊断能跑」不等于「链路在真宿主上通了」 |
 | 真实 QQ 发送（`real-send`） | **未验证，且本轮不允许** | 独立 worktree 的 `config/suite.json` 全部沿用模板：`modules.expression=false`、`delivery.enabled=false`、`safety.*` 全关。真实发送必须由操作者在**生产环境**显式触发，并按 §2.6 的口径记录 `provider_message_id` 与回读 `sub_type` |
 
 > 结论措辞只能用：「表情包链路的工具名、服务发现、入站语义、可见性诊断与发送纪律在**离线测试**层面
-> 通过（channel-qq 1781 项 + expression 227 项，0 失败）；**宿主装载与真实发送本轮未验证**」。
+> 通过（channel-qq 1782 项 + expression 227 项，0 失败）；**宿主装载与真实发送本轮未验证**」。
 >
 > 三个容易读错的点：
 > 1. **`offline-test` 全绿 ≠ 宿主装载通过**：本机宿主版本 `0.2.2-rc.1` 与 `tools/lib/host.mjs`
