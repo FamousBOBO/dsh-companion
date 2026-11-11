@@ -410,6 +410,10 @@ function publishPort(service, log) {
   const port = Object.freeze({
     version: 1, service, observe: service.observe, offers: service.offers,
     status: () => service.stats({ limit: 3 }),
+    // 表情词典的**只读**句柄：入站行要写 `knownMeaning=`，而那条路径不能产生
+    // 「这个表情又被看见一次」的计数（那是「要不要问一句」的判据，归采集路径）。
+    // 单独一格 `note` 而不是让消费者去猜 `service.stickerNotes` 的位置。
+    note: service.stickerNotes,
   });
   try {
     process[PORT_SYMBOL] = port;

@@ -121,7 +121,21 @@ export interface StickerSeg {
   generic: boolean
   /** 动图线索（GIF/WebP/APNG 或 summary 里写了动画）。 */
   animated: boolean
+  /**
+   * 段类型。恒为 `'sticker'`，**存在的意义是让下游不必靠猜**：`imageUrls` 里的是图
+   * （可能要让 Bot 看内容），`stickers` 里的是话（默认在表达情绪）。
+   */
+  kind: 'sticker'
+  /**
+   * 语义处置口径。恒为 `'emotion-support'`：表情是**情绪辅助表达**，不是待描述的图。
+   *
+   * 为什么把它写成字段而不是只写进提示词：模型侧的行为由两处决定——提示词怎么说，
+   * 以及它可以引用哪些事实。字段进了入站行，模型才能看到一个明确的「按情绪理解」标记，
+   * 而不是被要求从 `[表情：困]` 里自己推断「这到底算不算图」。
+   */
+  semanticPolicy: 'emotion-support'
 }
+
 
 /** `summary` 里这些词只说明「这是个表情」，不是表情的意思。 */
 const GENERIC_STICKER_LABELS = new Set(['动画表情', '表情', '图片', '照片', '动图', 'gif', 'sticker'])
@@ -189,6 +203,8 @@ export function stickerOf(data: Record<string, unknown>): StickerSeg | null {
     label: generic ? '' : (inner ?? ''),
     generic,
     animated,
+    kind: 'sticker',
+    semanticPolicy: 'emotion-support',
   }
 }
 

@@ -37,6 +37,18 @@ export interface RenderInput {
   readonly reactionHint?: string | null
   /** `event.time` 缺失时用来兜底的"现在"（毫秒）。调用方注入，纯函数不读时钟。 */
   readonly nowMs: number
+  /**
+   * 表情词典的**只读**取值函数：给一个表情指纹，回它记下的意思（没记过回 `null`）。
+   *
+   * 为什么由调用方注入而不是在这里读库：`renderMessageLine` 是纯函数（黄金快照靠它），
+   * 而词典在 `companion-expression` 的 SQLite 里。注入让「有词典」与「没词典」成为
+   * 两种显式行为，也让这条路径可以离线测。
+   *
+   * 约定：**只读**。渲染一条入站行不该产生"这个表情又被看见一次"的副作用——
+   * 那个计数决定"要不要问一句"，它属于真正收到消息的观察者，不属于渲染。
+   * 取不到 / 抛错 / 回空串一律按「不认识」处理。
+   */
+  readonly stickerMeanings?: (stickerKey: string) => string | null
 }
 
 /**
@@ -54,6 +66,44 @@ export function renderMessageContent(parsed: ParsedInbound): string | null {
   return parsed.plainText !== ''
     ? parsed.plainText
     : (parsed.imageUrls.length > 0 ? '[图片]' : (stickerText !== '' ? stickerText : null))
+}
+
+/** 取一个表情记下的意思（没有/抛错/空串都算「不认识」）。 */
+function meaningOf(
+  sticker: ParsedInbound['stickers'][number],
+  lookup: ((key: string) => string | null) | undefined,
+): string | null {
+  if (typeof lookup !== 'function') return null
+  try {
+    const value = lookup(sticker.key)
+    const text = typeof value === 'string' ? value.trim() : ''
+    return text === '' ? null : text
+  } catch {
+    // 词典查询失败不该让一条消息渲染不出来：按「不认识」继续（模型会走未知口径）。
+    return null
+  }
+}
+
+/**
+ * 一个表情的机器可读标注：`[表情标记：kind=sticker｜stickerKey=f:…｜semanticPolicy=emotion-support｜knownMeaning=…]`。
+ *
+ * 为什么把 `knownMeaning` 放进**机器可读**的那一段而不是只写在散文里：模型要能一眼
+ * 分清「这张我有记录」与「这张我不知道」，而不是从一整段规则里推测自己该不该解释。
+ * 没有记录时**不输出** `knownMeaning=`（而不是输出一个空值）——空字段会被读成
+ * 「记过一条空意思」，那比没有更难纠正。
+ */
+export function stickerSemanticTag(
+  sticker: ParsedInbound['stickers'][number],
+  meaning: string | null,
+): string {
+  const fields = [
+    'kind=sticker',
+    sticker.key === '' ? '' : `stickerKey=${sticker.key}`,
+    `semanticPolicy=${sticker.semanticPolicy}`,
+    meaning === null ? '' : `knownMeaning=${meaning}`,
+    sticker.animated ? 'animated=1' : '',
+  ].filter(Boolean)
+  return `[表情标记：${fields.join('｜')}]`
 }
 
 /**
@@ -93,18 +143,32 @@ export function renderMessageLine(input: RenderInput): string | null {
   // that a picture came along (imageRecognition is off by default).
   if (parsed.imageSummaries.length > 0) parts.push(`[图片含义：${parsed.imageSummaries.join('；')}]`)
   else if (parsed.imageUrls.length > 0 && parsed.plainText !== '') parts.push(`[随消息附了${parsed.imageUrls.length}张图]`)
-  // 表情的处置口径写在这一行里，而不是指望模型自己悟：先想「以前发过没有」，
-  // 没有就诚实说不认识，**不许照着画面描述**。私聊里可以直接问对方是什么意思。
+  // 表情的处置口径写在这一行里，而不是指望模型自己悟。
+  //
+  // 口径（docs/11 P1，2026-11-11）：**用户发来的表情首先是一句情绪或态度表达**。
+  // 旧文案要求模型「先在记忆里找这个表情以前出现过没有，认不出就说不认识」——它把
+  // 表情当成一件需要检索的**资料**，于是模型要么去描述画面、要么去揣度动机。现在改成：
+  // 已知意思就直接按那个情绪理解；认不出就接住语气/卖萌/带过/沉默，不描画面、不揣度；
+  // 只有用户**明确追问**"这是什么意思"时才解释。
+  //
+  // 每个表情都带两个机器可读的标注（`kind=sticker` / `semanticPolicy=emotion-support`）：
+  // 它们是模型可以引用的事实，比在散文里要求"把表情当情绪"更难被忽略。
   if (parsed.stickers.length > 0) {
-    const unknown = parsed.stickers.filter(s => s.label === '').length
+    for (const sticker of parsed.stickers) {
+      const meaning = meaningOf(sticker, input.stickerMeanings)
+      parts.push(stickerSemanticTag(sticker, meaning))
+    }
     const animated = parsed.stickers.some(s => s.animated)
     parts.push(
-      '[表情处置：先在记忆里找这个表情以前出现过没有（同一张图会认出是同一张）；'
-      + '认得出就直接按它原来的意思理解，不要描述画面。'
-      + (unknown > 0 ? '认不出的就说不认识，别猜画面内容' : '')
-      + '；私聊里可以直接问对方「这个表情是什么意思」，问清楚之后再用表情记录工具把意思记下来'
-      + (animated ? '（动图同样按这个办法，不需要逐帧看）' : '')
-      + ']',
+      '[表情语义：表情包是对方的情绪辅助表达，不是一幅需要解释的图。'
+      + '不默认解释图片内容、不描述画面、不猜测对方在问什么；'
+      + '词典里记过意思（knownMeaning）就直接按那个情绪理解，不重复解释；'
+      + '认不出（没有 knownMeaning）时接住语气、卖萌、轻轻带过或沉默：别猜、不揣度，也不要把猜测当成事实。'
+      + '只有用户明确问「这是什么意思」时才解释：先用 expression_sticker_note 的 action=lookup 查词典，'
+      + '仍没有记录就承认不确定并问一句。'
+      + '用户发普通图片与发表情不是一回事：图片可能是让 Bot 看内容，表情默认是在表达情绪'
+      + (animated ? '（动图表情同样只按情绪理解，不需要逐帧看）' : '')
+      + '。]',
     )
   }
   if (called && input.reactionHint !== undefined && input.reactionHint !== null) {

@@ -147,7 +147,31 @@ export function createStickerNotes({ db, now = () => Date.now() } = {}) {
     };
   }
 
-  return { lookup, record, findByLabel, list, stats, markSeen };
+  /**
+   * **只读**认一个表情：不回写任何计数。
+   *
+   * 与 `lookup()` 的区别只有一个，但那一个是关键：`lookup()` 会记「这个表情在本作用域
+   * 又被看见一次」并把命中计数加一——那是"该不该问一句"的判据。渲染一条入站行不是
+   * 「一次使用」，它只是想知道「这张有没有记过意思」。所以渲染路径走这里。
+   *
+   * @param {{stickerKey?: string}} input
+   * @returns {{known: true, meaning: string, label: string, animated: boolean}
+   *   | {known: false, reasonCode: string}}
+   */
+  function read({ stickerKey = '' } = {}) {
+    const key = cleanKey(stickerKey);
+    if (key === '') return { known: false, reasonCode: 'key-missing' };
+    try {
+      const row = db.get('SELECT * FROM sticker_notes WHERE sticker_key = ?', [key]);
+      if (!row) return { known: false, reasonCode: 'not-recorded' };
+      const note = noteOf(row);
+      return { known: true, meaning: note.meaning, label: note.label, animated: note.animated };
+    } catch {
+      return { known: false, reasonCode: 'read-failed' };
+    }
+  }
+
+  return { lookup, read, record, findByLabel, list, stats, markSeen };
 }
 
 export default { createStickerNotes, noteOf, NOTE_SOURCES };

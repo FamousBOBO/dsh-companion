@@ -98,6 +98,13 @@ export interface RuntimeDeps {
   readonly presence?: PresenceObserver
   /** 参与者注册表（P9-G4 §2.2）：同步读法；没开注册表时缺省。 */
   readonly participants?: () => RegistryFile | null
+  /**
+   * 表情词典的只读取值函数（指纹 → 记下的意思；没有就 `null`）。
+   *
+   * 由组合根从 `host.get('expressionBridge')?.lookupSticker` 接过来；那一格是观察者
+   * 子插件提供的、可能在 `companion-expression` 挂载后才就绪，所以每包现取。
+   */
+  readonly stickerMeanings?: (stickerKey: string) => string | null
 }
 
 /** 会话登记表：房间 → 会话，四条件路径共用同一份并发保护。 */
@@ -243,6 +250,9 @@ function createRuntime(deps: RuntimeDeps): ChannelRuntime {
     ...(deps.ambient === undefined ? {} : { ambient: deps.ambient }),
     ...(deps.presence === undefined ? {} : { presence: deps.presence }),
     ...(deps.participants === undefined ? {} : { participants: deps.participants }),
+    // 表情词典：渲染入站行时要知道「这张表情记过意思没有」。取值函数而不是值——
+    // `companion-expression` 常常比本插件晚挂载，而且它可能重挂（每次现取）。
+    ...(deps.stickerMeanings === undefined ? {} : { stickerMeanings: deps.stickerMeanings }),
     ...deps.adminCommand === undefined ? {} : { adminCommand: deps.adminCommand },
   })
   return { registry, turns, notices, pipeline }

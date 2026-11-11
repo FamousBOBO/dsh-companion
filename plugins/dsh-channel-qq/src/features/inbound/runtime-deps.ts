@@ -58,6 +58,9 @@ export function runtimeDepsOf(input: {
     ...(presence.presence === undefined ? {} : { presence: presence.presence }),
     // 参与者注册表（P9-G4 §2.2）：采集路径按它冻结"这条消息当时是谁"；没开就缺省。
     ...(presence.participants === undefined ? {} : { participants: presence.participants }),
+    // 表情词典（docs/11 P1）：入站行要能写出 `knownMeaning=`。**每次现取**——
+    // 那一格由 observers 子插件提供，`companion-expression` 常常比它晚挂载，也可能重挂。
+    stickerMeanings: (key: string) => host.get('expressionBridge')?.lookupSticker?.(key) ?? null,
     // 审批网关（默认关；CHANNEL_QQ_APPROVAL=1 时生效）。命令先于 agent 处理、不经模型。
     // 传取值函数而不是 `config.admins`：撤掉管理员后必须立刻失效。
     ...approvalEnabled() ? { adminCommand: createAdminCommand(() => host.config.admins, host.log) } : {},

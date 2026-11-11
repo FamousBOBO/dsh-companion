@@ -26,10 +26,32 @@ export type ExpressionSticker = { url: string; stickerKey: string; label: string
 export type ExpressionInbound = Route & {
   messageId: number; at: number; images: ExpressionImage[]; stickers?: ExpressionSticker[]; text?: string
 }
-/** 正常化后的端口：消费端只认这两个方法。 */
-export interface ExpressionPort { offers(offer: Omit<Route, 'senderId'>): unknown; ingest(event: ExpressionInbound): unknown }
+/** 正常化后的端口：消费端只认这两个方法（`lookupSticker` 有就带上，没有不影响转发）。 */
+export interface ExpressionPort {
+  offers(offer: Omit<Route, 'senderId'>): unknown
+  ingest(event: ExpressionInbound): unknown
+  /**
+   * 词典只读查询：指纹 → 记下的意思（没记过回 `null`）。
+   *
+   * 由 `companion-expression` 的 service 面提供（`stickerNote({action:'lookup'})`）。
+   * 之所以挂在端口上：入站行要能写出 `knownMeaning=`，而那条路径在 `core/message/render.ts`
+   * 是纯函数——值必须由调用方注入，不能在里面读库。
+   *
+   * **只读**口径由实现保证：这里不调 `lookup` 的「记一次见过」那一半（见下方 `readNote`）。
+   */
+  lookupSticker?(stickerKey: string): string | null
+}
 /** 服务袋 `expressionBridge` 那一格（观察者只经它转发；端口由本模块解析）。 */
-export interface ExpressionBridgePort { forwardInbound(event: OneBotEvent, admins: readonly number[]): void }
+export interface ExpressionBridgePort {
+  forwardInbound(event: OneBotEvent, admins: readonly number[]): void
+  /**
+   * 词典只读查询（指纹 → 记下的意思；没有就 `null`）。
+   *
+   * 有它就说明端口后面那个服务面确实带词典；没有（老版本 / 未挂载）时调用方按
+   * 「不认识」处理。取不到、抛错、空意思都回 `null`——这里**绝不抛**。
+   */
+  lookupSticker?(stickerKey: string): string | null
+}
 export interface ForwardOptions { readonly admins: readonly number[]; readonly log?: (line: string) => void }
 let key: string | null = null
 
@@ -65,7 +87,65 @@ function normalize(raw: unknown): ExpressionPort | null {
   const push = typeof s.ingest === 'function' ? s.ingest : s.observe
   if (Number(s.version ?? 1) !== 1 || typeof push !== 'function') return null
   const ask = typeof s.offers === 'function' ? (s.offers as (o: unknown) => unknown).bind(s) : null
-  return { offers: ask ?? (() => true), ingest: (event) => (push as (e: unknown) => unknown).call(s, event) }
+  const port: ExpressionPort = {
+    offers: ask ?? (() => true),
+    ingest: (event) => (push as (e: unknown) => unknown).call(s, event),
+  }
+  // 词典：只有服务面**真的**提供了才加这一格。读不到就保持「没有这个方法」，
+  // 让调用方按「不认识」处理——不假装认识，也不因此整段跳过。
+  const note = readNoteOf(raw)
+  if (note !== null) port.lookupSticker = note
+  return port
+}
+
+/**
+ * 从端口对象上取一个**只读**的词典查询。
+ *
+ * 两个来源（都是 `companion-expression` 自己发布的形状）：
+ *   - `service.stickerNotes.read({stickerKey})`：纯读（推荐）；
+ *   - `service.stickerNote({action:'lookup', …})` / `service.stickerNotes.lookup(…)`：老口径，
+ *     会记「这个表情又被看见一次」。
+ *
+ * 渲染一条入站行**不该**产生「又被看见一次」的副作用——那个计数是「要不要问一句」的
+ * 判据，属于真正收到消息的采集路径。所以优先 `read`；只有老版本句柄才退回 `lookup`。
+ * 两路都只回答「记没记过意思」，都不接受 scope。
+ */
+function readNoteOf(raw: unknown): ((stickerKey: string) => string | null) | null {
+  const holder = raw as { service?: unknown; note?: unknown; stickerNotes?: unknown } | null | undefined
+  const service = holder?.service as { stickerNotes?: unknown; stickerNote?: unknown } | null | undefined
+  // 顺序 = 副作用从小到大：纯读句柄 → 老句柄（会记「见过」）→ 工具面（同样会记）。
+  const apis: unknown[] = [holder?.note, holder?.stickerNotes, service?.stickerNotes, holder, service]
+  for (const candidate of apis) {
+    const api = candidate as { read?: unknown; lookup?: unknown; stickerNote?: unknown } | null | undefined
+    if (api === null || api === undefined) continue
+    if (typeof api.read === 'function') return binder(api, api.read)
+    if (typeof api.lookup === 'function') return binder(api, api.lookup)
+    if (typeof api.stickerNote === 'function') {
+      const call = api.stickerNote as (input: Record<string, unknown>) => unknown
+      return (stickerKey: string): string | null => readMeaning(() => call.call(api, { action: 'lookup', stickerKey }))
+    }
+  }
+  return null
+}
+
+/** 把一个 `{stickerKey} → {known, meaning}` 的方法包成「指纹 → 意思」。 */
+function binder(api: object, method: unknown): (stickerKey: string) => string | null {
+  const call = (method as (input: { stickerKey: string }) => unknown).bind(api)
+  return (stickerKey: string): string | null => readMeaning(() => call({ stickerKey }))
+}
+
+/** 统一解释一次查询结果：非 `known:true` 或空意思都算「不认识」；抛错也算不认识。 */
+function readMeaning(query: () => unknown): string | null {
+  try {
+    const found = query()
+    if (found === null || typeof found !== 'object') return null
+    const result = found as { known?: unknown; meaning?: unknown }
+    if (result.known !== true) return null
+    const meaning = typeof result.meaning === 'string' ? result.meaning.trim() : ''
+    return meaning === '' ? null : meaning
+  } catch {
+    return null
+  }
 }
 
 /** 当前可用的端口。纯读：一次符号取属性，最多一次 Map 查表（**不建表**）。 */
@@ -77,8 +157,15 @@ export function expressionPort(): ExpressionPort | null {
 
 /** 装配用：拿到了端口就包成服务袋那一格，否则 `null`（观察者据此整段跳过）。 */
 export function expressionBridgePort(log?: (line: string) => void): ExpressionBridgePort | null {
-  if (expressionPort() === null) return null
-  return { forwardInbound: (event, admins) => forwardInbound(event, log === undefined ? { admins } : { admins, log }) }
+  const port = expressionPort()
+  if (port === null) return null
+  const bridge: ExpressionBridgePort = {
+    forwardInbound: (event, admins) => forwardInbound(event, log === undefined ? { admins } : { admins, log }),
+  }
+  // 只有端口真的提供词典查询时才转出去；否则调用方看到的是「没有这个方法」。
+  const lookup = port.lookupSticker
+  if (typeof lookup === 'function') bridge.lookupSticker = (key: string) => lookup(key)
+  return bridge
 }
 
 /** 一张图的元数据：URL 必有，mface 字段有才带（不塞 `undefined` 键）。 */
