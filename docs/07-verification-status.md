@@ -176,6 +176,41 @@
 > 边界仍然是**目录**边界：`home/expression/assets/`（图库原文件）与系统其它路径照样拒。
 
 
+### 2.6b 表情包链路修复（`codex/expression-sticker-chain`，2026-11-12）：**只有 `offline-test`**
+
+按 `docs/11-expression-sticker-chain-plan.md` 做的四项修复与一次只读诊断建设。**证据级别一律
+`offline-test`**：开发环境是独立 worktree（`D:\Bot\DSH-dev\.agents\worktrees\dsh-18e74720-19b6`，
+分支 `codex/expression-sticker-chain`，基线 `e2bde2c`），**没有跑过真实宿主装载，也没有触发任何真实
+QQ 发送**。下面每一行都写着"改了什么 + 用什么命令证明的"，没有跑过的项写「未验证」。
+
+| 项 | 级别 | 证据 |
+|---|---|---|
+| 模型侧表情工具名统一（P0-1） | `offline-test` | 人格包 `instruction/behavior` 与 `packet/group-tail` 里指向 `qq_list_emojis` / `qq_send_emoji` 的句子改为「先 `expression_candidates`，有候选用 assetId 调 `expression_reply`；无候选只发文字；一轮最多一张；不传路径/URL/CQ 码」。`companion-group/index.mjs` 的 `GROUP_PERSONA` 补 `expression_sticker_note`（明确追问才 lookup、明确告知才 record）。`test/persona.test.ts` 新增两条：两种 composer（tools.v2 关/开）都不含五个旧表情工具名、且含 `expression_candidates`/`expression_reply`/`assetId`；`GROUP_PERSONA` 不含旧名、含三个 `expression_*` |
+| 出站表情服务发现（P0-3） | `offline-test` | `adapters/dsh-host/expression-service.ts` 不再把首次 `registry-miss` / `registry-threw` 永久缓存：每次调用都重新问 `ctx.get('companionExpression')` 与进程级注册表（裸对象与 `Map<dataRoot>` 两种形态都认，单分区无 env 时按其唯一键取）。`test/expression-service.test.ts` **12 项**：四种初始化时序（QQ 先起/图库后挂、图库先挂、首次抛错后恢复、卸载后重挂载拿到新对象）、多 ctx 不串味、形状校验，以及 `sendSticker` 的三条既有纪律（无服务 → `no-service`、无回执 → `no-receipt` 且不重试、无候选不兜底） |
+| 入站表情语义（P1） | `offline-test` | `core/message/parse.ts` 的 `StickerSeg` 增加 `kind='sticker'` 与 `semanticPolicy='emotion-support'`；`core/message/render.ts` 每个表情输出 `[表情标记：kind=sticker｜stickerKey=…｜semanticPolicy=…｜knownMeaning=…]`（没记过意思时不输出 `knownMeaning=`），并把旧口径「先在记忆里找…认不出的就说不认识」改写成 docs/11 原文口径：不描画面、不揣度、未知时接住语气/卖萌/带过/沉默、**不主动追问**、只有用户明确问「这是什么意思」才解释。`knownMeaning` 由 `stickerMeanings` 取值函数注入（pipeline → runtime-deps），不做成 render 里读库。`test/sticker-semantics.test.ts` **13 项** + 既有 `sticker-parse.test.ts` 9 项 |
+| 词典只读查询 | `offline-test` | `companion-expression/src/sticker-notes.mjs` 新增 `read()`（纯读，不 `markSeen`、不加 `hits`）；入站端口多发布一格 `note`；`features/expression-bridge.ts` 暴露 `lookupSticker`，优先 `read`，老版本句柄才退 `lookup`。渲染一条消息**不会**产生「这个表情又被看见一次」的计数 |
+| 工具可见性三层诊断（P0-2） | `offline-test` | `adapters/dsh-host/tool-visibility.ts`：模块是否挂载 / 四个 `expression_*` 是否注册 / 全局与每个活会话作用域里是否可见 / QQ 发送器是否可见；三态（`yes`/`no`/`unknown`，读不出来不许说「没有」），一句话结论按上游到下游报第一个缺口。`test/tool-visibility.test.ts` **11 项**。后台状态快照新增 `expressionVisibility` 一格（脱敏：只有工具名与三态） |
+| 素材权限与结果码诊断（P1） | `offline-test` | `companion-expression/src/diagnostics.mjs`：图库/审核态计数、按会话算可用素材数（**同一套** `scopesFor()` + 可见性硬门，不另写 SQL 语义）、最近一次候选/发图的结果码与 `message_id`、最近投递记录；读不出来给 `null` 不给 `0`。`test/diagnostics.test.mjs` **7 项**。运维入口 `plugins/companion-expression/scripts/diagnose.mjs`（只读；`--json` / `--dm` / `--group`），在独立数据目录实跑过一次：`delivery.enabled=关`、图库 0 素材、dm/group 各自给出 `peer-not-approved` / `group-capture-disabled` |
+| 「无 `message_id` 不记为已发送」（P2 第 10 条） | `offline-test` | `src/delivery.mjs` 的 `statusOf()` 原先把 `{ok:true}` 但无回执记成 `sent`；现在记 `unknown`（显式 `status=failed/unknown` 照它自己的话）。`test/expression-chain-p2.test.mjs` **6 项**把 docs/11 P2 第 7–10 条钉在一起：无候选不随机挑图 / `reply` 只认候选 `assetId` / 同轮最多一张 / 无回执不算发过且不重投 |
+| 整体离线验证 | `offline-test` | 开发 worktree：`npm test --workspace=@dsh-companion/channel-qq` → **1782 tests / 1781 pass / 0 fail / 1 skip**（该 skip 是既有的「真实会话文件逐帧解码」用例）；`plugins/companion-expression` `node --test "test/*.test.mjs"` → **227/227 通过**；`npm run verify` → `unit` 9 模块通过 0 失败、`static` 32 通过 0 失败、`compose` **SKIPPED**（本机 `doctor` 探测不到宿主 CLI 入口，见下一行） |
+| 宿主装载（`host-load`） | **未验证** | 开发 worktree 的 `doctor` 报 `[失败] 宿主 CLI 入口 — 宿主目录里找不到 CLI 入口`：本机装的是 `0.2.2-rc.1`，CLI 在 `app.asar` 内而不是 `resources/app/dsh`，`tools/lib/host.mjs` 的推导路径对不上。**这是环境差异，不是本次改动引入的**（基线 `verify` 的 `compose` 同样 SKIPPED）。因此 `expression_*` 工具在真宿主上是否注册、是否有会话可见、发送器是否可见，**本轮没有实测证据**——诊断代码已经就位，但「诊断能跑」不等于「链路在真宿主上通了」 |
+| 真实 QQ 发送（`real-send`） | **未验证，且本轮不允许** | 独立 worktree 的 `config/suite.json` 全部沿用模板：`modules.expression=false`、`delivery.enabled=false`、`safety.*` 全关。真实发送必须由操作者在**生产环境**显式触发，并按 §2.6 的口径记录 `provider_message_id` 与回读 `sub_type` |
+
+> 结论措辞只能用：「表情包链路的工具名、服务发现、入站语义、可见性诊断与发送纪律在**离线测试**层面
+> 通过（channel-qq 1781 项 + expression 227 项，0 失败）；**宿主装载与真实发送本轮未验证**」。
+>
+> 三个容易读错的点：
+> 1. **`offline-test` 全绿 ≠ 宿主装载通过**：本机宿主版本 `0.2.2-rc.1` 与 `tools/lib/host.mjs`
+>    推导的 CLI 路径不一致，`compose` 一直是 SKIPPED（基线如此）。要升级这条证据，得先在能探测到
+>    CLI 的机器上跑 `npm run doctor` 到「核心检查通过」，再看启动日志里有没有
+>    `已注册 5 个工具` 与 `宿主接线：发送器=有/采集http=有/入库=有/主人判定=有` 那两行。
+> 2. **「表情包不发了」现在可以一句话查清**：后台状态快照的 `expressionVisibility` 与
+>    `expression` 两格，加上 `node plugins/companion-expression/scripts/diagnose.mjs --dm … --group …`，
+>    分别回答「工具面通不通」与「图库能不能发」。它们是**诊断**，不是发送证据。
+> 3. **golden 快照这次更新了 4 份**（`packets/group-called` / `group-keyword` / `group-rich-called` /
+>    `group-batched`，只差 `group-tail` 那一行）。理由是人格包文案改动；评审时应当逐字节看这四份 diff。
+
+
 ### 2.9 群聊社交运行时 P5–P8（2026-11-08）：仍只有 `offline-test`，真实发送未开始
 
 P5–P8 交付见 `docs/10a-group-baseline-audit.md`（P5 基线与停发控制）、`docs/10b-group-gray-release.md`
