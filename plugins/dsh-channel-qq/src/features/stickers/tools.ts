@@ -1,10 +1,17 @@
-/** 表情包：5 个工具。
+/** 表情包：5 个工具（**底层兼容面**）。
  *
- * 表情包的列、搜、发。qq_send_sticker 是搜索+发送一步到位。
+ * 表情包的正路已经搬到 `companion-expression` 的四个工具（`expression_candidates` /
+ * `expression_reply` / `expression_feedback` / `expression_sticker_note`）：那边有授权、
+ * 审核、冷却、额度与审核态硬门，而这里的 5 个工具是**没有装那个模块时的兜底面**。
+ *
+ * 为什么留着它们：`tools.v2` 关着时 `qq_send_emoji` 等旧名就是现役表面，历史会话与
+ * 外部脚本也在用；而 `tools.v2` 打开时它们被合并进 `qq_sticker` 的 legacy 分支
+ * （`features/tools-v2/faces-media.ts` 的 `legacy:` 字段依赖这些名字存在）。
+ * 所以这里**只改文案**：每一条都先说「有 expression_* 就优先用它们」，避免模型在
+ * 两套面同时可见时挑错那一套（docs/11 P0-1 的实质就是这件事）。
  *
  * 这些 spec **逐字节**来自原来的 `registerQQTools`——P4 的判据是工具名与
  * 参数 schema 一条都不许变（`test/golden/tools/qq-tools.txt` 钉着这一点）。
- * 一个工具一个函数：单看一个工具时不必在 1200 行里找它的边界。
  */
 
 import { napcatFileArg, localPathOf } from '../../local-file.js'
@@ -14,12 +21,17 @@ import type { OneBotMessageSegment } from '../../types.js'
 import type { ToolSpec } from '../../adapters/dsh-host/tools.js'
 import type { QQToolDeps } from '../tool-deps.js'
 
+/** 兼容面的开场白：有 expression_* 时优先它们（那一套才有授权与额度）。 */
+const PREFER_EXPRESSION = '（若当前会话能看到 expression_candidates / expression_reply，优先用它们：那边有素材授权、审核态与冷却额度；本工具是没有那个模块时的兜底。）'
+
 /** Share file validation and delivery between the two QQ image segment types. */
 function qqSendLocalImage(deps: QQToolDeps, asSticker: boolean): ToolSpec {
   const { api, out } = deps
   return {
         name: asSticker ? 'qq_send_emoji' : 'qq_send_image',
-        description: asSticker ? '发送一张本地表情包图片（stolen/registered 目录中的文件名）。' : '发送一张本地普通图片，例如生图产物。',
+        description: asSticker
+          ? `发送一张本地表情包图片（stolen/registered 目录中的文件名）。${PREFER_EXPRESSION}`
+          : '发送一张本地普通图片，例如生图产物。',
         parameters: {
           type: 'object',
           properties: {

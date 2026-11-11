@@ -320,7 +320,7 @@
 }
 {
   "name": "qq_send_emoji",
-  "description": "发送一张本地表情包图片（stolen/registered 目录中的文件名）。",
+  "description": "发送一张本地表情包图片（stolen/registered 目录中的文件名）。（若当前会话能看到 expression_candidates / expression_reply，优先用它们：那边有素材授权、审核态与冷却额度；本工具是没有那个模块时的兜底。）",
   "parameters": {
     "type": "object",
     "properties": {
