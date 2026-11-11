@@ -119,7 +119,11 @@ test('扩展名与状态映射都是显式的', () => {
   assert.equal(extensionForKind('png'), '.png');
   assert.equal(extensionForKind('unknown', 'image/gif'), '.gif');
   assert.equal(statusOf({ ok: true, messageId: 42 }), 'confirmed');
-  assert.equal(statusOf({ ok: true }), 'sent');
+  // 没有回执 = unknown，不是 sent（docs/11 P2 第 10 条）：`ok:true` 但没 message_id 什么也证明不了，
+  // 记成 sent 会让「发过没有」永远说不清，也会让配额按一次并不存在的发送来算。
+  assert.equal(statusOf({ ok: true }), 'unknown');
+  assert.equal(statusOf({ ok: true, status: 'sent' }), 'unknown', 'sender 自己说 sent 也不算：要有 id');
+  assert.equal(statusOf({ ok: true, status: 'failed' }), 'failed', '显式失败照它自己的话');
   assert.equal(statusOf({ ok: false, code: 'unknown' }), 'unknown', 'unknown 单独成态');
   assert.equal(statusOf({ ok: false, code: 'failed' }), 'failed');
   assert.equal(statusOf(null), 'failed');

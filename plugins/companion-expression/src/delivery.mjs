@@ -44,10 +44,22 @@ export function extensionForKind(kind, mime = '') {
   return '.bin';
 }
 
-/** 一次 sender 结果 → 四态之一。`unknown` 单独成态，因为它决定「不许重试」。 */
+/**
+ * 一次 sender 结果 → 四态之一。
+ *
+ * **没有回执就是 `unknown`，不是 `sent`**（docs/11 P2 第 10 条）：聊天平台只有在返回
+ * `message_id` 时才算"真的发出去了"。`ok:true` 但没有 id 的返回值什么也证明不了——
+ * 它可能是 NapCat 吞掉了响应，也可能是对面根本没收到。把它记成 `sent` 会让「发过没有」
+ * 永远说不清，也会让配额与重复窗口按一次并不存在的发送来算。
+ *
+ * `unknown` 与 `failed` 都是终态且**不重试**：顺序错乱比少发一段更糟。
+ */
 export function statusOf(result) {
   if (!result || result.ok !== true) return String(result?.code ?? '') === 'unknown' ? 'unknown' : 'failed';
-  return Number.isFinite(Number(result.messageId)) ? 'confirmed' : String(result.status ?? 'sent');
+  if (Number.isFinite(Number(result.messageId))) return 'confirmed';
+  // 显式说了别的状态就照它（sender 可能报告 `failed` 之下的细分成因）；否则一律 unknown。
+  const declared = String(result.status ?? '');
+  return declared === 'failed' || declared === 'unknown' ? declared : 'unknown';
 }
 
 export function sha256File(file) {
