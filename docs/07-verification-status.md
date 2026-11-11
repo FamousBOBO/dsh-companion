@@ -207,8 +207,10 @@ QQ 发送**。下面每一行都写着"改了什么 + 用什么命令证明的"�
 > 2. **「表情包不发了」现在可以一句话查清**：后台状态快照的 `expressionVisibility` 与
 >    `expression` 两格，加上 `node plugins/companion-expression/scripts/diagnose.mjs --dm … --group …`，
 >    分别回答「工具面通不通」与「图库能不能发」。它们是**诊断**，不是发送证据。
-> 3. **golden 快照这次更新了 4 份**（`packets/group-called` / `group-keyword` / `group-rich-called` /
->    `group-batched`，只差 `group-tail` 那一行）。理由是人格包文案改动；评审时应当逐字节看这四份 diff。
+> 3. **golden 快照这次更新了 5 份**：`packets/group-called` / `group-keyword` / `group-rich-called` /
+>    `group-batched`（只差 `group-tail` 那一行，人格包文案改动），加 `tools/qq-tools`（只差
+>    `qq_send_emoji` 的 description 一句「能看到 expression_* 就优先用它们」）。评审时应当逐字节
+>    看这五份 diff——它们分别是模型看到的**入站包**与**工具清单**，正是这次要改的东西。
 
 
 ### 2.9 群聊社交运行时 P5–P8（2026-11-08）：仍只有 `offline-test`，真实发送未开始
