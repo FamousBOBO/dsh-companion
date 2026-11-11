@@ -17,6 +17,9 @@ import { WorkspaceFiles } from '../../workspace-files.js'
 import { sessionDir, encodeSegment } from '../../paths.js'
 import { formatLocalStamp } from '../../core/schedule/stamp.js'
 import { registeredToolCount } from '../../adapters/dsh-host/tools.js'
+import { expressionDiagnosticsOf } from '../../adapters/dsh-host/expression-service.js'
+import { expressionVisibilityOf } from './tool-visibility-probe.js'
+import type { QQChannelConfig } from '../../config.js'
 import type { RunnerStatus } from '../reminders/runner-status.js'
 import type { SubHost, SubPlugin } from '../plugin-kit.js'
 import { publishStudioBridge } from './studio-bridge.js'
@@ -113,7 +116,31 @@ export async function buildStatus(host: SubHost, startedAt: number): Promise<Rec
       : '已关闭',
     tts: config.tts.enabled ? config.tts.voice : '已关闭',
     imageGen: config.imageGen.enabled ? `${config.imageGen.provider}/${config.imageGen.model}` : '已关闭',
+    // 表情包链路的三层证据（docs/11 P0-2 / P1）：模块挂没挂、工具注册没注册、会话与
+    // 发送器可不可见。**脱敏**：只有工具名与三态，没有路径、URL、QQ 号、消息内容。
+    expressionVisibility: expressionVisibilityOf(host),
+    // 图库自己的只读状态：素材数、每个会话的可用面、最近一次候选/发图的结果码与回执。
+    // 「配置已保存」与「真的发出去过」在这里是两格不同的字段。
+    expression: expressionDiagnosticsOf(
+      () => { try { return host.bridge.toolHost() } catch { return undefined } },
+      expressionTargetsOf(host, config),
+    ),
   }
+}
+
+/**
+ * 诊断要看的会话目标：主人私聊（README/后台都按 `admins[0]` 认主人）与主群。
+ *
+ * 只取这两个**已知存在**的目标，不从群列表里猜：群列表是网络往返（`getGroupList`），
+ * 诊断不该为此多付一次请求，也不该在没有授权的情况下把陌生群号写进状态里。
+ */
+function expressionTargetsOf(host: SubHost, config: QQChannelConfig): Array<{ kind: 'dm' | 'group'; chatId: number }> {
+  const targets: Array<{ kind: 'dm' | 'group'; chatId: number }> = []
+  const owner = config.admins[0]
+  if (typeof owner === 'number' && owner > 0) targets.push({ kind: 'dm', chatId: owner })
+  const group = config.primaryGroup
+  if (typeof group === 'number' && group > 0) targets.push({ kind: 'group', chatId: group })
+  return targets
 }
 
 /** 等一会儿；超时返回 null（调用方按"这次没拿到"处理，不抛错）。 */

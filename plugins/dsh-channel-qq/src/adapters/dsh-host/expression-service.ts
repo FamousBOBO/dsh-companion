@@ -29,6 +29,12 @@ export interface ExpressionService {
     isGroup: boolean
     target: string
   }): unknown
+  /**
+   * 只读诊断（图库计数 / 每个会话可用素材数 / 最近结果码）。
+   *
+   * 可选：老版本图库没有这一格时后台只说「这个版本没有诊断」，不猜数字。
+   */
+  diagnose?(input?: { targets?: Array<{ kind?: string; chatId?: number }>; limit?: number }): unknown
 }
 
 /** 一次发图的结局：发出去了（带回执）/ 图库说不发 / 没有图库。 */
@@ -197,6 +203,33 @@ function asExpressionService(raw: unknown): ExpressionService | null {
 /** 测试用：丢掉诊断快照（缓存已经不存在，保留这个导出是为了不破坏调用方）。 */
 export function resetExpressionServiceCache(): void {
   lastResolved = null
+}
+
+/**
+ * 图库侧只读诊断（素材数 / 每个会话可用面 / 最近候选与发图的结果码）。
+ *
+ * 与 `expressionServiceState()` 的分工：那个回答「通道这边有没有接上图库」，
+ * 这个回答「接上了以后图库自己是什么状态」。两个都对，缺一条都会让人只能猜。
+ *
+ * `targets` 由调用方给（它才知道主人是谁、有哪些群）。永不抛：拿不到服务、
+ * 老版本没有 `diagnose`、图库自己抛错，都降级成一段可读的说明。
+ */
+export function expressionDiagnosticsOf(
+  context: () => unknown,
+  targets: Array<{ kind?: string; chatId?: number }> = [],
+): { available: boolean; reason: string; report: unknown } {
+  const found = expressionServiceOf(context)
+  if (found.service === null) {
+    return { available: false, reason: `service-${found.reason}`, report: null }
+  }
+  if (typeof found.service.diagnose !== 'function') {
+    return { available: false, reason: 'diagnose-not-supported', report: null }
+  }
+  try {
+    return { available: true, reason: '', report: found.service.diagnose({ targets: targets.slice(0, 20), limit: 5 }) }
+  } catch (error) {
+    return { available: false, reason: `diagnose-threw: ${describe(error).slice(0, 120)}`, report: null }
+  }
 }
 
 /**

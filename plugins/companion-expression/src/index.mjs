@@ -28,6 +28,7 @@ import { createFeedback, feedbackScoreOf, isSuppressed } from './feedback.mjs';
 import { createStickerNotes } from './sticker-notes.mjs';
 import { createToolHandlers, parametersToJsonSchema, TOOL_SPECS } from './tools.mjs';
 import { createHostWiring, withToolAgent } from './host-wiring.mjs';
+import { createExpressionDiagnostics } from './diagnostics.mjs';
 
 export const name = 'companion-expression';
 export const inject = ['tools'];
@@ -110,6 +111,7 @@ async function listCandidates(state, { isGroup = false, target = '', query = '',
   try {
     const ctx = contextOf(state, { chatId: Number(target) || 0, isGroup });
     if (!ctx.scopes.usable.length) {
+      noteCandidate(state, { ok: true, send: false, reasonCode: 'scope-not-visible', candidates: 0 });
       return { ok: true, candidates: [], send: false, reasonCode: 'scope-not-visible', message: '本会话没有可用的表情包作用域（未授权），不发图。' };
     }
     const found = searchFor(state, { usable: ctx.scopes.usable, scope: ctx.scopes.own, query, limit });
@@ -117,23 +119,67 @@ async function listCandidates(state, { isGroup = false, target = '', query = '',
       db: state.db, config: state.config, target: { kind: ctx.kind, id: ctx.id },
       scope: ctx.scopes.own, candidates: found.candidates, draft: '', now: state.clock(),
     });
+    // 诊断只记结果码与候选数——`no-candidate` 的成因要能一眼查到，但候选内容不进日志。
+    noteCandidate(state, {
+      ok: true, send: decision.send === true, reasonCode: decision.reasonCode,
+      candidates: Array.isArray(found.candidates) ? found.candidates.length : 0,
+      fitScore: decision.fitScore,
+    });
     return {
       ok: true, candidates: found.candidates, send: decision.send, mode: decision.mode,
       reasonCode: decision.reasonCode, message: decision.message, fitScore: decision.fitScore,
       warnings: [...(found.warnings ?? []), ...state.warnings],
     };
   } catch (error) {
+    noteCandidate(state, { ok: false, send: false, reasonCode: 'service-threw', candidates: 0 });
     return { ok: false, candidates: [], send: false, reasonCode: 'service-threw', message: String(error?.message ?? error).slice(0, 200) };
+  }
+}
+
+/** 记下「最近一次候选」的结局（诊断用；只有结果码与数字，永不抛）。 */
+function noteCandidate(state, result) {
+  try {
+    state.events.lastCandidate = {
+      ok: result.ok === true,
+      send: result.send === true,
+      reasonCode: String(result.reasonCode ?? ''),
+      candidates: Number(result.candidates ?? 0),
+      fitScore: Number(result.fitScore ?? 0),
+      at: Math.trunc(state.clock()),
+    };
+  } catch {
+    /* 诊断失败不影响候选 */
+  }
+}
+
+/** 记下「最近一次发图」的结局（含回执）；同样永不抛。 */
+function noteReply(state, result, assetId) {
+  try {
+    state.events.lastReply = {
+      ok: result.ok === true,
+      reasonCode: String(result.reasonCode ?? ''),
+      delivered: Number(result.delivered ?? 0),
+      // 没有 messageId 就是没有回执 = 不算发过；这里保留空值，不补一个假的。
+      messageId: result.messageId === undefined || result.messageId === null ? null : String(result.messageId),
+      assetId: assetId === '' ? null : String(assetId),
+      at: Math.trunc(state.clock()),
+    };
+  } catch {
+    /* 诊断失败不影响发送结果 */
   }
 }
 
 /** 发图：候选 → 决策 → 计划 → 投递。任何阶段失败都如实回报，不假装发过。 */
 async function replyWithSticker(state, { assetId = '', mode = '', text = '', isGroup = false, target = '' } = {}) {
   if (!state.options.qqSender) {
-    return { ok: false, delivered: 0, reasonCode: 'sender-unavailable', message: '没有注入 QQ 发送器：本轮不会发图。' };
+    const blocked = { ok: false, delivered: 0, reasonCode: 'sender-unavailable', message: '没有注入 QQ 发送器：本轮不会发图。' };
+    noteReply(state, blocked, assetId);
+    return blocked;
   }
   if (state.config.delivery.enabled !== true) {
-    return { ok: false, delivered: 0, reasonCode: 'delivery-disabled', message: 'delivery.enabled 为 false：模块已挂载但不会真发图。' };
+    const blocked = { ok: false, delivered: 0, reasonCode: 'delivery-disabled', message: 'delivery.enabled 为 false：模块已挂载但不会真发图。' };
+    noteReply(state, blocked, assetId);
+    return blocked;
   }
   try {
     const ctx = contextOf(state, { chatId: Number(target) || 0, isGroup });
@@ -143,7 +189,11 @@ async function replyWithSticker(state, { assetId = '', mode = '', text = '', isG
       db: state.db, config: state.config, target: { kind: ctx.kind, id: ctx.id },
       scope: ctx.scopes.own, candidates: picked, draft: text, now: state.clock(),
     });
-    if (!decision.send) return { ok: false, delivered: 0, reasonCode: decision.reasonCode, message: decision.message };
+    if (!decision.send) {
+      const blocked = { ok: false, delivered: 0, reasonCode: decision.reasonCode, message: decision.message };
+      noteReply(state, blocked, assetId);
+      return blocked;
+    }
     const planned = buildPlan({
       turnId: `t${Math.trunc(state.clock())}`, target: { kind: ctx.kind, id: ctx.id },
       draft: text, mode: mode || decision.mode, assetId: decision.assetId, now: state.clock(),
@@ -156,12 +206,22 @@ async function replyWithSticker(state, { assetId = '', mode = '', text = '', isG
       qqSender: state.options.qqSender, scope: ctx.scopes.own, usable: ctx.scopes.usable,
       kind: ctx.kind, target: { kind: ctx.kind, id: ctx.id }, now: state.clock(),
     });
-    return {
+    // 回执从投递结果里取：`results[].messageId` 是唯一证明「真的发出去了」的字段。
+    const receipt = Array.isArray(result.results)
+      ? result.results.map(part => part?.messageId).find(id => id !== undefined && id !== null)
+      : undefined;
+    const answered = {
       ok: result.ok, delivered: result.delivered, mode: result.mode, degraded: result.degraded,
-      reasonCode: result.reasonCode, parts: result.results.length, message: result.warnings?.[0] ?? '',
+      reasonCode: result.reasonCode, parts: result.results.length,
+      message: result.warnings?.[0] ?? '',
+      ...(receipt === undefined ? {} : { messageId: receipt }),
     };
+    noteReply(state, answered, assetId || String(decision.assetId ?? ''));
+    return answered;
   } catch (error) {
-    return { ok: false, delivered: 0, reasonCode: 'service-threw', message: String(error?.message ?? error).slice(0, 200) };
+    const failed = { ok: false, delivered: 0, reasonCode: 'service-threw', message: String(error?.message ?? error).slice(0, 200) };
+    noteReply(state, failed, assetId);
+    return failed;
   }
 }
 
@@ -285,10 +345,16 @@ export function createService(options = {}) {
     config, dataRoot, paths, db, clock, options, library, salt,
     feedback: createFeedback({ db, library, config, now: clock }),
     stickerNotes: createStickerNotes({ db, now: clock }),
-    events: { observed: 0, dropped: 0, queued: 0, lastAt: 0 },
+    events: { observed: 0, dropped: 0, queued: 0, lastAt: 0, lastCandidate: null, lastReply: null },
     warnings: [...(loaded.warnings ?? [])],
     isOwnerFor: explicitOwner ? options.isOwner : () => false,
   };
+  // 只读诊断面：与检索/投递共用 `scopesFor`，不另写一套作用域语义。
+  const diagnostics = createExpressionDiagnostics({
+    db, library, config, salt,
+    isOwnerFor: (input) => state.isOwnerFor(input),
+    events: state.events, clock,
+  });
   return {
     ok: true, config, warnings: state.warnings, library: state.library, db, paths, events: state.events,
     /** 表情词典（认 / 记 / 列）。`apply` 接采集管线时要用同一个实例。 */
@@ -342,6 +408,15 @@ export function createService(options = {}) {
     feedback: input => recordExpressionFeedback(state, input),
     stats: input => libraryStats(state, input),
     stickerNote: input => stickerNoteOf(state, input),
+    /**
+     * 只读诊断：图库计数 + 每个会话的可用素材数 + 最近一次候选/发图的结果码与回执。
+     *
+     * 给后台「表情包」页、`npm run doctor` 的扩展检查、以及运维脚本用。**只读**：不写库、
+     * 不下载、不调模型、不发图；不含路径、URL、QQ 号与消息正文。
+     *
+     * @param {{targets?: Array<{kind?: 'dm'|'group', chatId?: number}>, limit?: number}} [input]
+     */
+    diagnose: input => diagnostics.report(input),
     partsOf: planLike => partJobs(planLike),
     close: () => { try { db.close(); } catch { /* already closed */ } },
   };
@@ -410,6 +485,8 @@ function publishPort(service, log) {
   const port = Object.freeze({
     version: 1, service, observe: service.observe, offers: service.offers,
     status: () => service.stats({ limit: 3 }),
+    // 只读诊断（素材数 / 可用面 / 最近结果码）。运维与 doctor 从这里读，不自己开库。
+    diagnose: (input) => service.diagnose(input),
     // 表情词典的**只读**句柄：入站行要写 `knownMeaning=`，而那条路径不能产生
     // 「这个表情又被看见一次」的计数（那是「要不要问一句」的判据，归采集路径）。
     // 单独一格 `note` 而不是让消费者去猜 `service.stickerNotes` 的位置。
