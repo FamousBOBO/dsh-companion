@@ -212,6 +212,11 @@ QQ 发送**。下面每一行都写着"改了什么 + 用什么命令证明的"�
 >    `group-batched`（只差 `group-tail` 那一行，人格包文案改动），加 `tools/qq-tools`（只差
 >    `qq_send_emoji` 的 description 一句「能看到 expression_* 就优先用它们」）。评审时应当逐字节
 >    看这五份 diff——它们分别是模型看到的**入站包**与**工具清单**，正是这次要改的东西。
+> 4. **一次 `unit` 红是环境抖动，不是回归**：某次 `npm run verify` 里 `@dsh-companion/runtime`
+>    报 exit 1；随后单跑该模块 **697/697 通过（连跑 3 次均通过）**，再跑整条 `verify` 也全绿。
+>    该模块本次**一行未改**（`git diff e2bde2c..HEAD` 对 `plugins/companion-runtime/` 为空），
+>    它里面有跨进程/`Atomics.wait` 的用例，并行跑时对机器负载敏感。按 §4.1 的口径，这类红
+>    要先用「单模块复跑」证明不是代码坏了，再往下走。
 
 
 ### 2.9 群聊社交运行时 P5–P8（2026-11-08）：仍只有 `offline-test`，真实发送未开始
