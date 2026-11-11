@@ -11,9 +11,10 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdtempSync, readFileSync, rmSync, writeFileSync, utimesSync } from 'node:fs'
+import { existsSync, mkdtempSync, readFileSync, rmSync, writeFileSync, utimesSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import * as path from 'node:path'
+import { pathToFileURL } from 'node:url'
 
 const { renderTemplate, templateVars } = await import('../src/core/text/template.js')
 const { createPersonaPack, resolvePersonaDir, findPackageRoot } = await import('../src/adapters/persona/fs-pack.js')
@@ -195,6 +196,81 @@ test('tools.v2 开着时：所有含旧工具名的提示词都被改写成新�
   // 对照表本身必须保持原样，否则会把"旧名 → 新名"改成"新名 → 新名"。
   const renamed = on.render('notice/tools-renamed', { mapping: 'qq_send_text → qq_message' })
   assert.match(renamed, /qq_send_text → qq_message/)
+})
+
+// ── 模型侧表情工具名（docs/11 P0-1） ────────────────────────────────────────
+//
+// 表情链路的出口工具在 companion-expression 里：`expression_candidates`（只查）/
+// `expression_reply`（发一张）/ `expression_sticker_note`（表情词典）。人格包以前教模型
+// 先 `qq_list_emojis` 再 `qq_send_emoji`——这两个名字在表情链路里**没有对应注册**，
+// 模型照着做就是"找不到工具→什么都不发"。所以这两段文案按新的出口重写，这里钉住：
+// 两种 composer（tools.v2 关 / 开）都只报 expression_*，且文字发送工具仍是现役面。
+
+/** 已经不存在的表情工具名（写进提示词会让模型调用空气）。 */
+const DEAD_EMOJI_TOOL_NAMES = [
+  'qq_list_emojis',
+  'qq_send_emoji',
+  'qq_send_sticker',
+  'qq_search_emojis',
+  'qq_emoji_stats',
+] as const
+
+test('人格包：表情工具统一写 expression_*，两种 composer 下都不再出现旧表情工具名', () => {
+  const pack = createPersonaPack()
+  const composers: ReadonlyArray<readonly [string, InstanceType<typeof PromptComposer>]> = [
+    ['tools.v2 关', new PromptComposer(pack)],
+    ['tools.v2 开', new PromptComposer(pack, () => true, rewriteLegacyToolNames)],
+  ]
+  for (const [label, composer] of composers) {
+    for (const key of ['instruction/behavior', 'packet/group-tail']) {
+      const text = composer.render(key)
+      for (const name of DEAD_EMOJI_TOOL_NAMES) {
+        assert.equal(text.includes(name), false, `${label} · ${key} 不应再教模型调用 ${name}`)
+      }
+      // 表情出口就这两个名字：先看候选，再用候选里的 assetId 发。
+      assert.match(text, /expression_candidates/, `${label} · ${key} 要写 expression_candidates`)
+      assert.match(text, /expression_reply/, `${label} · ${key} 要写 expression_reply`)
+      assert.match(text, /assetId/, `${label} · ${key} 要说明只用候选里的 assetId`)
+    }
+  }
+  // 文字发送工具是现役面（tools.v2 关时就是它们），不许被"顺手统一"掉。
+  assert.match(composers[0]![1].render('instruction/behavior'), /qq_send_text/)
+  // tools.v2 开时旧名被改写成合并写法——这一步是 mapping 的职责，不是这里手写。
+  const on = composers[1]![1].render('instruction/behavior')
+  assert.equal(on.includes('qq_send_text'), false, 'tools.v2 开时门面是 qq_message')
+  assert.match(on, /qq_message（action=send）/)
+})
+
+/** 从 cwd 往上找 `companion-group/index.mjs`（npm test 的 cwd 是工作区目录）。 */
+function findGroupPersonaEntry(): string | null {
+  let dir = process.cwd()
+  for (let i = 0; i < 8; i += 1) {
+    for (const candidate of [path.join(dir, 'companion-group', 'index.mjs'), path.join(dir, 'plugins', 'companion-group', 'index.mjs')]) {
+      if (existsSync(candidate)) return candidate
+    }
+    const parent = path.dirname(dir)
+    if (parent === dir) break
+    dir = parent
+  }
+  return null
+}
+
+test('群人格 GROUP_PERSONA：表情规则与出口工具名一致（expression_*，旧名一个都不留）', async () => {
+  const entry = findGroupPersonaEntry()
+  assert.ok(entry !== null, '找不到 companion-group/index.mjs，无法校验群人格')
+  const module = await import(pathToFileURL(entry).href) as { GROUP_PERSONA?: unknown }
+  const persona = String(module.GROUP_PERSONA ?? '')
+  assert.ok(persona.length > 0, 'GROUP_PERSONA 不能为空')
+  for (const name of ['qq_list_emojis', 'qq_send_emoji', 'qq_send_sticker']) {
+    assert.equal(persona.includes(name), false, `群人格不应再教模型调用 ${name}`)
+  }
+  for (const name of ['expression_candidates', 'expression_reply', 'expression_sticker_note']) {
+    assert.ok(persona.includes(name), `群人格要给出 ${name}`)
+  }
+  // 口径与人格包一致：无候选只发文字、一轮最多一张、只认 assetId。
+  assert.match(persona, /无候选就只发文字/)
+  assert.match(persona, /一轮最多一张/)
+  assert.match(persona, /assetId/)
 })
 
 test('AGENTS.md 受管区：tools.v2 下写进去的是新工具名（不能再留旧名）', async () => {
