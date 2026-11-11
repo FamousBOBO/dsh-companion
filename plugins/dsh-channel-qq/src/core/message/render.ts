@@ -143,37 +143,44 @@ export function renderMessageLine(input: RenderInput): string | null {
   // that a picture came along (imageRecognition is off by default).
   if (parsed.imageSummaries.length > 0) parts.push(`[图片含义：${parsed.imageSummaries.join('；')}]`)
   else if (parsed.imageUrls.length > 0 && parsed.plainText !== '') parts.push(`[随消息附了${parsed.imageUrls.length}张图]`)
-  // 表情的处置口径写在这一行里，而不是指望模型自己悟。
-  //
-  // 口径（docs/11 P1，2026-11-11）：**用户发来的表情首先是一句情绪或态度表达**。
-  // 旧文案要求模型「先在记忆里找这个表情以前出现过没有，认不出就说不认识」——它把
-  // 表情当成一件需要检索的**资料**，于是模型要么去描述画面、要么去揣度动机。现在改成：
-  // 已知意思就直接按那个情绪理解；认不出就接住语气/卖萌/带过/沉默，不描画面、不揣度；
-  // 只有用户**明确追问**"这是什么意思"时才解释。
-  //
-  // 每个表情都带两个机器可读的标注（`kind=sticker` / `semanticPolicy=emotion-support`）：
-  // 它们是模型可以引用的事实，比在散文里要求"把表情当情绪"更难被忽略。
-  if (parsed.stickers.length > 0) {
-    for (const sticker of parsed.stickers) {
-      const meaning = meaningOf(sticker, input.stickerMeanings)
-      parts.push(stickerSemanticTag(sticker, meaning))
-    }
-    const animated = parsed.stickers.some(s => s.animated)
-    parts.push(
-      '[表情语义：表情包是对方的情绪辅助表达，不是一幅需要解释的图。'
-      + '不默认解释图片内容、不描述画面、不猜测对方在问什么；'
-      + '词典里记过意思（knownMeaning）就直接按那个情绪理解，不重复解释；'
-      + '认不出（没有 knownMeaning）时接住语气、卖萌、轻轻带过或沉默：别猜、不揣度，也不要把猜测当成事实。'
-      + '不要因为认不出这张表情就主动追问它是什么意思——那会打断对话；'
-      + '只有用户明确问「这是什么意思」时才解释：先用 expression_sticker_note 的 action=lookup 查词典，'
-      + '仍没有记录就承认不确定并按需要问一句。'
-      + '用户发普通图片与发表情不是一回事：图片可能是让 Bot 看内容，表情默认是在表达情绪'
-      + (animated ? '（动图表情同样只按情绪理解，不需要逐帧看）' : '')
-      + '。]',
-    )
-  }
+  // 表情的处置口径写在这一行里，而不是指望模型自己悟（口径见 `stickerSemanticParts`）。
+  if (parsed.stickers.length > 0) parts.push(...stickerSemanticParts(parsed, input.stickerMeanings))
   if (called && input.reactionHint !== undefined && input.reactionHint !== null) {
     parts.push(`（语气提示：${input.reactionHint}）`)
   }
   return parts.join('')
+}
+
+/**
+ * 一段消息里所有表情的**语义标注 + 处置口径**（docs/11 P1，2026-11-11）。
+ *
+ * 口径：**用户发来的表情首先是一句情绪或态度表达**。旧文案要求模型「先在记忆里找这个表情
+ * 以前出现过没有，认不出就说不认识」——它把表情当成一件需要检索的**资料**，于是模型要么去
+ * 描述画面、要么去揣度动机。现在改成：已知意思就直接按那个情绪理解；认不出就接住语气、
+ * 卖萌、带过或沉默，不描画面、不揣度、也不主动追问；只有用户**明确问**「这是什么意思」
+ * 时才解释。
+ *
+ * 每个表情先给一条机器可读的标注（`kind=sticker` / `stickerKey` / `semanticPolicy` /
+ * `knownMeaning`）：它们是模型可以引用的事实，比在散文里要求"把表情当情绪"更难被忽略。
+ */
+function stickerSemanticParts(
+  parsed: ParsedInbound,
+  meanings: ((key: string) => string | null) | undefined,
+): string[] {
+  const out: string[] = []
+  for (const sticker of parsed.stickers) out.push(stickerSemanticTag(sticker, meaningOf(sticker, meanings)))
+  const animated = parsed.stickers.some(s => s.animated)
+  out.push(
+    '[表情语义：表情包是对方的情绪辅助表达，不是一幅需要解释的图。'
+    + '不默认解释图片内容、不描述画面、不猜测对方在问什么；'
+    + '词典里记过意思（knownMeaning）就直接按那个情绪理解，不重复解释；'
+    + '认不出（没有 knownMeaning）时接住语气、卖萌、轻轻带过或沉默：别猜、不揣度，也不要把猜测当成事实。'
+    + '不要因为认不出这张表情就主动追问它是什么意思——那会打断对话；'
+    + '只有用户明确问「这是什么意思」时才解释：先用 expression_sticker_note 的 action=lookup 查词典，'
+    + '仍没有记录就承认不确定并按需要问一句。'
+    + '用户发普通图片与发表情不是一回事：图片可能是让 Bot 看内容，表情默认是在表达情绪'
+    + (animated ? '（动图表情同样只按情绪理解，不需要逐帧看）' : '')
+    + '。]',
+  )
+  return out
 }

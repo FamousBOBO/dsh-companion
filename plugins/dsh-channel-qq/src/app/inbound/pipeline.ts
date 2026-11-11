@@ -104,12 +104,7 @@ export interface PipelineDeps {
   readonly presence?: PresenceObserver
   /** 参与者注册表（P9-G4 §2.2）：每次现取；缺省 = 没装，全员按"身份未确认"处理（不是"全是人"）。 */
   readonly participants?: () => RegistryFile | null
-  /**
-   * 表情词典的只读取值函数：指纹 → 记下的意思（没记过回 `null`）。
-   *
-   * 缺省 = 不注入（渲染行里没有 `knownMeaning=`，其余表情语义标注照旧）。由组合根
-   * 从 `companion-expression` 的入站端口取；那一格常常比本插件晚就绪，所以是取值函数。
-   */
+  /** 表情词典只读取值函数（指纹 → 意思；缺省 = 不注入，渲染行里就没有 `knownMeaning=`）。 */
   readonly stickerMeanings?: (stickerKey: string) => string | null
 }
 
@@ -159,10 +154,8 @@ export class InboundPipeline {
       // 语气提示只在被叫到时才查：它会把模型带到某种语气上，混进无关消息里就是事故。
       reactionHint: called ? reactionHintOf(this.deps.config(), event) : null,
       nowMs: this.deps.clock.now(),
-      // 表情词典：只在消息里真有表情时才问（每一条群消息都查一次库没有必要）。
-      ...(parsed.stickers.length === 0 || this.deps.stickerMeanings === undefined
-        ? {}
-        : { stickerMeanings: this.deps.stickerMeanings }),
+      // 表情词典只在消息里真有表情时才问（每条群消息都查库没有必要）。
+      ...(parsed.stickers.length === 0 || this.deps.stickerMeanings === undefined ? {} : { stickerMeanings: this.deps.stickerMeanings }),
     })
   }
 

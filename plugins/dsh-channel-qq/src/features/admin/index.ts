@@ -321,6 +321,23 @@ function adminDeps(host: SubHost, startedAt: number): AdminDeps {
   }
 }
 
+/** 启动时打一行表情链路结论（永不抛：诊断失败不该影响启动）。 */
+function logExpressionVisibility(host: SubHost): void {
+  try {
+    const report = expressionVisibilityOf(host)
+    const mark = (value: string): string => (value === 'yes' ? '有' : value === 'no' ? '无' : '未知')
+    const registered = Object.values(report.registered)
+    const ready = registered.length > 0 && registered.every(value => value === 'yes')
+    host.log(
+      `expression 工具面：模块=${mark(report.module)}、四个工具=${ready ? '全在' : `${registered.filter(v => v === 'yes').length}/${registered.length}`}`
+      + `、发送器=${mark(report.sender.qq_message === 'yes' || report.sender.qq_sticker === 'yes' ? 'yes' : report.sender.qq_send_text === 'yes' || report.sender.qq_send_emoji === 'yes' ? 'yes' : (report.sender.qq_message === 'unknown' ? 'unknown' : 'no'))}`
+      + `。${report.hint}`,
+    )
+  } catch (error) {
+    host.log(`expression 工具面诊断失败（已忽略）：${error instanceof Error ? error.message : String(error)}`)
+  }
+}
+
 export const adminPlugin: SubPlugin = {
   name: 'admin',
   // 与旧 `applyEffects` 的 admin 分支一一对应：这四把旋钮动了才重绑监听。
@@ -338,6 +355,10 @@ export const adminPlugin: SubPlugin = {
     }
   },
   async start(host) {
+    // 启动时说一句表情链路的**三层结论**（docs/11 P0-2）：模块挂没挂 / 工具注册没注册 /
+    // 发送器可不可见。这一行是脱敏的（只有工具名与三态），但它把「表情包不好用」变成
+    // 一条可 grep 的结论——过去只能靠事后翻日志猜。
+    logExpressionVisibility(host)
     const server = servers.get(host)
     if (server === undefined) return
     try {
