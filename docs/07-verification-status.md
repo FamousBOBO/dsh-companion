@@ -5,6 +5,25 @@
 
 ## 1. 五级证据（固定词汇，不自创）
 
+<<<<<<< HEAD
+=======
+### 2026-11-11 集成测试补充
+
+本次为独立测试分支，未替换生产部署。详细证据见 [集成与迁移报告](17-integration-test-20261111.md) 和 [镜像旁听报告](18-mirror-observe-integration.md)。
+
+| 范围 | 证据级别与结果 | 限制 |
+|---|---|---|
+| 提醒第二轮、群聊运行时、Prompt Engine、衣柜与视觉身份集成 | `offline-test`：最终 verify 的 unit 9 / static 38 / compose 1 通过；1 个包无测试；镜像专项 38 项通过 | 不代表真实模型质量或平台发送通过 |
+| 独立 DSH 0.2.2-rc.1 宿主 | `host-load`：实际启动、陪伴 API 与会话创建成功；浏览器已渲染首页、人格、设置及迁入资料统计 | 桌面工作区已由用户添加（见下条），此条本身仍是浏览器/宿主装载证据，不代表真实模型质量 |
+| 昼夜衣柜与 Prompt Engine 组合 | `host-load`：四组实际宿主请求捕获；同一时段在引擎关闭/启用时衣柜文本一致，昼夜结果不同 | 使用本机模拟模型，无真实计费调用 |
+| 镜像旁听 | `offline-test` + `host-load`：模拟群事件经实际宿主形成 shadow 记录，禁止动作尝试为 0 | 未证明真实流量、重启和真实模型决策质量；集成配置 QQ 关闭 |
+| 标准生产资料迁移 | 六个文件导入，身份沿用；三个数据库 quick_check 与源表记录数核对通过；人格另行备份后复制；用户于 2026-11-11 明确选择仅迁移标准资料，此项完成 | 不含凭据、桌面会话、聊天原文和媒体；提醒不重放，健康授权重置 |
+| 迁移资料在真实会话里被使用（第二轮交接补测） | `host-load`：真实宿主 + 迁移数据**副本** + 本机回环录制模型跑通一轮 `session/create`→`session/prompt`；人格 50/50 条语句逐字进入请求、身份绑定返回迁移主人、`companion_recall` 命中迁移记忆、日程工具列出迁移日程；关闭的能力如实报 `disabled` / `runtime-off` / `health-read-denied` / `identity-missing` | 模拟补全，**不是**真实模型质量；未做真实发送、计费生图、健康硬件 |
+| 桌面工作区 | 用户已把本 worktree 加入桌面工作区（桌面侧 `storages/workspace.json` 有对应条目） | 这只说明桌面壳注册，不改变 `real-api` / `real-send` / `hardware` 的结论 |
+
+本轮未新增 `real-api`、`real-send` 或 `hardware` 证据。第二轮交接另外修掉两个缺陷（关闭态能力被报成 `pending-load`；提醒停表用例的 `sleep(150)` 假红），详见 [集成与迁移报告](17-integration-test-20261111.md) 的接管验收一节。
+
+>>>>>>> 854ff28 (Fix disabled-capability reporting and reminder test flake; record takeover acceptance)
 | 级别 | 定义 | 什么样的证据才算 |
 |---|---|---|
 | `offline-test` | 离线单元 / 集成测试通过 | 有可复现命令 + 通过计数 + 日期 |
@@ -469,3 +488,4 @@ git clone https://github.com/FamousBOBO/dsh-companion.git
 - 语义层面的问题（比如「这段文案把已保存说成已连接」——那是 `docs/02` §6 的纪律，不是扫描能查的）。
 
 所以正确的表述是：**「泄漏扫描通过」= 在发布物里没命中已知形状**，不是「仓库里没有秘密」。
+
