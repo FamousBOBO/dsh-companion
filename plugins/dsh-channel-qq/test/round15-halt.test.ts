@@ -14,6 +14,19 @@ const OWNER = 10001
 const sleep = async (ms: number): Promise<void> => await new Promise((resolve) => { setTimeout(resolve, ms) })
 
 /**
+ * 等"第一拍真的发生了"，再断言负向条件。
+ *
+ * 这些用例原先靠 `sleep(150)` 猜第一拍完成。机器忙（临时目录 + Defender 扫描，单次 10–50ms）
+ * 时 150ms 会不够，于是**实现正确**的用例偶发变红：2026-11-11 的验收轮里同一文件连续
+ * 三次运行出现过 P1-16.1 / P1-17.2 各一次假红。`waitUntil` 用宿主真实时间轮询**正向条件**，
+ * 负向断言（第二拍不许再发）仍然保留固定延迟，因为要证明的正是"这段时间内没有动作"。
+ */
+async function afterFirstBeat(predicate: () => boolean, label: string): Promise<void> {
+  await waitUntil(predicate, 3_000)
+  assert.ok(predicate(), label)
+}
+
+/**
  * P1（复审 1.2）守卫：**已投递但记账失败 ⇒ 必须锁定调度，下一拍不许再发。**
  *
  * 为什么这条比"日志写了不重发"重要：`sentFor` 没写成 ⇒ `due()` 下一拍仍选中它 ⇒
@@ -48,7 +61,7 @@ test('P1-1.2 记账失败 ⇒ 调度锁定，第二拍不许再发', async () =>
       () => false,
     )
     runner.start(10)
-    await sleep(150)
+    await afterFirstBeat(() => sends === 1, '第一拍必须真的发了（否则这条测试是空转）')
     const afterFirst = sends
     assert.equal(afterFirst, 1, '第一拍必须真的发了（否则这条测试是空转）')
     assert.ok(logs.some((line) => line.includes('调度已锁定')), `要留下锁定痕迹：${logs.join(' | ')}`)
@@ -94,8 +107,7 @@ test('P1-13.2 markUnknown 写不成 ⇒ 调度锁定，第二拍不许再发', a
       () => false,
     )
     runner.start(10)
-    await sleep(150)
-    assert.equal(sends, 1, '第一拍必须真的发了（否则这条测试是空转）')
+    await afterFirstBeat(() => sends === 1, '第一拍必须真的发了（否则这条测试是空转）')
     assert.ok(logs.some((line) => line.includes('调度已锁定')), `要留下锁定痕迹：${logs.join(' | ')}`)
     await sleep(150)
     assert.equal(sends, 1, 'unknown 出口记账失败后**第二拍不许再发**')
@@ -183,7 +195,7 @@ test('P1-15.1b 磁盘类故障（PERSIST_FAILED）⇒ 停表', async () => {
   const { runner, store, home } = await makeFaultRunner('PERSIST_FAILED', logs)
   try {
     runner.start(10)
-    await sleep(150)
+    await waitUntil(() => logs.some((line) => line.includes('调度已锁定')), 3_000)
     assert.ok(logs.some((line) => line.includes('调度已锁定')), `磁盘故障必须停表：${logs.join(' | ')}`)
     const before = logs.filter((line) => line.includes('调度已锁定')).length
     await sleep(150)
@@ -222,8 +234,7 @@ test('P1-16.1 记账路径抛 TypeError 也必须停表：markFired', async () =
       () => false,
     )
     runner.start(10)
-    await sleep(150)
-    assert.equal(sends, 1, '第一拍必须真的发了（否则这条测试是空转）')
+    await afterFirstBeat(() => sends === 1, '第一拍必须真的发了（否则这条测试是空转）')
     assert.ok(logs.some((line) => line.includes('调度已锁定')), `必须留锁定痕迹：${logs.join(' | ')}`)
     await sleep(150)
     assert.equal(sends, 1, '记账抛 TypeError 后**第二拍不许再发**')
@@ -261,8 +272,7 @@ test('P1-16.1 记账路径抛 TypeError 也必须停表：markFiredRebound', asy
       () => false,
     )
     runner.start(10)
-    await sleep(150)
-    assert.equal(sends, 1, '第一拍必须真的发了（否则这条测试是空转）')
+    await afterFirstBeat(() => sends === 1, '第一拍必须真的发了（否则这条测试是空转）')
     assert.ok(logs.some((line) => line.includes('调度已锁定')), `必须留锁定痕迹：${logs.join(' | ')}`)
     await sleep(150)
     assert.equal(sends, 1, '记账抛 TypeError 后**第二拍不许再发**')
@@ -300,8 +310,7 @@ test('P1-16.1 记账路径抛 TypeError 也必须停表：markUnknown', async ()
       () => false,
     )
     runner.start(10)
-    await sleep(150)
-    assert.equal(sends, 1, '第一拍必须真的发了（否则这条测试是空转）')
+    await afterFirstBeat(() => sends === 1, '第一拍必须真的发了（否则这条测试是空转）')
     assert.ok(logs.some((line) => line.includes('调度已锁定')), `必须留锁定痕迹：${logs.join(' | ')}`)
     await sleep(150)
     assert.equal(sends, 1, '记账抛 TypeError 后**第二拍不许再发**')
@@ -438,7 +447,7 @@ test(`P1-17.2 投递层 markSent 抛错 / unknown 保存${failUnknown ? '失败�
       () => false,
     )
     runner.start(10)
-    await sleep(150)
+    await afterFirstBeat(() => platformSends === 1, '① 第一拍必须真的走到 sendTo（否则这条测试是空转）')
     assert.equal(platformSends, 1, '① 第一拍必须真的走到 sendTo（否则这条测试是空转）')
     assert.equal(unknownCalls, 1, '③ 必须通过 unknown 路径收敛，不能误报 sent')
     assert.ok(logs.some((line) => line.includes('已真发但状态没落盘 → 按 unknown 处理')), '③ 必须诊断已投递但状态未落盘')

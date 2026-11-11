@@ -136,6 +136,46 @@ test('P2-13 (partial): pausing planning leaves P1/H1/H2/bridge untouched', t => 
   assert.equal(runtime.p2Status({ bound: BOUND }).planning.paused, false);
 });
 
+test('P2-17: a switched-off capability is `disabled`, not `pending-load` (off runtime)', t => {
+  // Regression (2026-11-11): with the runtime switched off, `p2Status()` reported
+  // `state:'pending-load', pendingLoad:true` for BOTH P2 halves even though their own switches
+  // were false. A model reading that says "still loading" and can promise a feature that is
+  // switched off; CONTRACT §12.5.10 / lib/diagnostics.mjs reserve `pending-load` for
+  // "switch on, code not mounted yet". Observed on the integrated test host with the migrated
+  // standard assets: companion_life_status answered pending-load while both switches were off.
+  const offRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'p2-boundary-off-'));
+  fs.mkdirSync(path.join(offRoot, 'home/companion'), { recursive: true });
+  fs.writeFileSync(path.join(offRoot, 'home/companion/runtime.config.json'), JSON.stringify({
+    schemaVersion: 1, enabled: false, mode: 'off', timeZone: 'Asia/Shanghai',
+  }));
+  const offRuntime = mount(offRoot);
+  t.after(() => { try { offRuntime.dispose(); } catch { /* closed */ } fs.rmSync(offRoot, { recursive: true, force: true }); });
+  const offStatus = offRuntime.p2Status({ bound: BOUND });
+  assert.equal(offStatus.planning.enabled, false);
+  assert.equal(offStatus.activities.enabled, false);
+  assert.equal(offStatus.planning.state, 'disabled', 'a switched-off half is disabled even when the runtime is off');
+  assert.equal(offStatus.activities.state, 'disabled');
+  assert.equal(offStatus.planning.pendingLoad, false, 'pendingLoad is false when the switch itself is off');
+  assert.equal(offStatus.activities.pendingLoad, false);
+
+  // The other half of the same rule: switch ON while the code is not mounted keeps
+  // `pending-load`, because then the capability really is waiting to load.
+  const pendingRoot = fs.mkdtempSync(path.join(os.tmpdir(), 'p2-boundary-pending-'));
+  fs.mkdirSync(path.join(pendingRoot, 'home/companion'), { recursive: true });
+  fs.writeFileSync(path.join(pendingRoot, 'home/companion/runtime.config.json'), JSON.stringify({
+    schemaVersion: 1, enabled: false, mode: 'off', timeZone: 'Asia/Shanghai',
+    p2: { planning: { enabled: true }, activities: { enabled: true } },
+  }));
+  const pendingRuntime = mount(pendingRoot);
+  t.after(() => { try { pendingRuntime.dispose(); } catch { /* closed */ } fs.rmSync(pendingRoot, { recursive: true, force: true }); });
+  const pendingStatus = pendingRuntime.p2Status({ bound: BOUND });
+  assert.equal(pendingStatus.planning.enabled, true);
+  assert.equal(pendingStatus.planning.state, 'pending-load', 'switch on + unmounted code is pending-load');
+  assert.equal(pendingStatus.planning.pendingLoad, true);
+  assert.equal(pendingStatus.activities.state, 'pending-load');
+  assert.equal(pendingStatus.activities.pendingLoad, true);
+});
+
 test('P2-29: the budget day is frozen against a later timeZone edit', async t => {
   const root = makeRoot(t, { planning: { enabled: true }, activities: { enabled: true } });
   const plan = JSON.stringify({ summary: '安排', slots: [{ kind: 'open', title: '留白', detail: '', startAt: T0, endAt: T0 + 600000, flexibility: 'soft' }] });

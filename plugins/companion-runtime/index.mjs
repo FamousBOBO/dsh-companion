@@ -2611,9 +2611,26 @@ export function mountRuntime(ctx, root, options = {}) {
   function p2Status(input = {}) {
     const scope = scopeOf(input);
     if (!p2Controller) {
+      // Not mounted. Which honest word applies depends on the switch, not on the mount:
+      // a capability whose own switch is off is `disabled`; `pending-load` is reserved for
+      // "the switch is on but the code has not been mounted yet" (CONTRACT §12.5.10,
+      // lib/diagnostics.mjs). Reporting `pending-load` for a switched-off capability reads
+      // to the model as "still loading" and invites it to promise a feature that is off.
+      const planningEnabled = config.p2?.planning?.enabled === true;
+      const activitiesEnabled = config.p2?.activities?.enabled === true;
       return {
-        planning: { enabled: config.p2?.planning?.enabled === true, paused: true, state: 'pending-load', pendingLoad: true },
-        activities: { enabled: config.p2?.activities?.enabled === true, paused: true, state: 'pending-load', pendingLoad: true },
+        planning: {
+          enabled: planningEnabled,
+          paused: true,
+          state: planningEnabled ? 'pending-load' : 'disabled',
+          pendingLoad: planningEnabled,
+        },
+        activities: {
+          enabled: activitiesEnabled,
+          paused: true,
+          state: activitiesEnabled ? 'pending-load' : 'disabled',
+          pendingLoad: activitiesEnabled,
+        },
         budget: null,
         capabilities: null,
         share: { enabled: config.p2?.share?.enabled === true, owner: 'contact', port: 'unavailable' },
