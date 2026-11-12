@@ -176,7 +176,7 @@ test('private packets always include sticker workflow with either tool surface',
       assert.match(text, /expression_candidates/)
       assert.match(text, /expression_reply/)
       assert.match(text, /sticker_only/)
-      assert.match(text, /不因不认识主动追问/)
+      assert.match(text, /默认不解读来图/)
       assert.match(text, /不重复正文/)
     }
   }

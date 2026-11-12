@@ -21,6 +21,7 @@ import * as path from 'node:path'
 import type { Context } from '@deepseek-ai/cordis'
 import { resolveSessionsRoot } from '../../paths.js'
 import { resolveDshHome } from '../../paths.js'
+import { DmDeliveryGuard } from './delivery-guard.js'
 import type {
   AgentGateway, AgentSession, DeliverMode, PromptContent, SessionSpec,
 } from '../../ports/agent-gateway.js'
@@ -309,6 +310,7 @@ function wrap(raw: RawHandle, id: string): AgentSession {
 
 /** 把一个会话的回合事件接到监听器上。 */
 function watchTurns(agentCtx: Context, spec: SessionSpec): void {
+  installDmDeliveryGuard(agentCtx, spec)
   installStepBudget(agentCtx, spec)
   // Emit-mode 事件只递一个 payload，监听器的返回值被忽略。
   onAgentEvent(agentCtx, 'agent/status', (payload) => {
@@ -322,6 +324,23 @@ function watchTurns(agentCtx: Context, spec: SessionSpec): void {
     const detail = err instanceof Error ? `${err.name}: ${err.message}` : raw
     spec.log(`agent error: ${detail.slice(0, 400)}`)
     spec.listener.onError({ raw, detail })
+  })
+}
+
+const dmGuards = new WeakSet<object>()
+
+export function installDmDeliveryGuard(agentCtx: Context, spec: SessionSpec): void {
+  if (!spec.sessionId.startsWith('qq-dm-') || dmGuards.has(agentCtx)) return
+  dmGuards.add(agentCtx)
+  const guard = new DmDeliveryGuard()
+  const target = spec.sessionId.slice('qq-dm-'.length)
+  onAgentEvent(agentCtx, 'agent/assistant-stream', ({ frame }) => guard.observe(frame))
+  onAgentEvent(agentCtx, 'agent/turn-stopping', ({ agent, signal }) => {
+    if (signal.aborted) return
+    const tools = agentCtx.tools as unknown as { get?: (name: string, scope: unknown) => unknown }
+    if (!guard.correction(Boolean(tools?.get?.('qq_message', agent)))) return
+    spec.log('DM answer has no tool call; requesting delivery once')
+    injectAgent(agent, buildUserMessage([{ type: 'text', text: `刚才的文字未发到 QQ。请用 qq_message(action=send,isGroup=false,target=${target}) 发送一次；勿重复已发内容。` }]))
   })
 }
 

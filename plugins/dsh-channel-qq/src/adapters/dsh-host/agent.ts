@@ -78,6 +78,8 @@ export function steerAgent(agent: unknown, message: HostUserMessage): boolean {
 
 /** 我们订阅的 agent 事件，以及每个事件的监听器签名。 */
 export interface AgentEventMap {
+  'agent/assistant-stream': { payload: { frame: Parameters<import('./delivery-guard.js').DmDeliveryGuard['observe']>[0] }; result: void }
+  'agent/turn-stopping': { payload: { agent: unknown; signal: AbortSignal }; result: void }
   'agent/status': { payload: { status?: string }; result: void }
   'agent/error': { payload: { error?: unknown }; result: void }
   'agent/pre-step': { payload: unknown; result: unknown }
