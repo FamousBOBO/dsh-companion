@@ -6,7 +6,7 @@ import { createMediaService } from '../src/service.mjs';
 import { createMediaHandlers,API_PREFIX } from '../src/http-api.mjs';
 import { tempDataDir,makeWav,mockFetch,writeConfig } from './helpers.mjs';
 
-test('official quality tiers follow the selected model and append after the user prompt',()=>{
+test('official quality tiers remain references without appending to the prompt',()=>{
   const options=officialOptions('nai-diffusion-5-full');
   assert.equal(options.quality.find(x=>x.value==='standard').label,'Standard');
   assert.match(options.quality.find(x=>x.value==='standard').tags,/masterpiece/);
@@ -14,17 +14,17 @@ test('official quality tiers follow the selected model and append after the user
   assert.match(options.negative.find(x=>x.value==='human').tags,/bad anatomy/);
   const section={model:'nai-diffusion-5-full',qualityPreset:'light',negativePreset:'light',artistString:'artist',negativePrompt:'custom negative'};
   const value=resolveNaiPrompt(section,{prompt:'subject',negative:'request negative'});
-  assert.match(value.positive,/^artist, subject, /);
-  assert.match(value.positive,/amazing quality/);
+  assert.equal(value.positive,'artist, subject');
+  assert.doesNotMatch(value.positive,/amazing quality/);
   assert.match(value.negative,/custom negative, request negative$/);
   assert.equal(officialOptions('nai-diffusion-4-5-curated').negative.some(x=>x.value==='furry'),false);
   const off=resolveNaiPrompt({...section,qualityPreset:'none',negativePreset:'none'},{prompt:'subject'});
   assert.equal(off.positive,'artist, subject');
   assert.equal(off.negative,'custom negative');
 });
-test('legacy manual prompts remain effective when legacy mode is selected',()=>{
+test('legacy negative presets remain effective; positive presets are not injected',()=>{
   const value=resolveNaiPrompt({model:'nai-diffusion-5-full',qualityPreset:'legacy',negativePreset:'legacy',presets:{'5':{applyDefaults:true,positive:'custom old positive',negative:'custom old negative'}}},{prompt:'subject'});
-  assert.equal(value.positive,'custom old positive, subject');
+  assert.equal(value.positive,'subject');
   assert.equal(value.negative,'custom old negative');
 });
 test('Breeze reference upload stores validated bytes and does not call the service',async()=>{

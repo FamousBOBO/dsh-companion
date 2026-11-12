@@ -93,6 +93,9 @@ test('P0-A：identity 文件不存在 → 真实调用拒绝，POST 次数为 0'
 
     const result = await service.generateImage({ subject: 'companion', prompt: 'She reads by a window.' });
 
+    const reference = service.readVisual();
+    assert.equal(reference.ok, false);
+    assert.equal(reference.error.code, Code.VISUAL_IDENTITY_REQUIRED);
     assertRefusedBeforeNetwork(result, calls, { code: Code.VISUAL_IDENTITY_REQUIRED, missing: ['identity'] });
     assert.equal(result.error.details.identity.code, 'identity-missing');
     assert.equal(result.error.details.personaId, 'bot');
@@ -206,7 +209,7 @@ test('P0-A：身份只有中文外观（没有英文子句）→ 拒绝，不发
   }
 });
 
-test('P0-A：身份有效 → 通过校验，注入身份子句并正常发一次请求', async () => {
+test('P0-A：身份有效 → 通过校验，保留完整提示词并正常发一次请求', async () => {
   const { dir, cleanup } = tempDataDir();
   try {
     configured(dir);
@@ -220,9 +223,7 @@ test('P0-A：身份有效 → 通过校验，注入身份子句并正常发一�
     assert.equal(result.ok, true, JSON.stringify(result.error));
     assert.equal(calls.length, 1, '有效身份只发一次生成请求');
     const input = JSON.parse(calls[0].body).input;
-    assert.match(input, /Testa from Synthetic Testwork/, '身份子句要进提示词');
-    assert.match(input, /short silver-grey hair/);
-    assert.match(input, /The companion wears a blue knitted cardigan/);
+    assert.equal(input, 'She reads by a window.');
     assert.equal(result.visual.identity, 'configured');
     assert.equal(result.visual.identityName, '测试角色');
   } finally {

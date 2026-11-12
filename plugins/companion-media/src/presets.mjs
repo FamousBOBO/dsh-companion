@@ -56,7 +56,7 @@ export function normalizePresets(raw) {
  *
  * `applyDefaults` (per family, stored with the preset) decides whether the
  * family preset is joined onto the request. Order is deterministic:
- *   positive: [artistString, preset.positive, request prompt]
+ *   positive: [artistString, request prompt] (stored positive presets are reference only)
  *   negative: [preset.negative, config negativePrompt, request negative]
  * Empty parts are skipped, so "clear everything" is a supported state.
  */
@@ -65,7 +65,7 @@ export function resolvePreset({ model = '', presets = null, negativePrompt = '',
   const bag = normalizePresets(presets);
   const entry = bag[family] ?? { applyDefaults: false, positive: '', negative: '' };
   const parts = value => String(value ?? '').trim();
-  const positive = [parts(artistString), entry.applyDefaults ? parts(entry.positive) : '', parts(request.prompt)]
+  const positive = [parts(artistString), parts(request.prompt)]
     .filter(Boolean)
     .join(', ');
   const negative = [entry.applyDefaults ? parts(entry.negative) : '', parts(negativePrompt), parts(request.negative)]

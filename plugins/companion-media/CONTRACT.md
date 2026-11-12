@@ -318,3 +318,12 @@
 - Node `>=24.0.0`；纯 ESM；无运行时依赖；无构建步骤（`npm run build` 只做一次静态加载自检）。
 - `package.json` 的 `exports` 暴露 `.`（插件入口）、`./config`（schema）、`./service`（服务工厂）。
 - 新增 provider = 在 `src/schema.mjs` 注册 + 在 `src/adapters/` 写 adapter + 在 `src/adapters/registry.mjs` 挂一行；未核实的 provider 必须 `status: 'not-connected'` 并写 `reason`。
+
+
+## 2026-11-12 生图提示词合同修订（优先于上文旧拼接约定）
+
+陪伴角色生图前，模型必须先调用只读 companion_media_visual，读取当前 persona 的英文身份、当前衣物与场景来源，再将外观、镜头内可见衣物、动作、表情、构图、环境和光线统一写为完整英文 prompt。参考信息不是固定后缀，习惯性配饰按当前画面取舍；换装先更新衣柜并重新读取。工具说明约束读取顺序，服务端不做语义匹配或宣称模型已遵守。
+
+所有 NAI 连接方式的最终正向提示词仅为 artistString + prompt；不追加视觉身份、衣物、官方质量词或旧正向预设。旧配置仍保留供参考，反向预设合并不变。OpenAI 直接使用完整 prompt。旧 outfit 参数保留兼容校验，不写入提示词。
+
+companion_media_visual 不发网络请求，不写衣柜；群聊遵守现有私人衣柜隔离。draw 仍校验身份与衣柜可用性，dryRun 返回 prompt 和视觉参考（clothingClause / identityClause），NAI 的 preset.positive 为最终正向文本。visual 元数据只说明参考来源，不证明模型已将其画入图片。

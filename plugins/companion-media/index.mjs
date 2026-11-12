@@ -108,14 +108,18 @@ function registerTools(ctx, service) {
     '读取媒体能力状态：哪些能力开着、每个 provider 处于哪个状态（未配置／已保存未测试／测试通过／测试失败／功能关闭／尚未接入）、限额、最近作业与产物。不含任何密钥，也不含图片内容。配置文件改动会在下次调用时生效。',
     {}, async () => service.status());
 
+  register('companion_media_visual',
+    '为陪伴角色生图前必须先调用：只读获取当前人格英文视觉身份、当前衣物及场景来源。读取后再构思完整英文 prompt，把外观与衣物融入画面，不能机械追加参考串。缺少资料时说明缺项，不猜测。群聊不读取私聊衣柜。',
+    {}, async (_args, exec) => service.readVisual({ sessionId: exec?.agent?.session?.id }));
+
   register('companion_media_draw',
-    '生成一张图片（可能计费）。直接构思纯英文画面提示词。按 NovelAI 的自然语言写法使用完整英文句子，把主体放在前半段，再说明动作、人物位置、环境、镜头、光线和画风。只写可见画面。给陪伴角色画图（自拍、肖像、生活照、表情图）时用 subject=companion，并要求自己只写场景、动作、表情、镜头、光线和画风：角色身份与当前服装（含场景与原因）由媒体层从可信数据自动注入，不要自己描述衣服，也不要再把衣柜里的衣物抄进 prompt。想确认这次会注入什么，用 subject=companion、dryRun=true 查看 visual 字段。只有当用户明确要求「换一套衣服来画」时，才用 outfit 传英文衣物短语；同时应先调 companion_outfit_set 更新衣柜，否则下次出图又回到衣柜里的衣服。dryRun 不发网络请求。成功后按 handoff 交给当前会话的图片发送工具。失败不自动重试。',
+    '生成一张图片（可能计费）。画陪伴角色前必须调用 companion_media_visual 读取当前身份与衣物，再用 subject=companion 提交完整英文 prompt。统筹可见外观、服装颜色/材质/剪裁/层次、动作、手部位置、表情与视线、镜头构图、环境、光源方向和色调，消除矛盾，只写镜头内可见细节。身份是参考事实，不是固定后缀；习惯性配饰按场景取舍，不强塞相机等物件。用户要求换装时先更新 companion_outfit_set 并重新读取。最终正向提示词严格为配置画师串 + 主提示词，程序不追加身份、衣物或质量词，不要重复画师串。先 dryRun 核对最终提示词，再生成。成功后按 handoff 发送；失败不自动重试。',
     {
-      prompt: { type: 'string', required: true, description: '直接写英文画面，例如：A young woman rests her hands on a cafe windowsill and looks out at the rain. Frame her from the waist up in soft afternoon light. 只写场景、动作、表情、镜头、光线、画风；不要把衣服写进来（身份与服装由媒体层注入）。' },
-      negative: { type: 'string', description: '可选英文反向提示词，例如 blurry background, distorted hands。NovelAI 会合并已配置的反向预设。' },
-      subject: { type: 'string', description: '自拍或以陪伴角色为主体时填 companion（会自动注入角色身份与当前服装）；其他图片省略。' },
-      outfit: { type: 'string', description: '一般留空。留空时媒体层自动注入衣柜解析出的当前服装（英文权威文本），这是默认且推荐的做法。只有用户明确要求换装（或本次就是特殊造型）时，才用英文在这里写这套衣服，并同时调用 companion_outfit_set 更新衣柜。' },
-      dryRun: { type: 'boolean', description: 'true 只校验参数（含注入的身份/服装、NAI 预设族与分辨率），不发起生成。dry-run 成功不代表已产出图片。' },
+      prompt: { type: 'string', required: true, description: '完整英文主提示词，身份与衣物须从 companion_media_visual 获取并融入画面。示例仅演示写法，须替换为本次读取结果：A single young woman with short silver-grey hair and amber eyes sits sideways at a rain-streaked cafe window, wearing a pale blue cable-knit cardigan over an ivory cotton blouse, its ribbed cuffs resting at her wrists. Her left hand cups a warm ceramic mug on the wooden table while her right hand rests beside an open book. She turns toward the viewer with a relaxed, closed-mouth smile. Frame her from the waist up at eye level, with her face in the upper third and both hands clearly visible. Cool overcast daylight enters from the left; a warm pendant lamp softly lights her cheek from the right. Outside, blurred umbrellas and reflections recede into the wet street. Delicate linework, softly shaded fabric folds, restrained blue and amber colors, a quiet intimate atmosphere.' },
+      negative: { type: 'string', description: '可选英文反向提示词，与配置反向预设合并。' },
+      subject: { type: 'string', description: '陪伴角色图片填 companion；先读取 companion_media_visual 并自行写完整 prompt。其他图片省略。' },
+      outfit: { type: 'string', description: '兼容旧调用的英文换装参考，不会拼入 prompt。新调用先更新衣柜并重新读取，再将衣物写进完整 prompt。' },
+      dryRun: { type: 'boolean', description: 'true 核对最终 prompt、身份与衣柜参考、预设族与分辨率，不发网络请求。' },
     },
     async (args, exec) => service.generateImage({
       prompt: args.prompt, negative: args.negative, subject: args.subject, outfit: args.outfit,

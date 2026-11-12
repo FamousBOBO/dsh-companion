@@ -629,3 +629,14 @@ git clone https://github.com/FamousBOBO/dsh-companion.git
 - 语义层面的问题（比如「这段文案把已保存说成已连接」——那是 `docs/02` §6 的纪律，不是扫描能查的）。
 
 所以正确的表述是：**「泄漏扫描通过」= 在发布物里没命中已知形状**，不是「仓库里没有秘密」。
+
+
+### 2026-11-12 媒体完整提示词修复
+
+证据级别：offline-test。新增 companion_media_visual 只读工具；模型按工具约束先读取身份和当前衣物，再写完整英文画面。取消服务端身份、衣物、正向预设和质量词的拼接，NAI 最终正向仅为画师串 + 主提示词。
+
+- npm ci、npm run build：通过。
+- node --test plugins/companion-media/test/*.test.mjs：162/162 通过；含只读参考、最终请求正文不追加、排队传输、身份缺失拒绝和群聊隔离相关覆盖。
+- npm run doctor：核心检查通过；宿主版本无法检测。
+- npm run verify：unit 5 模块通过、4 模块失败、1 无测试；失败涉及 foundation、memory-studio、runtime、channel-qq。static 38 通过、1 失败（原有 production-closeout 文档中的 author-path）；compose 1 通过（232 loader 行）。全仓验证未通过，不将其描述为全绿。
+- 未重启运行中的宿主；未验证新工具真实宿主装载、真实模型是否遵守读取顺序或最终图片质量；未调用计费生图 API。需宿主重新加载媒体插件后应用新工具定义。

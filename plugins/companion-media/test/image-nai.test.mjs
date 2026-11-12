@@ -64,11 +64,7 @@ test('NAI official：ZIP 响应 → 解出 PNG；请求体是 {input, model, act
   }
 });
 
-// 2026-11-10 合同变更（wardrobe v2 / visual identity）：陪绊角色生图不再要求模型在 `outfit`
-// 参数里自己写英文衣物。身份与当前服装由 `resolveCompanionVisualState()` 统一注入，理由见
-// plugins/companion-foundation/WARDROBE-STATE-CONTRACT.md §6：模型与媒体层各写一遍衣服，正是
-// 「生图与衣柜不一致」的根因。旧调用（显式传 `outfit`）仍然有效，并且仍然优先。
-test('official queue injects the resolved outfit automatically and keeps an explicit outfit override', async () => {
+test('official queue preserves the complete prompt without appending visual references', async () => {
   const { dir, cleanup } = tempDataDir();
   try {
     const queue = 'https://queue.example.test';
@@ -94,11 +90,15 @@ test('official queue injects the resolved outfit automatically and keeps an expl
     // identity is mandatory (see the gate in src/service.mjs), so this fixture has one.
     writeIdentity(dir, { bot: { name: { zh: '测试角色', en: 'Testa' }, appearance: { zh: '银灰短发', en: 'short silver-grey hair' } } });
     const service = createMediaService({ dataDir: dir, env: {}, fetchImpl, now: () => new Date('2026-11-07T02:00:00Z') });
-    const args = { subject: 'companion', prompt: 'A woman smiles by a cafe window.', requireEnglish: true };
+    const reference = service.readVisual();
+    assert.equal(reference.ok, true);
+    assert.match(reference.visual.clothingClause, /blue knitted cardigan/);
+    assert.equal(calls.length, 0, '读取参考不调用生图服务');
+    const args = { subject: 'companion', prompt: 'Testa, a young woman with short silver-grey hair, smiles by a cafe window in a blue knitted cardigan. Her hands rest on a wooden table, lit by soft daylight from the left. Waist-up framing, delicate linework and muted blue tones.', requireEnglish: true };
     const preview = await service.generateImage({ ...args, dryRun: true });
     assert.equal(preview.visual.outfitSource, 'wardrobe-resolver');
     assert.equal(preview.visual.context, 'everyday');
-    assert.match(preview.visual.injectedClause, /blue knitted cardigan/);
+    assert.match(preview.visual.clothingClause, /blue knitted cardigan/);
     assert.equal(calls.length, 0, 'dryRun 不发请求');
 
     // No `outfit` argument at all: the resolver supplies the clothes and the call succeeds.
@@ -107,8 +107,8 @@ test('official queue injects the resolved outfit automatically and keeps an expl
     assert.equal(result.visual.outfitSource, 'wardrobe-resolver');
     assert.deepEqual(calls.map(call => new URL(call.url).pathname), ['/join-queue', '/my-turn', '/ai/generate-image', '/complete']);
     const actual = JSON.parse(calls[2].body);
-    assert.match(actual.input, /The companion wears a blue knitted cardigan/);
-    assert.match(actual.parameters.v4_prompt.caption.base_caption, /blue knitted cardigan/);
+    assert.equal(actual.input, args.prompt);
+    assert.equal(actual.parameters.v4_prompt.caption.base_caption, args.prompt);
 
     // An explicit English outfit still wins (old callers / "draw her in this outfit").
     assert.equal((await service.generateImage({ ...args, outfit: '蓝色开衫' })).ok, false, '中文 outfit 仍被拒绝');
@@ -116,7 +116,7 @@ test('official queue injects the resolved outfit automatically and keeps an expl
     const explicit = await service.generateImage({ ...args, outfit: 'a blue cardigan' });
     assert.equal(explicit.ok, true, JSON.stringify(explicit.error));
     assert.equal(explicit.visual.outfitSource, 'explicit-arg');
-    assert.match(JSON.parse(calls[2].body).input, /The companion wears a blue cardigan\./);
+    assert.equal(JSON.parse(calls[2].body).input, args.prompt);
 
     // The coordination metadata never carries the clothes or the key.
     for (const call of calls.filter(call => call.url.startsWith(queue))) {
@@ -152,7 +152,7 @@ test('companion 生图在衣柜里没有英文描述时明确拒绝，不编造�
   }
 });
 
-test('companion 生图自动注入视觉身份，且身份与服装都按当前 persona 取', async () => {
+test('companion 身份与服装按当前 persona 提供参考，不追加到 prompt', async () => {
   const { dir, cleanup } = tempDataDir();
   try {
     configured(dir);
@@ -189,15 +189,17 @@ test('companion 生图自动注入视觉身份，且身份与服装都按当前 
     assert.equal(preview.visual.identity, 'configured');
     assert.equal(preview.visual.name, '测试角色');
     assert.equal(preview.visual.context, 'sleep');
-    assert.match(preview.visual.injectedClause, /pajama/);
+    assert.match(preview.visual.clothingClause, /pajama/);
     assert.deepEqual(preview.visual.missing, []);
 
     const result = await service.generateImage({ subject: 'companion', prompt: 'A girl reads by a lamp.' });
     assert.equal(result.ok, true, JSON.stringify(result.error));
     const input = JSON.parse(calls[0].body).input;
-    assert.match(input, /Testa from Synthetic Testwork/);
-    assert.match(input, /short silver-grey hair/);
-    assert.match(input, /The companion wears .*pajama top/);
+    assert.equal(input, 'A girl reads by a lamp.');
+    const reference = service.readVisual();
+    assert.equal(reference.ok, true);
+    assert.match(reference.visual.identityClause, /short silver-grey hair/);
+    assert.match(reference.visual.clothingClause, /pajama/);
     assert.doesNotMatch(input, /Other Persona|long black hair/, '不能注入别人格的身份');
     assert.doesNotMatch(input, /[\u4e00-\u9fff]/, '画面提示词必须全英文');
   } finally {
@@ -360,9 +362,9 @@ test('NAI：V5 预设不会出现在 4.5 请求里（切换模型不串用）', 
     assert.equal(second.ok, true);
     const body5 = JSON.parse(calls[1].body);
     const text5 = JSON.stringify(body5);
-    assert.equal(text5.includes('V5-ONLY-POSITIVE'), true);
+    assert.equal(text5.includes('V5-ONLY-POSITIVE'), false);
     assert.equal(text5.includes('V45-'), false, 'V5 请求不得带 4.5 预设');
-    assert.equal(body5.parameters.v4_prompt.caption.base_caption.startsWith('V5-ONLY-POSITIVE'), true);
+    assert.equal(body5.parameters.v4_prompt.caption.base_caption, 'subject');
   } finally {
     cleanup();
   }

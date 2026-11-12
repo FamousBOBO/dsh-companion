@@ -16,7 +16,7 @@ function fakeHost() {
   return { ctx, tools };
 }
 
-test('插件挂载：注册的工具只有 4 个，且没有识图 / 没有模型预热工具', async () => {
+test('插件挂载：注册的工具只有 5 个，且没有识图 / 没有模型预热工具', async () => {
   const { dir, cleanup } = tempDataDir();
   try {
     const plugin = await import('../index.mjs');
@@ -24,7 +24,7 @@ test('插件挂载：注册的工具只有 4 个，且没有识图 / 没有模�
     const service = await plugin.mountMedia(ctx, { dataDir: dir, fetchImpl: mockFetch([{ match: () => true, response: { status: 200, json: {} } }]).fetchImpl });
     assert.ok(service && !service.error, `挂载不应失败：${JSON.stringify(service)}`);
     const names = tools.map(tool => tool.name).sort();
-    assert.deepEqual(names, ['companion_media_draw', 'companion_media_job', 'companion_media_speak', 'companion_media_status']);
+    assert.deepEqual(names, ['companion_media_draw', 'companion_media_job', 'companion_media_speak', 'companion_media_status', 'companion_media_visual']);
     // 任何"识图 / 预热 / 释放"入口都不存在
     assert.equal(names.some(name => /inspect|vision|warm|release/i.test(name)), false);
     for (const tool of tools) {

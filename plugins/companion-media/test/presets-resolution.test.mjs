@@ -12,9 +12,9 @@ test('预设：V5 与 4.5 分开存储，互不覆盖', () => {
   const v45 = resolvePreset({ model: 'nai-diffusion-4-5-full', presets: stored, request: { prompt: 'a cat' } });
   assert.equal(v5.family, '5');
   assert.equal(v45.family, '4.5');
-  assert.match(v5.positive, /v5-positive/);
+  assert.equal(v5.positive, 'a cat');
   assert.equal(v5.positive.includes('v45-'), false);
-  assert.match(v45.positive, /v45-positive/);
+  assert.equal(v45.positive, 'a cat');
   assert.equal(v45.positive.includes('v5-'), false);
 });
 

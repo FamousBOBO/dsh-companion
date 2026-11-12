@@ -350,7 +350,7 @@ test('画师串与预设真正进入 NAI 请求体（dry-run 可核对，无需�
     const dry = await service.generateImage({ prompt: 'a lighthouse', dryRun: true });
     assert.equal(dry.ok, true);
     assert.equal(dry.preset.family, '4.5');
-    assert.equal(dry.preset.positive, 'artist-a, artist-b, v45-pos, a lighthouse');
+    assert.equal(dry.preset.positive, 'artist-a, artist-b, a lighthouse');
     assert.equal(dry.preset.negative, 'v45-neg');
     assert.equal(dry.preset.positive.includes('v5-pos'), false, '不得串用 V5 预设');
   } finally {
@@ -661,7 +661,7 @@ test('NAI 两族预设各发三个字段（positive/negative/applyDefaults），
       assert.equal(byName.positive.type, 'textarea');
       assert.equal(byName.negative.type, 'textarea', '反向预设必须是多行输入');
       assert.equal(byName.applyDefaults.type, 'boolean', '启用整族预设需要开关');
-      assert.match(byName.applyDefaults.label, /应用这一族的预设/);
+      assert.match(byName.applyDefaults.label, /应用这一族的反向预设/);
       // 默认留空、默认不启用（不编造官方文本）
       assert.equal(byName.positive.value, '');
       assert.equal(byName.negative.value, '');
