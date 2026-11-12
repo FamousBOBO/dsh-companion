@@ -139,7 +139,8 @@ export class PromptComposer {
     const key = isGroup
       ? (v2 ? 'room/group-v2' : 'room/group')
       : (v2 ? 'room/dm-v2' : 'room/dm')
-    return this.r(key, { chatId: String(chatId) })
+    const room = this.r(key, { chatId: String(chatId) })
+    return isGroup ? room : `${room}\n${this.r('instruction/sticker-expression')}`
   }
 
   /** `（当前时段：下午）`。 */

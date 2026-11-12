@@ -167,6 +167,21 @@ test('组包器：群事件只带最近 12 条', () => {
   assert.equal(prompt.includes('事件7'), false, '第 8 条起被截掉（保留最近 12 条）')
 })
 
+test('private packets always include sticker workflow with either tool surface', () => {
+  for (const v2 of [false, true]) {
+    const c = new PromptComposer(createPersonaPack(), () => v2, rewriteLegacyToolNames)
+    const room = c.roomDirective(false, 42)
+    const packet = c.dmPacketV2({ roomKey: 'dm:42', room, line: 'hi', knowledgeHint: '', signals: [] } as never)
+    for (const text of [room, packet]) {
+      assert.match(text, /expression_candidates/)
+      assert.match(text, /expression_reply/)
+      assert.match(text, /sticker_only/)
+      assert.match(text, /不因不认识主动追问/)
+      assert.match(text, /不重复正文/)
+    }
+  }
+})
+
 test('房间指令跟着工具面走：tools.v2 开时指向 qq_message，关时保持旧文案', () => {
   const pack = createPersonaPack()
   const off = new PromptComposer(pack)
