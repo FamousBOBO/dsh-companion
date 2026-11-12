@@ -80,7 +80,7 @@ async function stickerStep(host: SubHost, ledgers: Map<number, StickerLedger>, i
   const outcome = await sendSticker(service, {
     groupId: input.groupId,
     query: verdict.query,
-    // 图配在文字**之后**：文字是主表达，图是补充（反过来会让图变成开场白）。
+    // 正文已经发送成功；这里只补图，不能再次发送正文。
     mode: 'sticker_only',
     text: input.text,
     canSend,

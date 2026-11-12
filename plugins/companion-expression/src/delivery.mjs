@@ -56,7 +56,9 @@ export function extensionForKind(kind, mime = '') {
  */
 export function statusOf(result) {
   if (!result || result.ok !== true) return String(result?.code ?? '') === 'unknown' ? 'unknown' : 'failed';
-  if (Number.isFinite(Number(result.messageId))) return 'confirmed';
+  if ((typeof result.messageId === 'number' || typeof result.messageId === 'string')
+    && String(result.messageId).trim() !== '' && Number.isSafeInteger(Number(result.messageId))
+    && Number(result.messageId) !== 0) return 'confirmed';
   // 显式说了别的状态就照它（sender 可能报告 `failed` 之下的细分成因）；否则一律 unknown。
   const declared = String(result.status ?? '');
   return declared === 'failed' || declared === 'unknown' ? declared : 'unknown';
