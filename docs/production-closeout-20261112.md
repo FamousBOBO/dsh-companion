@@ -44,3 +44,14 @@ DSH 交接报告给出：93a9037 正常合并、4f091cf doctor 查询串修复�
 - 对运行实例认证后的只读请求 `/api/companion-expression/config`、`/api/companion-expression/assets?limit=1` 均 HTTP 200 且 ok=true；未输出图库内容。此证据覆盖管理接口与图库接入，不证明 QQ 实际送达。
 - retrieval worktree 有尚未提交的 analyzer/ingest、synonyms 与 fixture 工作，属另一条正在修改的检索任务，未将不完整工作复制进生产，也未修改该 worktree。
 - 本次“推入生产”指本机生产部署，未向 Git 远端 push，未额外真实发送消息。已提交的表情成果当前已部署生效，生产数据与备份保留。
+
+## 检索分支最终收尾（北京时间 21:06）
+
+DSH 后续完成了检索改动但在文档 edit 参数拼接处失败。Codex 补齐两处 poolLimit 文档，修复 compare 输出的字符串拼接及文档作者路径卫生问题，完成提交 a183795，正常合入生产为 1e6efb0。原生产新增 935b383（Light 生图预设）保留。前节“未提交检索工作”描述为此前状态，现已完成交付。
+
+- 分支构建成功，unit 9 模块通过，表情专项 247/247 通过；static 首次因文档作者绝对路径失败，清理后复跑 39/39。隔离 worktree compose 因没有宿主配置而跳过，不算通过。合成语料前后对照命令退出 0。
+- 生产 doctor 核心通过；生产构建成功。表情库通过 node:sqlite backup 一致性备份到 `data/backups/expression-retrieval-predeploy-1794488689052/`，integrity_check=ok，同时备份表情配置。
+- 仅重启指定生产实例：supervisor 66624 / host 52760，启动于北京时间 21:06:24；健康检查三个端点 200，核心挂载通过。
+- 新启动日志确认发送器接线；FTS 新标签索引重建 393 行，数据库只读核验 meta.fts_label_index=labels-v2。
+- 运行实例配置 API 返回 HTTP 200/ok=true，poolLimit=60，原 minFitScore=0.5 保留。没有改生产投递开关、人格或阈值，没有测试发送或计费调用。
+- 历史 docs/19 的“未部署”描述是开发交付时状态，由本节补充实际部署证据。生产真实素材检索质量、真实 QQ 送达仍未验证；DSH 的参数拼接及审查服务故障未在本次修复。
