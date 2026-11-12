@@ -569,7 +569,7 @@ export function createService({ dataDir, paths, db, stageRoot, log, ctx }) {
           for (const row of rows) usable.push(String(row.scope));
         }
         const reason = retrieve({
-          library: fromLibrary(library),
+          library: fromLibrary(library, { poolLimit: Number(config.retrieval?.poolLimit ?? 60) }),
           usable,
           scope: usable[0] ?? '',
           // 实验室必须按真实回合的同一套上下文推导：否则页面上的「会不会发」与线上判的
@@ -577,8 +577,10 @@ export function createService({ dataDir, paths, db, stageRoot, log, ctx }) {
           context: contextFromDraft(input.text),
           limit: Number(input.limit ?? 5),
           // 实验室要把阈值的效果**展示出来**，所以这里不提前按 minFitScore 剪掉候选：
-          // 让 decision 用配置里的阈值给出 `text-only-low-fit`，页面才说得清"为什么不发"。
+          // 让 decision 用配置里的阈值给出 `no-compatible-expression`（cause=all-below-fit-threshold），
+          // 页面才说得清「为什么这次不发」。
           minFitScore: 0,
+          poolLimit: Number(config.retrieval?.poolLimit ?? 60),
           now: Date.now(),
           // 显式拒绝过的素材不进候选。`retrieval.judgeCandidate` 只传 `{assetId, scope}`，
           // 所以 db 用闭包里那一份（同一个连接，不存在第二个 writer）。
@@ -627,7 +629,12 @@ export function createService({ dataDir, paths, db, stageRoot, log, ctx }) {
           decisionIfEnabled: hypothetical,
           candidates,
           plan: planned,
-          retrieval: { reasonCode: reason.reasonCode, filtered: reason.filtered, matched: reason.matched, warnings: reason.warnings },
+          retrieval: {
+            reasonCode: reason.reasonCode, filtered: reason.filtered, matched: reason.matched,
+            warnings: reason.warnings,
+            // 逐阶段数字（召回路、门槛、冲突、低分项）只给实验室/开发者看；模型侧不读这里。
+            diagnostics: reason.diagnostics ?? null,
+          },
           scopeNote: isGroup
             ? (usable.length ? `按群作用域 ${usable[0]} 模拟。` : '没有给出群号：这次模拟没有可用的群作用域，候选只会是空的。')
             : '私聊场景用「库里已通过的非群作用域」当可用集合；页面不会因此构造任何具体私聊 scope。',

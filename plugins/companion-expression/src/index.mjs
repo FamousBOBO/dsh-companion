@@ -97,10 +97,12 @@ function contextOf(state, { chatId = 0, isGroup = false } = {}) {
 /** 检索一次（共用同一组注入：正反馈分与显式抑制都读库）。 */
 function searchFor(state, { usable, scope, query, limit = 5 }) {
   return retrieve({
-    library: fromLibrary(state.library), usable, scope,
+    library: fromLibrary(state.library, { poolLimit: state.config?.retrieval?.poolLimit }),
+    usable, scope,
     // 上下文从草稿本身派生：图库里的卡片是按情绪/意图打的，空着这两项就等于永远只比字面。
     context: contextFromDraft(query),
     limit, minFitScore: 0, now: state.clock(),
+    poolLimit: Number(state.config?.retrieval?.poolLimit ?? 60),
     feedbackScore: ({ assetId, scope: scopeKey }) => feedbackScoreOf({ db: state.db, assetId, scope: scopeKey }),
     isSuppressed: ({ assetId, scope: scopeKey }) => isSuppressed({ db: state.db, assetId, scope: scopeKey }),
   });
@@ -112,22 +114,38 @@ async function listCandidates(state, { isGroup = false, target = '', query = '',
     const ctx = contextOf(state, { chatId: Number(target) || 0, isGroup });
     if (!ctx.scopes.usable.length) {
       noteCandidate(state, { ok: true, send: false, reasonCode: 'scope-not-visible', candidates: 0 });
-      return { ok: true, candidates: [], send: false, reasonCode: 'scope-not-visible', message: '本会话没有可用的表情包作用域（未授权），不发图。' };
+      return {
+        ok: true, candidates: [], send: false, reasonCode: 'scope-not-visible',
+        message: '本会话没有可用的表情包作用域（未授权），本轮只用文字，不重试。',
+        warnings: [...state.warnings],
+        diagnostics: { cause: 'no-candidates-in-pool', scopeReason: ctx.scopes.reason || 'no-usable-scope' },
+      };
     }
     const found = searchFor(state, { usable: ctx.scopes.usable, scope: ctx.scopes.own, query, limit });
     const decision = decide({
       db: state.db, config: state.config, target: { kind: ctx.kind, id: ctx.id },
       scope: ctx.scopes.own, candidates: found.candidates, draft: '', now: state.clock(),
     });
-    // 诊断只记结果码与候选数——`no-candidate` 的成因要能一眼查到，但候选内容不进日志。
+    // 模型只拿到「能发的候选 + 明确许可」：不发时 `candidates` 恒为空，低分项只进 diagnostics。
+    const visible = decision.send === true && Array.isArray(decision.candidates) && decision.candidates.length
+      ? decision.candidates
+      : (decision.send === true ? found.candidates.slice(0, 1) : []);
+    // 诊断只记结果码与候选数——`no-compatible-expression` 的成因要能一眼查到，但候选内容不进日志。
     noteCandidate(state, {
       ok: true, send: decision.send === true, reasonCode: decision.reasonCode,
-      candidates: Array.isArray(found.candidates) ? found.candidates.length : 0,
+      candidates: visible.length,
       fitScore: decision.fitScore,
+      cause: String(decision.cause ?? ''),
     });
     return {
-      ok: true, candidates: found.candidates, send: decision.send, mode: decision.mode,
+      ok: true, candidates: visible, send: decision.send, mode: decision.mode,
       reasonCode: decision.reasonCode, message: decision.message, fitScore: decision.fitScore,
+      // 检索诊断（召回各路数量、过滤桶、被打分的低分项）只给开发者；模型不读。
+      diagnostics: {
+        ...(decision.diagnostics ?? {}),
+        cause: String(decision.cause ?? ''),
+        retrieval: found.diagnostics ?? null,
+      },
       warnings: [...(found.warnings ?? []), ...state.warnings],
     };
   } catch (error) {
@@ -336,6 +354,16 @@ export function createService(options = {}) {
     return { ok: false, disabled: true, reason: `db-open-failed: ${String(error?.message ?? error).slice(0, 160)}`, config, warnings: loaded.warnings };
   }
   const library = createLibrary({ db, assetsDir: paths.assets, now: clock });
+  // 老库迁移：FTS 的标签列口径从 v1（只索引 intents）换成 v2（intents + emotions + tone）。
+  // 只跑一次（`meta.fts_label_index` 打标记），失败不阻断模块（顶多是标签召回少一路）。
+  let labelIndex = { ok: true, rebuild: 0, version: '' };
+  try {
+    labelIndex = library.ensureLabelIndex();
+    if (labelIndex.rebuild > 0) note(`FTS 标签列已按新口径重建 ${labelIndex.rebuild} 行（只做一次）。`);
+    if (labelIndex.ok === false) note(`FTS 标签列重建失败（不影响其余能力）：${labelIndex.error ?? ''}`);
+  } catch (error) {
+    note(`FTS 标签列重建失败（不影响其余能力）：${String(error?.message ?? error).slice(0, 120)}`);
+  }
   const salt = saltOf(db);
   const explicitOwner = typeof options.isOwner === 'function';
   let ownerWired = explicitOwner;
@@ -357,6 +385,8 @@ export function createService(options = {}) {
   });
   return {
     ok: true, config, warnings: state.warnings, library: state.library, db, paths, events: state.events,
+    /** FTS 标签列的重建结果（诊断/doctor 可读；`rebuild: 0` 表示这次没重建）。 */
+    labelIndex,
     /** 表情词典（认 / 记 / 列）。`apply` 接采集管线时要用同一个实例。 */
     stickerNotes: state.stickerNotes,
     /** 作用域盐（宿主接采集管线要用同一份；`scopesFor` 与 `ingestOne` 必须一致）。 */

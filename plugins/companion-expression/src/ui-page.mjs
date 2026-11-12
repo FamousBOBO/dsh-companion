@@ -50,6 +50,7 @@ const TYPE_BY_NAME = Object.freeze({
   minConfidence: 'number',
   candidatesToModel: 'number',
   minFitScore: 'number',
+  poolLimit: 'number',
   maxPerTurn: 'number',
   dmCooldownSeconds: 'number',
   dmCooldownTurns: 'number',
@@ -72,6 +73,7 @@ const LIMITS = Object.freeze({
   minConfidence: { min: 0, max: 1, step: 0.01 },
   candidatesToModel: { min: 1, max: 10 },
   minFitScore: { min: 0, max: 1, step: 0.01 },
+  poolLimit: { min: 10, max: 200 },
   maxPerTurn: { min: 0, max: 3 },
   dmCooldownSeconds: { min: 0, max: 86400 },
   dmCooldownTurns: { min: 0, max: 100 },
@@ -96,6 +98,7 @@ const LABELS = Object.freeze({
   'analysis.minConfidence': '低于这个置信度就按「不确定」处理',
   'retrieval.candidatesToModel': '给模型的候选数量（3–5 最好）',
   'retrieval.minFitScore': '低于这个契合度就只发文字',
+  'retrieval.poolLimit': '召回后待排序的候选池上限（10–200；不整库扫描）',
   'delivery.enabled': '允许把图真发出去（总闸）',
   'delivery.maxPerTurn': '每轮最多发几张（0–3）',
   'delivery.dmCooldownSeconds': '私聊冷却（秒）',
@@ -298,7 +301,11 @@ function sectionFields(id, config) {
     case 'analysis':
       return [field(['analysis', 'mode'], config), field(['analysis', 'minConfidence'], config)];
     case 'retrieval':
-      return [field(['retrieval', 'candidatesToModel'], config), field(['retrieval', 'minFitScore'], config)];
+      return [
+        field(['retrieval', 'candidatesToModel'], config),
+        field(['retrieval', 'minFitScore'], config),
+        field(['retrieval', 'poolLimit'], config),
+      ];
     case 'delivery':
       return [
         field(['delivery', 'enabled'], config),

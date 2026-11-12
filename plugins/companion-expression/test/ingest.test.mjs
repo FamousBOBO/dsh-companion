@@ -345,7 +345,7 @@ test('analyzer：默认 heuristics 不碰网络，vision-not-allowed 标清楚',
   assert.equal(visionMode.modeUsed, 'heuristics');
   assert.equal(visionMode.reasonCode, 'vision-not-allowed');
   assert.ok(visionMode.warnings.some(line => line.includes('cloudVision')));
-  assert.equal(visionMode.card.modelVersion, 'heuristics-v1');
+  assert.equal(visionMode.card.modelVersion, 'heuristics-v2');
 });
 
 test('analyzer：开了 allow 且注入 vision 才真的调用；失败退回 heuristics', async () => {
@@ -370,11 +370,26 @@ test('analyzer：off 模式、heuristics 输出稳定、未实现项写明', () 
   const card = analyzeWithHeuristics({ literal: '哈哈 开心' });
   assert.equal(card.source, 'heuristics');
   assert.equal(card.aggression, 0);
+  assert.equal(card.modelVersion, 'heuristics-v2', 'v2 起中文归一化与检索共用 synonyms.mjs');
+  assert.equal(typeof card.mixed, 'boolean', 'mixed 是诊断字段，恒为布尔值');
   assert.ok(card.confidence > 0 && card.confidence <= 1);
   assert.deepEqual(analyzeWithHeuristics({ literal: '哈哈 开心' }), card, '同一输入必须同一输出');
   assert.match(NOT_IMPLEMENTED.ocr, /OCR 未实现/);
   assert.match(NOT_IMPLEMENTED.gifKeyframes, /GIF/);
   assert.match(NOT_IMPLEMENTED.embedding, /向量/);
+
+  // 中文自然语言真的被归一化：这几句旧表抽不出任何标签，只能比单字。
+  const chinese = analyzeWithHeuristics({ literal: '笑着答应、乖巧点头、轻松愉快' });
+  assert.ok(chinese.intents.includes('agree'), '「答应」应归成同意');
+  assert.ok(chinese.tone.includes('light'), '「轻松愉快」应带上轻松语气');
+  assert.ok(chinese.tone.includes('cute'), '「乖巧」是卖萌语气');
+  assert.ok(chinese.emotions.includes('joy'), '「愉快」同时是开心的近义');
+
+  // 否定形式先于词表处理：字里有「笑」不等于发笑。
+  assert.equal(analyzeWithHeuristics({ literal: '笑不出来' }).intents.includes('laugh'), false);
+  assert.equal(analyzeWithHeuristics({ literal: '别笑了' }).intents.includes('laugh'), false);
+  assert.equal(analyzeWithHeuristics({ literal: '别笑了' }).intents.includes('stop'), true, '制止应被识别');
+  assert.equal(analyzeWithHeuristics({ literal: '好气又好笑' }).mixed, true, '混合信号如实记下');
 
   const aggressive = analyzeWithHeuristics({ literal: '滚 傻逼 去死' });
   assert.ok(aggressive.aggression > 0);

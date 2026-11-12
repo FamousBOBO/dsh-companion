@@ -1,0 +1,1352 @@
+{
+  "now": 1794465480000,
+  "note": "纯合成数据：50 张虚构表情素材，不含生产数据、QQ 号、路径或真实素材字节。45 张是当前主人私聊可用的素材（moderationState=approved + visibility=current + kind ∈ SENDABLE_KINDS；c50 也是 approved+current，但 kind=bmp，所以可见且可发送的正好是 45，raw approved+current 是 46）。c46–c50 必须永不返回：c46 异作用域（scope-not-visible）、c47 审核中（asset-not-approved）、c48 隔离（asset-quarantined）、c49 禁用（asset-disabled）、c50 bmp（kind-not-sendable）。now = 1762930680000（2026-11-12 14:38 Asia/Shanghai）；每张素材 createdAt = now + createdAtOffsetMs，偏移全部非正（0、-1 小时、-1 天 … 直到 -20 天），新鲜度确定。visibility 约定：current = 本私聊作用域 approval=approved；other-scope = 只在对端私聊作用域 approved；review/quarantined = 本作用域 approval 分别为 review/quarantined。intents/emotions/tone/scenes 只用任务给定的 canonical id；avoidWhen 只用 serious-conflict/apology/celebration/low-bandwidth。c04 与 c22 是结构化字段全空的 legacy 卡（literal 有信息，intents/emotions/tone/scenes 全为 []）。queries 的期望是排序契约而不是数值断言：expectPreferred 里的每一张都必须比 expectAvoid 里的每一张得分高（用真实 contextFromDraft + scoreCandidate 在 now 下计算），不要求 expectAvoid 完全不出现、也不要求 expectPreferred 进入 top-k；是否进候选取决于调用方传的 minFitScore。 2026-11-12 14:38 Asia/Shanghai (prescribed NOW; offsets are relative to it).",
+  "expectations": {
+    "usableCount": 45,
+    "approvedAndCurrentCount": 46,
+    "approvedAndCurrentNote": "c50 也满足 approved+current，但 kind=bmp 不在 SENDABLE_KINDS 里；可见且可发送的正好是 45 张。",
+    "usablePredicate": "moderationState=approved && visibility=current && kind ∈ [png,jpeg,gif,webp]",
+    "neverReturned": [
+      "c46",
+      "c47",
+      "c48",
+      "c49",
+      "c50"
+    ],
+    "neverReturnedReasons": {
+      "c46": "scope-not-visible",
+      "c47": "asset-not-approved",
+      "c48": "asset-quarantined",
+      "c49": "asset-disabled",
+      "c50": "kind-not-sendable"
+    },
+    "filteredBuckets": {
+      "scope": 2,
+      "moderation": 2,
+      "kind": 1
+    },
+    "kindCoverage": {
+      "usable": {
+        "png": 31,
+        "jpeg": 3,
+        "gif": 6,
+        "webp": 5,
+        "bmp": 0
+      },
+      "all": {
+        "png": 34,
+        "jpeg": 3,
+        "gif": 7,
+        "webp": 5,
+        "bmp": 1
+      }
+    },
+    "kindCoverageNote": "可发送白名单 png/jpeg/gif/webp 在 45 张可用素材里都有正例（gif 也含动图感素材）；bmp 只出现在永不返回的 c50，用来正测 SENDABLE_KINDS 硬门。",
+    "legacyEmptyCards": [
+      "c04",
+      "c22"
+    ],
+    "queryExpectationSemantics": "排序契约：expectPreferred 中每一张的 fitScore 必须严格高于 expectAvoid 中每一张。不写死数值，因为分数会随检索/分析实现的修复而变化。",
+    "tabooQuery": {
+      "query": "我很难受，怎么办",
+      "expectPreferred": [],
+      "expectAvoidAll": true,
+      "note": "decide() 的 serious-help 禁忌硬门应 abstain，任何素材都不返回；这里不做检索偏好排序。"
+    },
+    "categoryCoverage": {
+      "认同应答": [
+        "c01",
+        "c02",
+        "c03",
+        "c04",
+        "c40"
+      ],
+      "开心": [
+        "c05",
+        "c06",
+        "c40",
+        "c41"
+      ],
+      "发笑": [
+        "c07",
+        "c08",
+        "c09"
+      ],
+      "亲昵": [
+        "c10",
+        "c11",
+        "c12",
+        "c13"
+      ],
+      "卖萌": [
+        "c14",
+        "c15"
+      ],
+      "等待": [
+        "c16",
+        "c17"
+      ],
+      "困惑": [
+        "c18",
+        "c19",
+        "c20"
+      ],
+      "尴尬": [
+        "c21",
+        "c22"
+      ],
+      "拒绝": [
+        "c24",
+        "c25"
+      ],
+      "难过": [
+        "c26",
+        "c27"
+      ],
+      "生气": [
+        "c28",
+        "c29"
+      ],
+      "安慰": [
+        "c10",
+        "c12",
+        "c13"
+      ],
+      "阴阳怪气": [
+        "c09",
+        "c30",
+        "c31"
+      ],
+      "疲惫": [
+        "c32",
+        "c33"
+      ],
+      "惊讶": [
+        "c41"
+      ],
+      "得意": [
+        "c15",
+        "c30",
+        "c31",
+        "c42"
+      ],
+      "害怕": [
+        "c43"
+      ],
+      "感谢": [
+        "c34",
+        "c35"
+      ],
+      "道歉": [
+        "c36"
+      ],
+      "问候": [
+        "c37",
+        "c38"
+      ],
+      "鼓励": [
+        "c39",
+        "c40"
+      ],
+      "无奈": [
+        "c20",
+        "c27",
+        "c33",
+        "c44"
+      ],
+      "吃饭": [
+        "c23"
+      ],
+      "制止": [
+        "c45"
+      ],
+      "不可返回": [
+        "c46",
+        "c47",
+        "c48",
+        "c49",
+        "c50"
+      ]
+    },
+    "shadowAssets": {
+      "note": "c47/c48/c49 的 literal 与可用素材 c05/c10/c32 逐字相同，是刻意的「影子素材」：若硬门被绕开，它们会以同样甚至更高的相关度出现在候选里，测试因此能抓到绕过。",
+      "pairs": {
+        "c47": "c05",
+        "c48": "c10",
+        "c49": "c32"
+      }
+    },
+    "version": 1
+  },
+  "assets": [
+    {
+      "key": "c01",
+      "literal": "好呀、点头、收到、没问题、乖巧",
+      "intents": [
+        "agree"
+      ],
+      "emotions": [],
+      "tone": [
+        "light",
+        "warm"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": 0
+    },
+    {
+      "key": "c02",
+      "literal": "嗯嗯、明白、知道啦、收到",
+      "intents": [
+        "agree"
+      ],
+      "emotions": [],
+      "tone": [
+        "light"
+      ],
+      "scenes": [
+        "work",
+        "study"
+      ],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -3600000
+    },
+    {
+      "key": "c03",
+      "literal": "好的、没问题、可以、安排",
+      "intents": [
+        "agree"
+      ],
+      "emotions": [],
+      "tone": [
+        "light"
+      ],
+      "scenes": [
+        "work"
+      ],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -86400000
+    },
+    {
+      "key": "c04",
+      "literal": "好呀、点头、收到、开心、轻松愉快",
+      "intents": [],
+      "emotions": [],
+      "tone": [],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -172800000
+    },
+    {
+      "key": "c05",
+      "literal": "开心、笑眯眯、好耶",
+      "intents": [],
+      "emotions": [
+        "joy"
+      ],
+      "tone": [
+        "light",
+        "warm"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "webp",
+      "createdAtOffsetMs": -259200000
+    },
+    {
+      "key": "c06",
+      "literal": "快乐、转圈、撒花、庆祝",
+      "intents": [],
+      "emotions": [
+        "joy"
+      ],
+      "tone": [
+        "playful"
+      ],
+      "scenes": [],
+      "avoidWhen": [
+        "serious-conflict",
+        "celebration"
+      ],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "gif",
+      "createdAtOffsetMs": -432000000
+    },
+    {
+      "key": "c07",
+      "literal": "哈哈哈哈、笑死、太开心了",
+      "intents": [
+        "laugh"
+      ],
+      "emotions": [
+        "joy"
+      ],
+      "tone": [
+        "playful"
+      ],
+      "scenes": [],
+      "avoidWhen": [
+        "low-bandwidth"
+      ],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "gif",
+      "createdAtOffsetMs": -604800000
+    },
+    {
+      "key": "c08",
+      "literal": "大笑、哈哈哈、笑到打滚",
+      "intents": [
+        "laugh"
+      ],
+      "emotions": [
+        "joy"
+      ],
+      "tone": [
+        "playful"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -864000000
+    },
+    {
+      "key": "c09",
+      "literal": "偷笑、憋笑、嘿嘿",
+      "intents": [
+        "tease"
+      ],
+      "emotions": [
+        "smug"
+      ],
+      "tone": [
+        "playful",
+        "ironic"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "webp",
+      "createdAtOffsetMs": -1209600000
+    },
+    {
+      "key": "c10",
+      "literal": "抱抱、贴贴、蹭蹭",
+      "intents": [
+        "comfort"
+      ],
+      "emotions": [
+        "affection"
+      ],
+      "tone": [
+        "warm"
+      ],
+      "scenes": [
+        "comfort",
+        "bedtime"
+      ],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -1728000000
+    },
+    {
+      "key": "c11",
+      "literal": "亲亲、么么、爱你",
+      "intents": [],
+      "emotions": [
+        "affection"
+      ],
+      "tone": [
+        "warm"
+      ],
+      "scenes": [
+        "night",
+        "bedtime"
+      ],
+      "avoidWhen": [
+        "low-bandwidth"
+      ],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "gif",
+      "createdAtOffsetMs": 0
+    },
+    {
+      "key": "c12",
+      "literal": "抱抱、别难过、我在呢",
+      "intents": [
+        "comfort"
+      ],
+      "emotions": [
+        "affection"
+      ],
+      "tone": [
+        "warm",
+        "serious"
+      ],
+      "scenes": [
+        "comfort"
+      ],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -3600000
+    },
+    {
+      "key": "c13",
+      "literal": "摸摸头、不哭、乖乖",
+      "intents": [
+        "comfort"
+      ],
+      "emotions": [
+        "affection",
+        "sadness"
+      ],
+      "tone": [
+        "warm",
+        "cute"
+      ],
+      "scenes": [
+        "comfort"
+      ],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -86400000
+    },
+    {
+      "key": "c14",
+      "literal": "乖巧、可爱、探头",
+      "intents": [],
+      "emotions": [
+        "affection"
+      ],
+      "tone": [
+        "cute",
+        "warm"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "webp",
+      "createdAtOffsetMs": -172800000
+    },
+    {
+      "key": "c15",
+      "literal": "摇尾巴、嘿嘿、求表扬",
+      "intents": [],
+      "emotions": [
+        "smug"
+      ],
+      "tone": [
+        "cute",
+        "playful"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "gif",
+      "createdAtOffsetMs": -259200000
+    },
+    {
+      "key": "c16",
+      "literal": "加载中、缓冲、思考中",
+      "intents": [
+        "wait"
+      ],
+      "emotions": [
+        "confused"
+      ],
+      "tone": [
+        "light"
+      ],
+      "scenes": [
+        "work"
+      ],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -432000000
+    },
+    {
+      "key": "c17",
+      "literal": "等我、在忙、回头聊",
+      "intents": [
+        "wait"
+      ],
+      "emotions": [],
+      "tone": [
+        "light"
+      ],
+      "scenes": [
+        "work",
+        "commute"
+      ],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -604800000
+    },
+    {
+      "key": "c18",
+      "literal": "头晕、混乱、看不懂",
+      "intents": [],
+      "emotions": [
+        "confused"
+      ],
+      "tone": [
+        "light"
+      ],
+      "scenes": [
+        "study",
+        "work"
+      ],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -864000000
+    },
+    {
+      "key": "c19",
+      "literal": "问号、疑惑、看不懂",
+      "intents": [],
+      "emotions": [
+        "confused"
+      ],
+      "tone": [
+        "light"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -1209600000
+    },
+    {
+      "key": "c20",
+      "literal": "脑子转不过来、宕机、死机",
+      "intents": [],
+      "emotions": [
+        "confused",
+        "resignation"
+      ],
+      "tone": [
+        "light"
+      ],
+      "scenes": [
+        "study",
+        "work"
+      ],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -1728000000
+    },
+    {
+      "key": "c21",
+      "literal": "尴尬、汗颜、挠头",
+      "intents": [],
+      "emotions": [
+        "awkward"
+      ],
+      "tone": [
+        "light"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": 0
+    },
+    {
+      "key": "c22",
+      "literal": "尴尬、汗颜、挠头、社死",
+      "intents": [],
+      "emotions": [],
+      "tone": [],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -3600000
+    },
+    {
+      "key": "c23",
+      "literal": "饿了、干饭、想吃东西",
+      "intents": [
+        "hunger"
+      ],
+      "emotions": [],
+      "tone": [
+        "playful"
+      ],
+      "scenes": [
+        "meal"
+      ],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -86400000
+    },
+    {
+      "key": "c24",
+      "literal": "拒绝、不要、不行",
+      "intents": [
+        "refuse"
+      ],
+      "emotions": [],
+      "tone": [
+        "serious",
+        "cold"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "webp",
+      "createdAtOffsetMs": -172800000
+    },
+    {
+      "key": "c25",
+      "literal": "摇头、不可以、免了",
+      "intents": [
+        "refuse"
+      ],
+      "emotions": [],
+      "tone": [
+        "serious"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -259200000
+    },
+    {
+      "key": "c26",
+      "literal": "大哭、难过、委屈",
+      "intents": [],
+      "emotions": [
+        "sadness"
+      ],
+      "tone": [
+        "warm"
+      ],
+      "scenes": [
+        "comfort"
+      ],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -432000000
+    },
+    {
+      "key": "c27",
+      "literal": "低落、丧、没劲",
+      "intents": [],
+      "emotions": [
+        "sadness",
+        "resignation"
+      ],
+      "tone": [
+        "light"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -604800000
+    },
+    {
+      "key": "c28",
+      "literal": "生气、愤怒、火大",
+      "intents": [],
+      "emotions": [
+        "anger"
+      ],
+      "tone": [
+        "cold"
+      ],
+      "scenes": [],
+      "avoidWhen": [
+        "serious-conflict",
+        "apology"
+      ],
+      "aggression": 0.6,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -864000000
+    },
+    {
+      "key": "c29",
+      "literal": "气鼓鼓、炸毛、哼",
+      "intents": [],
+      "emotions": [
+        "anger"
+      ],
+      "tone": [
+        "playful",
+        "cute"
+      ],
+      "scenes": [],
+      "avoidWhen": [
+        "serious-conflict"
+      ],
+      "aggression": 0.4,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "gif",
+      "createdAtOffsetMs": -1209600000
+    },
+    {
+      "key": "c30",
+      "literal": "嘲讽、阴阳怪气",
+      "intents": [
+        "tease"
+      ],
+      "emotions": [
+        "smug"
+      ],
+      "tone": [
+        "ironic",
+        "cold"
+      ],
+      "scenes": [],
+      "avoidWhen": [
+        "serious-conflict",
+        "apology"
+      ],
+      "aggression": 0.5,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -1728000000
+    },
+    {
+      "key": "c31",
+      "literal": "坏笑、你懂的、哼哼",
+      "intents": [
+        "tease"
+      ],
+      "emotions": [
+        "smug"
+      ],
+      "tone": [
+        "playful",
+        "ironic"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": 0
+    },
+    {
+      "key": "c32",
+      "literal": "困、疲惫、想睡觉",
+      "intents": [],
+      "emotions": [
+        "tired"
+      ],
+      "tone": [
+        "light"
+      ],
+      "scenes": [
+        "bedtime",
+        "night"
+      ],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -3600000
+    },
+    {
+      "key": "c33",
+      "literal": "累瘫、躺平、没力气",
+      "intents": [],
+      "emotions": [
+        "tired",
+        "resignation"
+      ],
+      "tone": [
+        "light"
+      ],
+      "scenes": [
+        "work",
+        "bedtime"
+      ],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -86400000
+    },
+    {
+      "key": "c34",
+      "literal": "谢谢、感谢、收到",
+      "intents": [
+        "thanks"
+      ],
+      "emotions": [],
+      "tone": [
+        "warm",
+        "formal"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "jpeg",
+      "createdAtOffsetMs": -172800000
+    },
+    {
+      "key": "c35",
+      "literal": "多谢啦、麻烦你了、感谢",
+      "intents": [
+        "thanks"
+      ],
+      "emotions": [],
+      "tone": [
+        "warm"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -259200000
+    },
+    {
+      "key": "c36",
+      "literal": "对不起、抱歉、我的错",
+      "intents": [
+        "apologize"
+      ],
+      "emotions": [],
+      "tone": [
+        "serious",
+        "warm"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "jpeg",
+      "createdAtOffsetMs": -432000000
+    },
+    {
+      "key": "c37",
+      "literal": "你好、早上好、嗨",
+      "intents": [
+        "greet"
+      ],
+      "emotions": [],
+      "tone": [
+        "light",
+        "warm"
+      ],
+      "scenes": [
+        "morning",
+        "work"
+      ],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -604800000
+    },
+    {
+      "key": "c38",
+      "literal": "晚安、睡个好觉、明天见",
+      "intents": [
+        "greet"
+      ],
+      "emotions": [],
+      "tone": [
+        "warm"
+      ],
+      "scenes": [
+        "night",
+        "bedtime"
+      ],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "webp",
+      "createdAtOffsetMs": -864000000
+    },
+    {
+      "key": "c39",
+      "literal": "加油、冲鸭、你可以的",
+      "intents": [
+        "encourage"
+      ],
+      "emotions": [],
+      "tone": [
+        "warm",
+        "playful"
+      ],
+      "scenes": [
+        "work",
+        "study"
+      ],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -1209600000
+    },
+    {
+      "key": "c40",
+      "literal": "点赞、牛、厉害了、真棒",
+      "intents": [
+        "agree",
+        "encourage"
+      ],
+      "emotions": [
+        "joy"
+      ],
+      "tone": [
+        "playful"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "gif",
+      "createdAtOffsetMs": -1728000000
+    },
+    {
+      "key": "c41",
+      "literal": "震惊、啊、真的假的",
+      "intents": [],
+      "emotions": [
+        "surprise"
+      ],
+      "tone": [
+        "light"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": 0
+    },
+    {
+      "key": "c42",
+      "literal": "得意、骄傲、小意思",
+      "intents": [],
+      "emotions": [
+        "smug"
+      ],
+      "tone": [
+        "playful"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -3600000
+    },
+    {
+      "key": "c43",
+      "literal": "害怕、紧张、瑟瑟发抖",
+      "intents": [],
+      "emotions": [
+        "fear"
+      ],
+      "tone": [
+        "light"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -86400000
+    },
+    {
+      "key": "c44",
+      "literal": "无奈、算了、随缘吧",
+      "intents": [],
+      "emotions": [
+        "resignation"
+      ],
+      "tone": [
+        "light",
+        "cold"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "jpeg",
+      "createdAtOffsetMs": -172800000
+    },
+    {
+      "key": "c45",
+      "literal": "别笑了、停、打住、严肃点",
+      "intents": [
+        "stop"
+      ],
+      "emotions": [
+        "anger"
+      ],
+      "tone": [
+        "serious",
+        "cold"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0.3,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "png",
+      "createdAtOffsetMs": -259200000
+    },
+    {
+      "key": "c46",
+      "literal": "好的、收到、没问题、马上办",
+      "intents": [
+        "agree"
+      ],
+      "emotions": [],
+      "tone": [
+        "light"
+      ],
+      "scenes": [
+        "work"
+      ],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "other-scope",
+      "kind": "png",
+      "createdAtOffsetMs": -3600000
+    },
+    {
+      "key": "c47",
+      "literal": "开心、笑眯眯、好耶",
+      "intents": [],
+      "emotions": [
+        "joy"
+      ],
+      "tone": [
+        "light",
+        "warm"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "review",
+      "visibility": "review",
+      "kind": "png",
+      "createdAtOffsetMs": -86400000
+    },
+    {
+      "key": "c48",
+      "literal": "抱抱、贴贴、蹭蹭",
+      "intents": [
+        "comfort"
+      ],
+      "emotions": [
+        "affection"
+      ],
+      "tone": [
+        "warm"
+      ],
+      "scenes": [
+        "comfort",
+        "bedtime"
+      ],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "quarantined",
+      "visibility": "quarantined",
+      "kind": "png",
+      "createdAtOffsetMs": -259200000
+    },
+    {
+      "key": "c49",
+      "literal": "困、疲惫、想睡觉",
+      "intents": [],
+      "emotions": [
+        "tired"
+      ],
+      "tone": [
+        "light"
+      ],
+      "scenes": [
+        "bedtime",
+        "night"
+      ],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "disabled",
+      "visibility": "current",
+      "kind": "gif",
+      "createdAtOffsetMs": -604800000
+    },
+    {
+      "key": "c50",
+      "literal": "好呀、点头、收到、没问题",
+      "intents": [
+        "agree"
+      ],
+      "emotions": [],
+      "tone": [
+        "light",
+        "warm"
+      ],
+      "scenes": [],
+      "avoidWhen": [],
+      "aggression": 0,
+      "moderationState": "approved",
+      "visibility": "current",
+      "kind": "bmp",
+      "createdAtOffsetMs": -1209600000
+    }
+  ],
+  "queries": [
+    {
+      "query": "笑着答应、乖巧点头、轻松愉快",
+      "expectPreferred": [
+        "c04",
+        "c01"
+      ],
+      "expectAvoid": [
+        "c21",
+        "c22",
+        "c18",
+        "c19",
+        "c20",
+        "c16"
+      ],
+      "note": "认同应答/开心：好呀点头收到（c04）与好呀/点头/收到/没问题（c01）都该排在尴尬（c21/c22）、困惑（c18/c19/c20）、等待（c16）之上。c04 是 legacy 空卡，靠 literal 命中。"
+    },
+    {
+      "query": "好的收到",
+      "expectPreferred": [
+        "c01",
+        "c04",
+        "c02",
+        "c03"
+      ],
+      "expectAvoid": [
+        "c24",
+        "c25"
+      ],
+      "note": "同意应答 family 排在前面；拒绝 family（c24/c25）必须更低。"
+    },
+    {
+      "query": "笑不出来，心里有点难过",
+      "expectPreferred": [
+        "c26",
+        "c13",
+        "c27"
+      ],
+      "expectAvoid": [
+        "c05",
+        "c06",
+        "c07",
+        "c08",
+        "c40"
+      ],
+      "note": "低落/难过/委屈排在大笑与纯开心之上；c06 自带 celebration 风险标签，在难过语境里吃场景风险罚分。"
+    },
+    {
+      "query": "别笑了",
+      "expectPreferred": [
+        "c45"
+      ],
+      "expectAvoid": [
+        "c07",
+        "c08"
+      ],
+      "note": "制止类（c45 别笑了/停/打住/严肃点）必须高于单纯大笑（c07/c08）。"
+    },
+    {
+      "query": "抱抱，辛苦了",
+      "expectPreferred": [
+        "c10",
+        "c12",
+        "c13"
+      ],
+      "expectAvoid": [
+        "c28",
+        "c29",
+        "c30",
+        "c31",
+        "c45"
+      ],
+      "note": "安慰/温柔排在嘲讽（c30/c31）、愤怒（c28/c29）、制止（c45）之上。"
+    },
+    {
+      "query": "看不懂，脑子转不过来",
+      "expectPreferred": [
+        "c20",
+        "c18",
+        "c19"
+      ],
+      "expectAvoid": [
+        "c01",
+        "c02",
+        "c03",
+        "c04"
+      ],
+      "note": "困惑 family 排在同意应答之上。"
+    },
+    {
+      "query": "我很难受，怎么办",
+      "expectPreferred": [],
+      "expectAvoid": [
+        "c01",
+        "c02",
+        "c03",
+        "c04",
+        "c05",
+        "c06",
+        "c07",
+        "c08",
+        "c09",
+        "c10",
+        "c11",
+        "c12",
+        "c13",
+        "c14",
+        "c15",
+        "c16",
+        "c17",
+        "c18",
+        "c19",
+        "c20",
+        "c21",
+        "c22",
+        "c23",
+        "c24",
+        "c25",
+        "c26",
+        "c27",
+        "c28",
+        "c29",
+        "c30",
+        "c31",
+        "c32",
+        "c33",
+        "c34",
+        "c35",
+        "c36",
+        "c37",
+        "c38",
+        "c39",
+        "c40",
+        "c41",
+        "c42",
+        "c43",
+        "c44",
+        "c45",
+        "c46",
+        "c47",
+        "c48",
+        "c49",
+        "c50"
+      ],
+      "note": "禁忌硬门用例：decide() 的 serious-help 直接 abstain，任何素材都不该返回；expectAvoid 列出全部 50 个 key 只为表达「一个都不发」。"
+    },
+    {
+      "query": "困、疲惫、想睡觉",
+      "expectPreferred": [
+        "c32",
+        "c33"
+      ],
+      "expectAvoid": [
+        "c05",
+        "c07",
+        "c08",
+        "c40"
+      ],
+      "note": "疲惫 family 排在纯开心/大笑之上；场景 bedtime 命中。"
+    }
+  ]
+}

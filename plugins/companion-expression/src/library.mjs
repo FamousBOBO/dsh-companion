@@ -3,6 +3,11 @@
  * ① 按 sha256 物理去重：同字节只落一份文件，重复素材只追加来源行；可见性又是「每个来源一行」，
  * 所以去重永远不会把 A 的授权顺给 B。② 对外只给 assetId，只有投递层用的
  * `getFileForDelivery()`（已过硬门 + 哈希校验）才拿得到路径。③ 撤回与删除都留痕。
+ *
+ * FTS 的标签口径（v2）：`intents` 列存的是**全部结构标签**（intents + emotions + tone），
+ * `scenes` 列存场景。曾经只索引 intents，于是「开心/轻松/尴尬」这类情绪与语气标签根本
+ * 搜不到——多路召回的第二路（归一化标签匹配）等于空转。
+ * 老库靠 `ensureLabelIndex()` 一次性重建（`meta.fts_label_index` 打标记，幂等）。
  */
 import fs from 'node:fs';
 import path from 'node:path';
@@ -80,10 +85,29 @@ function listOf(text) {
   }
 }
 
+/** 卡片列表字段 → 列名。 */
 const CARD_LIST_FIELDS = [
   ['intents', 'intents_json'], ['emotions', 'emotions_json'], ['tone', 'tone_json'],
   ['rhetoric', 'rhetoric_json'], ['scenes', 'scenes_json'], ['avoidWhen', 'avoid_json'],
 ];
+
+/**
+ * FTS 的 `intents` 列放哪些标签：意图 + 情绪 + 语气。
+ *
+ * 检索的第二路召回是「归一化标签匹配」，它拿 `agree`/`joy`/`light` 这些 id 去 FTS 里搜。
+ * v1 只索引了 `intents`，所以 `joy`/`light`/`awkward` 一类标签永远是零命中——那一整路召回
+ * 形同虚设。这里把三类都放进同一列（它们都是「这张图表达什么」的标签），场景仍单独一列。
+ */
+export function ftsLabelText(card = {}) {
+  const labels = [];
+  for (const field of ['intents', 'emotions', 'tone']) {
+    for (const item of Array.isArray(card?.[field]) ? card[field] : []) labels.push(String(item));
+  }
+  return labels.join(' ');
+}
+
+/** 标签列内容的版本标记：改了 `ftsLabelText()` 就换这个值，老库会自动重建一次。 */
+export const FTS_LABEL_INDEX_VERSION = 'labels-v2';
 
 function cardFromRow(row) {
   if (!row) return null;
@@ -255,13 +279,46 @@ export function createLibrary({ db, assetsDir, now = () => Date.now() } = {}) {
         columns.tone, columns.rhetoric, columns.scenes, columns.avoid, columns.aggression,
         columns.confidence, columns.modelVersion, clock()]);
       db.run('DELETE FROM expression_fts WHERE asset_id = ?', [id]);
-      db.run(
-        'INSERT INTO expression_fts (asset_id, literal, ocr, intents, scenes) VALUES (?, ?, ?, ?, ?)',
-        [id, tokenizeForFts(columns.literal), tokenizeForFts(columns.ocr),
-          tokenizeForFts(listOf(columns.intents).join(' ')), tokenizeForFts(listOf(columns.scenes).join(' '))],
-      );
+      upsertFts(id, card);
     });
     return { ok: true, assetId: id };
+  }
+
+  /** FTS 的一行：literal / ocr / 标签（意图+情绪+语气）/ 场景。 */
+  function upsertFts(assetId, card = {}) {
+    db.run(
+      'INSERT INTO expression_fts (asset_id, literal, ocr, intents, scenes) VALUES (?, ?, ?, ?, ?)',
+      [String(assetId), tokenizeForFts(String(card?.literal ?? '')), tokenizeForFts(String(card?.ocr ?? '')),
+        tokenizeForFts(ftsLabelText(card)), tokenizeForFts((Array.isArray(card?.scenes) ? card.scenes : []).join(' '))],
+    );
+  }
+
+  /**
+   * 老库迁移：把每张卡按**新的标签口径**重建 FTS 行，只做一次（`meta.fts_label_index` 打标记）。
+   *
+   * 幂等、可重复调用；返回 `{rebuild: 0, from, to}` 便于诊断。「只做一次」不是省事：FTS 重建
+   * 是 O(素材数) 的写操作，每次打开库都跑一遍会让启动变慢，而标签口径只在升级时变过一次。
+   * @returns {{ok: boolean, rebuild: number, version: string}}
+   */
+  function ensureLabelIndex() {
+    const current = db.meta('fts_label_index');
+    if (current === FTS_LABEL_INDEX_VERSION) return { ok: true, rebuild: 0, version: current };
+    let rebuild = 0;
+    try {
+      db.tx(() => {
+        const rows = db.all('SELECT * FROM expression_cards');
+        for (const row of rows) {
+          const card = cardFromRow(row);
+          db.run('DELETE FROM expression_fts WHERE asset_id = ?', [String(card.assetId)]);
+          upsertFts(card.assetId, card);
+          rebuild += 1;
+        }
+        db.setMeta('fts_label_index', FTS_LABEL_INDEX_VERSION);
+      });
+    } catch (error) {
+      return { ok: false, rebuild, version: current ?? '', error: String(error?.message ?? error).slice(0, 160) };
+    }
+    return { ok: true, rebuild, version: FTS_LABEL_INDEX_VERSION };
   }
 
   /** FTS5 检索 → assetId 列表（bm25 升序，相关度高的在前）。 */
@@ -392,7 +449,11 @@ export function createLibrary({ db, assetsDir, now = () => Date.now() } = {}) {
   return {
     root, clock, receive, register, getAsset, getCard, upsertCard, search, listAssets,
     getVisibility, setVisibility, gateFor, getFileForDelivery, deleteAsset, revokeScope, stats,
+    ensureLabelIndex,
   };
 }
 
-export default { createLibrary, sha256Of, assetIdFor, tokenizeForFts, buildFtsQuery, MODERATION_STATES };
+export default {
+  createLibrary, sha256Of, assetIdFor, tokenizeForFts, buildFtsQuery, MODERATION_STATES,
+  ftsLabelText, FTS_LABEL_INDEX_VERSION,
+};
