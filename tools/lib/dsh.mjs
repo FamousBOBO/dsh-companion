@@ -364,11 +364,20 @@ export function parseWebUrl(text) {
   return match ? match[1] : '';
 }
 
-/** Turn a `file:///C:/x` style URL back into a filesystem path (for existence checks). */
+/**
+ * Turn a `file:///C:/x` style URL back into a filesystem path (for existence checks).
+ *
+ * A `?query` / `#fragment` suffix is not part of the path. Operators add cache-busting
+ * queries to hand-edited patch entries (`index.mjs?reading=2`), and the host's own
+ * loader ignores them; an existence check that kept them reported the plugin as missing
+ * while the same file loaded fine at runtime. Strip them before decoding.
+ */
 export function fileUrlToPath(url) {
   try {
+    const raw = String(url).replace(/^file:\/\//, '');
+    const withoutQuery = raw.replace(/[?#][^]*$/, '');
     // `file:///C:/a/b` → `/C:/a/b`; strip the leading slash on Windows.
-    const withoutScheme = decodeURIComponent(String(url).replace(/^file:\/\//, ''));
+    const withoutScheme = decodeURIComponent(withoutQuery);
     const stripped = withoutScheme.replace(/^\/([A-Za-z]:)/, '$1');
     return path.normalize(stripped);
   } catch {

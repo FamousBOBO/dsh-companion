@@ -17,7 +17,7 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { SUITE_ROOT, SUITE_PATHS } from '../tools/lib/paths.mjs';
 import { loadConfig, enabledModules } from '../tools/lib/config.mjs';
-import { dshEnv, dumpFileUrls, patchFileUrls } from '../tools/lib/dsh.mjs';
+import { dshEnv, dumpFileUrls, fileUrlToPath, patchFileUrls } from '../tools/lib/dsh.mjs';
 import { activePatchBlocks, renderPatchTemplate, PATCH_TEMPLATE } from './setup.mjs';
 
 const argv = process.argv.slice(2);
@@ -356,6 +356,19 @@ function runStatic() {
     const ok = urls.length === 1 && urls[0].includes('DSH clean 20261105') && urls[0].endsWith('index.mjs');
     if (ok) record('static', label, 'ok');
     else record('static', label, 'failed', `解析出 ${JSON.stringify(urls)}`);
+  }
+  {
+    // Regression found by the 2026-11-12 merge acceptance: the generated patch carries
+    // operator hand-edits with cache-busting queries (`index.mjs?reading=2`). The host's loader
+    // ignores the query, but doctor's existence check kept it and reported five plugins as
+    // missing while the same files loaded fine. The conversion is a pure function, so it is
+    // asserted here rather than left to doctor's run.
+    const label = 'file URL 的查询串不参与存在性判断';
+    const url = 'file://C:/Users/u/DSH clean 20261105/plugins/companion-foundation/index.mjs?reading=2';
+    const asPath = fileUrlToPath(url);
+    const ok = asPath.endsWith('index.mjs') && asPath.includes('DSH clean 20261105') && !asPath.includes('?');
+    if (ok) record('static', label, 'ok');
+    else record('static', label, 'failed', `转换结果 ${JSON.stringify(asPath)}`);
   }
   {
     const label = '宿主子进程拿到 DSH_COMPANION_MODULE_ROOT';
