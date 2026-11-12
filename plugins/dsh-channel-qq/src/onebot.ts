@@ -48,6 +48,7 @@ export function urlPort(url: string, fallback: number): number {
 }
 
 export class OneBotClient extends EventEmitter {
+  private readonly observeOnly: boolean
   private ws: WebSocket | null = null
   private reverseServer: http.Server | null = null
   private pending = new Map<string, PendingRequest>()
@@ -65,6 +66,7 @@ export class OneBotClient extends EventEmitter {
     private readonly log: (line: string) => void,
   ) {
     super()
+    this.observeOnly = connection.mode === 'mirror-observe'
   }
 
   /**
@@ -80,6 +82,14 @@ export class OneBotClient extends EventEmitter {
   }
 
   start(): void {
+    if (this.observeOnly) {
+      const url = new URL(this.connection.url)
+      if (this.connection.mode !== 'mirror-observe' || url.protocol !== 'ws:' || !['127.0.0.1', '[::1]'].includes(url.hostname)) {
+        throw new Error('mirror-observe requires a literal loopback ws URL and cannot switch to a live transport')
+      }
+    } else if (this.connection.mode === 'mirror-observe') {
+      throw new Error('mirror-observe requires a fresh client; restart in an isolated environment')
+    }
     this.closed = false
     if (!this.configured()) {
       this.log('NapCat/OneBot 未配置（connection.url 为空）：不发起连接、不监听端口、不重连。'
@@ -113,6 +123,7 @@ export class OneBotClient extends EventEmitter {
    * socket. So the socket is torn down and re-dialled in place.
    */
   reconnect(connection: ConnectionConfig, accessToken: string | undefined): void {
+    if ((connection.mode === 'mirror-observe') !== this.observeOnly) throw new Error('Switching mirror isolation requires a restart')
     this.stop()
     this.connection = connection
     this.accessToken = accessToken
@@ -139,6 +150,7 @@ export class OneBotClient extends EventEmitter {
 
   /** One OneBot API call; resolves with `data` on ok, rejects on failure or timeout. */
   async call(action: string, params: Record<string, unknown> = {}, timeoutMs = 30_000): Promise<unknown> {
+    if (this.observeOnly) throw new Error(`mirror-observe blocked OneBot action: ${action}`)
     // Brief reconnect grace: a dropped socket usually comes back within a few
     // seconds (NapCat re-dials the reverse server). Wait up to 12s instead of
     // failing the agent's action on the first blip.

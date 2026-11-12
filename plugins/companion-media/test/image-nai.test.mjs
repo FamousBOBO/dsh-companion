@@ -1,7 +1,9 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import path from 'node:path';
 import { createMediaService } from '../src/service.mjs';
-import { tempDataDir, mockFetch, makePng, makeZip, writeConfig } from './helpers.mjs';
+import { tempDataDir, mockFetch, makePng, makeZip, writeConfig, writeIdentity } from './helpers.mjs';
 import { Code } from '../src/errors.mjs';
 import { saveWardrobe } from '../../companion-foundation/wardrobe.mjs';
 
@@ -62,7 +64,11 @@ test('NAI official：ZIP 响应 → 解出 PNG；请求体是 {input, model, act
   }
 });
 
-test('official queue sends only coordination metadata and forwards the current outfit in the image request', async () => {
+// 2026-11-10 合同变更（wardrobe v2 / visual identity）：陪绊角色生图不再要求模型在 `outfit`
+// 参数里自己写英文衣物。身份与当前服装由 `resolveCompanionVisualState()` 统一注入，理由见
+// plugins/companion-foundation/WARDROBE-STATE-CONTRACT.md §6：模型与媒体层各写一遍衣服，正是
+// 「生图与衣柜不一致」的根因。旧调用（显式传 `outfit`）仍然有效，并且仍然优先。
+test('official queue injects the resolved outfit automatically and keeps an explicit outfit override', async () => {
   const { dir, cleanup } = tempDataDir();
   try {
     const queue = 'https://queue.example.test';
@@ -74,30 +80,126 @@ test('official queue sends only coordination metadata and forwards the current o
       { match: image, response: { status: 200, json: { image: PNG.toString('base64') } } },
       { match: queue + '/complete', response: { status: 200, json: {} } },
     ]);
-    saveWardrobe(dir, { items: [
-      { id: 'blue', name: '蓝色开衫', slot: 'upper' },
-      { id: 'white', name: '白色衬衫', slot: 'upper' },
-    ], current: { date: '2026-11-07', itemIds: ['blue'] } });
-    const service = createMediaService({ dataDir: dir, env: {}, fetchImpl, now: () => new Date('2026-11-07T00:00:00Z') });
+    // A v2 wardrobe with English descriptions, which are the authoritative text for images.
+    saveWardrobe(dir, {
+      schemaVersion: 2,
+      ownerPersona: 'bot',
+      items: [
+        { id: 'blue', slot: 'upper', contexts: ['everyday'], name: { zh: '蓝色开衫', en: 'a blue cardigan' }, description: { zh: '蓝色开衫', en: 'a blue knitted cardigan' } },
+        { id: 'white', slot: 'upper', contexts: ['everyday'], name: { zh: '白色衬衫', en: 'a white shirt' }, description: { zh: '白色衬衫', en: 'a white cotton shirt' } },
+      ],
+      outfits: [{ id: 'everyday-a', context: 'everyday', pieces: { upper: 'blue' } }],
+    });
+    // A picture of the companion needs both halves: who she is, and what she wears. The
+    // identity is mandatory (see the gate in src/service.mjs), so this fixture has one.
+    writeIdentity(dir, { bot: { name: { zh: '测试角色', en: 'Testa' }, appearance: { zh: '银灰短发', en: 'short silver-grey hair' } } });
+    const service = createMediaService({ dataDir: dir, env: {}, fetchImpl, now: () => new Date('2026-11-07T02:00:00Z') });
     const args = { subject: 'companion', prompt: 'A woman smiles by a cafe window.', requireEnglish: true };
     const preview = await service.generateImage({ ...args, dryRun: true });
-    assert.equal(preview.outfitRequired, true);
-    assert.deepEqual(preview.outfit.items.map(item => item.id), ['blue']);
-    assert.equal((await service.generateImage(args)).ok, false);
-    assert.equal((await service.generateImage({ ...args, outfit: '蓝色开衫' })).ok, false);
-    assert.equal(calls.length, 0);
-    const result = await service.generateImage({ ...args, outfit: 'a blue cardigan' });
+    assert.equal(preview.visual.outfitSource, 'wardrobe-resolver');
+    assert.equal(preview.visual.context, 'everyday');
+    assert.match(preview.visual.injectedClause, /blue knitted cardigan/);
+    assert.equal(calls.length, 0, 'dryRun 不发请求');
+
+    // No `outfit` argument at all: the resolver supplies the clothes and the call succeeds.
+    const result = await service.generateImage(args);
     assert.equal(result.ok, true, JSON.stringify(result.error));
+    assert.equal(result.visual.outfitSource, 'wardrobe-resolver');
     assert.deepEqual(calls.map(call => new URL(call.url).pathname), ['/join-queue', '/my-turn', '/ai/generate-image', '/complete']);
     const actual = JSON.parse(calls[2].body);
-    assert.match(actual.input, /The companion wears a blue cardigan/);
-    assert.match(actual.parameters.v4_prompt.caption.base_caption, /blue cardigan/);
+    assert.match(actual.input, /The companion wears a blue knitted cardigan/);
+    assert.match(actual.parameters.v4_prompt.caption.base_caption, /blue knitted cardigan/);
+
+    // An explicit English outfit still wins (old callers / "draw her in this outfit").
+    assert.equal((await service.generateImage({ ...args, outfit: '蓝色开衫' })).ok, false, '中文 outfit 仍被拒绝');
+    calls.length = 0;
+    const explicit = await service.generateImage({ ...args, outfit: 'a blue cardigan' });
+    assert.equal(explicit.ok, true, JSON.stringify(explicit.error));
+    assert.equal(explicit.visual.outfitSource, 'explicit-arg');
+    assert.match(JSON.parse(calls[2].body).input, /The companion wears a blue cardigan\./);
+
+    // The coordination metadata never carries the clothes or the key.
     for (const call of calls.filter(call => call.url.startsWith(queue))) {
       assert.equal(call.headers.Authorization, undefined);
       assert.ok(!JSON.stringify(call).includes(KEY));
       assert.ok(!JSON.stringify(call).includes('blue cardigan'));
     }
     assert.equal(JSON.parse(calls[3].body).lock_token, 'lease');
+  } finally {
+    cleanup();
+  }
+});
+
+test('companion 生图在衣柜里没有英文描述时明确拒绝，不编造衣服', async () => {
+  const { dir, cleanup } = tempDataDir();
+  try {
+    configured(dir);
+    const { fetchImpl, calls } = mockFetch([{ match: () => true, response: { status: 200, json: { image: PNG.toString('base64') } } }]);
+    // This test is about the *clothing* half of the gate: the identity is present, the
+    // wardrobe only has a Chinese name, so there is no English clothing clause to draw.
+    writeIdentity(dir, { bot: { name: { zh: '测试角色', en: 'Testa' }, appearance: { zh: '银灰短发', en: 'short silver-grey hair' } } });
+    saveWardrobe(dir, { items: [{ id: 'zh-only', name: '蓝色开衫', slot: 'upper' }] });
+    const service = createMediaService({ dataDir: dir, env: {}, fetchImpl, now: () => new Date('2026-11-07T02:00:00Z') });
+    const preview = await service.generateImage({ subject: 'companion', prompt: 'A portrait.', dryRun: true });
+    assert.equal(preview.visualRequired, true);
+    assert.deepEqual(preview.refusal.details.missing, ['wardrobe']);
+    const result = await service.generateImage({ subject: 'companion', prompt: 'A portrait.' });
+    assert.equal(result.ok, false);
+    assert.match(result.error.message, /无法确定角色着装/);
+    assert.equal(calls.length, 0, '没有英文衣物就不发请求');
+  } finally {
+    cleanup();
+  }
+});
+
+test('companion 生图自动注入视觉身份，且身份与服装都按当前 persona 取', async () => {
+  const { dir, cleanup } = tempDataDir();
+  try {
+    configured(dir);
+    const { fetchImpl, calls } = mockFetch([{ match: () => true, response: { status: 200, json: { image: PNG.toString('base64') } } }]);
+    saveWardrobe(dir, {
+      schemaVersion: 2,
+      ownerPersona: 'bot',
+      items: [
+        { id: 'pajama-top', slot: 'upper', contexts: ['sleep'], name: { zh: '睡衣上衣', en: 'a pale blue pajama top' }, description: { zh: '睡衣上衣', en: 'a pale blue cotton pajama top with white piping' } },
+        { id: 'pajama-bottom', slot: 'lower', contexts: ['sleep'], name: { zh: '睡裤', en: 'matching pajama bottoms' }, description: { zh: '睡裤', en: 'loose matching pajama bottoms' } },
+      ],
+      outfits: [{ id: 'sleepwear', context: 'sleep', pieces: { upper: 'pajama-top', lower: 'pajama-bottom' } }],
+    });
+    fs.mkdirSync(path.join(dir, 'home/companion'), { recursive: true });
+    fs.writeFileSync(path.join(dir, 'home/companion/visual-identity.json'), JSON.stringify({
+      schemaVersion: 1,
+      personas: {
+        bot: {
+          name: { zh: '测试角色', en: 'Testa' },
+          source: { zh: '测试作品', en: 'Synthetic Testwork' },
+          appearance: { zh: '银灰短发', en: 'short silver-grey hair and blue-to-pink gradient eyes' },
+        },
+        other: {
+          name: { zh: '别人格', en: 'Other Persona' },
+          source: { zh: '别处', en: 'Elsewhere' },
+          appearance: { zh: '黑长发', en: 'long black hair' },
+        },
+      },
+    }, null, 2), 'utf8');
+
+    // 02:00 Asia/Shanghai → the night window, so the injected clothes are the pajamas.
+    const service = createMediaService({ dataDir: dir, env: {}, fetchImpl, now: () => new Date('2026-11-06T18:00:00Z') });
+    const preview = await service.generateImage({ subject: 'companion', prompt: 'A girl reads by a lamp.', dryRun: true });
+    assert.equal(preview.visual.identity, 'configured');
+    assert.equal(preview.visual.name, '测试角色');
+    assert.equal(preview.visual.context, 'sleep');
+    assert.match(preview.visual.injectedClause, /pajama/);
+    assert.deepEqual(preview.visual.missing, []);
+
+    const result = await service.generateImage({ subject: 'companion', prompt: 'A girl reads by a lamp.' });
+    assert.equal(result.ok, true, JSON.stringify(result.error));
+    const input = JSON.parse(calls[0].body).input;
+    assert.match(input, /Testa from Synthetic Testwork/);
+    assert.match(input, /short silver-grey hair/);
+    assert.match(input, /The companion wears .*pajama top/);
+    assert.doesNotMatch(input, /Other Persona|long black hair/, '不能注入别人格的身份');
+    assert.doesNotMatch(input, /[\u4e00-\u9fff]/, '画面提示词必须全英文');
   } finally {
     cleanup();
   }

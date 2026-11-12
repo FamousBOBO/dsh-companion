@@ -87,12 +87,20 @@ function resolveFrom(base, value) {
 
 /**
  * Resolve the directory that holds all runtime data.
- * @param {{moduleUrl?: string|URL, env?: Record<string, string|undefined>}} [options]
+ *
+ * `suiteRoot` is normally discovered by walking up from `moduleUrl`. A caller that already
+ * knows the root (a sibling plugin resolving from its own entry file, or a test) may pass it
+ * explicitly; the rest of the order is unchanged, so there is still exactly one authority for
+ * "where does runtime data live".
+ *
+ * @param {{moduleUrl?: string|URL, env?: Record<string, string|undefined>, suiteRoot?: string|null}} [options]
  * @returns {{dataRoot: string, suiteRoot: string|null, source: string, notes: string[]}}
  */
-export function resolveDataRoot({ moduleUrl, env = process.env } = {}) {
+export function resolveDataRoot({ moduleUrl, env = process.env, suiteRoot: givenRoot = null } = {}) {
   const notes = [];
-  const suiteRoot = resolveSuiteRoot({ moduleUrl, env });
+  const suiteRoot = String(givenRoot ?? '').trim()
+    ? path.resolve(String(givenRoot))
+    : resolveSuiteRoot({ moduleUrl, env });
 
   const fromEnv = String(env?.DSH_COMPANION_DATA_DIR ?? '').trim();
   if (fromEnv) {

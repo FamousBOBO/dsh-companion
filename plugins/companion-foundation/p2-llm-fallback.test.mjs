@@ -29,11 +29,14 @@ test('host-llm: the adapter exposes an allowFallback seam defaulting to the memo
   assert.equal(guarded.length, 2, 'the empty-answer and context-overflow retries are both behind the switch');
 });
 
-test('P2 builds its adapter with the fallback disabled, and only P2 does', () => {
+test('the budget-accounted callers disable the fallback, and only they do', () => {
   assert.match(autonomy, /allowFallback: false/, 'the P2 model port disables the hidden retries');
   const callers = fs.readdirSync(here).filter(name => name.endsWith('.mjs') && name !== 'host-llm.mjs' && !name.endsWith('.test.mjs'));
   const withFlag = callers.filter(name => fs.readFileSync(path.join(here, name), 'utf8').includes('allowFallback: false'));
-  assert.deepEqual(withFlag.sort(), ['autonomy.mjs'], 'no other module silently disables the retries');
+  // `prompt-engine.mjs` joins this list on purpose (v1.1 §8 / §16.C): one turn may make at most one
+  // planner call, so the planner must not retry behind the caller's back either — a hidden retry
+  // would silently turn "1 call per turn" into two or three physical generations.
+  assert.deepEqual(withFlag.sort(), ['autonomy.mjs', 'prompt-engine.mjs'], 'no other module silently disables the retries');
 });
 
 test('the completion path still returns a plain string (no return-type change)', () => {

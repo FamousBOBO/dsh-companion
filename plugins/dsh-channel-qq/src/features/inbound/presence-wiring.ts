@@ -203,7 +203,10 @@ function presenceAppliesToAny(host: SubHost): boolean {
  * 混在装配流程里会被下一段代码淹没，而它恰恰是最容易被后来者"优化掉"的一段。
  */
 function logModeOnce(host: SubHost): () => GroupPresenceMode {
-  const modeNow = (): GroupPresenceMode => resolveMode(host.config.presence ?? null)
+  const observeOnly = host.config.connection.mode === 'mirror-observe'
+  const modeNow = (): GroupPresenceMode => observeOnly
+    ? (host.config.presence.mode === 'shadow' ? 'shadow' : 'off')
+    : resolveMode(host.config.presence ?? null)
   const mode = modeNow()
   const modeNote = modeNoteOf(host.config.presence ?? null)
   if (modeNote !== '') host.log(`presence: ${modeNote}`)

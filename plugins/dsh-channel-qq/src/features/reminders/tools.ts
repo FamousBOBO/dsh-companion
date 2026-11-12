@@ -1,4 +1,4 @@
-﻿/** 提醒工具面：qq_remind / qq_remind_at / qq_remind_list / qq_remind_cancel。
+/** 提醒工具面：qq_remind / qq_remind_at / qq_remind_list / qq_remind_cancel。
  *
  * P4.2 判据：这 4 个工具的 name / description / parameters 一个字节都不许变 ——
  * `test/golden/tools/other-tools.txt` 的 reminders 段逐字节钉住了它们。拆法照
@@ -13,6 +13,7 @@ import type { QQChannelConfig } from '../../config.js'
 import type { QQApi } from '../../ports/platform.js'
 import type { OutboundQueue } from '../../outbound.js'
 import { DAY_MS, humanTime, parseWhen } from './parse-when.js'
+import { REMINDER_ZONE, legacyDateYear, wallClockToEpoch } from '../../core/schedule/wall-clock.js'
 import { agendaPortOf, occurrenceOf } from './agenda-seam.js'
 import { dmRoom, groupRoom, sessionIdOf } from '../../core/room.js'
 import type { ReminderStore, Repeat } from './store.js'
@@ -28,7 +29,7 @@ function atText(at: number, now = new Date()): string {
   return humanTime(at, now)
 }
 
-/** qq_remind_at 的 at 参数：Unix 毫秒时间戳或 "YYYY-MM-DD HH:mm"。 */
+/** qq_remind_at 的 at 参数：Unix 毫秒时间戳或 "YYYY-MM-DD HH:mm"（墙上时间，归属 `REMINDER_ZONE`）。 */
 function parseAt(input: string): number | null {
   const text = input.trim()
   if (text === '') return null
@@ -39,16 +40,19 @@ function parseAt(input: string): number | null {
   }
   const m = /^(\d{4})[-/.](\d{1,2})[-/.](\d{1,2})[T ]?(\d{1,2})?[:：]?(\d{1,2})?/.exec(text)
   if (m === null) return null
-  const at = new Date(
-    Number(m[1]),
-    Number(m[2]) - 1,
-    Number(m[3]),
-    m[4] === undefined ? 9 : Number(m[4]),
-    m[5] === undefined ? 0 : Number(m[5]),
-    0,
-    0,
-  )
-  return Number.isNaN(at.getTime()) ? null : at.getTime()
+  // **时区显式**（2026-11-10 热修）：以前是 `new Date(y, m-1, d, ...)`，读的是宿主的隐式
+  // 本地时区——机器换一个 `TZ`，同一条 "YYYY-MM-DD HH:mm" 就落到另一个瞬间。
+  // 现在明确按提醒时区解释；墙上时间不存在（夏令时跳变）或分量非法就回 null，
+  // 由调用方如实回 `ok:false`，绝不换一个瞬间。
+  return wallClockToEpoch({
+    // 两位年份（`0050`）旧写法会被 `new Date(y, …)` 当成 `1950`，这条**保持原样**。
+    year: legacyDateYear(Number(m[1])),
+    month: Number(m[2]),
+    day: Number(m[3]),
+    hour: m[4] === undefined ? 9 : Number(m[4]),
+    minute: m[5] === undefined ? 0 : Number(m[5]),
+    second: 0,
+  }, REMINDER_ZONE)
 }
 
 const WHEN_HINT = [

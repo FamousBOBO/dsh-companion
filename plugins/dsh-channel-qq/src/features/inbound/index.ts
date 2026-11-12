@@ -251,6 +251,11 @@ function createRuntime(deps: RuntimeDeps): ChannelRuntime {
 /** 事件分发：旁路观察先跑（同步、发射后不管），通知进裁决，消息进流水线。 */
 async function dispatch(host: SubHost, runtime: ChannelRuntime, event: OneBotEvent): Promise<void> {
   try {
+    if (host.config.connection.mode === 'mirror-observe') {
+      if (event.post_type !== 'message' || event.message_type !== 'group') return
+      await runtime.pipeline.handle(event)
+      return
+    }
     // 安全门控在一切之前：不通过的消息不进观察者、不进组包、不进 agent。
     host.get('channelHealth')?.onInbound()
     if (host.get('access')?.allow(event) === false) return
@@ -339,7 +344,7 @@ export const inboundPlugin: SubPlugin = {
       pipeline: runtime.pipeline,
     })
     parts.client.on('event', (event: OneBotEvent) => {
-      if (maybeHandleResetCommand(host, parts, event)) return
+      if (config.connection.mode !== 'mirror-observe' && maybeHandleResetCommand(host, parts, event)) return
       void dispatch(host, runtime, event)
     })
     // 主 sent-log 与后台资源（工具面也读它）。
@@ -347,7 +352,7 @@ export const inboundPlugin: SubPlugin = {
     // 指令层与工具面的落点：两个受管区各随挂载同步一次（翻开关走 reload，不重挂子插件）。
     host.log(`instruction region (AGENTS.md): ${await syncInstructionRegion(host)}`)
     host.log(`tools region (AGENTS.md): ${await syncToolsRegion(host)}`)
-    const stopApproval = approvalEnabled() ? startReceiptPoller(host) : undefined
+    const stopApproval = config.connection.mode !== 'mirror-observe' && approvalEnabled() ? startReceiptPoller(host) : undefined
     return () => {
       presence.dispose()
       runtime.notices.dispose()
@@ -361,6 +366,7 @@ export const inboundPlugin: SubPlugin = {
   },
   // 与原实现一致：client.start() 之后立刻重挂历史会话（发射后不管）。
   start(host) {
+    if (host.config.connection.mode === 'mirror-observe') return
     const registry = host.need('inbound').registry
     void (async () => {
       await registry.reattachAll()

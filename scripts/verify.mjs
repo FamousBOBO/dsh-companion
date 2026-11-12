@@ -18,6 +18,7 @@ import { spawnSync } from 'node:child_process';
 import { SUITE_ROOT, SUITE_PATHS } from '../tools/lib/paths.mjs';
 import { loadConfig, enabledModules } from '../tools/lib/config.mjs';
 import { dshEnv, dumpFileUrls, patchFileUrls } from '../tools/lib/dsh.mjs';
+import { activePatchBlocks, renderPatchTemplate, PATCH_TEMPLATE } from './setup.mjs';
 
 const argv = process.argv.slice(2);
 const onlyArg = argv.find((a) => a.startsWith('--only='));
@@ -156,6 +157,27 @@ const LEAK_RULES = [
   ['author-name', /FamousBOBO|bobo-march7/i],
   ['legacy-persona-id', /\bmarch7\b/],
 ];
+
+/**
+ * The one documented exception for `author-name`: the canonical clone URL.
+ *
+ * `README.md` has to tell people where to clone from, and that URL necessarily carries the
+ * account name — it is the public repository address, not an author identity leaking into the
+ * tree. Only the exact `https://github.com/<owner>/<repo>` form is stripped, and only for that
+ * rule, so a stray path or prose mention still fails the scan.
+ */
+const AUTHOR_NAME_ALLOWED = [
+  ['author-name', /https:\/\/github\.com\/FamousBOBO\/dsh-companion(?:\.git)?/gi],
+];
+
+function redactAllowed(text, rule) {
+  let out = text;
+  for (const [name, re] of AUTHOR_NAME_ALLOWED) {
+    if (name !== rule) continue;
+    out = out.replace(re, '<canonical-clone-url>');
+  }
+  return out;
+}
 
 // Secret-shaped strings legitimately appear in fixtures. These rules therefore skip
 // test trees; the leak rules above never do.
@@ -404,6 +426,80 @@ function runStatic() {
     else record('static', label, 'failed', `漏报: ${JSON.stringify(missed)}`);
   }
 
+  // 1c. Prompt-layer regressions (docs/09-prompt-baseline.md). The companion preset used to mount
+  //     eight host plugins whose system-prompt sections describe an agent that edits the harness
+  //     itself: file/shell/jobs rules (≈1,470 chars) plus the two profile-level sections
+  //     (harness-dev-context 1,146 + ui-deliverables 1,192). They are now off by default and are
+  //     driven by `config/suite.json` `prompt.*`. Asserted here because a template edit that
+  //     silently restores them would only show up as a fatter prompt in a live capture.
+  //
+  //     The template is rendered with stand-in placeholders: only the presence of rows matters
+  //     here, and `renderPatchTemplate` refuses to leave any `${...}` behind.
+  const PATCH_TEMPLATE_FOR_CHECK = PATCH_TEMPLATE;
+  const PLACEHOLDERS_FOR_CHECK = {
+    SUITE_ROOT: 'file:///suite',
+    DSH_HOME: 'H',
+    WORKSPACE_DIR: 'W',
+    GROUP_WORKSPACE_DIR: 'G',
+    DESKTOP_DATA_DIR: 'DD',
+    PROFILE: 'companion',
+    ONEBOT_URL: '',
+    ONEBOT_ACCESS_TOKEN: '',
+    ONEBOT_SELF_ID: '0',
+    HEALTH_SIDECAR_URL: '',
+  };
+  {
+    const label = '陪伴预设默认不装载开发工具';
+    const blocks = activePatchBlocks({ prompt: {} }, { enabled: { core: true } });
+    const rendered = renderPatchTemplate(fs.readFileSync(PATCH_TEMPLATE_FOR_CHECK, 'utf8'), {
+      placeholders: PLACEHOLDERS_FOR_CHECK,
+      activeBlocks: blocks,
+    });
+    const devRows = ['tool-pwsh', 'tool-fs', 'tool-fs-search', 'tool-jobs', 'tool-skill', 'skill-filesystem', 'agent-instructions'];
+    const leaked = devRows.filter((id) => new RegExp(`^\\s+- id: ${id}$`, 'm').test(rendered));
+    if (leaked.length === 0) record('static', label, 'ok');
+    else record('static', label, 'failed', `默认渲染里仍有：${leaked.join('、')}`);
+  }
+  {
+    const label = '陪伴预设默认裁掉宿主两段提示';
+    const blocks = activePatchBlocks({ prompt: {} }, { enabled: { core: true } });
+    const rendered = renderPatchTemplate(fs.readFileSync(PATCH_TEMPLATE_FOR_CHECK, 'utf8'), {
+      placeholders: PLACEHOLDERS_FOR_CHECK,
+      activeBlocks: blocks,
+    });
+    const missing = ['harness-dev-context', 'ui-deliverables']
+      .filter((id) => !new RegExp(`^- id: ${id}\\n  disabled: true$`, 'm').test(rendered));
+    if (missing.length === 0) record('static', label, 'ok');
+    else record('static', label, 'failed', `没有关掉：${missing.join('、')}`);
+  }
+  {
+    const label = 'prompt.* 开关能把块加回来';
+    const on = activePatchBlocks(
+      { prompt: { companionDevTools: true, harnessDevContext: true, deliverableHints: true } },
+      { enabled: { core: true } },
+    );
+    const rendered = renderPatchTemplate(fs.readFileSync(PATCH_TEMPLATE_FOR_CHECK, 'utf8'), {
+      placeholders: PLACEHOLDERS_FOR_CHECK,
+      activeBlocks: on,
+    });
+    const restored = rendered.includes('- id: tool-pwsh');
+    const notTrimmed = !/- id: harness-dev-context\n  disabled: true/.test(rendered)
+      && !/- id: ui-deliverables\n  disabled: true/.test(rendered);
+    if (restored && notTrimmed) record('static', label, 'ok');
+    else record('static', label, 'failed', `tool-pwsh 恢复=${restored}，裁剪撤销=${notTrimmed}`);
+  }
+  {
+    // The `skill` registry row must never live inside a preset: the host already registers the
+    // `skills` service globally, and a second registration marks the whole companion preset
+    // broken (`agentPresets/list` reports "service skills has been registered at SkillRegistry").
+    const label = '预设里不重复注册 skill 服务';
+    const template = fs.readFileSync(PATCH_TEMPLATE_FOR_CHECK, 'utf8');
+    const blocks = activePatchBlocks({ prompt: { companionDevTools: true } }, { enabled: { core: true } });
+    const rendered = renderPatchTemplate(template, { placeholders: PLACEHOLDERS_FOR_CHECK, activeBlocks: blocks });
+    if (!/^\s+- id: skill$/m.test(rendered)) record('static', label, 'ok');
+    else record('static', label, 'failed', '打开 companionDevTools 后预设里出现了 - id: skill');
+  }
+
   // 2. no build artifacts inside the tracked tree. Only real build outputs count:
   // most modules keep hand-written sources under lib/, so lib/ is NOT treated as an artifact.
   // A package that declares dsh.suite.prebuilt ships its bundle deliberately (it cannot be
@@ -517,17 +613,44 @@ async function checkDataRootParity() {
   } catch (err) {
     record('static', label, 'failed', err.message);
   }
+  // Same question for the media layer, which used to answer it with its own rules and therefore
+  // mounted at `<suiteRoot>/data/media` while the rest of the suite read `<dataDir>` (docs/15 §9).
+  // A separate record row keeps the failure attributable to one plugin.
+  const mediaLabel = '数据目录解析一致（CLI ↔ 媒体层）';
+  const mediaPersona = path.join(SUITE_PATHS.plugins, 'companion-media', 'src', 'persona.mjs');
+  if (!fs.existsSync(mediaPersona)) {
+    record('static', mediaLabel, 'skipped', 'companion-media/src/persona.mjs 不存在');
+    return;
+  }
+  try {
+    const { dataPaths } = loadConfig();
+    const mod = await import(new URL(`file://${mediaPersona.replace(/\\/g, '/')}`).href);
+    const mediaRoot = mod.resolveDataDir
+      ? mod.resolveDataDir({ env: process.env, suiteRoot: SUITE_PATHS.root }).dir
+      : null;
+    if (!mediaRoot) {
+      record('static', mediaLabel, 'skipped', '媒体层没有导出 resolveDataDir()');
+      return;
+    }
+    const same = path.resolve(mediaRoot) === path.resolve(dataPaths.root);
+    record('static', mediaLabel, same ? 'ok' : 'failed', same ? path.resolve(mediaRoot) : `CLI=${dataPaths.root} 媒体=${mediaRoot}`);
+  } catch (err) {
+    record('static', mediaLabel, 'failed', err.message);
+  }
 }
 
 /* ────────────────────────── compose ───────────────────────── */
 function runCompose() {
   section('compose — 宿主合成检查');
   let host;
+  let dataHome;
   try {
-    const { config } = loadConfig();
+    const { config, dataPaths } = loadConfig();
     host = config.dsh || {};
+    dataHome = dataPaths.home;
   } catch {
     host = {};
+    dataHome = path.join(SUITE_ROOT, 'data', 'home');
   }
   const exe = host.executable && fs.existsSync(host.executable) ? host.executable : '';
   const cli = host.moduleRoot
@@ -549,7 +672,11 @@ function runCompose() {
     env: {
       ...process.env,
       ELECTRON_RUN_AS_NODE: '1',
-      DSH_HOME: path.join(SUITE_ROOT, 'data', 'home'),
+      // The profile lives under the **configured** data root, not under `data/`: a suite
+      // that sets `dataDir: "data-dev"` (an isolated dev install) would otherwise compose
+      // against a profile that does not exist and fail with exit 1 for the wrong reason.
+      // Same rule the data-root parity check already enforces for the plugins.
+      DSH_HOME: dataHome,
     },
   });
   const out = `${res.stdout || ''}${res.stderr || ''}`;
@@ -563,7 +690,11 @@ function runCompose() {
 
 /* ─────────────────────────── drive ────────────────────────── */
 if (want('unit')) runUnit();
-if (want('static')) runStatic();
+// `runStatic()` ends by returning `checkDataRootParity()`, which is async. Without the `await`
+// the process printed the summary and exited before those rows were recorded, so the data-root
+// parity check — the one that exists to catch two plugins disagreeing about where runtime data
+// lives — silently never ran. (Pre-existing on `origin/main`; found while fixing P0-C.)
+if (want('static')) await runStatic();
 if (want('compose')) runCompose();
 
 console.log('\n═══ 汇总 ═══');

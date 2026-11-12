@@ -36,6 +36,16 @@ export interface RunnerStatus {
   haltedAt: number | null
   /** 同类程序错误的连击现场：`streak` 涨到 `limit` 就停表 —— "空转"这一档也看得见。 */
   softFault: { streak: number; code: string; limit: number }
+  /**
+   * **到期未消费的退避现场**（第二轮 P1-B）。
+   *
+   * `overduePasses` = 连续几拍"到期项还在、而且没减少"（`dryRun` / 通道断开 / 房间不许发
+   * 会一直涨）；`gapMs` = 按它算出来的下一拍间隔（`null` = 还没算出过）。
+   *
+   * 为什么进诊断面：这一档以前是**不可观测的 CPU 空转**——日志里只看得到"每秒被拦一次"，
+   * 却看不出是闸门在拦还是调度在空转。有了这两个数，"日志暴涨"能被直接读成"passes 在涨"。
+   */
+  backoff: { overduePasses: number; gapMs: number | null }
 }
 
 /**

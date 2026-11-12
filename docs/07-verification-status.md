@@ -5,8 +5,6 @@
 
 ## 1. 五级证据（固定词汇，不自创）
 
-<<<<<<< HEAD
-=======
 ### 2026-11-11 集成测试补充
 
 本次为独立测试分支，未替换生产部署。详细证据见 [集成与迁移报告](17-integration-test-20261111.md) 和 [镜像旁听报告](18-mirror-observe-integration.md)。
@@ -23,7 +21,6 @@
 
 本轮未新增 `real-api`、`real-send` 或 `hardware` 证据。第二轮交接另外修掉两个缺陷（关闭态能力被报成 `pending-load`；提醒停表用例的 `sleep(150)` 假红），详见 [集成与迁移报告](17-integration-test-20261111.md) 的接管验收一节。
 
->>>>>>> 854ff28 (Fix disabled-capability reporting and reminder test flake; record takeover acceptance)
 | 级别 | 定义 | 什么样的证据才算 |
 |---|---|---|
 | `offline-test` | 离线单元 / 集成测试通过 | 有可复现命令 + 通过计数 + 日期 |
@@ -101,7 +98,7 @@
 
 | 模块 | `offline-test` | `host-load` | `real-api` | `real-send` | `hardware` |
 |---|---|---|---|---|---|
-| `companion-foundation` | **213 项 / 204 通过 / 0 失败 / 9 跳过** | **✅ 已装载**（C 段：无 `did not activate`；日志出现它的 identity 初始化行） | 未验证 | — | — |
+| `companion-foundation` | **360 项 / 351 通过 / 0 失败 / 9 跳过**（2026-11-08；其中 Prompt Engine 新增 **146 项**，其余 214 项为原有测试，见 §2.8） | **✅ 已装载**（C 段：无 `did not activate`；日志出现它的 identity 初始化行） | 未验证 | — | — |
 | `companion-memory` | **268 通过 / 0 失败** | **✅ 已装载**（C 段） | 未验证 | — | — |
 | `companion-memory-studio` | **115 通过 / 0 失败** | **✅ 已装载**（C 段：UI 返回 HTTP 200 / 38252 字节） | 未验证 | — | — |
 | `companion-runtime` | **697 通过 / 0 失败** | **✅ 已装载**（C 段） | 未验证 | — | — |
@@ -286,6 +283,34 @@ P9-A（上线前兼容性与可靠性审计）见 `docs/11-group-social-runtime-
 > ③ **女声优先依赖一份手写歌手名单 + 标题字面标记**，不是查询接口。没命中就是 `unknown`，
 > 此时**不升调**（升错比不升更糟）。这份名单注定不全。
 
+### 2.8 衣柜昼夜状态化 + 视觉身份（`companion-foundation` / `companion-media`）：`offline-test` + `compose` + `host-real`
+
+分支 `feat/companion-visual-identity-wardrobe`（基线 `origin/main` @ `0a545ff`，2026-11-10）。
+实现与验收细则见 `docs/14-wardrobe-state-upgrade.md`；接口权威见
+`plugins/companion-foundation/WARDROBE-STATE-CONTRACT.md`。
+
+| 项 | 级别 | 证据 |
+|---|---|---|
+| 衣柜 v2 数据结构（`contexts` 场景条件 / 五槽位保留 / `outfits` / 带 `until` 的 `overrides`） | **`offline-test`** | `node --test "plugins/companion-foundation/*.test.mjs"` → **206 项全通过**（2026-11-10，含本轮 P0-B 新增 5 项）。新增 `wardrobe-state.test.mjs` 25 项覆盖 §11.1/§11.2 全表 |
+| v1 → v2 迁移可逆 | **`offline-test`** | `旧版 v1 衣柜可以迁移，并且可以回滚`：`.v1.bak` 与原文**逐字节相等**；回滚后仍按 v1 正确读取。迁移**不从扁平清单臆造组合**（`outfits: []` + 明确报缺失） |
+| 昼夜切换（22:20 居家 / 22:40 睡衣 / 02:00 / 06:50 / 07:10） | **`offline-test`** | 表驱动断言，墙上时钟全部注入；跨午夜 `[22:30,24:00)∪[00:00,07:00)` 与 22:29/07:00 边界都有断言 |
+| 「白天覆盖不挡睡衣」「上一轮说要出门不延续」 | **`offline-test`** | `overrideAppliesTo()` + 两个用例；`planned` 计划槽位与未来日程明确**不**作为「正在发生」的证据 |
+| 人格隔离 / 群聊隔离 / 缺睡衣明确报错 | **`offline-test`** | 别人格无文件 → `wardrobe-missing-for-persona`；`qq-group-*` → `wardrobe-unavailable-in-group`（工具与写入都拒绝）；缺场景组合 → `no-outfits-for-context` 且**不回落** |
+| Prompt 注入（静态 section 无衣物 + `agent/pre-step` 每轮一次 ≤480 字符 + 与工具同源） | **`offline-test`（宿主边界）** | `wardrobe-mount.test.mjs` 7 项：真实 `mountCompanion` + 真实 hook，断言静态 section 不含任何衣物、step 1 注入一次、step 2 不注入、快照与 `companion_wardrobe_detail` 逐字段一致 |
+| 生图身份 + 服装自动注入（深夜睡衣 / 白天常服 / 夜间外出 / other 不注入 / 缺英文拒绝） | **`offline-test`** | `node --test "plugins/companion-media/test/*.test.mjs"` → **162 项全通过**；NAI 用例断言进图 caption 同时含身份与当场服装，且不含中文、不注入别人格身份 |
+| **缺失 Visual Identity 时的生图拒绝** | **`offline-test` + `host-real`（已修）** | 闸门 `companionPictureGate()` 一处判定，`dryRun` 与真实调用同源。13 项回归（`visual-identity-gate.test.mjs`）：缺身份 / 文件损坏 / 结构无效 / 人格不匹配 / 只有中文外观 / 传了 outfit 也绕过不了 —— 逐条断言 **POST 0**；有效身份断言 **POST 1**。真实宿主复验：缺身份 `MEDIA_VISUAL_IDENTITY_REQUIRED` 且网络记录器 **0 命中**，补上身份后同一次运行里记录器 **1 命中**。见 `docs/16-p0-fixes.md` §1 |
+| **companion 预设可创建会话** | **`offline-test` + `host-real`（已修）** | 预设曾重复声明宿主 plane 的 `skill` 注册表服务，导致 `session/create` 一律失败。删掉该行后真实宿主（**不加任何修复补丁**）`session/create` 成功、一轮对话跑完，62 个工具含 `skill`、技能目录完整。5 项回归盯着「预设不得声明裸 `skill`」。见 `docs/16` §2 |
+| **媒体层数据根与 foundation 一致** | **`offline-test` + `host-real`（已修）** | `resolveDataDir()` 改为复用 `suite-paths.mjs#resolveDataRoot()`，不再有第二套实现。8 项回归覆盖优先级与「`data/media/config.json` 不得覆盖 `<dataDir>/media/config.json`」；真实宿主 `GET /api/companion-media/status` 报 `dataDir=<dev-clone>/data-dev`、`configFile=<dev-clone>/data-dev/media/config.json`，诱饵 `data/media/config.json` 未被读取。见 `docs/16` §3 |
+| 视觉身份数据 | **需操作者填写** | 仓库内没有任何原作/外貌数据（审计：`visual-identity` 关键词在五个远端分支上 **0 命中**）。`home/companion/visual-identity.json` 缺失或该 persona 无条目时，拒绝已成立的生图调用并报 `missing:["identity"]`（不再画一张没有脸的图） |
+| 零计费验收抓包 | **`offline-test`（脚本 + 证据文件）** | `node scripts/wardrobe-acceptance.mjs --root <dataRoot>` 产出 `logs/wardrobe-v2-<date>/acceptance.{json,txt}`：时钟表、五个场景可用性、`dryRun` 的 `visual` 块、源码 sha256。脚本内的 `fetchImpl` **拒绝任何网络请求**，所以它不可能产生一次计费调用 |
+| 宿主合成 | **`compose`** | `npm run verify --only=compose` → **195 个 loader 行**（2026-11-10，本机宿主 `0.2.1-rc.3`）：`preset-companion`、`companion-foundation`、`companion-media` 均在合成结果里 |
+| **真实对话里的注入正文抓包** | **`host-real`（第②阶段已完成）** | 真实宿主 `0.2.1-rc.3` + `companion-dev` + `data-dev`：`session/create`（preset `companion`）→ `session/prompt`，把 `llm-pi-ai` 指到本地记录器抓下**完整请求体**。14:00 注入 `日常常服 / daytime-everyday`（195 字符 ≈172 tokens），22:40 注入 `睡衣 / night-window`（181 字符 ≈163 tokens），与离线判定**逐字节相同**；静态段 91 字符且**不含任何衣物名**；工具查询结果与注入正文同源。记录见 `docs/15-wardrobe-host-acceptance.md` 与 `<dataDir>/logs/wardrobe-host-acceptance/record/` |
+| **真实计费生图** | **未验证** | 全部 `dryRun` / `mockFetch` / 本地记录器；按 `AGENTS.md` 规则 2，需操作者显式授权才可跑一张 |
+
+> 措辞模板：「衣柜解析、工具合同、Prompt 注入与生图注入在离线与合成层面有 206 + 162 项断言和
+> 一份零计费抓包；**真实会话的注入正文已在真实宿主上抓取并复核**（见 `docs/15`），
+> **三个 P0 缺陷（缺身份仍生图 / 预设重复注册 `skill` / 媒体层数据根）已修并在真实宿主上复验**
+> （见 `docs/16`），**真实计费生图仍未验证**。」
 
 
 **宿主与链路**
@@ -324,6 +349,79 @@ P9-A（上线前兼容性与可靠性审计）见 `docs/11-group-social-runtime-
 - 主动联系（contact）的真实平台发送与回执。
 - 提醒的四条停止线（停机可观测 / 不重复外发 / 空转可见 / 阈值合理）在真机上的验证。
 - 真实 24 小时长稳（只做过模拟时钟）。
+
+### 2.8 Prompt Engine（模块化认知与写作引擎，2026-11-08）：`offline-test` + `host-load`
+
+设计说明见 `docs/08-prompt-engine.md`，接口合同见 `plugins/companion-foundation/PROMPT-ENGINE-CONTRACT.md`。
+**这一节只证明"代码按设计工作"，不证明"模型写得更好"**——后者需要真实模型输出与人工评分，本仓库没做。
+
+| 项 | 级别 | 证据 |
+|---|---|---|
+| 配置读取/校验/安全回退（默认关闭、非法 JSON、非法枚举、越界预算、不创建不覆盖文件） | `offline-test` | `prompt-config.test.mjs` **15 项** |
+| 场景路由（三层判断、显式优先、单条消息不得 immersive、抽象情绪不判 RP、逐轮降档、resume、session 隔离） | `offline-test` | `prompt-router.test.mjs` **23 项** |
+| 模块目录与写作档边界（chat 不含白描、companion 不含报告腔、implicit 轻量、roleplay 才注入叙事、task 无扮演；anti-deepseek 只降频不禁词） | `offline-test` | `prompt-modules.test.mjs` **17 项** |
+| 组合与预算（稳定排序、两种去重、整模块裁剪不截断、`MAX_MODULES=10`、五档字数上限） | `offline-test` | `prompt-compose.test.mjs` **17 项**；实测 chat **512/600 字**、companion **578/800**、task **473/500**、implicit **623/1300**、immersive **657/1300**，五档均未触发预算裁剪 |
+| 结构化规划（schema 校验、超长截断、坏 JSON 提取、planner 提示词不超输入上限、渲染 ≤900 字） | `offline-test` | `prompt-plan.test.mjs` **19 项** |
+| 文风检测（只统计+理由码、不回传原文、正常中文不误伤、chat 档不检测白描） | `offline-test` | `prompt-lint.test.mjs` **14 项** |
+| 引擎编排（关闭惰性、shadow 不改消息、预算、LRU、黑名单、planner 缺失降级、配置热更新、dispose） | `offline-test` | `prompt-engine.test.mjs` **29 项**；其中 7 项用**假宿主 LLM** 跑通 Planner 路径：合法规划进 Writer 指导、purpose=`companion-prompt-plan` 且 sessionId 独立、`allowFallback:false`（一次预算=一次物理生成）、坏 JSON 一次修复、两次失败降级、字段越界截断、Guided 档零调用 |
+| 与 foundation 现有 Hook 集成（默认关闭不注册 Section、开启独立 `companion-prompt-profile`、原有身份/记忆注入逐字节不变、只在 step 1、reject/aborted 不变、群聊与私聊互不串档、引擎崩溃不影响聊天、不写记忆） | `offline-test` + **`host-load`** | `prompt-engine-mount.test.mjs` **12 项**；其中一轮用**已安装桌面的真实宿主模组**（`DSH_COMPANION_MODULE_ROOT` 指向桌面 `node_modules`）跑通，与 `cognitive-mount.test.mjs` 的 8 项一起 20/20 通过 |
+| `companion-foundation` 合计 | `offline-test` | **365 项 / 356 通过 / 0 失败 / 9 跳过**（Prompt Engine 146 项：15+23+17+17+19+14+29+12；P4 路由样例新增 4 项；其余 215 项为原有测试） |
+| 整仓 `npm run verify` | `offline-test` | `unit` **9 模块全绿**（`dsh-paste-search` 无测试）；`static` **33 项全绿**；`compose` **194 个 loader 行**（本 worktree 已跑过 `npm run setup`） |
+| **真实模型调用**（Planner / Strict 审查 / 修正） | **未验证** | Planner 代码路径只有"不可用时降级"这一半被断言；真实 provider 调用、超时、Token 计数**都没跑过** |
+| **真实场景质量验收**（四组固定测试集 × 四条对照） | **未验证** | 需要真实模型输出与人工评分，且要用操作者自己的 Persona 与历史 |
+
+> 结论措辞只能用：「Prompt Engine 的配置、路由、模块组合、预算、schema 校验与文风检测在**离线测试**上通过，
+> 并且能以关闭/开启两种状态真实挂在 foundation 的 `agent/pre-step` 上，原有的身份、记忆、运行时注入与心跳/关怀注入**逐字节不变**；
+> 规划器的真实模型调用与真实场景质量验收**都没有做**」。
+
+> 关于 `static` 段那一项 `✗ author-name — README.md:197`：它在本 worktree 的父提交（`052943f`，即 `origin/main`）
+> 上**同样失败**，是既有问题，不是本次改动引入的。2026-11-09 已按"唯一一条审计豁免"修掉：
+> `README.md` 里的`git clone https://github.com/<owner>/dsh-companion` 是**公开克隆地址**，
+> 不是作者身份泄漏。`scripts/verify.mjs` 现在只对这一条规则、只对这一种 URL 形态做剥离，
+> 干净文本里出现这个名字仍然算失败。`static` 因此从 32/1 变成 **33/0**。
+
+### 2.9 Prompt 分层清理（2026-11-09）：`offline-test` + `host-load` + 一条 `real-model`
+
+设计说明见 `docs/09-prompt-baseline.md` → `docs/10-prompt-layers.md` → `docs/11-prompt-routing.md`，
+验收见 `docs/12-prompt-verification.md`，未修项见 `docs/13-prompt-followups.md`。
+
+**这一节分开声明四件事**，不要合并成一句"已优化"：改了哪些层、每层的证据到哪一级、
+真实模型输出看到了什么、哪些明确没测。
+
+| 项 | 级别 | 证据 |
+|---|---|---|
+| 原生开发提示词归属表（11 段 Section 逐段归到插件与层级，含"宿主没有只关 Section 的开关"这一结论） | `source-review` | `docs/09-prompt-baseline.md` §3；逐段读宿主源码确认注册点 |
+| `disabled: true` 只能按条目关整个插件的实证 | `offline-test` | 用 `--patch` 探测补丁跑 `--dump-config`，`harness-dev-context` / `ui-deliverables` 行从启用变为 `disabled: true` |
+| 陪伴预设去开发化（模板可选块 + `config/suite.json` 的 `prompt.*` 三个开关） | `offline-test` | `scripts/setup.mjs` 的 `activePatchBlocks()` 单测；`verify --only=static` 三条新断言（默认不装开发工具 / 默认裁掉两段宿主提示 / 开关能把块加回来） |
+| Foundation 静态 Section 压缩（continuity 634→309、agenda 299→239、wardrobe 273→178、pulse 95→93） | `offline-test` + **`real-capture`** | 离线挂载实测 1,072 字；真实抓包 system prompt 5,881 字（基线 10,361） |
+| Prompt Contract 生命周期（恒注册一次、off 时渲染空串、off→active→off 热切换） | `offline-test` | `prompt-engine-mount.test.mjs` 13 项，含新增的热切换测试 |
+| 动态模块减重（chat 512→404、companion 513→446、task 280→247、roleplay 409→363） | `offline-test` + `real-capture` | `prompt-modules.test.mjs` 上限断言；真实抓包同值 |
+| 路由有限修正（ASCII 引号不再当对白证据；`sceneDeixis` 词表去重） | `offline-test` | `prompt-router.test.mjs` 27 项，含计划 §6.3 的 7 条对话样例 |
+| 宿主真实装载 | **`host-load`** | 测试实例 3199 真实启动；`agentPresets/list` 返回 companion 预设未标 broken；system prompt 逐段核对 |
+| 工具清单与 Schema 开销 | **`real-capture`** | 56→46 个工具；35,274→26,621 字符（−24.5%） |
+| 真实模型响应质量 | **`real-model`（10 轮合成样本）** | `data/logs/p5-capture.json`；人格一致、心率/衣柜/记忆如实、日程不虚构；**发现 2 个缺陷见 §2.9.1** |
+| 真实 QQ / 语音 / 提醒投递 | **未验证** | 需另行授权 |
+| Persona 精简 | **未做（按计划禁止）** | 真实 `config/persona.md` 逐字节未改；建议稿见 `docs/persona-simplification-example.md` |
+
+#### 2.9.1 这次抓包暴露的两个缺陷（已记录，未修）
+
+| 缺陷 | 现象 | 归属 |
+|---|---|---|
+| task 档正文为空 | 「用一句话解释幂等」的答案全部落在 `reasoning` 块，`text` 为空 | 写法模块缺少"答案写在正文"的正面要求；不是本次改动引入 |
+| 思考过程漏进正文 | implicit 档回复开头是"他在问…我不该编造…"的自我分析 | 同上；`style.universal` 没有"不要解释你的思路" |
+
+两者都写在 `docs/13-prompt-followups.md` §1/§2，修法要点与测试口径也一并记录。
+
+#### 2.9.2 结论措辞
+
+> 「陪伴预设的系统提示词从 **10,361** 字降到 **5,881** 字（−43.2%），其中 4,004 字是宿主原生
+> 开发智能体说明，2,338 字是给"能改 DSH 本体"的编码智能体看的编码规则段与交付卡片说明，
+> 这些在陪伴会话里全部消失；工具从 **56** 个降到 **46** 个。人格、记忆检索、运行时、日程、
+> 群聊隔离与写记忆闸门**一条没动**，开发预设（standard / ptc / cordis）的 `pwsh`/`fs`/
+> `jobs`/`skill` 工具**全部原位**。
+> 真实模型响应用 10 轮合成样本验过：人格与语气一致、心率/衣柜/记忆如实回答、日程不虚构；
+> 同时发现 task 档会把答案只写进 reasoning、implicit 档会把自我分析写进正文两个既有缺陷，
+> 已单独记录，本次未修。」
 
 ## 4. 怎么把某条证据从「未验证」升一级
 
@@ -488,4 +586,3 @@ git clone https://github.com/FamousBOBO/dsh-companion.git
 - 语义层面的问题（比如「这段文案把已保存说成已连接」——那是 `docs/02` §6 的纪律，不是扫描能查的）。
 
 所以正确的表述是：**「泄漏扫描通过」= 在发布物里没命中已知形状**，不是「仓库里没有秘密」。
-

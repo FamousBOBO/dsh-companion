@@ -44,7 +44,7 @@ import { createToolGateHooks, ToolGateController } from './features/qq-tools/reg
 import type { AdminResource } from './admin.js'
 import { SectionHost } from './features/plugin-kit.js'
 import type { Dispose, HostBridge, SectionHostEnv, SubHost, SubPlugin } from './features/plugin-kit.js'
-import { SECTION_PLUGINS } from './sections.js'
+import { sectionsForMode } from './sections.js'
 
 export class ChannelQQ extends Service {
   static inject = [
@@ -127,7 +127,7 @@ export class ChannelQQ extends Service {
       this.toolGate?.stop()
       await sections.disposeAll()
     }
-    await sections.mountAll(SECTION_PLUGINS)
+    await sections.mountAll(sectionsForMode(config.connection.mode))
     // 工具闸门（policy.v2 / tools.v2）：都默认关 ⇒ 这里一个监听器都不注册。
     await this.syncToolGate()
     // 全部装配完成后再按装载顺序跑 start 钩子：client.start → reattachAll →

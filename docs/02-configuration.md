@@ -17,7 +17,7 @@ profile 的 patch 里，见 §3.5。
 
 ### 1.1 优先级（从高到低）
 
-1. 环境变量（见 §2.9）
+1. 环境变量（见 §2.10）
 2. `config/suite.json`
 3. `config/suite.example.json` 模板值
 4. 代码内 `SAFE_DEFAULTS`（与模板一致；模板缺失时兜底）
@@ -116,7 +116,30 @@ profile 的 patch 里，见 §3.5。
 
 见 `docs/01` §4（同一份规则，不在这里重复实现）。
 
-### 2.9 环境变量覆盖
+### 2.9 `prompt`（提示词分层开关）
+
+控制**陪伴预设**装载哪些会往 system prompt 里写规则段的宿主插件。三个开关默认都是 `false`，
+也就是"普通陪伴会话"的样子：没有文件读写、没有 Shell、没有后台任务、没有交付卡片说明。
+做维护（改 DSH 本体、跑诊断、生成 Office 文档）时按需打开，改完 `npm run setup` 重新渲染 profile。
+
+| 字段 | 默认 | 打开后会发生什么 |
+|---|---|---|
+| `prompt.companionDevTools` | `false` | 陪伴预设重新装载 `agent-instructions` / `skill-filesystem` / `tool-skill` / `tool-pwsh` / `tool-fs` / `tool-fs-search` / `tool-jobs`。system prompt 增加约 1,470 字编码规则，工具清单从 46 涨到 56 |
+| `prompt.harnessDevContext` | `false` | 恢复宿主 `harness-dev-context` 的两段：`HARNESS_SOURCE`（325 字）+ `WEB_SURFACE`（821 字）。只想在本 profile 里改 DSH 代码时才需要 |
+| `prompt.deliverableHints` | `false` | 恢复宿主 `ui-deliverables` 的 `DELIVERABLE_FILE_REFERENCES`（1,192 字）。它讲的是 `present` 工具，而陪伴预设不装载该工具，所以默认是纯噪声 |
+
+**不影响开发预设。** `standard` / `ptc` / `cordis` 三个预设自带 `pwsh` / `fs` / `fs-search` /
+`jobs` / `skill` 工具，本开关只作用于 `preset-companion`（模板里的 `#@@begin:companion-devtools` 块）。
+
+**为什么默认关**：这些插件的 system prompt 段是写给"能编辑本仓库的编码智能体"的，陪伴会话每轮
+都在为一个用不到的工具体系付费。逐段的归属、可关闭性与代价见
+[docs/09-prompt-baseline.md](09-prompt-baseline.md)，实测收益见
+[docs/12-prompt-verification.md](12-prompt-verification.md)。
+
+**这不会让能力"丢失"**：`companion_*` 工具一个没动，日程工具整组保留，开发能力只是从陪伴预设
+挪到了它本来该在的预设里。
+
+### 2.10 环境变量覆盖
 
 环境变量优先于任何配置文件，用于 CI 与一次性运行：
 

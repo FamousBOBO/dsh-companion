@@ -1,4 +1,4 @@
-﻿/**
+/**
  * **ReminderStore 的写入契约**（第十一轮复审的设计，见 `design/p2.5-reminder-store-design.md` §1）。
  *
  * 两条硬规矩，全库都要按它读：
@@ -34,6 +34,27 @@ export type StoreFaultCode =
   | 'INVALID_CANDIDATE'
   /** 同一提醒文件被第二个 Store 打开（内存状态不同，只共用队列不够）。 */
   | 'OWNER_CONFLICT'
+  /**
+   * **跨进程写锁没抢到**（第二轮 P1-A）：另一个 DSH 进程正在写同一份提醒文件。
+   *
+   * 语义是**暂时性**：这一笔没写、状态没动、什么都没发生；稍后再试就好。
+   * 所以它**不在** `HALT_WORTHY` 里（停表只会把"对方写得慢"变成"我方永久失活"），
+   * 但它也**绝不允许**降级成"没锁也写"——调用方必须当失败处理（尤其投递路径：
+   * 拿不到锁就不许发 QQ）。
+   */
+  | 'LOCK_TIMEOUT'
+  /**
+   * **本运行时根本没有跨进程写锁**（第三轮 P2）：`node:sqlite` 取不到，或锁初始化就失败。
+   *
+   * 与 `LOCK_TIMEOUT` 必须分开：那是"另一个进程正好在写，稍后再试"（暂时性、会自愈）；
+   * 这是"这台机器永远拿不到锁"（**装配/能力问题，不自愈**）。混成一个码的后果是把
+   * "永远写不了"报成"竞争激烈"，运维会一直等一个不会来的自愈。
+   *
+   * 行为是 **fail-closed**：拒绝写入，绝不在无锁状态下写盘（那正是重复外发的成因）。
+   */
+  | 'LOCK_UNAVAILABLE'
+  /** 跨进程重读盘上最新状态失败（锁内基线作废 ⇒ **不许**拿旧内存快照继续写）。 */
+  | 'REFRESH_FAILED'
 
 export class ReminderStoreFault extends Error {
   readonly code: StoreFaultCode
@@ -176,6 +197,30 @@ export interface ReminderPersistence {
   readMarker(): Promise<{ at: number; reason: string; source: string; detail: string } | null>
   writeMarker(failure: { at: number; reason: string; source: string; detail: string }): Promise<void>
   removeMarker(): Promise<void>
+}
+
+/**
+ * **跨进程写锁端口**（第二轮 P1-A）。
+ *
+ * 抽象出来只有一个理由：`features/` 不该 import `adapters/` 的实现细节，
+ * 而"这台机器到底有没有跨进程锁"是**运行时能力**，必须能被诊断面如实报告、
+ * 也必须能在测试里换成一个"永远抢不到"的替身（证明"拿不到锁就不发送"）。
+ */
+export interface ProcessMutex {
+  /** 锁文件路径（诊断与日志用）。 */
+  readonly file: string
+  /** 抢锁；超时**抛错**（调用方据此本拍不发，不许无锁继续）。 */
+  acquire(timeoutMs?: number): Promise<MutexLease>
+  /** 只试一次（诊断/测试用）。 */
+  tryAcquireOnce(): boolean
+  close(): void
+}
+
+/** 一次租约。**必须**在 `finally` 里 release。 */
+export interface MutexLease {
+  readonly token: string
+  /** `true` = 确实是我们自己释放的（`false` 说明归属已经变了）。 */
+  release(): boolean
 }
 
 /** 已发布状态的形状（不可变）。 */

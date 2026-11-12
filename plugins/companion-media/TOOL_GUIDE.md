@@ -39,11 +39,15 @@
 参数：`prompt`（必填）、`negative`、`subject`、`outfit`、`dryRun`（可选）。
 
 - 调用方直接构思英文画面，用完整句子把主体和关键要求放在前半段，再描述场景、动作、镜头、光线和画风。生图服务按原文提交。[NovelAI 官方提示词指南](https://docs.novelai.net/en/image/basics/)
-- 画陪伴角色时传 `subject: "companion"`。先用 `companion_wardrobe_detail` 的 `today` 范围读取当前着装，或先用 `dryRun: true` 且省略 `outfit` 取回衣物。把衣物写成英文短语传到 `outfit`，服务会把它写入实际画面提示词。真跑时缺少衣物会拒绝请求。
+- 画陪伴角色时传 `subject: "companion"`。**角色身份与当前服装由媒体层自动注入**（来自 `resolveCompanionVisualState()`：身份取视觉身份数据，服装取衣柜解析器，两者都以当前 persona 为键），所以 `prompt` 里只写场景、动作、表情、镜头、光线和画风，**不要写衣服**。想确认这次会注入什么，用 `dryRun: true` 看返回的 `visual` 字段（场景、`outfitId`、`reason`、各槽位、注入的英文服装串、`outfitSource`）。
+- `outfit` 一般留空。只有当用户明确要求「换一套衣服来画」时，才用英文传入这套衣服（中文会被拒绝），并同时调用 `companion_outfit_set` 更新衣柜；此时返回的 `visual.outfitSource` 是 `explicit-arg`，不会被和衣柜混在一起。
+- **视觉身份是强制条件。** 身份不存在、读不出来、结构无效、与当前 persona 不匹配，或者只有中文外观时，真跑**直接拒绝**（`MEDIA_VISUAL_IDENTITY_REQUIRED`，`details.missing` 里写 `identity` 或 `identity-english`），**不会**发任何网络请求。`outfit` 只能替换衣物，**不能**绕过身份——一张只有衣服没有脸的图不是这个角色。先在 `home/companion/visual-identity.json` 里为该 persona 配好英文外观。
+- 衣柜里没有可用的英文描述时，真跑同样拒绝（`MEDIA_BAD_INPUT`，`details.missing` 含 `wardrobe`），不会凭空编一套衣服。
+- `dryRun` 与真跑用**同一个**判定：被拒绝时 `dryRun` 返回 `{ok:true, dryRun:true, visualRequired:true, visual, refusal}`，`refusal` 与真跑返回的 `error` 同源，所以可以先 dry-run 确认「这次会不会被拒绝」。
 - `negative` 只在需要临时压制某些内容时用；固定反向提示词应放在配置里（`image.nai.negativePrompt` 或按族的预设）。
 - `dryRun: true` 只做参数/分辨率/预设族校验，不发网络请求。**先 dry-run 再真跑**是省额度最有效的习惯。
 - 成功返回 `artifact.absolutePath` 与 `handoff.file`（同一个绝对路径），直接把 `handoff.file` 交给发送工具。
-- 常见错误码：`MEDIA_DISABLED`（没开）、`MEDIA_NOT_CONFIGURED`（缺必填项）、`MEDIA_PARAM_OUT_OF_RANGE`（尺寸/步数越界，**不会**被悄悄改值）、`MEDIA_AUTH_FAILED`、`MEDIA_ENTITLEMENT`（NAI 无订阅）、`MEDIA_RATE_LIMITED`、`MEDIA_TIMEOUT`、`MEDIA_UPSTREAM`、`MEDIA_UNSUPPORTED_TYPE`（上游返回的不是图片）。
+- 常见错误码：`MEDIA_DISABLED`（没开）、`MEDIA_NOT_CONFIGURED`（缺必填项）、`MEDIA_VISUAL_IDENTITY_REQUIRED`（缺视觉身份，或身份只有中文外观）、`MEDIA_BAD_INPUT`（参数不对 / 衣柜给不出英文衣物 / `subject` 不是 `companion`）、`MEDIA_PARAM_OUT_OF_RANGE`（尺寸/步数越界，**不会**被悄悄改值）、`MEDIA_AUTH_FAILED`、`MEDIA_ENTITLEMENT`（NAI 无订阅）、`MEDIA_RATE_LIMITED`、`MEDIA_TIMEOUT`、`MEDIA_UPSTREAM`、`MEDIA_UNSUPPORTED_TYPE`（上游返回的不是图片）。
 
 NovelAI 相关：
 - 官方连接方式可选「使用排队服务器」。打开后填写已有协调服务器的地址和用户标识，等拿到许可再调用官方生图接口。排队失败会结束本次请求。排队服务器只收到密钥摘要和排队标识，图片提示词与密钥只发给生图服务。

@@ -19,11 +19,17 @@ process.env.DSH_HOME = HOME
 const { resolveConfig } = await import('../src/config.js')
 const { touchedRestartPaths } = await import('../src/admin.js')
 const { SectionHost, createHost } = await import('../src/features/plugin-kit.js')
-const { SECTION_PLUGINS } = await import('../src/sections.js')
+const { SECTION_PLUGINS, sectionsForMode } = await import('../src/sections.js')
 const { registerSpecs, registeredToolCount } = await import('../src/adapters/dsh-host/tools.js')
 const { buildStatus } = await import('../src/features/admin/index.js')
 
 after(() => { rmSync(HOME, { recursive: true, force: true }) })
+
+test('mirror mounts no background jobs, outbound tools or admin server', () => {
+  assert.deepEqual(sectionsForMode('mirror-observe').map(plugin => plugin.name), ['persona', 'observers', 'platform', 'inbound'])
+  assert.equal(sectionsForMode('forward'), SECTION_PLUGINS)
+  assert.equal(sectionsForMode('reverse'), SECTION_PLUGINS)
+})
 
 /** 一个什么都不连的装载环境。 */
 function fakeEnv(overrides: Partial<SectionHostEnv> = {}): SectionHostEnv {

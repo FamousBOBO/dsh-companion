@@ -426,6 +426,11 @@ test('B8 拿不到下一次 occurrence → 绑定被清空，第三轮不因旧 
 test('B9 重绑写盘失败 → `at` 也不推进（推进与换绑同生共死）', async () => {
   // 裁决 ③：`markFired`（推 at）与换绑（换 revision）必须是**一次写盘**。
   // 让第二次 save 抛错，断言两件事都没落下 —— 否则会留下"新 at + 旧 revision"这种自造故障。
+  //
+  // **2026-11-10 修复带来的一次写序变化**：投递前先**落盘领一次**（`claim`，见
+  // `src/features/reminders/claim.ts`）——那是"多 worker / 多拍只发一次"的唯一机制，
+  // 所以本用例的第一笔写现在是认领，不是推进。判据不变：**推进+换绑那一次**写盘失败时，
+  // `at`、`occurrence`、`fired` 三者一起不许动。放行第一笔（认领）才打得到原来那条路径。
   const rig = await periodicRig({ next: [{ ok: true, occurrenceId: 'occ-daily', revision: 9 }] })
   try {
     const at0 = Date.now() - 1_000
@@ -433,11 +438,16 @@ test('B9 重绑写盘失败 → `at` 也不推进（推进与换绑同生共死�
       text: '吃药', at: at0, room: 'dm', target: 10001, createdBy: 10001, repeat: 'daily',
       occurrence: { id: 'occ-daily', revision: 1 },
     }))
-    const diskBefore = fs.readFileSync(rig.file, 'utf8')
-    // 从这里开始，所有写盘都失败（`markFiredRebound` 必须整体回滚）。
     // **round9**：写底座搬进 `ReminderFile`（`store.io`），注入点跟着搬——判据不变（让写盘抛错）。
     // **task-66**：唯一写出口是 `io.replaceSerialized`（`save()` 已删）。
-    ;(rig.store as unknown as { io: { replaceSerialized: (b: string) => Promise<{ kind: 'committed' }> } }).io.replaceSerialized = async () => {
+    const io = (rig.store as unknown as {
+      io: { replaceSerialized: (b: string) => Promise<{ kind: 'committed' }> }
+    }).io
+    const real = io.replaceSerialized.bind(io)
+    let writes = 0
+    io.replaceSerialized = async (body: string) => {
+      writes += 1
+      if (writes === 1) return await real(body)   // 认领：必须放行（见上）
       throw storeFault('PERSIST_FAILED', 'write', 'disk full')
     }
     await rig.run()
@@ -446,8 +456,12 @@ test('B9 重绑写盘失败 → `at` 也不推进（推进与换绑同生共死�
     assert.deepEqual(after.occurrence, { id: 'occ-daily', revision: 1 }, '写盘失败时绑定也不许换')
     assert.equal(after.fired, false, 'fired 也不许变')
     assert.ok(rig.logs.some((line) => line.includes('推进+换绑写盘失败')), rig.logs.join('\n'))
-    // 盘上也没动（不是"内存回滚了、盘上却写了"）。
-    assert.equal(fs.readFileSync(rig.file, 'utf8'), diskBefore, '写盘失败 ⇒ 磁盘内容一个字都不许变')
+    // 盘上也没推进（不是"内存回滚了、盘上却写了"）。认领本身是一笔合法写，所以按**字段**判，
+    // 而不是逐字节判——逐字节会把这笔认领也算成"盘上动了"。
+    const disk = JSON.parse(fs.readFileSync(rig.file, 'utf8')) as { reminders: { id: string; at: number; fired: boolean }[] }
+    const row = disk.reminders.find((r) => r.id === item.id)!
+    assert.equal(row.at, at0, '盘上的 at 也不许推进')
+    assert.equal(row.fired, false, '盘上的 fired 不许变')
   } finally {
     await rig.close()
   }
