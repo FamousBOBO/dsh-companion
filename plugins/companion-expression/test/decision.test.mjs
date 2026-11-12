@@ -208,7 +208,10 @@ test('同图 48h（私聊）不重复，168h（群）不重复', () => {
     const same = 'ast_abc123456';
     seedDelivery(db, { planId: 'plan_x', scope: OWNER_SCOPE, at: NOW - 10 * 3_600_000, assetId: same });
     const dmResult = decide({ db, config, target: { kind: 'dm', id: 10001 }, scope: OWNER_SCOPE, candidates: candidates(0.95, same), now: NOW - 10 * 3_600_000 + 600_000 });
-    assert.equal(dmResult.reasonCode, 'text-only-no-candidate', '10 小时前发过的同一张图仍被 48h 窗口挡掉');
+    // 对外只剩一个码；分因留在 cause（repeat-window），模型侧拿不到这个细节。
+    assert.equal(dmResult.reasonCode, 'no-compatible-expression', '10 小时前发过的同一张图仍被 48h 窗口挡掉');
+    assert.equal(dmResult.cause, 'repeat-window');
+    assert.deepEqual(dmResult.candidates, [], '不发的时候 outbound 候选恒为空');
 
     const repeatDm = repeatedAsset({ db, bucketKey: OWNER_SCOPE, assetId: same, kind: 'dm', limits: limitsFrom(config), now: NOW });
     assert.equal(repeatDm.repeated, true);
@@ -222,22 +225,35 @@ test('同图 48h（私聊）不重复，168h（群）不重复', () => {
     assert.equal(repeatGroup.repeated, true);
     assert.equal(repeatGroup.hours, 168);
     const groupResult = decide({ db, config: configWith({ groupCooldownSeconds: 0 }), target: { kind: 'group', id: 90001 }, scope: GROUP_SCOPE, candidates: candidates(0.95, same), now: NOW });
-    assert.equal(groupResult.reasonCode, 'text-only-no-candidate');
+    assert.equal(groupResult.reasonCode, 'no-compatible-expression');
+    assert.equal(groupResult.cause, 'repeat-window');
   });
 });
 
-test('没有高分素材 → text_only；abstain 是正常结果（ok:true）', () => {
+test('没有高分素材 → 纯文字；abstain 是正常结果（ok:true）', () => {
   withDb(db => {
     const config = configWith();
     const low = decide({ db, config, target: { kind: 'dm', id: 10001 }, scope: OWNER_SCOPE, candidates: candidates(0.5), now: NOW });
     assert.equal(low.send, false);
     assert.equal(low.mode, 'text_only');
-    assert.equal(low.reasonCode, 'text-only-low-fit');
+    // 0.5 < 默认 0.72：对外统一收成 no-compatible-expression，分因是「分不够」。
+    assert.equal(low.reasonCode, 'no-compatible-expression');
+    assert.equal(low.cause, 'all-below-fit-threshold');
+    assert.deepEqual(low.candidates, [], '不发的时候 outbound 候选恒为空');
     assert.equal(low.ok, true);
+    // 分因里如实记录最高分与门槛（开发者可见，模型侧不可见）。
+    assert.equal(low.fitScore, 0.5);
+    assert.equal(low.diagnostics.bestFitScore, 0.5);
+    assert.equal(low.diagnostics.threshold, DEFAULT_CONFIG.retrieval.minFitScore);
 
     const none = decide({ db, config, target: { kind: 'dm', id: 10001 }, scope: OWNER_SCOPE, candidates: [], now: NOW });
-    assert.equal(none.reasonCode, 'text-only-no-candidate');
+    assert.equal(none.reasonCode, 'no-compatible-expression');
+    assert.equal(none.cause, 'no-candidates-in-pool');
+    assert.deepEqual(none.candidates, []);
     assert.equal(none.ok, true);
+    // 旧对外码不再出现在 outbound 形状里（模型不会读到「再试一次」的暗示）。
+    assert.equal(JSON.stringify({ ...low, meta: undefined }).includes('text-only'), false);
+    assert.equal(JSON.stringify({ ...none, meta: undefined }).includes('text-only'), false);
   });
 });
 
@@ -245,8 +261,12 @@ test('minFitScore 来自 config.retrieval：0.85 的候选在 0.9 门槛下不�
   withDb(db => {
     const config = { ...configWith(), retrieval: { ...DEFAULT_CONFIG.retrieval, minFitScore: 0.9 } };
     const result = decide({ db, config, target: { kind: 'dm', id: 10001 }, scope: OWNER_SCOPE, candidates: candidates(0.85), now: NOW });
-    assert.equal(result.reasonCode, 'text-only-low-fit');
+    assert.equal(result.reasonCode, 'no-compatible-expression');
+    assert.equal(result.cause, 'all-below-fit-threshold');
+    assert.deepEqual(result.candidates, []);
     assert.ok(Math.abs(result.fitScore - 0.85) < 1e-9);
+    assert.equal(result.diagnostics.threshold, 0.9);
+    assert.equal(result.diagnostics.rejected.length, 1);
   });
 });
 
@@ -257,7 +277,10 @@ test('reject 过的图在决策层就被过滤（feedback 抑制与决策联动�
     feedback.record({ action: 'reject', assetId: 'ast_bad00000', scope: OWNER_SCOPE, note: '别发这张' });
     const result = decide({ db, config, target: { kind: 'dm', id: 10001 }, scope: OWNER_SCOPE, candidates: candidates(0.95, 'ast_bad00000'), now: NOW });
     assert.equal(result.send, false);
-    assert.equal(result.reasonCode, 'text-only-no-candidate', '被 reject 的图不再出现在候选里');
+    assert.equal(result.reasonCode, 'no-compatible-expression', '被 reject 的图不再出现在候选里');
+    assert.equal(result.cause, 'suppressed', '分因是「显式拒绝」，不是「没有候选」');
+    assert.deepEqual(result.candidates, []);
+    assert.equal(result.diagnostics.suppressed, 1);
   });
 });
 
@@ -295,7 +318,10 @@ test('检索硬门：作用域 / 审核态 / 格式 / 用户禁用词四道都�
 });
 
 test('加权重排：权重表与文档一致；贴切的高、风险与重复被罚', () => {
-  assert.deepEqual({ ...WEIGHTS }, { semantic: 0.3, intent: 0.2, tone: 0.15, context: 0.1, feedback: 0.1, persona: 0.1, freshness: 0.05 });
+  // 新权重表：语义 .22 / 意图 .20 / 情绪 .18 / 语气 .12 / 语境 .08 / 正反馈 .08 / 角色风格 .07 / 新鲜度 .05。
+  assert.deepEqual({ ...WEIGHTS }, {
+    semantic: 0.22, intent: 0.2, emotion: 0.18, tone: 0.12, context: 0.08, feedback: 0.08, persona: 0.07, freshness: 0.05,
+  });
   const candidate = {
     assetId: 'ast_abc123456', moderationState: 'approved', kind: 'png', createdAt: NOW,
     card: { literal: '猫猫大笑', ocr: '', intents: ['amusement'], tone: ['轻松'], scenes: ['玩笑'], avoidWhen: [], aggression: 0 },

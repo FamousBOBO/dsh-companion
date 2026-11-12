@@ -26,8 +26,28 @@ export const TABOO_REASONS = Object.freeze({
 export const DECISION_REASONS = Object.freeze([
   'send', 'abstain-delivery-disabled', 'abstain-serious-help', 'abstain-privacy-risk',
   'abstain-real-conflict', 'abstain-user-refusal', 'abstain-cooldown', 'abstain-hourly-quota',
-  'abstain-repeat-window', 'text-only-no-candidate', 'text-only-low-fit', 'abstain-turn-limit',
-  'abstain-module-off',
+  'abstain-repeat-window', 'abstain-turn-limit', 'abstain-module-off',
+  /** 没有贴合素材时的**唯一对外结果码**：模型只需要知道「本轮只用文字、不重试」。 */
+  'no-compatible-expression',
+  /** @deprecated 旧对外码，保留在常量表里供历史日志/Studio 文案识别，不再由 `decide()` 产生。 */
+  'text-only-no-candidate', 'text-only-low-fit',
+]);
+
+/**
+ * `no-compatible-expression` 的**内部分因**（只进诊断，不进模型可见的那几个字段）。
+ *
+ * 任务书要求「输出每个阶段的数量及原因码，避免所有情况都归成 low-fit」：对外仍然只有一个
+ * 可执行结论（不发、不重试），但开发者要看得出是哪一道断掉了。
+ */
+export const NO_COMPATIBLE_CAUSES = Object.freeze([
+  'no-candidates-in-pool',      // 召回池为空（图库没有 / 作用域不可见 / 审核态不够）
+  'all-below-fit-threshold',    // 有候选，但最高分不够贴切
+  'opposite-expression',         // 有候选，但都是相反表达（冲突约束挡掉）
+  'repeat-window',              // 都落在同图抑制窗口里
+  'suppressed',                 // 都被显式 reject 抑制
+  'taboo',                      // 禁忌语境
+  'quota',                      // 冷却/小时额度
+  'mixed-filtered',             // 多种原因同时存在（诊断里给每个桶的数字）
 ]);
 
 const HOUR_MS = 3_600_000;
@@ -163,6 +183,28 @@ function abstain(reasonCode, message, extra = {}) {
 }
 
 /**
+ * 「本轮不发」的唯一对外形状。
+ *
+ * 为什么要把 low-fit / no-candidate 收成一个码：模型侧原来收到 `text-only-low-fit` 与
+ * `text-only-no-candidate` 两种说法，前者容易被读成「再试一次、换个说法就行」——而真实
+ * 事故里模型正是不断换词重试。对外只说一件事：**没有贴合语气的表情，本轮只用文字，不重试**。
+ * 分因留在 `diagnostics` 里给开发者看（不往模型那边塞）。
+ */
+function notCompatible(cause, message, extra = {}) {
+  return {
+    ok: true, send: false, mode: 'text_only',
+    reasonCode: 'no-compatible-expression',
+    candidates: [],
+    // 模型直接读这一句；不解释检索过程，也不列偏题素材。
+    message: '当前没有贴合语气的表情，本轮只用文字，不重试。',
+    cause: String(cause ?? ''),
+    internalMessage: String(message ?? ''),
+    fitScore: 0,
+    ...extra,
+  };
+}
+
+/**
  * 决策入口。**永不抛**：参数不全也返回结构化 abstain。
  *
  * @param {{
@@ -175,6 +217,11 @@ function abstain(reasonCode, message, extra = {}) {
  *   reasonCode: string, fitScore: number, assetId?: string|null, message: string,
  *   limits: object, quota: object, meta: object
  * }}
+ */
+/**
+ * 禁忌/冷却/配额这类「不是候选问题」的 abstain 也带上同一个 `no-compatible-expression` 对外码？
+ * **不带**：模型对「严肃求助」「冷却中」需要不同的行为（前者连文字都要谨慎，后者本轮别配图）。
+ * 只有「素材池里没有贴合语气的东西」这一类收成一个码（见上方 `notCompatible`）。
  */
 export function decide({
   db, config = {}, target = {}, scope = '', bucketKey = null, candidates = [],
@@ -208,30 +255,56 @@ export function decide({
   }
 
   // 3) 候选：硬门已在 retrieval 做过；这里再按重复窗口与显式抑制过一遍。
+  //    诊断只记「每个原因挡掉了几张」，模型侧拿不到这些细节（也不该拿）。
+  const dropped = { missingId: 0, suppressed: 0, repeatWindow: 0 };
   const shortlist = [];
   for (const candidate of Array.isArray(candidates) ? candidates : []) {
     const assetId = String(candidate?.assetId ?? '');
-    if (!assetId) continue;
+    if (!assetId) { dropped.missingId += 1; continue; }
     let suppressed = false;
     try { suppressed = isSuppressed({ db, scope, assetId }); } catch { suppressed = false; }
-    if (suppressed) continue;
+    if (suppressed) { dropped.suppressed += 1; continue; }
     const repeat = repeatedAsset({ db, bucketKey: key, assetId, kind, limits, now });
-    if (repeat.repeated) continue;
+    if (repeat.repeated) { dropped.repeatWindow += 1; continue; }
     shortlist.push({ ...candidate, fitScore: Number(candidate?.fitScore ?? 0) });
   }
+  const inputCount = Array.isArray(candidates) ? candidates.length : 0;
   if (shortlist.length === 0) {
-    return abstain('text-only-no-candidate', '没有可用候选（全部被重复窗口或显式拒绝过滤），本轮走纯文字。', { ...base, quota });
+    const cause = dropped.repeatWindow > 0 && dropped.suppressed === 0
+      ? 'repeat-window'
+      : (dropped.suppressed > 0 && dropped.repeatWindow === 0 ? 'suppressed' : 'no-candidates-in-pool');
+    return notCompatible(cause, '没有可用候选（召回池为空或全部被重复窗口/显式拒绝过滤），本轮走纯文字。', {
+      ...base, quota,
+      diagnostics: { cause, inputCount: Number(inputCount), ...dropped, threshold: limits.minFitScore },
+      // 旧 shape 里的 warning：兼容只读它们的调用方（Studio/日志），模型侧不读。
+      warnings: ['本轮没有可用候选：只发文字、不重试。'],
+    });
   }
   shortlist.sort((a, b) => b.fitScore - a.fitScore || String(a.assetId).localeCompare(String(b.assetId)));
   const best = shortlist[0];
   if (best.fitScore < limits.minFitScore) {
-    return abstain('text-only-low-fit', `最高适配分 ${best.fitScore.toFixed(3)} < minFitScore ${limits.minFitScore}：不够贴切，走纯文字。`, { ...base, quota, fitScore: best.fitScore });
+    return notCompatible('all-below-fit-threshold', `最高适配分 ${best.fitScore.toFixed(3)} < minFitScore ${limits.minFitScore}：不够贴切，走纯文字。`, {
+      ...base, quota, fitScore: best.fitScore,
+      diagnostics: {
+        cause: 'all-below-fit-threshold', inputCount: Number(inputCount), shortlist: shortlist.length,
+        bestFitScore: Number(best.fitScore), threshold: limits.minFitScore,
+        // 低分项留在诊断里供开发者分析；模型侧 `candidates` 恒为空。
+        rejected: shortlist.slice(0, 5).map(row => ({ assetId: String(row.assetId), fitScore: Number(row.fitScore) })),
+      },
+      warnings: [`最高适配分 ${best.fitScore.toFixed(3)} 低于门槛 ${limits.minFitScore}：只发文字、不重试。`],
+    });
   }
 
   return {
     ok: true, send: true, mode: 'text_then_sticker', reasonCode: 'send',
     fitScore: best.fitScore, assetId: String(best.assetId),
+    // 模型可见的「发送许可」：一句话说清可以发、只能用这张。
     message: '可以发一张图：已过硬门、冷却、配额与重复窗口。',
+    candidates: [{
+      assetId: String(best.assetId), summary: String(best.summary ?? '').slice(0, 120),
+      intents: Array.isArray(best.intents) ? best.intents.slice(0, 6) : [],
+      fitScore: Number(best.fitScore),
+    }],
     ...base, quota,
   };
 }
@@ -253,6 +326,6 @@ export function consumeDeliveryQuota({ db, bucketKey, now = Date.now(), count = 
 }
 
 export default {
-  TABOO_REASONS, DECISION_REASONS, limitsFrom, tabooOf, hourSlot, quotaBucketFor,
+  TABOO_REASONS, DECISION_REASONS, NO_COMPATIBLE_CAUSES, limitsFrom, tabooOf, hourSlot, quotaBucketFor,
   deliveriesInWindow, lastDeliveryAt, lastSeenOfAsset, quotaState, repeatedAsset, decide, consumeDeliveryQuota,
 };

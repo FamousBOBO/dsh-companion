@@ -20,7 +20,8 @@
   },
   "retrieval": {
     "candidatesToModel": 5,
-    "minFitScore": 0.72
+    "minFitScore": 0.72,
+    "poolLimit": 60
   },
   "delivery": {
     "enabled": false,

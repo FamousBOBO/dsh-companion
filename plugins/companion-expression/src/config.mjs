@@ -44,7 +44,15 @@ export const DEFAULT_CONFIG = Object.freeze({
     cloudVision: 'deny',
   },
   analysis: { mode: 'heuristics', minConfidence: 0.55 },
-  retrieval: { candidatesToModel: 5, minFitScore: 0.72 },
+  /**
+   * `poolLimit`：多路召回合并后的待排序候选池上限。
+   *
+   * 为什么要这个配置：候选池必须**有明确上限**（不整库无限扫描），但上限又不能写死在代码里
+   * ——素材库规模会变。默认 60：私聊几十张到几百张的常见规模下，一次召回就够覆盖；真到几千张
+   * 时调大它就是「多花一点内存换召回」，调小则是「更快但更依赖词面命中」。上限 200，防止有人
+   * 把它当「全库扫描」开关。
+   */
+  retrieval: { candidatesToModel: 5, minFitScore: 0.72, poolLimit: 60 },
   delivery: {
     enabled: false,
     maxPerTurn: 1,
@@ -182,6 +190,7 @@ export function normalizeConfig(raw) {
     retrieval: {
       candidatesToModel: clampInt(retrievalIn.candidatesToModel, 1, 10, DEFAULT_CONFIG.retrieval.candidatesToModel),
       minFitScore: clampNumber(retrievalIn.minFitScore, 0, 1, DEFAULT_CONFIG.retrieval.minFitScore),
+      poolLimit: clampInt(retrievalIn.poolLimit, 10, 200, DEFAULT_CONFIG.retrieval.poolLimit),
     },
     delivery: {
       enabled: flag(deliveryIn.enabled, DEFAULT_CONFIG.delivery.enabled),

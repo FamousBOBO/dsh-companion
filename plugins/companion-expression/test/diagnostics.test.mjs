@@ -186,8 +186,9 @@ test('输出里不出现 QQ 号 / 路径 / URL（作用域只给家族名）', (
 test('view 归一：坏输入不抛，字段形状稳定', () => {
   assert.equal(candidateView(null), null)
   assert.equal(replyView(undefined), null)
+  // `cause` 是新增的内部成因字段（`no-compatible-expression` 的排障用），缺省为空串而不是 undefined。
   assert.deepEqual(candidateView({ ok: true, reasonCode: 'send', candidates: 3, fitScore: 0.8, at: 5 }), {
-    ok: true, reasonCode: 'send', send: false, candidates: 3, fitScore: 0.8, at: 5,
+    ok: true, reasonCode: 'send', send: false, candidates: 3, fitScore: 0.8, cause: '', at: 5,
   })
   assert.deepEqual(replyView({ ok: true, delivered: 1, messageId: 42, assetId: 'ast_x' }), {
     ok: true, reasonCode: '', delivered: 1, messageId: '42', assetId: 'ast_x', at: 0,

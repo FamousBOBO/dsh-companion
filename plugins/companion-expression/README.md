@@ -45,7 +45,7 @@
 | `capture` | `maxDownloadBytes` / `maxPerHour` | `10485760` / `60` | 单个素材体积上限与采集限流 |
 | `capture` | `uncertain` / `cloudVision` | `review` / `deny` | 分类不确定进复核；`deny` = **绝不调用云端视觉模型** |
 | `analysis` | `mode` / `minConfidence` | `heuristics` / `0.55` | `host-vision` 需要 `cloudVision: "allow"`，否则按启发式跑并说明 |
-| `retrieval` | `candidatesToModel` / `minFitScore` | `5` / `0.72` | 只给模型 3–5 个候选；低于阈值退化为纯文字 |
+| `retrieval` | `candidatesToModel` / `minFitScore` / `poolLimit` | `5` / `0.72` / `60` | 只给模型 3–5 个候选；低于阈值退化为纯文字；`poolLimit` 是召回合并后的待排序池上限（10–200） |
 | `delivery` | `enabled` | `false` | **真发送的总闸** |
 | `delivery` | `maxPerTurn` / 冷却配额 | `1` / 私聊 300s+3 轮、群 600s、4 张/时、2 张/时 | 基线，不是固定频率 |
 | `delivery` | `repeatWindowDmHours` / `repeatWindowGroupHours` | `48` / `168` | 同图重复抑制窗口 |

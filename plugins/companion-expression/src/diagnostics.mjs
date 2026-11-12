@@ -126,6 +126,8 @@ export function createExpressionDiagnostics({ db, library, config, salt, isOwner
         captureOwnerPrivate: config?.capture?.ownerPrivate === true,
         crossRoomReuse: config?.privacy?.crossRoomReuse === true,
         minFitScore: Number(config?.retrieval?.minFitScore ?? 0),
+        // 召回池上限：诊断里要能看出「候选池是不是被这个数字卡住了」。
+        poolLimit: Number(config?.retrieval?.poolLimit ?? 0),
       },
       library: {
         available: stats !== null,
@@ -183,6 +185,9 @@ export function candidateView(event) {
     send: event.send === true,
     candidates: Number(event.candidates ?? 0),
     fitScore: Number(event.fitScore ?? 0),
+    // 内部成因（`no-candidates-in-pool` / `all-below-fit-threshold` / `opposite-expression` …）：
+    // 对外只有一个 `no-compatible-expression`，但排障必须看得出是哪一道断掉的。
+    cause: text(event.cause ?? ''),
     at: stamp(event.at),
   };
 }

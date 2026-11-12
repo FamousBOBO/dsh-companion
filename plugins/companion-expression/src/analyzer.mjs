@@ -12,7 +12,13 @@
  * 这三样都要额外依赖或额外外部服务，本模块 0 新依赖，所以留成常量而不是"半成品代码"。
  *
  * 本模块是纯函数 + 一个可选的注入调用，没有 IO、没有时钟（时间由调用方传入）。
+ *
+ * 中文归一化（`analyzeWithHeuristics`）用 `synonyms.mjs` 那份**唯一**的词表：入库（本模块）
+ * 与查询（`retrieval.mjs`）读的是同一个 `normalizeText()`，不许再各自维护一份中文近义表——
+ * 曾经两套表导致「笑着答应、乖巧点头、轻松愉快」两边都抽不出 `agree`/`light`，只能比单字。
+ * 英文线索仍由本文件的 `*_CUES` 表处理（共享表只收中文），两边取并集。
  */
+import { normalizeText, AGGRESSIVE_CUES } from './synonyms.mjs';
 
 /** 未实现的增强能力。UI 与文档据此如实标注「未实现」，不得暗示已支持。 */
 export const NOT_IMPLEMENTED = Object.freeze({
@@ -24,38 +30,47 @@ export const NOT_IMPLEMENTED = Object.freeze({
 /** 私有/敏感图像的判定阈值：低于它就不入库，只进隔离区。 */
 export const PRIVATE_IMAGE_THRESHOLD = 0.5;
 
-/** 视觉结果与 heuristics 的置信度下限（与 config.analysis.minConfidence 对齐后取大者）。 */
-const DEFAULT_MODEL_VERSION = 'heuristics-v1';
+/**
+ * heuristics 语义卡的版本号。
+ *
+ * v2 起中文归一化交给 `synonyms.mjs`（与检索共用**唯一一份**词表）；v1 是每个文件各自
+ * 维护一套中文近义的旧形态。视觉模型返回的卡有自己的版本号（见 `mergeVision`）。
+ */
+const DEFAULT_MODEL_VERSION = 'heuristics-v2';
 
+/*
+ * 英文线索表：共享表 `synonyms.mjs` 只收中文近义，英文仍由本文件的线索表负责。
+ * 中文词条已全部移出这里 —— 同一批中文近义在仓库里只有 `synonyms.mjs` 一份，不许再抄一份。
+ */
 const INTENT_CUES = Object.freeze({
-  greet: ['你好', '早上好', '晚安', 'hi', 'hello', 'morning', 'night'],
-  thanks: ['谢谢', '感谢', '多谢', 'thanks', 'thank', 'thx'],
-  apologize: ['对不起', '抱歉', '不好意思', 'sorry', 'oops'],
-  comfort: ['抱抱', '安慰', '没事', '别难过', 'hug', 'comfort'],
-  laugh: ['哈哈', '笑死', '嘿嘿', 'lol', 'haha', 'lmao'],
-  agree: ['同意', '赞同', '对', '是的', 'agree', 'yes', 'ok'],
-  refuse: ['不要', '拒绝', '算了', 'no', 'nope', 'refuse'],
-  tease: ['调侃', '坏笑', '笨蛋', 'you wish', 'tease'],
-  encourage: ['加油', '你可以', '冲', 'go', 'cheer', 'believe'],
+  greet: ['hi', 'hello', 'morning', 'night'],
+  thanks: ['thanks', 'thank', 'thx'],
+  apologize: ['sorry', 'oops'],
+  comfort: ['hug', 'comfort'],
+  laugh: ['lol', 'haha', 'lmao'],
+  agree: ['agree', 'yes', 'ok'],
+  refuse: ['no', 'nope', 'refuse'],
+  tease: ['you wish', 'tease'],
+  encourage: ['go', 'cheer', 'believe'],
 });
 
 const EMOTION_CUES = Object.freeze({
-  joy: ['开心', '高兴', '快乐', 'happy', 'joy', 'glad'],
-  sadness: ['难过', '伤心', '委屈', 'sad', 'upset'],
-  anger: ['生气', '愤怒', '火大', 'angry', 'mad'],
-  fear: ['害怕', '紧张', '怕', 'afraid', 'scared', 'nervous'],
-  surprise: ['惊讶', '震惊', 'sure?', 'wow', 'shock', 'surprise'],
-  affection: ['喜欢', '爱', '亲亲', 'love', 'heart', 'adore'],
-  tired: ['累', '困', '疲惫', 'tired', 'sleepy', 'exhausted'],
-  smug: ['得意', '骄傲', 'smug', 'proud'],
+  joy: ['happy', 'joy', 'glad'],
+  sadness: ['sad', 'upset'],
+  anger: ['angry', 'mad'],
+  fear: ['afraid', 'scared', 'nervous'],
+  surprise: ['sure?', 'wow', 'shock', 'surprise'],
+  affection: ['love', 'heart', 'adore'],
+  tired: ['tired', 'sleepy', 'exhausted'],
+  smug: ['smug', 'proud'],
 });
 
 const TONE_CUES = Object.freeze({
-  playful: ['玩', '逗', '调皮', 'playful', 'fun'],
-  warm: ['温柔', '暖', '贴心', 'warm', 'gentle', 'soft'],
-  cold: ['冷淡', '敷衍', 'cold', 'dry'],
-  formal: ['正式', '公文', 'formal', 'official'],
-  ironic: ['反讽', '阴阳', 'ironic', 'sarcasm'],
+  playful: ['playful', 'fun'],
+  warm: ['warm', 'gentle', 'soft'],
+  cold: ['cold', 'dry'],
+  formal: ['formal', 'official'],
+  ironic: ['ironic', 'sarcasm'],
 });
 
 const RHETORIC_CUES = Object.freeze({
@@ -66,17 +81,45 @@ const RHETORIC_CUES = Object.freeze({
 });
 
 const SCENE_CUES = Object.freeze({
-  morning: ['早上', '早安', 'morning', 'breakfast'],
-  night: ['晚上', '深夜', '晚安', 'night', 'midnight'],
-  work: ['上班', '工作', '开会', 'work', 'office', 'meeting'],
-  study: ['学习', '考试', '作业', 'study', 'exam'],
-  meal: ['吃饭', '外卖', '吃', 'meal', 'food', 'lunch', 'dinner'],
-  commute: ['通勤', '路上', '地铁', 'commute', 'subway'],
-  bedtime: ['睡前', '睡觉', 'bedtime', 'sleep'],
-  comfort: ['低谷', '难过', '安慰', 'comfort', 'low'],
+  morning: ['morning', 'breakfast'],
+  night: ['night', 'midnight'],
+  work: ['work', 'office', 'meeting'],
+  study: ['study', 'exam'],
+  meal: ['meal', 'food', 'lunch', 'dinner'],
+  commute: ['commute', 'subway'],
+  bedtime: ['bedtime', 'sleep'],
+  comfort: ['comfort', 'low'],
 });
 
-const AGGRESSIVE_CUES = ['滚', '去死', '傻逼', '垃圾', '废物', 'fuck', 'shit', 'idiot', 'damn'];
+/**
+ * 旧表里**共享表还没覆盖**的中文线索，只为避免行为回退而暂时留在这里。
+ * 这不是「第二份词表」：共享表已经覆盖的中文近义一条都不在这里（那些直接走
+ * `synonyms.mjs`），这里每一条的归宿都是迁移进 `synonyms.mjs`，迁移完就从这里删掉。
+ */
+const LEGACY_RESIDUAL_CUES = Object.freeze({
+  intents: Object.freeze({
+    comfort: ['没事'],
+    agree: ['对', '是的'],
+    encourage: ['冲'],
+  }),
+  emotions: Object.freeze({
+    fear: ['怕'],
+    affection: ['爱', '亲亲'],
+  }),
+  tone: Object.freeze({
+    playful: ['玩'],
+    ironic: ['阴阳'],
+  }),
+  scenes: Object.freeze({
+    morning: ['早安'],
+    night: ['晚安'],
+    meal: ['吃'],
+    comfort: ['低谷', '难过', '安慰'],
+  }),
+});
+
+/** 攻击性措辞按「一个词一个标签」摊平，复用 `matchCues` 的命中口径。 */
+const CUES_BY_WORD = Object.freeze(Object.fromEntries(AGGRESSIVE_CUES.map(word => [word, [word]])));
 
 /** 照片类线索（强）：命中就按私人图片处理。 */
 const PHOTO_CUES = ['photo', '照片', '自拍', 'selfie', 'camera', '相机', '实拍'];
@@ -156,19 +199,43 @@ export function moderationFor({ classification, uncertainMode = 'review' } = {})
 }
 
 /**
+ * 标签并集：按来源顺序去重（共享表的命中顺序在前，它按匹配权重排过序；英文线索表在后）。
+ * 两个来源都是纯函数式的确定性输出，所以并集也确定，同一输入永远同一张卡。
+ */
+function unionLabels(primary, secondary) {
+  return [...new Set([...primary, ...secondary])];
+}
+
+/**
  * heuristics 语义卡。所有字段都是确定性的，同一输入永远同一输出（便于测试与复现）。
+ *
+ * 标签来自**两条来源的并集**：
+ *   1. `synonyms.mjs` 的 `normalizeText()`（中文近义 + 否定/转折规则 + 攻击性措辞，与检索共用）；
+ *   2. 本文件的英文线索表与少量残留中文线索（共享表还没覆盖的那些）。
+ *
+ * `hint` 也会一起归一化：素材来源方给的提示语常常是中文（QQ 的表情名、文件名注释），
+ * 只归一化 `literal` 会漏掉它们。
+ *
  * @param {{literal?: string, hint?: string, animated?: boolean, kind?: string}} input
  */
 export function analyzeWithHeuristics({ literal = '', hint = '', animated = false } = {}) {
   const text = `${String(literal)} ${String(hint)}`.trim();
-  const intents = matchCues(text, INTENT_CUES).hits;
-  const emotions = matchCues(text, EMOTION_CUES).hits;
-  const tone = matchCues(text, TONE_CUES).hits;
-  const rhetoric = matchCues(text, RHETORIC_CUES).hits;
-  const scenes = matchCues(text, SCENE_CUES).hits.filter(scene => scene !== 'comfort' || emotions.includes('sadness'));
-  const aggression = matchCues(text, Object.fromEntries(AGGRESSIVE_CUES.map(word => [word, [word]]))).hits;
+  const normalized = normalizeText(text);
+  const residual = family => (LEGACY_RESIDUAL_CUES[family] ?? {});
+  const residualHits = family => matchCues(text, residual(family)).hits;
+
+  const intents = unionLabels(normalized.intents, [...matchCues(text, INTENT_CUES).hits, ...residualHits('intents')]);
+  const emotions = unionLabels(normalized.emotions, [...matchCues(text, EMOTION_CUES).hits, ...residualHits('emotions')]);
+  const tone = unionLabels(normalized.tone, [...matchCues(text, TONE_CUES).hits, ...residualHits('tone')]);
+  const rhetoric = unionLabels([], matchCues(text, RHETORIC_CUES).hits);
+  // 场景 `comfort` 只在真的带低落信号时才算——与 `normalizeText()` 同一口径。
+  const scenes = unionLabels(normalized.scenes, [...matchCues(text, SCENE_CUES).hits, ...residualHits('scenes')])
+    .filter(scene => scene !== 'comfort' || emotions.includes('sadness') || emotions.includes('resignation'));
+  // 攻击性措辞两边都算：共享表负责中文，这里再叠一遍英文线索表（同一口径，取较大值）。
+  const aggressionHits = matchCues(text, CUES_BY_WORD).hits.length;
+  const aggression = Math.max(normalized.aggression, aggressionHits > 0 ? Math.min(1, aggressionHits / 3) : 0);
   const avoidWhen = [];
-  if (emotions.includes('anger') || aggression.length > 0) avoidWhen.push('serious-conflict', 'apology');
+  if (emotions.includes('anger') || aggression > 0) avoidWhen.push('serious-conflict', 'apology');
   if (emotions.includes('sadness')) avoidWhen.push('celebration');
   if (animated) avoidWhen.push('low-bandwidth');
   const evidence = intents.length + emotions.length + tone.length;
@@ -182,8 +249,9 @@ export function analyzeWithHeuristics({ literal = '', hint = '', animated = fals
     rhetoric: [...new Set(rhetoric)].slice(0, 6),
     scenes: [...new Set(scenes)].slice(0, 8),
     avoidWhen: [...new Set(avoidWhen)].slice(0, 8),
-    aggression: aggression.length > 0 ? Math.min(1, aggression.length / 3) : 0,
+    aggression,
     confidence: Number(confidence.toFixed(2)),
+    mixed: normalized.mixed === true,
     modelVersion: DEFAULT_MODEL_VERSION,
     source: 'heuristics',
     notImplemented: NOT_IMPLEMENTED,
