@@ -30,6 +30,14 @@
 再停止旧实例、重启 DSH。BLE 使用按需连接，启动时不会扫描设备。
 
 DSH 启动后分别检查云端的 `/api/data?days=1` 和蓝牙的 `/api/state`。
+Windows 启动器的 TEMP/TMP/TMPDIR 必须位于工作区外；使用
+`tools/lib/host-temp.mjs` 解析本机 LocalAppData 下的临时目录。使用本机 Node
+运行宿主可避免 Electron 可执行文件被作为沙箱 runner 启动、但子进程环境
+清理 Electron 标记后退出的问题。
+如果 Windows 终端继承了 Bash 参数，需在本机 profile 显式覆盖
+`optional-terminal-pwsh` 的 `shellDialect: pwsh`、
+`shellArgs: [-NoLogo, -NoProfile]` 与已安装的 PowerShell `shellPath`。
+本机 profile 与账号路径不入库。
 日志中的 `command sent` 只代表命令已送进终端。云采集仍需有效的华为授权，
 BLE 服务能响应也不代表手环已连接。两路终端随所属的 DSH 实例关闭，下次启动时重新建立。
 

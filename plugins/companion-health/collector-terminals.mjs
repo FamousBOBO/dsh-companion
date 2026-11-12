@@ -199,7 +199,7 @@ export function apply(ctx) {
         if (abort.signal.aborted) break;
         if (!settings[key] || settings[key].enabled === false) continue;
         try { await start(key, settings); }
-        catch { console.warn(`[${name}] ${key} startup failed`); }
+        catch (error) { console.warn(`[${name}] ${key} startup failed: ${String(error?.message ?? error).slice(0, 300)}`); }
       }
     }).catch(() => {
       if (!abort.signal.aborted) console.warn(`[${name}] Unable to read collector settings`);
