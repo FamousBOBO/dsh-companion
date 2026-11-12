@@ -33,3 +33,14 @@ DSH 交接报告给出：93a9037 正常合并、4f091cf doctor 查询串修复�
 禁止直接照抄旧交接的 `reset --hard 18ae9c6`：它会移除当前分支后续集成及表情提交，并覆盖已跟踪本地修改。若实际需要回滚，应先记录当时 HEAD 与工作树、保存本地运维补丁，并审阅受影响的后续提交，选择针对性的 revert 或隔离恢复。旧数据库快照不能无条件覆盖已有新数据；须先备份当前数据，确认兼容性与恢复范围。本文不执行回滚。
 
 结论：合入交付及当前实例健康复核完成；本次生图原始报错和 DSH 工具链故障保持未解决，不以文档收尾声称已修好。
+
+## 表情功能生产验收补记（北京时间 16:29）
+
+用户要求将表情成果全部部署到当前生产。核对 main、dsh-dev/expression-sticker-chain、expression-retrieval-fit 与 expressions：已提交的表情链路均已在 main 中；expressions 独有历史提交 1c5007e 经 `git cherry main expressions` 标为 `-`（等价补丁已包含），无需重复应用。
+
+- 当前实例已加载表情发送器、5 个工具与管理路由，本次启动段有明确接线日志。modules.expression、表情配置 enabled 与 delivery.enabled 均为 true，本轮未改开关。
+- QQ 构建产物时间 14:31:02，晚于 d20cf1a 的私聊表情工作流修复提交 14:30:52，早于当前实例启动 14:31:05。表情本体是直接加载的 MJS。未发现需要补建或重启的新代码。
+- 表情模块全量测试：228 passed、0 failed、0 skipped。生产健康检查再次通过。
+- 对运行实例认证后的只读请求 `/api/companion-expression/config`、`/api/companion-expression/assets?limit=1` 均 HTTP 200 且 ok=true；未输出图库内容。此证据覆盖管理接口与图库接入，不证明 QQ 实际送达。
+- retrieval worktree 有尚未提交的 analyzer/ingest、synonyms 与 fixture 工作，属另一条正在修改的检索任务，未将不完整工作复制进生产，也未修改该 worktree。
+- 本次“推入生产”指本机生产部署，未向 Git 远端 push，未额外真实发送消息。已提交的表情成果当前已部署生效，生产数据与备份保留。
