@@ -151,4 +151,26 @@ export function writeConfig(dataDir, config) {
   return file;
 }
 
+/**
+ * Write `home/companion/visual-identity.json`.
+ *
+ * A companion picture now requires a configured identity, so every fixture that draws the
+ * companion has to provide one — the point of the gate is that a missing file refuses.
+ */
+export function writeIdentity(dataDir, personas = {}) {
+  const file = path.join(dataDir, 'home', 'companion', 'visual-identity.json');
+  fs.mkdirSync(path.dirname(file), { recursive: true });
+  fs.writeFileSync(file, JSON.stringify({ schemaVersion: 1, personas }, null, 2), 'utf8');
+  return file;
+}
+
+/** The identity every positive companion fixture uses unless a test says otherwise. */
+export const DEFAULT_IDENTITY = {
+  bot: {
+    name: { zh: '测试角色', en: 'Testa' },
+    source: { zh: '测试作品', en: 'Synthetic Testwork' },
+    appearance: { zh: '银灰短发，蓝到粉的渐变眼', en: 'short silver-grey hair and blue-to-pink gradient eyes' },
+  },
+};
+
 export const PNG_B64 = makePng({ width: 832, height: 1216 }).toString('base64');

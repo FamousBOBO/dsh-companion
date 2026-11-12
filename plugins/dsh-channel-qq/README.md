@@ -100,7 +100,8 @@ npm run verify     # 类型 + 测试 + 分层 + 体积，全绿再继续
 ## 提醒的四种结论（`ReminderOutcome`）
 
 提醒到点后每一次投递尝试都会落到**四种**结论之一。**代码里的权威定义**是
-`src/features/reminders/runner.ts` 的 `REMINDER_OUTCOMES`（类型由它派生，别再手写第二份）；
+`src/features/reminders/outcome.ts` 的 `REMINDER_OUTCOMES`（类型由它派生，别再手写第二份；
+`runner.ts` 只是 re-export，所以老的 `import ... from '.../runner.js'` 照样有效）；
 这张表是它的中文对照，改词表时两处一起改。
 
 | 结论 | 含义 | runner 会写什么 | 消耗这条提醒吗 |
@@ -144,6 +145,74 @@ npm run verify     # 类型 + 测试 + 分层 + 体积，全绿再继续
 - `contact`（主动消息）自己的账本不受提醒侧 `dryRun` 控制。
 
 一句话：`dryRun` 管的是"**提醒这条后台链路自己会不会动持久状态**"，不管"人手动改了它"。
+
+### 到点提醒为什么不再被主动消息的冷却/配额拦住（2026-11-10 热修）
+
+共享闸门 `contact.outboundBudget()` 现在分**两档**（`BudgetGateInput.profile`）：
+
+| 档 | 谁在用 | 判定项 | 被拦时的 reason |
+|---|---|---|---|
+| `proactive`（缺省） | contact 自己与所有老调用方 | 免打扰 / 竞争 / 冷却 / 配额 / 未回复退避 / 通道 | `quiet-hours`、`cooldown:room`、`quota:global`、`backoff:unanswered`、`no-channel`… |
+| `reminder` | **到点提醒**（`features/reminders/index.ts`） | **只有通道与绑定** | `no-channel`、`binding-invalid` |
+
+理由不是"提醒更重要"，而是**两类消息的承诺语义不同**：主动消息没人要求它现在说话，拦一下只是
+"这一会儿不打扰你"；到点提醒是主人**在某个时刻明确要求**的一句话，拿主动开口的额度去推迟它，
+等于把承诺改写成"看心情"。事故现场：2026-11-09 23:40 的提醒被 23:21 一次普通回复留下的会话冷却
+（`perRoomCooldownMs=3600000`）挡到 00:21:52，实际 00:22:10 才发出——**迟到 42 分钟**，84 条
+`被共享闸门拦下（cooldown:room）` 就是那 84 拍。
+
+两条边界（**别读成"提醒不受管控"**）：
+
+- **单项**：提醒不向 contact **借**额度，但发成功之后**照样** `contact.account()` 记账 ⇒ 主动消息
+  那一侧仍然把这次提醒算作"刚说过话"（冷却/配额确实被消耗）。
+- **物理不可行照样拦**：通道断了、绑定对不上就发不出去，那是事实，不是节奏问题。
+  `dryRun` / `allowExternalSend` 仍在提醒自己的装配里判，与这档正交。
+
+### 投递前先落盘"认领"（防重复外发）
+
+每次真发之前，runner 会先在同一份 `reminders.json` 上**落盘领一次**（`claim = {by, at, until}`，
+TTL 120 秒，`by` 是 `pid-<pid>#<seq>#<uuid>`，见 `features/reminders/claim.ts`）。六个后果：
+
+- **多实例 / 多拍只发一次**：第二个扫描者拿到业务拒绝 `STALE_STATE`，本拍跳过（以前只有进程内一个
+  `running` 布尔量，跨进程毫无保护）；
+- **旧快照不许认领**（第三轮）：认领带 `expectedAt` / `expectedOccurrence`，锁内重读的盘上状态
+  若不是同一轮（`at` 变了、`occurrence` 的 `id`/`revision` 变了、解绑或新绑）⇒ `STALE_STATE`，
+  **不写盘、不发送、`attempts` 也不 +1**。没这条的话，周期提醒发完推进 `at` 之后，握着旧快照的
+  实例会把**下一轮**提前发出去（同一轮重发一次、下一轮被跳过）。还没到 `at` 同样不许领；
+- **认领成功只用锁内最新对象**：`ClaimOutcome.reminder` 是锁内那一行，`send` / 记账 / 日志
+  `scheduledAt` 全部用它。认领前后各过一次 `allow()`；二次不过就用当前 owner 放回并跳过，
+  **放回失败会记日志**（不假定成功）；
+- **认领过期 = 结果未知** ⇒ 收敛成 `unknown`（`claim-expired:unknown`），**不重发**（盘上分不清
+  "发之前崩"还是"发之后崩"，重发就是重复外发）。收敛也带 CAS（`expectedOwner` + `expectedUntil`）：
+  对方在这期间**续租成功**或已收尾 ⇒ 拒绝收敛、盘上不动（否则会把正在进行的发送记成"不确定"）；
+- `skipped` / `dry-run` 之后**立刻放回**，否则周期提醒的下一轮会被自己的旧认领挡住。
+  **只放自己的**：`releaseClaim(id, owner)` 在 `claim.by !== owner` 时回 `STALE_STATE`（替别人
+  放回等于让对方的下一次扫描重发一遍，而对方可能正在发）；
+- **发送期间续租**（第二轮）：按 `TTL/3 = 40 s` 续租，避免"我们还在发、认领先过期"被别的进程
+  收成 `unknown`。续租失败只记日志，不改投递结论。
+
+**认领靠什么互斥**（第二轮补的）：不是进程内队列，而是 `node:sqlite` 的 `BEGIN IMMEDIATE`
+（内核级文件锁，锁文件 `<reminders.json>.lock.db`）。锁套在**事务层**，所以所有读-改-写都受
+同一把锁约束，并且事务基线是**锁内重读的磁盘内容**——两个独立进程不再可能各自读到
+`claim=null` 再各自发送。
+
+**锁不可用时是 fail-closed**（第三轮）：`node:sqlite` 缺失或锁文件打不开 ⇒ 写入一律抛
+`LOCK_UNAVAILABLE`（**不是** `LOCK_TIMEOUT`：那是"竞争，稍后再试"，这是"这台机器永远拿不到锁"），
+`store.writeModel()` 如实报 `unavailable` / `cross-process-lock`，**不会静默退化成无锁写入**。
+`in-process-only` 只出现在调用方**显式**传 `mutex: null` 的测试替身上。语义是 **at-most-once
+倾向**，不是 exactly-once（没有平台幂等键）。设计与证据见
+[docs/reminders-dispatch-timing.md](docs/reminders-dispatch-timing.md) §10 / §12。
+
+**结构化日志**（`grep 'reminders: dispatch'`，**不含正文**——日志会被贴进 issue）：
+
+```
+reminders: dispatch reminderId=r_xxx scheduledAt=1794238800000 observedAt=1794241330369
+  latenessMs=2530369 claimedAt=1794238808654 sendStartedAt=… sendCompletedAt=… attempt=1
+  outcome=sent
+```
+
+`latenessMs` 是事后复盘唯一的硬证据：只要它 > 1000 就会**额外**先打一行
+`reminders: <id> 迟到 latenessMs=…（计划 X，观察 Y）`，正常按时不刷这条噪音。
 
 **读失败时的写入锁**：如果盘上**有** `reminders.json` 但读不出来（损坏/权限/半截 JSON），
 提醒会**空表起步并锁定所有写入**（日志 `锁定所有写入` + 每次写入被拒时 `写入被拒绝`），
@@ -189,7 +258,13 @@ npm run verify     # 类型 + 测试 + 分层 + 体积，全绿再继续
 |---|---|---|
 | 补发窗口 | **6 小时** | `at` 比现在早超过 6 小时的提醒**不再补发**，收成终态：`fired=true` + `expiredAt` + `expiredReason='skipped-expired:too-old'`（后台能看到，日志写 `N 条已超出补发窗口`） |
 | **积压总量** | **20 条** | 窗口内的到期提醒超过 20 条时，**按最老优先丢弃**超出部分 → `skipped-expired:backlog-overflow`（日志写 `因积压丢弃 M 条`，后台有 `积压丢弃` 计数） |
-| 每拍条数 | **3 条/拍**（拍间隔 30 秒） | 一拍最多发 3 条，其余**不丢弃**、下一拍继续（日志写 `本拍到点 X 条，按每拍上限 3 条先发`） |
+| 每拍条数 | **3 条/拍** | 一拍最多发 3 条，其余**不丢弃**、下一拍继续（日志写 `本拍到点 X 条，按每拍上限 3 条先发`） |
+
+**拍间隔不再是固定 30 秒**（2026-11-10 热修）：runner 按**下一条提醒的 `scheduledAt`** 定下一次唤醒
+（`src/features/reminders/schedule.ts` + `wakeup.ts`），没有未来提醒时才退回心跳（默认 30 秒）。
+旧实现是 `setInterval(30_000)` 固定轮询，**到点误差的下界就是 30 秒**——2026-11-09 那条提醒因此
+在闸门放开后又白等了 17.5 秒（完整时间线见 [docs/reminders-dispatch-timing.md](docs/reminders-dispatch-timing.md)）。
+`MAX_CATCH_UP_PER_TICK = 3` 本身**没变**。
 
 为什么：`dryRun` 关掉（或机器停机很久再开机）的那一刻，如果没有这三条，会把积压的提醒**一次性全炸出来**；
 而只有"窗口 + 每拍上限"时，"停机 6 小时"能攒出 720 条、分 2 小时慢慢发——**那是刷屏**，比"不发"糟得多。
@@ -227,9 +302,38 @@ npm run verify     # 类型 + 测试 + 分层 + 体积，全绿再继续
 4. **`dropped` 是累计值**：要等 `pruneFired` 把那些行清掉才会回落；判断"现在是否还在丢"请用 `droppedLast24h`。
 5. **dryRun 的"零写入"只在进程内验证过**：`R5-1` 断言的是"同一进程连续多拍前后整份 `reminders.json` 逐字段不变"，
    **跨进程重启**（演练中崩溃 → 重启后是否仍零写入）没有测试覆盖。
+   **2026-11-10 补充**：投递前的**认领**（`claim`）在 dryRun 下**整笔不发生**（`store.claim()` 自己就挡，
+   不依赖调用方记得传探针——`T9` 断言演练多拍之后盘上逐字节不变）。代价：**演练不验并发**——
+   "两个实例同时扫会不会重复发"只能在非演练下复现。
+   **第二轮补充**：跨进程并发现在有**真子进程**覆盖（`test/reminders-multiprocess.test.ts`，8 个用例，
+   骨架在 `test/process-peer.ts`），但那些用例都跑在 `dryRun=false` 上；"演练中崩溃重启仍零写入"
+   这一条依旧只由"整条入口零写入"的设计保证，没有崩溃注入测试。
+   **第三轮补充**：`test/reminders-claim-cas.test.ts`（14 个真子进程用例）同样跑在 `dryRun=false`
+   上；快照 CAS 在演练下**不会发生**（演练压根不认领），所以"演练 + 并发决策"这一组合仍然未覆盖。
 6. **周期提醒与一次性提醒的优先级**：每拍 3 条的上限**只对一次性提醒计数**，周期提醒永远进本拍
    （否则一条 daily 会把一次性提醒饿死）。反向的"上百条周期提醒同时到点时一次性提醒会不会被拖"，
    已有 `R5-6`（50 daily + 5 一次性 ⇒ 3 拍内一次性全部发出）覆盖到这个量级，**更大规模未测**。
+7. **"到点 5 秒内发出"的边界**（2026-11-10 新增，别读大）：`test/reminders-dispatch-timing.test.ts` 的
+   `T1`/`T6` 钉的是"**从 `scheduledAt` 到进入发送流程**"的延迟 ≤ 5 秒（假时钟上实测 0ms，因为按
+   `at` 精确定时）。它**不**包含：QQ 侧网络往返、`OutboundQueue` 的 `rateLimitMs` 排队、系统休眠期间
+   的时间（`setTimeout` 跨休眠不保证按墙钟走，靠心跳兜）、以及进程没在跑的时间（那段时间由补发窗口管）。
+   端到端"主人 23:40 收到"的保证比这个弱，别把它当 SLA。
+8. **到期未消费的提醒会退避**（第二轮新增）：`dryRun`（默认开）、通道暂不可用、房间不在白名单、
+   日程暂时阻断、积压超过每拍上限，这些情况**合法地不消费**提醒。以前下一拍仍会按 `MIN_WAKEUP_MS = 1`
+   立刻再醒 ⇒ 空转 + 日志刷屏。现在按"有没有进展"退避：有进展 ⇒ 1 秒（积压按节奏继续）；
+   没进展 ⇒ 翻倍，**上限是心跳**（所以通道恢复后最多等一个心跳就又看得见）。
+   **退避状态纯内存、不落盘**（落盘就会破坏 dryRun 的零写入与旧数据字节兼容），所以重启后退避
+   从零开始——那只是"启动第一拍立刻检查一次"，不影响正确性。
+   诊断面读 `runner.backoff = { overduePasses, gapMs }`：`overduePasses` 在涨就是"一直没被消费"。
+   设计见 [docs/reminders-dispatch-timing.md](docs/reminders-dispatch-timing.md) §11。
+9. **认领者令牌进不了日志，只能看脱敏串**（第三轮新增）：`claim.by` 现在是
+   `pid-<pid>#<seq>#<uuid>`，日志里只打 `pid-N#seq`（`shortOwner()`）。排障时**不能**靠日志
+   复原出完整 owner——那是"能不能续租/释放/收敛"的凭据，日志会被整段贴进 issue。
+   好处是容器共享 PID namespace 时也不会撞（同 pid 两个 runner 必得不同 owner，C12 钉住）。
+10. **快照 CAS 判据只有 `at` 与 `occurrence`**（第三轮新增，别读大）：正文/房间/目标/重复方式
+   改了**不影响** CAS——它们不改变"这是第几轮"。反过来，如果有人将来加一种"能改变轮次语义"
+   的字段（比如独立的 `roundIndex`），必须同时把它加进 `ClaimExpectation`，否则 CAS 会出现
+   盲区。这是**约定**，不是编译器能挡住的。
 
 **已知未加压范围**：`contact-*`（203 条）没有进"12 个 CPU 忙循环 + `--test-concurrency=8`"的加压矩阵
 （它与本批改动交集只有 share-port 与出站边界，上一轮压过）；本批加压覆盖的是 `round4-qq`、

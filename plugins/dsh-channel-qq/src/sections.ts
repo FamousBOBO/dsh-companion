@@ -95,3 +95,10 @@ export const SECTION_PLUGINS: readonly SubPlugin[] = [
   contactPlugin,
   adminPlugin,
 ]
+
+/** Mirror instances have no background jobs, admin surface or outbound tools. */
+export function sectionsForMode(mode: string): readonly SubPlugin[] {
+  return mode === 'mirror-observe'
+    ? SECTION_PLUGINS.filter(plugin => ['persona', 'observers', 'platform', 'inbound'].includes(plugin.name))
+    : SECTION_PLUGINS
+}

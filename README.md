@@ -255,6 +255,32 @@ npm run verify
 
 可选模块默认关闭。QQ 外发、后台模型任务、健康采集和计费 API 等能力也需要显式授权后才能启用。
 
+### 提示词分层（陪伴会话默认不装开发工具）
+
+陪伴预设默认只挂人格、记忆、运行时与日程，不装载文件读写、Shell 和后台任务工具——
+它们的说明每轮都在 system prompt 里，与陪伴无关。做维护时需要这些工具，在
+`config/suite.json` 里打开对应开关后重新 `npm run setup`：
+
+```json
+{
+  "prompt": {
+    "companionDevTools": true,
+    "harnessDevContext": true,
+    "deliverableHints": true
+  }
+}
+```
+
+| 开关 | 默认 | 打开后 |
+|---|---|---|
+| `companionDevTools` | `false` | 陪伴预设重新装载 `tool-pwsh` / `tool-fs` / `tool-fs-search` / `tool-jobs` / `tool-skill` / `agent-instructions` |
+| `harnessDevContext` | `false` | 恢复宿主的「当前 checkout / Web GUI 地址」两行 |
+| `deliverableHints` | `false` | 恢复宿主的交付卡片说明（需要同时装载 `present` 工具才有意义） |
+
+开发预设（standard / ptc / cordis）**不受影响**，它们本来就有这些工具。
+每一段的取舍与代价见 [提示词基线](docs/09-prompt-baseline.md)，
+实测效果见 [提示词验收](docs/12-prompt-verification.md)。
+
 密钥建议通过环境变量或 `.env.local` 配置，不要提交到 Git。
 
 详细配置说明见 [配置文档](docs/02-configuration.md)。
@@ -303,6 +329,7 @@ npm run migrate -- import --from <目录> --dry-run
 | 表情包系统 | 宿主加载及真实表情投递已验证 |
 | 媒体模块 | 真实生图 API 调用已验证 |
 | 健康模块 | 当前发布树的真实账号及硬件验证尚未完成 |
+| Prompt 分层（2026-11-09） | 陪伴预设已去掉宿主原生开发提示词，system prompt 10,361 → 5,881 字；单元测试、宿主装载与 10 轮真实模型样本均已验证 |
 | Linux / macOS | 尚未完成实机验证 |
 
 Windows 验证环境：
@@ -327,6 +354,14 @@ Windows 验证环境：
 | [05 · 升级与回滚](docs/05-upgrade-rollback.md) | 版本升级与数据兼容 |
 | [06 · 故障排查](docs/06-troubleshooting.md) | 常见问题与诊断方法 |
 | [07 · 验证状态](docs/07-verification-status.md) | 测试记录与实际验证依据 |
+| [08 · 提示词引擎](docs/08-prompt-engine.md) | 模块化认知与写作引擎：场景路由、算子、风格档与预算（默认关闭） |
+| [09 · 提示词基线](docs/09-prompt-baseline.md) | 每一段 system prompt 来自哪个插件、能不能关、关掉要付什么代价 |
+| [10 · 提示词分层](docs/10-prompt-layers.md) | 陪伴预设的裁剪与静态段压缩：改了什么、为什么这么改 |
+| [11 · 场景路由](docs/11-prompt-routing.md) | 规则路由的现状、这次只修了哪两处、七条对话样例的实测判定 |
+| [12 · 提示词验收](docs/12-prompt-verification.md) | 重新抓包：10,361 → 5,881 字、56 → 46 个工具，逐项对照 |
+| [13 · 后续项](docs/13-prompt-followups.md) | 这次发现但没修的问题，含根因与修法要点 |
+| [14 · 交付与回滚](docs/14-prompt-delivery.md) | 变更清单、测试结果、未完成项与逐阶段回滚方法 |
+| [人格精简建议](docs/persona-simplification-example.md) | 逐段给出删/留理由（示例，不自动应用到真实人格） |
 
 如果希望让 DSH 自行阅读仓库并执行部署，可以从 [AGENTS.md](AGENTS.md) 开始。
 

@@ -25,6 +25,8 @@ export function reduceResolve(draft: Reminder[], id: string, outcome: 'confirmed
   if (outcome === 'failed') {
     item.fired = false
     item.firedAt = null
+    // 人工判定"确实没发出去" ⇒ 这一轮重新开始，认领也要放掉（否则新认领会被旧认领挡住）。
+    delete item.claim
   }
   return edited({ ...item })
 }
@@ -56,9 +58,10 @@ export function reduceMarkUnknown(draft: Reminder[], id: string, reason: string,
   if (item === undefined) return rejected('NOT_FOUND', `没有 id=${id} 的提醒`)
   item.unknownAt = now
   item.unknownReason = reason
-  // 有定论了（哪怕是"不知道"）：撤掉为崩溃恢复留的"已发出"事实。
+  // 有定论了（哪怕是"不知道"）：撤掉为崩溃恢复留的"已发出"事实，也放掉认领（一轮结束）。
   delete item.sentFor
   delete item.sentAt
+  delete item.claim
   if (item.repeat === 'none') {
     item.fired = true
     item.firedAt = now

@@ -25,7 +25,7 @@
 import type { ContactConfig } from '../../config/sections/contact.js'
 import { countsForToday, inQuiet, zoneClock } from './local-time.js'
 import { roomOf, targetMatchesRoom } from './room-target.js'
-import type { ContactCandidate, ContactCounters, ContactRuntimeFacts } from './types.js'
+import type { BudgetProfile, ContactCandidate, ContactCounters, ContactRuntimeFacts } from './types.js'
 
 /**
  * 全部可能的 reason（**稳定字符串**，诊断面板与测试直接断言它）。
@@ -138,6 +138,11 @@ export interface BudgetGateInput {
   readonly room?: string
   /** 只有"用候选身份推房间"这一条还要它。 */
   readonly candidate?: ContactCandidate
+  /**
+   * 谁在问：`proactive`（缺省，= 修复前的判据一字不变）或 `reminder`（到点提醒）。
+   * 为什么要分两档：见 `types.ts::OutboundBudgetInput.profile`（这里不重复说明）。
+   */
+  readonly profile?: BudgetProfile
 }
 
 /** 出网前的两道**配置授权**（与候选门控正交：它们管"这条路允不允许存在"）。 */
@@ -218,9 +223,23 @@ const BUDGET_CHECKS: readonly BudgetCheck[] = [
   checkChannel,
 ]
 
+/**
+ * **到点提醒**的预算判据（2026-11-10 修复；理由见 `BudgetGateInput.profile`）。
+ *
+ * 只留 `checkChannel`：通道不通、绑定对不上是"真的发不出去"；免打扰 / 冷却 / 配额 /
+ * 未回复退避回答的是"现在适合主动找人说话吗"，而提醒回答的是"主人约好的那一刻到了"。
+ * ⚠️ 不是开后门：dryRun 与外发授权在 `features/reminders/index.ts` 自己判，投递成功后
+ * **照样**记进同一本账——单向：提醒不借额度，但会消耗额度。
+ */
+const REMINDER_BUDGET_CHECKS: readonly BudgetCheck[] = [checkChannel]
+/** 按档取判据表（缺省 `proactive` ⇒ 与修复前逐条相同）。 */
+export function budgetChecksFor(profile: BudgetProfile = 'proactive'): readonly BudgetCheck[] {
+  return profile === 'reminder' ? REMINDER_BUDGET_CHECKS : BUDGET_CHECKS
+}
+
 /** 只跑预算类检查（给"没有候选"的发送方用）；`send` = 允许出网，reason 与 contact 同名同义。 */
 export function evaluateOutboundBudget(input: BudgetGateInput): GateDecision {
-  for (const step of BUDGET_CHECKS) {
+  for (const step of budgetChecksFor(input.profile)) {
     const decision = step(input)
     if (decision !== null) return decision
   }
@@ -377,7 +396,4 @@ function checkChannel(input: BudgetGateInput): GateDecision | null {
   if (!input.runtime.roomBound) return { verdict: 'drop', reason: 'binding-invalid' }
   return null
 }
-
-// 房间键与目标的自洽几何（`roomOf` / `targetMatchesRoom`）搬到了 `./room-target.ts`：
-// 它们判的是"这个房间键与这个目标是不是同一个东西"，不是"这条候选能不能发"。
 

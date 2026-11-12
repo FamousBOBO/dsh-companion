@@ -47,6 +47,8 @@
           - id: companion-foundation
             isolate:
               companionAgenda: true
+              companionGroupPersona: true
+              companionGroupMemory: true
             name: 'file://${SUITE_ROOT}/plugins/companion-foundation/index.mjs'
 #@@begin:media
           # 媒体层（识图 / TTS / 生图）：能力默认全关，开关在 <dataDir>/home/media/config.json，
@@ -66,14 +68,29 @@
               companionExpression: true
             name: 'file://${SUITE_ROOT}/plugins/companion-expression/index.mjs'
 #@@end:expression
+          # 时间上下文：昼夜与「现在几点」的表达依赖它，陪伴会话始终保留。
           - id: time-context
             name: '@deepseek-ai/dsh-time-context'
+          # 日程工具管的是「打算做」的机会，它与真正的提醒投递是两条路径，
+          # 所以它**不属于**开发能力，陪伴会话始终保留。
+          - id: tool-schedule
+            name: '@deepseek-ai/dsh-tool-schedule'
+#@@begin:companion-devtools
+          # ── 开发/维护能力（默认不装）────────────────────────────────────────
+          # 打开方式：config/suite.json 里写 "prompt": { "companionDevTools": true }。
+          # 这些工具各自会往 system prompt 里注入文件读写、Shell、后台任务的规则段
+          # （实测约 1,470 字），并把工具清单从 46 个撑到 56 个。普通陪伴会话用不到
+          # 它们。要装插件、跑诊断、做迁移时，用桌面 App 或 standard / cordis 预设即可，
+          # 不要把这份裁剪扩散到别的预设。
+          #
+          # 注意 `skill`（技能注册表）**不能**挂进预设：宿主 dsh-base 已在全局注册
+          # `skills` 服务，预设里再挂一份会让整个 companion 预设被标成 broken
+          # （agentPresets/list 里报 `service "skills" has been registered`）。
+          # 预设层只需要 filesystem provider 与调用工具。
           - id: agent-instructions
             name: '@deepseek-ai/dsh-agent-instructions'
             config:
               maxBytes: 16384
-          - id: skill
-            name: '@deepseek-ai/dsh-skill'
           - id: skill-filesystem
             name: '@deepseek-ai/dsh-skill-filesystem'
           - id: tool-skill
@@ -88,10 +105,37 @@
               sampleOverCapGlobResults: false
           - id: tool-jobs
             name: '@deepseek-ai/dsh-tool-jobs'
-          - id: tool-schedule
-            name: '@deepseek-ai/dsh-tool-schedule'
+#@@end:companion-devtools
 
 # 自配置技能从工作区 .agents/skills 读取；群聊预设不包含技能与写入工具。
+
+
+# ── 2b. 陪伴 profile 的宿主层裁剪 ───────────────────────────────────────────
+# 下面两个插件由宿主 bundle（dsh-web-app）在**profile 层**装载，它们各自往
+# system prompt 里注册一段给「能改 DSH 本体」的编码智能体看的说明：
+#
+#   harness-dev-context → HARNESS_SOURCE(325) + WEB_SURFACE(821) = 1,146 字
+#   ui-deliverables     → DELIVERABLE_FILE_REFERENCES(1,192)          = 1,192 字
+#
+# 两段都与陪伴无关。宿主没有「只关 Section 不关插件」的开关（`dsh-system-prompt`
+# 只提供 section()/context() 注册），所以只能按条目关掉整个插件。
+#
+# 关掉的代价（都已核对）：
+#   * harness-dev-context：失去「当前 checkout / Web GUI 地址」两行 runtime context。
+#     要在本 profile 里改 DSH 本体时，把 config/suite.json 的
+#     prompt.harnessDevContext 改成 true 重新 setup 即可。
+#   * ui-deliverables：失去 `present` 工具的宿主半（deliverables/presented 事件、
+#     原生打开文件）。但 `present` 工具本身由 dsh-tool-present 注册，而陪伴预设
+#     并不装载它 —— 也就是说这段提示词讲的是模型根本调不到的工具。
+#     需要交付卡片时把 prompt.deliverableHints 改成 true。
+#@@begin:trim-harness-dev-context
+- id: harness-dev-context
+  disabled: true
+#@@end:trim-harness-dev-context
+#@@begin:trim-deliverable-hints
+- id: ui-deliverables
+  disabled: true
+#@@end:trim-deliverable-hints
 
 
 # ── 3. 工作区上下文 ─────────────────────────────────────────────────────────

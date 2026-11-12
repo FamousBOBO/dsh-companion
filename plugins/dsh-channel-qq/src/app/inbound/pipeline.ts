@@ -38,6 +38,7 @@ import { scheduleBatch as armBatch, gateOf, type FlushDeps } from './batch-flush
 
 /** 流水线用到的配置（实时读，后台改了立即生效）。 */
 export interface PipelineConfig {
+  readonly connection?: { readonly mode: string }
   readonly groupEnabled: boolean
   readonly requireMention: boolean
   readonly debug: boolean
@@ -109,8 +110,12 @@ export interface PipelineDeps {
 }
 
 export class InboundPipeline {
+  private readonly observeOnly: boolean
   private readonly dmBuffer: DmBuffer
-  constructor(private readonly deps: PipelineDeps) { this.dmBuffer = new DmBuffer(deps) }
+  constructor(private readonly deps: PipelineDeps) {
+    this.dmBuffer = new DmBuffer(deps)
+    this.observeOnly = deps.config().connection?.mode === 'mirror-observe'
+  }
   /** 步骤 1：这条事件该不该进流水线（群聊按"这个群自己的开关"判）。 */
   private admits(event: OneBotEvent): boolean {
     if (event.post_type !== 'message' || event.message_type === undefined) return false
@@ -151,7 +156,6 @@ export class InboundPipeline {
       quoted,
       voiceText,
       receivedFiles,
-      // 语气提示只在被叫到时才查：它会把模型带到某种语气上，混进无关消息里就是事故。
       reactionHint: called ? reactionHintOf(this.deps.config(), event) : null,
       nowMs: this.deps.clock.now(),
       // 表情词典只在消息里真有表情时才问（每条群消息都查库没有必要）。
@@ -159,28 +163,7 @@ export class InboundPipeline {
     })
   }
 
-  /** 一条入站消息。 */
-  async handle(event: OneBotEvent): Promise<void> {
-    if (!this.admits(event)) return
-    const key = roomOf(event)
-    if (key === null) return
-    const parsed = parseInbound(event)
-    // 社交指令（好友申请/群邀请审批）：同样私聊专属、不经模型。
-    if (event.message_type === 'private' && this.deps.socialCommand !== undefined) {
-      if (await this.deps.socialCommand(parsed.plainText, event.user_id ?? 0)) return
-    }
-    // 管理员本地命令：私聊、先于 agent、不经模型。命中就回一条、不进队列。
-    if (event.message_type === 'private' && this.deps.adminCommand !== undefined) {
-      const reply = await this.deps.adminCommand(parsed.plainText, event.user_id ?? 0)
-      if (reply !== null) { await this.deps.platform().api.sendPrivateMessage(event.user_id ?? 0, [{ type: 'text', data: { text: reply } }]); return }
-    }
-    // ── 旁听（presence，默认关）───────────────────────────────────────────
-    // 记旁听必须在 requireMention 早退**之前**：不然下一次 @ 时她对"刚才在聊什么"
-    // 一无所知，而"你怎么看"这类追问正是靠那段背景才答得上的。
-    const config = this.deps.config()
-    const groupId = event.message_type === 'group' ? (event.group_id ?? null) : null
-    const presence = presenceSettingsOf(config)
-    const watched = presence !== null && presenceAppliesTo(presence, groupId)
+  private captureWatched(event: OneBotEvent, parsed: ParsedInbound, config: PipelineConfig, presence: AmbientPresenceSettings | null, groupId: number | null, watched: boolean): void {
     if (watched && presence !== null && groupId !== null) {
       captureAmbient({
         ambient: this.deps.ambient,
@@ -191,21 +174,40 @@ export class InboundPipeline {
         parsed,
         selfId: config.selfId,
         nowMs: this.deps.clock.now(),
-        // 注册表交给采集层现取：采集是每条群消息都跑的热路径，"谁来查身份"定在一处。
         ...(this.deps.participants === undefined ? {} : { registry: this.deps.participants }),
       })
     }
+  }
+  /** 一条入站消息。 */
+  async handle(event: OneBotEvent): Promise<void> {
+    const initial = this.deps.config()
+    if (this.observeOnly && (event.message_type !== 'group' || initial.presence?.mode !== 'shadow')) return
+    if (!this.admits(event)) return
+    const key = roomOf(event)
+    if (key === null) return
+    const parsed = parseInbound(event)
+    if (event.message_type === 'private' && this.deps.socialCommand !== undefined) {
+      if (await this.deps.socialCommand(parsed.plainText, event.user_id ?? 0)) return
+    }
+    if (event.message_type === 'private' && this.deps.adminCommand !== undefined) {
+      const reply = await this.deps.adminCommand(parsed.plainText, event.user_id ?? 0)
+      if (reply !== null) { await this.deps.platform().api.sendPrivateMessage(event.user_id ?? 0, [{ type: 'text', data: { text: reply } }]); return }
+    }
+    const config = this.deps.config()
+    const groupId = event.message_type === 'group' ? (event.group_id ?? null) : null
+    const presence = presenceSettingsOf(config)
+    const watched = presence !== null && presenceAppliesTo(presence, groupId)
+    this.captureWatched(event, parsed, config, presence, groupId, watched)
+    if (this.observeOnly) return
     const called = event.message_type === 'private'
       ? true
       : isCalled(event, parsed, config) || isOwnerMessage(event, config)
-    // 纯旁听：只记不提——不下载图片、不转写语音、不展开转发、不进队列、不调模型。
     if (watched && groupId !== null
       && resolveRoomPolicy(config, groupId).requireMention && !called) {
       if (config.debug) this.deps.log(`ambient only (requireMention, not called) ${key}`)
       return
     }
     const materials = await this.gather(event, parsed)
-    // 私聊按配置合并接话，或直接投递（去重与缓冲在 `inbound/delivery`）。
     if (event.message_type === 'private') {
       return await deliverDm({
         registry: this.deps.registry,
@@ -238,10 +240,8 @@ export class InboundPipeline {
     const policy = resolveRoomPolicy(config, event.group_id ?? null)
     const called = ctx.called
 
-    // P6g 群聊准入（默认关）：被挡下的消息不进队列，每一条都写清理由。
     if (!plannerAllows(this.deps, key, event, parsed, called, policy.requireMention)) return
 
-    // "需要 @ 才回"：不认这个开关的话，她会在没人叫的时候按概率往群里说话，
     // 群友读起来就是"答非所问"。环境消息仍会被学习 / 风控 / 链接观察看到。
     if (policy.requireMention && !called) {
       if (config.debug) this.deps.log(`ignored group message (requireMention, not called) ${key}`)

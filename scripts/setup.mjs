@@ -197,7 +197,7 @@ export function renderPatchTemplate(templateText, { placeholders, activeBlocks }
       if (!block || block.name !== end[1]) throw new Error(`模板可选块标记不配对：${line.trim()}`);
       if (!block.enabled) {
         out.length = block.start;
-        out.push(`# [未启用] ${block.name} 相关的可选块已略去（config/suite.json 的 modules.${block.name} 不是 true）。`);
+        out.push(`# [未启用] ${block.name} 相关的可选块已略去（见 config/suite.json 里控制它的开关）。`);
         out.push('');
       }
       continue;
@@ -222,6 +222,39 @@ export function renderPatchTemplate(templateText, { placeholders, activeBlocks }
  * 分开，这样第二次运行才能判断出「内容没变，不必重写」。
  */
 const HEADER_END = '#@@end-generated-header';
+
+/**
+ * 哪些可选块要被保留。
+ *
+ * 放在 `renderPatchTemplate` 旁边并导出，是为了能在没有宿主的环境里单测：某个块一旦
+ * 不再由配置驱动，就会退回「模板怎么写就怎么渲染」，prompt 膨胀正是这样回来的。
+ *
+ * 两条来源：
+ *   1. `config/suite.json` 的 `modules.*` → 各模块 `patchBlocks`（原有语义）；
+ *   2. `config/suite.json` 的 `prompt.*` → 分层开关（本版新增，见 docs/09）。
+ *
+ * @param {object} config - 已合并默认值的套件配置。
+ * @param {{enabled?: Record<string, boolean>}} [context] - `enabledModules()` 的结果。
+ * @returns {Set<string>} 需要保留的 `#@@begin:<name>` 块名。
+ */
+export function activePatchBlocks(config, { enabled = {} } = {}) {
+  const blocks = new Set();
+  for (const [key, spec] of Object.entries(MODULE_SPECS)) {
+    if (enabled[key] !== true) continue;
+    for (const block of spec.patchBlocks || []) blocks.add(block);
+  }
+
+  const prompt = config?.prompt || {};
+  // 开发能力默认不装：普通陪伴会话不该带文件/Shell/后台任务的规则段。
+  if (prompt.companionDevTools === true) blocks.add('companion-devtools');
+  // 宿主 Section 默认裁掉；显式打开时把裁剪块去掉。
+  if (prompt.harnessDevContext === true) blocks.delete('trim-harness-dev-context');
+  else blocks.add('trim-harness-dev-context');
+  if (prompt.deliverableHints === true) blocks.delete('trim-deliverable-hints');
+  else blocks.add('trim-deliverable-hints');
+
+  return blocks;
+}
 
 /** 生成物开头的那段说明（让用户一眼看出这是生成物、怎么重生成）。 */
 function generatedHeader({ profile, blocks, modules }) {
@@ -540,7 +573,7 @@ export async function runSetup(argv = process.argv.slice(2)) {
 
   /* ── 5. 模块安装 ───────────────────────────────────────────── */
   reporter.heading('5. 模块（只处理 config/suite.json 里打开的那些）');
-  const activeBlocks = new Set();
+  const activeBlocks = activePatchBlocks(config, { enabled: modules });
   const moduleResults = [];
 
   for (const [key, spec] of Object.entries(MODULE_SPECS)) {
@@ -796,4 +829,4 @@ if (invokedDirectly) {
   }
 }
 
-export default { runSetup, renderPatchTemplate, MODULE_SPECS, PATCH_TEMPLATE, PATCH_GENERATED };
+export default { runSetup, renderPatchTemplate, activePatchBlocks, MODULE_SPECS, PATCH_TEMPLATE, PATCH_GENERATED };
