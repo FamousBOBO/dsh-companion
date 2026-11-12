@@ -17,8 +17,33 @@
  * （作用域本来就是加盐哈希，这里只给家族名）。
  */
 import process from 'node:process';
+import fs from 'node:fs';
+import { DatabaseSync } from 'node:sqlite';
+import { expressionPaths } from '../src/paths.mjs';
+import { normalizeConfig } from '../src/config.mjs';
+import { createLibrary } from '../src/library.mjs';
+import { createExpressionDiagnostics } from '../src/diagnostics.mjs';
+import { createOwnerCheck } from '../src/host-wiring.mjs';
 
-const { createService } = await import('../src/index.mjs');
+function openReadOnlyReport(targets) {
+  const paths = expressionPaths();
+  // Missing files must remain missing: no service constructor, migrations or default writes.
+  const { config } = normalizeConfig(JSON.parse(fs.readFileSync(paths.configFile, 'utf8').replace(/^\uFEFF/, '')));
+  const raw = new DatabaseSync(paths.dbFile, { readOnly: true });
+  try {
+    const db = {
+      run: () => { throw new Error('read-only diagnostics'); },
+      get: (sql, params = []) => raw.prepare(sql).get(...params),
+      all: (sql, params = []) => raw.prepare(sql).all(...params),
+    };
+    const salt = db.get("SELECT value FROM meta WHERE key = 'scope_salt'")?.value;
+    if (!salt) throw new Error('scope salt unavailable; initialize the module separately');
+    const library = createLibrary({ db, assetsDir: paths.assets });
+    return createExpressionDiagnostics({ db, library, config, salt,
+      isOwnerFor: createOwnerCheck({ dataRoot: paths.dataRoot }), events: {},
+    }).report({ targets });
+  } finally { raw.close(); }
+}
 
 function parseArgs(argv) {
   const out = { json: false, dm: 0, group: 0 };
@@ -53,12 +78,7 @@ try {
   const targets = [];
   if (args.dm > 0) targets.push({ kind: 'dm', chatId: args.dm });
   if (args.group > 0) targets.push({ kind: 'group', chatId: args.group });
-  const service = createService({});
-  if (service.ok === false) {
-    console.log(`无法初始化表情模块：${service.reason}`);
-    process.exit(1);
-  }
-  const report = service.diagnose({ targets });
+  const report = openReadOnlyReport(targets);
   if (args.json) {
     console.log(JSON.stringify(report, null, 2));
   } else {
@@ -75,7 +95,6 @@ try {
     console.log(`  采集计数：收到 ${report.ingest.observed} 条、入队 ${report.ingest.queued}、丢弃 ${report.ingest.dropped}`);
     console.log(`  结论：${verdictOf(report)}`);
   }
-  service.close();
 } catch (error) {
   console.error(`诊断失败：${error instanceof Error ? error.message : String(error)}`);
   process.exit(1);

@@ -49,6 +49,7 @@ export interface StickerAttempt {
   readonly query: string
   readonly text: string
   readonly mode: 'sticker_only' | 'text_then_sticker'
+  readonly canSend?: () => boolean
   readonly log: (line: string) => void
 }
 
@@ -238,16 +239,18 @@ export function expressionDiagnosticsOf(
  * 顺序刻意是"先问候选、再让它发"：图库的 `candidates` 会返回 `send` 与 `abstain`，
  * 直接 `reply` 一个它没推荐过的 id 等于绕过它的策略（授权、冷却、审核都在那里面）。
  */
-export function sendSticker(service: ExpressionService | null, attempt: StickerAttempt): StickerOutcome {
+export async function sendSticker(service: ExpressionService | null, attempt: StickerAttempt): Promise<StickerOutcome> {
   if (service === null) return { kind: 'unavailable', reason: 'no-service' }
   let assetId = ''
   try {
-    const found = service.candidates({ isGroup: true, target: String(attempt.groupId), query: attempt.query, limit: 3 }) as {
+    const found = await service.candidates({ isGroup: true, target: String(attempt.groupId), query: attempt.query, limit: 3 }) as {
       ok?: boolean
+      send?: boolean
       candidates?: Array<{ assetId?: unknown }>
       reasonCode?: unknown
     }
     if (found?.ok !== true) return { kind: 'declined', reason: String(found?.reasonCode ?? 'candidates-failed') }
+    if (found.send === false) return { kind: 'declined', reason: String(found.reasonCode ?? 'send-disabled') }
     const first = Array.isArray(found.candidates) ? found.candidates[0] : undefined
     const candidate = typeof first?.assetId === 'string' ? first.assetId : ''
     // 图库没给候选就是"这个群没有贴题的图"——不做"随便挑一张"的兜底。
@@ -258,7 +261,8 @@ export function sendSticker(service: ExpressionService | null, attempt: StickerA
     return { kind: 'unavailable', reason: 'candidates-threw' }
   }
   try {
-    const sent = service.reply({
+    if (attempt.canSend?.() === false) return { kind: 'declined', reason: 'presence-disabled' }
+    const sent = await service.reply({
       assetId,
       mode: attempt.mode,
       ...(attempt.mode === 'text_then_sticker' ? { text: attempt.text } : {}),

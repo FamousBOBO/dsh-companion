@@ -70,7 +70,7 @@ after(() => {
 
 // ── 四种时序 ────────────────────────────────────────────────────────────────
 
-test('时序 ①：QQ 先初始化、图库后挂载 —— 第一次没有，挂载后第二次拿到', () => {
+test('时序 ①：QQ 先初始化、图库后挂载 —— 第一次没有，挂载后第二次拿到', async () => {
   unpublish()
   resetExpressionServiceCache()
   const first = expressionServiceOf(noContext)
@@ -86,7 +86,7 @@ test('时序 ①：QQ 先初始化、图库后挂载 —— 第一次没有，�
   assert.equal(expressionServiceState().available, true)
 })
 
-test('时序 ②：图库先挂载 —— 第一次就能拿到，且走注册表那一路', () => {
+test('时序 ②：图库先挂载 —— 第一次就能拿到，且走注册表那一路', async () => {
   resetExpressionServiceCache()
   const service = fakeService('early')
   publish(service)
@@ -95,7 +95,7 @@ test('时序 ②：图库先挂载 —— 第一次就能拿到，且走注册�
   assert.equal(found.reason, 'registry')
 })
 
-test('时序 ③：首次解析失败（登记表抛错）后第二次成功', () => {
+test('时序 ③：首次解析失败（登记表抛错）后第二次成功', async () => {
   resetExpressionServiceCache()
   // 登记表的 getter 抛错：Reflect.get 会抛，实现必须吞掉并当作「没有」。
   Object.defineProperty(process, PORT, {
@@ -112,7 +112,7 @@ test('时序 ③：首次解析失败（登记表抛错）后第二次成功', (
   assert.equal(second.service, service, '异常不能被缓存成永久结论')
 })
 
-test('时序 ④：服务卸载后重新挂载 —— 调用方拿到的是新对象，不是旧的', () => {
+test('时序 ④：服务卸载后重新挂载 —— 调用方拿到的是新对象，不是旧的', async () => {
   resetExpressionServiceCache()
   const oldService = fakeService('old')
   publish(oldService)
@@ -132,7 +132,7 @@ test('时序 ④：服务卸载后重新挂载 —— 调用方拿到的是新�
 
 // ── 宿主上下文优先，且多 ctx 不串味 ────────────────────────────────────────
 
-test('ctx 里有服务时优先用 ctx；两个 ctx 各自拿自己的，不串味', () => {
+test('ctx 里有服务时优先用 ctx；两个 ctx 各自拿自己的，不串味', async () => {
   resetExpressionServiceCache()
   // 注册表里放一个「不该被选中的」服务：ctx 命中时必须优先 ctx。
   publish(fakeService('registry'))
@@ -143,7 +143,7 @@ test('ctx 里有服务时优先用 ctx；两个 ctx 各自拿自己的，不串�
   assert.equal((expressionServiceOf(noContext).service as FakeService | null)?.tag, 'registry', 'ctx 没有服务时才回落到注册表')
 })
 
-test('ctx.get 抛错时按「没有」处理，继续试注册表', () => {
+test('ctx.get 抛错时按「没有」处理，继续试注册表', async () => {
   resetExpressionServiceCache()
   const service = fakeService('registry')
   publish(service)
@@ -151,7 +151,7 @@ test('ctx.get 抛错时按「没有」处理，继续试注册表', () => {
   assert.equal(expressionServiceOf(throwing).service, service)
 })
 
-test('形状不对的服务（缺 reply）不算接上', () => {
+test('形状不对的服务（缺 reply）不算接上', async () => {
   resetExpressionServiceCache()
   publish({ candidates: () => ({ ok: true }) })
   const found = expressionServiceOf(noContext)
@@ -159,7 +159,7 @@ test('形状不对的服务（缺 reply）不算接上', () => {
   assert.equal(found.reason, 'registry-shape')
 })
 
-test('Map 形态的注册表按数据根取；只有一个分区且没设数据根时用那一个', () => {
+test('Map 形态的注册表按数据根取；只有一个分区且没设数据根时用那一个', async () => {
   resetExpressionServiceCache()
   const mine = fakeService('mine')
   const other = fakeService('other')
@@ -179,21 +179,38 @@ test('Map 形态的注册表按数据根取；只有一个分区且没设数据�
 
 // ── 发图本身的口径没被这次修改带偏 ──────────────────────────────────────────
 
-test('sendSticker：没有服务 → unavailable/no-service（不抛）', () => {
-  const outcome = sendSticker(null, {
+test('sendSticker awaits async services and respects candidate refusal', async () => {
+  let replies = 0
+  const attempt = { groupId: 1, query: 'happy', text: '', mode: 'sticker_only' as const, log: () => {} }
+  const service = {
+    candidates: async () => ({ ok: true, send: true, candidates: [{ assetId: 'ast_abc123456' }] }),
+    reply: async () => { replies++; return { ok: true, messageId: 42 } },
+  }
+  assert.equal((await sendSticker(service, attempt)).kind, 'sent')
+  assert.equal(replies, 1)
+  service.candidates = async () => ({ ok: true, send: false, candidates: [{ assetId: 'ast_abc123456' }] })
+  assert.equal((await sendSticker(service, attempt)).kind, 'declined')
+  assert.equal(replies, 1)
+  service.candidates = async () => ({ ok: true, send: true, candidates: [{ assetId: 'ast_abc123456' }] })
+  assert.equal((await sendSticker(service, { ...attempt, canSend: () => false })).kind, 'declined')
+  assert.equal(replies, 1)
+})
+
+test('sendSticker：没有服务 → unavailable/no-service（不抛）', async () => {
+  const outcome = await sendSticker(null, {
     groupId: 1, query: '开心', text: '好呀', mode: 'text_then_sticker', log: () => {},
   })
   assert.equal(outcome.kind, 'unavailable')
   assert.equal(outcome.kind === 'unavailable' ? outcome.reason : '', 'no-service')
 })
 
-test('sendSticker：没有回执（messageId）不算发过，且不重试', () => {
+test('sendSticker：没有回执（messageId）不算发过，且不重试', async () => {
   let replies = 0
   const service = {
     candidates: () => ({ ok: true, candidates: [{ assetId: 'ast_abc123456' }] }),
     reply: () => { replies += 1; return { ok: true } },
   }
-  const outcome = sendSticker(service as never, {
+  const outcome = await sendSticker(service as never, {
     groupId: 1, query: '开心', text: '好呀', mode: 'text_then_sticker', log: () => {},
   })
   assert.equal(outcome.kind, 'declined')
@@ -201,19 +218,19 @@ test('sendSticker：没有回执（messageId）不算发过，且不重试', () 
   assert.equal(replies, 1, '没有回执也不许重试')
 })
 
-test('sendSticker：图库没给候选时不做「随便挑一张」的兜底', () => {
+test('sendSticker：图库没给候选时不做「随便挑一张」的兜底', async () => {
   const service = {
     candidates: () => ({ ok: true, candidates: [] }),
     reply: () => { throw new Error('不该走到这里') },
   }
-  const outcome = sendSticker(service as never, {
+  const outcome = await sendSticker(service as never, {
     groupId: 1, query: '开心', text: '', mode: 'sticker_only', log: () => {},
   })
   assert.equal(outcome.kind, 'declined')
   assert.equal(outcome.kind === 'declined' ? outcome.reason : '', 'no-candidate')
 })
 
-test('expressionServiceState：从没解析过时是 never-resolved，且不含任何路径/URL 字段', () => {
+test('expressionServiceState：从没解析过时是 never-resolved，且不含任何路径/URL 字段', async () => {
   unpublish()
   resetExpressionServiceCache()
   // 先解析一次「没有」，把快照写成可观察的状态。

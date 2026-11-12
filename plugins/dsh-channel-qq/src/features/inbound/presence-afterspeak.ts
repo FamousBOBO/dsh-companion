@@ -11,6 +11,7 @@
  *      任何"没人理就多说点"的回路在 §8.4 里被明确禁止。
  */
 
+import { modeSends, resolveMode } from '../../core/presence-mode.js'
 import { checkSticker } from '../../core/group-expression.js'
 import { GroupFeedbackBook } from '../../core/group-feedback.js'
 import { noteGroupTopic } from '../../adapters/dsh-host/group-memory.js'
@@ -56,7 +57,7 @@ function dataRootOf(host: SubHost): string | null {
  * 三条：额度独立于文字；只在 `join`/`react` 上考虑；**能不能发由图库决定**——
  * 这里只做"要不要去问"，问完拿到候选才发，绝不拼路径、绝不重试。
  */
-function stickerStep(host: SubHost, ledgers: Map<number, StickerLedger>, input: SpokenInput, settings: PresenceView): void {
+async function stickerStep(host: SubHost, ledgers: Map<number, StickerLedger>, input: SpokenInput, settings: PresenceView, canSend: () => boolean): Promise<void> {
   if (settings.stickers !== true) return
   const ledger = ledgers.get(input.groupId) ?? { lastAtMs: 0, sentTimes: [] }
   ledgers.set(input.groupId, ledger)
@@ -76,12 +77,13 @@ function stickerStep(host: SubHost, ledgers: Map<number, StickerLedger>, input: 
     return
   }
   const service = expressionServiceOf(() => host.bridge.tagContext()).service
-  const outcome = sendSticker(service, {
+  const outcome = await sendSticker(service, {
     groupId: input.groupId,
     query: verdict.query,
     // 图配在文字**之后**：文字是主表达，图是补充（反过来会让图变成开场白）。
-    mode: 'text_then_sticker',
+    mode: 'sticker_only',
     text: input.text,
+    canSend,
     log: host.log,
   })
   if (outcome.kind !== 'sent') {
@@ -101,10 +103,12 @@ function stickerStep(host: SubHost, ledgers: Map<number, StickerLedger>, input: 
 export function afterSpeakHandler(
   host: SubHost,
   settingsOf: () => PresenceView | null,
-): (input: SpokenInput) => void {
+): (input: SpokenInput) => Promise<void> {
   const feedback = new GroupFeedbackBook()
   const ledgers = new Map<number, StickerLedger>()
-  return (input) => {
+  const inFlight = new Set<number>()
+  const canSend = () => { const s = settingsOf(); return s?.stickers === true && modeSends(resolveMode(s)) }
+  return async (input) => {
     // ① 弱反馈：记下"她刚说完一句"，等后续 90 秒内有没有人接（只记事实，不做评价）。
     try {
       feedback.expect(input.groupId, input.text, input.atMs)
@@ -125,12 +129,17 @@ export function afterSpeakHandler(
     } catch {
       /* 话题没写进去只是少一条证据 */
     }
+    if (inFlight.has(input.groupId)) return
     // ③ 表情包（§8.2）。整段包在 try 里：配图失败绝不能影响"这一句已经发出去了"。
     try {
       const settings = settingsOf()
-      if (settings !== null) stickerStep(host, ledgers, input, settings)
+      if (settings === null || !canSend()) return
+      inFlight.add(input.groupId)
+      await stickerStep(host, ledgers, input, settings, canSend)
     } catch (error) {
       host.log(`presence: 群 ${String(input.groupId)} 表情动作失败（已忽略）：${error instanceof Error ? error.message : String(error)}`)
+    } finally {
+      inFlight.delete(input.groupId)
     }
   }
 }
