@@ -381,7 +381,7 @@ export function createMediaService({
       sessionId: String(sessionId ?? ''), now: now().getTime() });
     const gate = companionPictureGate(visual, { personaId: persona.id || '', sessionId });
     return { ok: gate.ok, visual: gate.report, ...(gate.refusal ? { error: gate.refusal } : {}),
-      instruction: '读取身份与当前衣物后，把可见外观、衣物、动作、表情、构图、环境和光线融合为完整英文 prompt；参考串不是固定后缀，习惯性配饰按场景取舍。最终正向提示词仅为配置画师串 + prompt。' };
+      instruction: '读取身份与当前衣物后，把可见外观、衣物、动作、表情、构图、环境和光线融合为完整英文 prompt；参考串不是固定后缀，习惯性配饰按场景取舍。画面正文为配置画师串 + prompt，所选官方质量预设单独生效。' };
   }
 
   async function generateImage({

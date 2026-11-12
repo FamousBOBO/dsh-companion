@@ -640,3 +640,10 @@ git clone https://github.com/FamousBOBO/dsh-companion.git
 - npm run doctor：核心检查通过；宿主版本无法检测。
 - npm run verify：unit 5 模块通过、4 模块失败、1 无测试；失败涉及 foundation、memory-studio、runtime、channel-qq。static 38 通过、1 失败（原有 production-closeout 文档中的 author-path）；compose 1 通过（232 loader 行）。全仓验证未通过，不将其描述为全绿。
 - 未重启运行中的宿主；未验证新工具真实宿主装载、真实模型是否遵守读取顺序或最终图片质量；未调用计费生图 API。需宿主重新加载媒体插件后应用新工具定义。
+
+
+### 2026-11-12 补充：保留 Light 正向质量预设并重启
+
+按用户要求恢复所选官方正向质量预设的生效逻辑（Light），继续禁止追加身份、衣物与旧手填正向预设。最终正文为画师串 + 完整主提示词，随后应用所选质量词。媒体离线测试 162/162 通过。
+
+已通过生产管理脚本重启现有受管理应用，认证首页和记忆接口均为 HTTP 200、核心插件激活检查通过；媒体 status/config 接口 HTTP 200，读回模型 nai-diffusion-5-full、qualityPreset=light。未触发真实计费生成，图片质量及真实模型读取行为仍未验收。启动中宿主另报告部分旧插件版本不兼容，核心健康检查通过不代表所有可选插件均已加载。

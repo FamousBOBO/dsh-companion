@@ -214,7 +214,7 @@ function providerSection({ kind, record, state, config }) {
   const push = name => {
     if (used.has(name)) return;
     used.add(name);
-    const cleanLabels = {qualityPreset:'质量词参考（不自动拼接）',negativePreset:'反向预设',refAudioPath:'参考音频',refText:'音频里说的话',promptText:'音频里说的话',baseUrl:'服务地址',apiKey:'密钥',model:'模型',transport:'连接方式',scale:'提示词引导（Classifier-Free Guidance）',steps:'步数',width:'宽度',height:'高度',background:'背景',outputFormat:'输出格式',quality:'画质',size:'画面尺寸',timeoutMs:'超时（毫秒，1000–600000）',negativePrompt:'反向提示词',seed:'随机种子',noiseSchedule:'噪声调度',sampler:'采样器'};
+    const cleanLabels = {qualityPreset:'正向质量预设',negativePreset:'反向预设',refAudioPath:'参考音频',refText:'音频里说的话',promptText:'音频里说的话',baseUrl:'服务地址',apiKey:'密钥',model:'模型',transport:'连接方式',scale:'提示词引导（Classifier-Free Guidance）',steps:'步数',width:'宽度',height:'高度',background:'背景',outputFormat:'输出格式',quality:'画质',size:'画面尺寸',timeoutMs:'超时（毫秒，1000–600000）',negativePrompt:'反向提示词',seed:'随机种子',noiseSchedule:'噪声调度',sampler:'采样器'};
     const label = cleanLabels[name] ?? FIELD_LABELS_DEFAULT[name] ?? record.fieldLabels?.[name] ?? name;
     const type = FIELD_TYPES[name] ?? 'text';
     const hint = name === 'apiKey' ? '只写：保存后只显示"已配置"；留空 = 保留原值；清除需显式动作' : '';
@@ -340,7 +340,7 @@ export function mediaPageDescriptor(status) {
         presets: {
           path: 'image.nai.presets',
           pathParts: ['image', 'nai', 'presets'],
-          note: 'V5 与 4.5 的预设分开存储；切换模型不会把一族的预设套到另一族。正向预设仅供参考，不自动拼接；最终正向仅为画师串 + 完整主提示词。应用开关只影响反向预设。',
+          note: 'V5 与 4.5 的预设分开存储；切换模型不会把一族的预设套到另一族。正向预设仅供参考，不自动拼接；画面正文为画师串 + 完整主提示词，所选官方质量预设单独生效。应用开关只影响反向预设。',
           // 每族三个真实配置键：positive / negative / applyDefaults。
           // 少发任何一个，UI 就配不齐（此前只有 positive，导致负向预设与启用开关都无处可填）。
           families: presetFamilies().map(({ family, label }) => ({

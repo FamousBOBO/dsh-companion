@@ -15,10 +15,12 @@ export function officialOptions(model) {
 export function resolveNaiPrompt(section,request={}) {
   const legacy=resolvePreset({model:section.model,presets:section.presets,negativePrompt:section.negativePrompt,artistString:section.artistString,request});
   const key=modelPresetKey(section.model);
+  const quality=section.qualityPreset??'legacy';
   const negative=section.negativePreset??'legacy';
+  const suffix=quality==='none'||quality==='legacy'?'':catalog.quality[key.startsWith('5-')?'5-'+quality:key];
 
   return {...legacy,
-    positive:legacy.positive,
+    positive:[legacy.positive,suffix].map(x=>String(x??'').trim()).filter(Boolean).join(', '),
     negative:negative==='legacy'?legacy.negative:[negative==='none'?'':catalog.negative[key]?.[negative],section.negativePrompt,request.negative].map(x=>String(x??'').trim()).filter(Boolean).join(', '),
   };
 }
