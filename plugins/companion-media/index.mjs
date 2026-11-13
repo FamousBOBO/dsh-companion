@@ -117,12 +117,13 @@ function registerTools(ctx, service) {
     {
       prompt: { type: 'string', required: true, description: '完整英文主提示词，身份与衣物须从 companion_media_visual 获取并融入画面。示例仅演示写法，须替换为本次读取结果：A single young woman with short silver-grey hair and amber eyes sits sideways at a rain-streaked cafe window, wearing a pale blue cable-knit cardigan over an ivory cotton blouse, its ribbed cuffs resting at her wrists. Her left hand cups a warm ceramic mug on the wooden table while her right hand rests beside an open book. She turns toward the viewer with a relaxed, closed-mouth smile. Frame her from the waist up at eye level, with her face in the upper third and both hands clearly visible. Cool overcast daylight enters from the left; a warm pendant lamp softly lights her cheek from the right. Outside, blurred umbrellas and reflections recede into the wet street. Delicate linework, softly shaded fabric folds, restrained blue and amber colors, a quiet intimate atmosphere.' },
       negative: { type: 'string', description: '可选英文反向提示词，与配置反向预设合并。' },
+      aspect: { type: 'string', description: '由你按本次构图选择：portrait 竖图、landscape 横图、square 方图。自动分辨率开启时每次填写；尺寸由程序计算。' },
       subject: { type: 'string', description: '陪伴角色图片填 companion；先读取 companion_media_visual 并自行写完整 prompt。其他图片省略。' },
       outfit: { type: 'string', description: '兼容旧调用的英文换装参考，不会拼入 prompt。新调用先更新衣柜并重新读取，再将衣物写进完整 prompt。' },
       dryRun: { type: 'boolean', description: 'true 核对最终 prompt、身份与衣柜参考、预设族与分辨率，不发网络请求。' },
     },
     async (args, exec) => service.generateImage({
-      prompt: args.prompt, negative: args.negative, subject: args.subject, outfit: args.outfit,
+      prompt: args.prompt, negative: args.negative, subject: args.subject, outfit: args.outfit, aspect: args.aspect,
       dryRun: args.dryRun === true, requireEnglish: true, sessionId: exec?.agent?.session?.id, signal: exec?.signal,
     }), 'write');
 

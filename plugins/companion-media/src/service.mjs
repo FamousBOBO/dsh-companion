@@ -385,7 +385,7 @@ export function createMediaService({
   }
 
   async function generateImage({
-    prompt, negative = '', subject = '', outfit = '', dryRun = false,
+    prompt, negative = '', subject = '', outfit = '', aspect = '', dryRun = false,
     requireEnglish = false, sessionId = null, signal = null,
   } = {}) {
     const loaded = store.load();
@@ -398,7 +398,13 @@ export function createMediaService({
     if (!validation.ok) {
       return { ok: false, error: { code: validation.errors[0].code, message: validation.errors[0].message }, errors: validation.errors };
     }
-    const section = id === 'nai' ? resolveGenerationSection(imageSection(config, id)) : { ...imageSection(config, id) };
+    if (aspect && !['portrait', 'landscape', 'square'].includes(aspect)) {
+      return { ok: false, error: { code: Code.BAD_INPUT, message: 'aspect 只支持 portrait / landscape / square' } };
+    }
+    const configuredSection = imageSection(config, id);
+    const section = id === 'nai' ? resolveGenerationSection({ ...configuredSection,
+      ...(aspect && configuredSection.autoResolution === true ? { aspect } : {}),
+    }) : { ...configuredSection };
     const record = recordOf('image', id);
 
     const badInput = message => ({ ok: false, error: { code: Code.BAD_INPUT, message } });
