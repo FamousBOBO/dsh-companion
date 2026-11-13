@@ -98,7 +98,7 @@ const PRIVATE_TITLE_MARKERS = Object.freeze(['私聊', '私人', '隐私', '内�
 const FIELD_SPECS = Object.freeze([
   { key: 'identity', aliases: ['身份', '你是谁', '自我介绍'] },
   { key: 'personality', aliases: ['性格', '个性', '性情', '脾气'] },
-  { key: 'speakingStyle', aliases: ['说话风格', '语言风格', '表达风格', '说话方式', '语气', '口吻'] },
+  { key: 'speakingStyle', aliases: ['说话风格', '语言风格', '表达风格', '说话方式', '说话习惯', '对话风格', '语气', '口吻'] },
   { key: 'interests', aliases: ['兴趣', '爱好', '喜欢的东西'] },
   { key: 'knownExperiences', aliases: ['经历', '共同经历', '往事', '可以讲的故事'] },
   { key: 'emotionalState', aliases: ['情绪', '心情', '可公开的状态'] },
@@ -252,6 +252,16 @@ export function buildGroupPersonaSnapshot(markdown, { personaId = '', source = '
   if (!raw.trim()) return null;
   const limitText = clampChars(raw, GROUP_PERSONA_LIMITS.maxChars);
   const sections = sectionsOf(limitText);
+  // 仅解析明确的公开角色设定节里的加粗字段，不扩展私聊或其他章节。
+  for (const section of [...sections]) {
+    if (section.normalized !== normalizeTitle('角色设定')) continue;
+    for (const line of section.lines) {
+      const field = /^\s*-\s+\*\*([^*]+)\*\*\s*[:：]\s*(.*)$/.exec(line);
+      if (!field) continue;
+      const title = field[1] === '姓名' ? '身份' : field[1];
+      sections.push({ title, normalized: normalizeTitle(title), lines: [field[2]] });
+    }
+  }
 
   // 一个标题只认领一个字段：先到先得，且同一字段只取第一个命中的小节。
   const claimed = new Map();

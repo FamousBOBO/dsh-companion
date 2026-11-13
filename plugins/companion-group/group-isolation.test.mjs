@@ -129,7 +129,7 @@ test('real mount wiring: monotonic global guard + group scoped restriction and m
     const globals = new Set(['qq_message', 'qq_sticker', 'qq_voice']);
     for (const name of value.allow) assert.ok(globals.has(name), 'unknown global tool: ' + name);
     restriction = value;
-  } }, systemPrompt: { section(value) { section = value; } }, on(name, hook) { if (name === 'agent/pre-step') groupHook = hook; } });
+  } }, systemPrompt: { section(value) { if (value.name === 'companion:group-persona') section = value; } }, on(name, hook) { if (name === 'agent/pre-step') groupHook = hook; } });
   assert.equal(restriction, undefined, 'validation before QQ startup must not fail');
   assert.equal(section.text, GROUP_PERSONA);
   const a = agent();
