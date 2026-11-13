@@ -307,7 +307,7 @@ export function buildLife(result, config, now = Date.now()) {
     ? windowEnd <= now
     : (todays.length > 0 && todays.every(slot => Number(slot.end_at) <= now || slot.status === 'skipped'));
   let state;
-  if (running.length) state = 'running';
+  if (running.some(activity => activity.status === 'running')) state = 'running';
   else if (currentSlot && currentSlot.kind === 'rest') state = 'resting';
   else if (!plan) state = planningOn ? 'no-plan' : 'no-autonomy';
   else if (next.length) state = 'upcoming';

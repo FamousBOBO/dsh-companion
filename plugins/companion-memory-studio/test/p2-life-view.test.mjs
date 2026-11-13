@@ -84,3 +84,9 @@ test('P2-14: a simulated activity is labelled in the life view, never as real', 
   }), { p2: { planning: { enabled: true }, activities: { enabled: true } } }, NOW);
   assert.equal(life.current.activities[0].reality, 'simulated_world');
 });
+
+test('an old paused activity is retained but does not claim to be running', () => {
+  const life = buildLife(result({ p2_activities: [{ activity_id: 'old', status: 'paused', kind: 'write', updated_at: NOW - 86400000 }] }), { p2: { planning: { enabled: true }, activities: { enabled: true } } }, NOW);
+  assert.notEqual(life.state, 'running');
+  assert.equal(life.current.activities[0].status, 'paused');
+});

@@ -528,11 +528,13 @@ test('retry: a missing source leaves no activity row and blocks nothing (read ha
 
   // Restore the source: the next pass starts the same deterministic operation.
   sourcePresent = true;
-  const retried = await runtime.pumpActivities({ now: T0 + 60_000 });
+  const cooling = await runtime.pumpActivities({ now: T0 + 60_000 });
+  assert.equal(cooling.started.length, 0, 'source recovery still respects persisted retry backoff');
+  const retried = await runtime.pumpActivities({ now: T0 + 300_000 });
   assert.equal(retried.ok, true, JSON.stringify(retried));
   assert.equal(retried.started.length, 1, JSON.stringify(retried));
   assert.equal(claims(db).length, 1, 'the retry reuses the existing claim');
-  const done = await runtime.pumpActivityExecution({ now: T0 + 60_000, maxStepsPerCycle: 8 });
+  const done = await runtime.pumpActivityExecution({ now: T0 + 300_000, maxStepsPerCycle: 8 });
   assert.equal(done.ok, true, JSON.stringify(done));
   assert.equal(db.get('SELECT status FROM p2_activities WHERE activity_id = ?', retried.started[0]).status, 'done');
   assert.equal(ingestEvents(db).length, 1, 'and exactly one completion fact exists at the end');

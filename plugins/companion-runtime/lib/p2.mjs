@@ -15,6 +15,7 @@ import { createPlanner, applyPlanEvent } from './planner.mjs?v=reading-20261101-
 import { createActivities, applyActivityEvent, missedReceiptEvent, effectIndex, effectBlock, jobKeyFor } from './activities.mjs?v=reading-20261101-v1';
 import { dispatchMetrics as measureDispatch, dispatchWatch as watchDispatch } from './dispatch-observability.mjs';
 import { retryBackoffMs } from './bridge.mjs';
+import { startRetryGate, recordStartFailure } from './start-retry.mjs';
 
 export function canAutoResumeActivity(rawCheckpoint) {
   try {
@@ -528,11 +529,22 @@ export function createP2({
         lastStart = { at: now, slotId: slot.slot_id, activityId: paused.activity_id, code: 'continuation-parked' };
         continue;
       }
-      const result = paused
-        ? await activities.resume({ activityId: paused.activity_id, scopeKey, slotId: slot.slot_id, reason: 'planned-continuation' })
-        : await activities.start({ slotId: slot.slot_id, scopeKey, kind: slot.activity, target: slot.target_ref || slot.title, reality: slot.reality });
+      const retry = startRetryGate(db, scopeKey, slot.slot_id, now);
+      if (!retry.allowed) continue;
+      let result;
+      try {
+        result = paused
+          ? await activities.resume({ activityId: paused.activity_id, scopeKey, slotId: slot.slot_id, reason: 'planned-continuation' })
+          : await activities.start({ slotId: slot.slot_id, scopeKey, kind: slot.activity, target: slot.target_ref || slot.title, reality: slot.reality });
+      } catch (error) {
+        recordStartFailure(db, retry, now, error?.code);
+        lastStart = { at: now, slotId: slot.slot_id, activityId: '', code: error?.code ?? 'start-failed' };
+        noteError('p2-activity-start-failed', String(error?.message ?? error));
+        continue;
+      }
       lastStart = { at: now, slotId: slot.slot_id, activityId: result?.activityId ?? '', code: result?.ok === false ? result.code : 'started' };
       if (result?.ok === false) {
+        recordStartFailure(db, retry, now, result.code);
         noteError(`p2-activity-start-${result.code ?? 'failed'}`, `slot ${slot.slot_id} could not start`);
         continue;
       }

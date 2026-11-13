@@ -273,3 +273,19 @@ test('P2-21: listAdapters reports foundational adapters and the optional Bilibil
     assert.ok(entry.produces.every(product => typeof product === 'string'));
   }
 });
+
+test('write continuation discovers versions beyond the retained history window', t => {
+  const workspace = tempDir(t);
+  const db = openDb(t);
+  const title = 'moon-notes';
+  const slug = slugFor(title);
+  const dir = path.join(workspace, 'drafts', slug);
+  fs.mkdirSync(dir, { recursive: true });
+  for (let i = 1; i <= 20; i++) fs.writeFileSync(path.join(dir, `v${i}.md`), `version ${i}`);
+  insertSlot(db, { slotId: 'many-versions', kind: 'write', target: title });
+  const activities = makeActivities({ db, workspace });
+  const started = activities.start({ slotId: 'many-versions', kind: 'write' });
+  assert.ok(started.activityId);
+  assert.equal(fs.readFileSync(path.join(dir, 'v20.md'), 'utf8'), 'version 20');
+  assert.match(fs.readFileSync(path.join(dir, 'v21.md'), 'utf8'), /version 20/);
+});

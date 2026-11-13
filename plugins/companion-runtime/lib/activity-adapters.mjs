@@ -46,6 +46,7 @@ const HASH_ALGORITHM = 'sha256';
 const SLUG_LIMIT = 48;
 const TITLE_LIMIT = 160;
 const MAX_PROBE_VERSIONS = 16;
+const MAX_DRAFT_SCAN = 4096;
 const MAX_EXCERPT_FALLBACK = 4000;
 const BLOCK_TAGS = new Set([
   'address', 'article', 'aside', 'blockquote', 'br', 'dd', 'div', 'dl', 'dt', 'figcaption',
@@ -951,8 +952,8 @@ function latestDraftOnDisk(ctx, slug, version = 1, latest = null) {
   }
   return then(readOptional(ctx, resolved.absolute), text => {
     if (text === null) return latest;
-    const entry = { version, text, history: latest ? [...latest.history, { version, hash: sha256Hex(text), ref }] : [{ version, hash: sha256Hex(text), ref }] };
-    if (version >= MAX_PROBE_VERSIONS) return entry;
+    const entry = { version, text, history: [...(latest?.history ?? []), { version, hash: sha256Hex(text), ref }].slice(-MAX_PROBE_VERSIONS) };
+    if (version >= MAX_DRAFT_SCAN) throw new RuntimeError('workspace-denied', 'draft version scan limit reached; manual review required');
     return latestDraftOnDisk(ctx, slug, version + 1, entry);
   });
 }
