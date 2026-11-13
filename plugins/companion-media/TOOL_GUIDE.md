@@ -39,6 +39,7 @@
 参数：`prompt`（必填）、`negative`、`subject`、`outfit`、`dryRun`（可选）。
 
 - 调用方直接构思英文画面，用完整句子把主体和关键要求放在前半段，再描述场景、动作、镜头、光线和画风。生图服务按原文提交。[NovelAI 官方提示词指南](https://docs.novelai.net/en/image/basics/)
+- **写 prompt 前先读 `<套件根>/docs/image-prompt-guide.md`。** 那份文件是提示词写法的唯一权威：描述维度、写法结构、身体部位词表、裸露与遮挡、位置与视角、完整示例、反向提示词、提交前检查全在里面。`companion_media_visual` 返回的 `promptGuide` 就是这个文件的绝对路径；`dryRun` 也会回带同一个路径。本节只讲工具怎么调用，写法一律以指南为准。
 - 画陪伴角色前必须调用只读工具 companion_media_visual，读取当前人格的英文身份与衣柜解析的当前衣物，成功后再传 subject=companion。
 - 模型将身份、镜头内可见衣物的颜色/材质/剪裁/层次，与动作、表情、视线、构图、环境和光线融合成完整英文 prompt。不要逐字粘贴身份串，不要机械加入习惯性相机等配饰，也不要写镜头外的鞋袜。
 - 最终正向提示词画面正文为 **画师串 + 主提示词**。程序不追加身份、衣物或旧手填正向预设；所选官方质量预设（如 Light）仍生效；已保存的正向预设保留为参考，反向预设仍按配置合并。
@@ -46,14 +47,16 @@
 - **视觉身份是强制条件。** 身份不存在、读不出来、结构无效、与当前 persona 不匹配，或者只有中文外观时，真跑**直接拒绝**（`MEDIA_VISUAL_IDENTITY_REQUIRED`，`details.missing` 里写 `identity` 或 `identity-english`），**不会**发任何网络请求。`outfit` 只能替换衣物，**不能**绕过身份——一张只有衣服没有脸的图不是这个角色。先在 `home/companion/visual-identity.json` 里为该 persona 配好英文外观。
 - 衣柜里没有可用的英文描述时，真跑同样拒绝（`MEDIA_BAD_INPUT`，`details.missing` 含 `wardrobe`），不会凭空编一套衣服。
 - `dryRun` 与真跑用**同一个**判定：被拒绝时 `dryRun` 返回 `{ok:true, dryRun:true, visualRequired:true, visual, refusal}`，`refusal` 与真跑返回的 `error` 同源，所以可以先 dry-run 确认「这次会不会被拒绝」。
-- `negative` 只在需要临时压制某些内容时用；固定反向提示词应放在配置里（`image.nai.negativePrompt` 或按族的预设）。
+- `negative` 只在需要临时压制某些内容时用；固定反向提示词应放在配置里（`image.nai.negativePrompt` 或按族的预设）。反向词的取舍与冲突清单见指南第 8 节。
 - `dryRun: true` 只做参数/分辨率/预设族校验，不发网络请求。**先 dry-run 再真跑**是省额度最有效的习惯。
 - 成功返回 `artifact.absolutePath` 与 `handoff.file`（同一个绝对路径），直接把 `handoff.file` 交给发送工具。
 - 常见错误码：`MEDIA_DISABLED`（没开）、`MEDIA_NOT_CONFIGURED`（缺必填项）、`MEDIA_VISUAL_IDENTITY_REQUIRED`（缺视觉身份，或身份只有中文外观）、`MEDIA_BAD_INPUT`（参数不对 / 衣柜给不出英文衣物 / `subject` 不是 `companion`）、`MEDIA_PARAM_OUT_OF_RANGE`（尺寸/步数越界，**不会**被悄悄改值）、`MEDIA_AUTH_FAILED`、`MEDIA_ENTITLEMENT`（NAI 无订阅）、`MEDIA_RATE_LIMITED`、`MEDIA_TIMEOUT`、`MEDIA_UPSTREAM`、`MEDIA_UNSUPPORTED_TYPE`（上游返回的不是图片）。
 
-示例（须用本次读取的外观和衣物替换示范内容）：
+示例（须用本次读取的外观和衣物替换示范内容，并按指南第 7 节选择对应场景模板）：
 
 > A single young woman with short silver-grey hair and amber eyes sits sideways at a rain-streaked cafe window, wearing a pale blue cable-knit cardigan over an ivory cotton blouse, its ribbed cuffs resting at her wrists. Her left hand cups a warm ceramic mug on the wooden table while her right hand rests beside an open book. She turns toward the viewer with a relaxed, closed-mouth smile. Frame her from the waist up at eye level, with her face in the upper third and both hands clearly visible. Cool overcast daylight enters from the left; a warm pendant lamp softly lights her cheek from the right. Outside, blurred umbrellas and reflections recede into the wet street. Delicate linework, softly shaded fabric folds, restrained blue and amber colors, a quiet intimate atmosphere.
+
+裸露与性场景的写法、以及身体部位的英文词表，全部见 `<套件根>/docs/image-prompt-guide.md` 第 4–7 节，本文件不重复。
 
 NovelAI 相关：
 - 官方连接方式可选「使用排队服务器」。打开后填写已有协调服务器的地址和用户标识，等拿到许可再调用官方生图接口。排队失败会结束本次请求。排队服务器只收到密钥摘要和排队标识，图片提示词与密钥只发给生图服务。

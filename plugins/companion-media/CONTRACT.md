@@ -327,3 +327,21 @@
 所有 NAI 连接方式的画面正文为 artistString + prompt；不追加视觉身份、衣物或旧手填正向预设；用户选择的官方质量预设（如 Light）仍单独生效。旧配置仍保留供参考，反向预设合并不变。OpenAI 直接使用完整 prompt。旧 outfit 参数保留兼容校验，不写入提示词。
 
 companion_media_visual 不发网络请求，不写衣柜；群聊遵守现有私人衣柜隔离。draw 仍校验身份与衣柜可用性，dryRun 返回 prompt 和视觉参考（clothingClause / identityClause），NAI 的 preset.positive 为最终正向文本。visual 元数据只说明参考来源，不证明模型已将其画入图片。
+
+## 2026-11-13 提示词写法外置为单一权威（优先于上文写法约定）
+
+**变更**：提示词写法不再由工具说明承载，改为套件根目录下的 `docs/image-prompt-guide.md`。
+
+理由：写法的内容（描述维度、结构、身体部位词表、裸露与遮挡、位置与视角、完整示例、反向提示词、提交前检查）在工具说明、instruction、`TOOL_GUIDE.md`、`CONTRACT.md` 各存一份，四份必然漂移；而工具说明每次请求都要随 `request/header` 送达，是最贵的存放位置。
+
+**新契约：**
+
+1. **单一权威**：写法只存在于 `<suiteRoot>/docs/image-prompt-guide.md`。工具说明、`companion_media_visual` 的 `instruction`、`TOOL_GUIDE.md` 只写「去读这份指南」，不复述内容。
+2. **路径可发现**：`companion_media_visual` 返回 `promptGuide`，值为指南的绝对路径；`companion_media_draw` 的 `dryRun` 也在返回里回带同一个 `promptGuide`。两者都取自 `promptGuidePath()` 的磁盘探测结果，不是硬编码字符串。
+3. **缺失可观测**：指南不存在时 `promptGuide` 为字符串 `'missing'`（不是 `null`、不是假路径），`instruction` 退回内联的最小解剖词提示，调用方仍能写出合格 prompt 而不会拿到一个打不开的路径。
+4. **读取顺序**：`companion_media_draw` 的工具说明要求写 prompt 前先读指南；`companion_media_visual` 的说明要求读到路径后先读指南，再构思 prompt。
+5. **服务端不改写**：draw 仍按原文提交 `prompt`，不追加、不过滤、不做语义匹配。指南是给写 prompt 的一方看的规范，不是运行时改写器。
+
+**行为边界**（本次未变）：校验、错误码、provider 调用、账本、投递、身份与衣柜门禁、分辨率与预设族全部保持原样。
+
+**已知局限**：工具说明属于软约束。实测（2026-11-13，`qq-dm-1429709395`）模型读到了说明但没有照做——4 次 draw 调用里解剖词出现 0 次。把规则外置成一份可被明确读取的文件，是为了让"照做"有据可依、可被逐项核对（指南第 9 节），而不是宣称它已自动生效。真正的强制需要在生成路径上改代码，不在本次范围。

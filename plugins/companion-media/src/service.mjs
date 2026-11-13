@@ -375,13 +375,36 @@ export function createMediaService({
     };
   }
 
+  /**
+   * Absolute path of the prompt writing guide, or `null` when it is not on disk.
+   *
+   * `docs/image-prompt-guide.md` is the single authority for how an image prompt is written,
+   * including how nudity and body parts are named. Reading it is the caller's job; this only
+   * reports a path that really exists, so a tool description can point at a readable file
+   * instead of guessing. Callers turn `null` into the explicit `'missing'` marker.
+   */
+  const PROMPT_GUIDE_RELATIVE = path.join('docs', 'image-prompt-guide.md');
+  function promptGuidePath() {
+    if (!suiteRoot) return null;
+    const absolute = path.join(suiteRoot, PROMPT_GUIDE_RELATIVE);
+    try {
+      return fs.statSync(absolute).isFile() ? absolute : null;
+    } catch {
+      return null;
+    }
+  }
+
   function readVisual({ sessionId = null } = {}) {
     const persona = resolvePersonaId({ env, suiteConfig: readSuiteConfig(suiteRoot) });
     const visual = resolveCompanionVisualState({ root: dataDir, personaId: persona.id || '',
       sessionId: String(sessionId ?? ''), now: now().getTime() });
     const gate = companionPictureGate(visual, { personaId: persona.id || '', sessionId });
+    const guide = promptGuidePath();
     return { ok: gate.ok, visual: gate.report, ...(gate.refusal ? { error: gate.refusal } : {}),
-      instruction: '读取身份与当前衣物后，把可见外观、衣物、动作、表情、构图、环境和光线融合为完整英文 prompt；参考串不是固定后缀，习惯性配饰按场景取舍。画面正文为配置画师串 + prompt，所选官方质量预设单独生效。' };
+      promptGuide: guide ?? 'missing',
+      instruction: guide
+        ? `读取身份与当前衣物后，先读提示词写法指南 ${guide}，再按指南把外观、衣物、动作、表情、构图、环境和光线写成完整英文 prompt；参考串不是固定后缀，习惯性配饰按场景取舍。身体部位、裸露与遮挡、位置与视角、反向提示词自检都按指南对应章节执行。画面正文为配置画师串 + prompt，所选官方质量预设单独生效。`
+        : `提示词写法指南缺失（预期位置 ${PROMPT_GUIDE_RELATIVE}）。读取身份与当前衣物后，仍把可见外观、衣物、动作、表情、构图、环境和光线写成完整英文 prompt；身体部位用解剖名词直写（nipples/areola/pussy/labia/clitoris/vagina/anus/ass/groin/pubic hair），裸露与遮挡状态、部位在画面内位置与朝向都要写明。画面正文为配置画师串 + prompt，所选官方质量预设单独生效。` };
   }
 
   async function generateImage({
@@ -449,8 +472,10 @@ export function createMediaService({
       return badInput('请直接使用英文填写 prompt 和 negative，并使用英文标点');
     }
 
+    const guide = promptGuidePath();
     if (dryRun) {
-      const dry = { ok: true, dryRun: true, provider: id, prompt, wouldSend: '不发起任何网络请求' };
+      const dry = { ok: true, dryRun: true, provider: id, prompt, wouldSend: '不发起任何网络请求',
+        promptGuide: guide ?? 'missing' };
       if (visual) dry.visual = companionVisualReport(visual, { outfit });
       if (id === 'nai') {
         const preset = resolveNaiPrompt(section,{prompt,negative});
