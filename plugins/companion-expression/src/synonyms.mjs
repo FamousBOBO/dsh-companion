@@ -351,6 +351,9 @@ export function normalizeText(text = '') {
   if (!mixed && emotions.length >= 2) {
     mixed = conflictsBetween(emotions, emotions).length > 0;
   }
+  // 自嘲式的「好笑又无奈」跨意图/情绪两族，不能只数 emotions。
+  if (!mixed && intents.includes('laugh') && emotions.includes('resignation')
+      && /又|一边|同时|夹杂|带着/.test(source)) mixed = true;
 
   const avoidWhen = [];
   if (emotions.includes('anger') || aggression > 0) avoidWhen.push('serious-conflict', 'apology');

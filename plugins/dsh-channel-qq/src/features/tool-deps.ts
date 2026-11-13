@@ -58,6 +58,7 @@ export interface QQToolDeps {
    * 而 `get_group_list` 是一次 WebSocket 往返——每个工具各查一次就是每发一条消息
    * 多一次往返。缓存与降级规则收在实现里（见 `features/qq-tools.ts`）。
    */
+  readonly expressionCandidates?: (input: { isGroup: boolean; target: string; query: string; limit: number }) => unknown
   readonly knownGroups: () => Promise<Set<number>>
   /**
    * 高危群管动作的总闸门（踢人 / 全员禁言 / 设管理员）。

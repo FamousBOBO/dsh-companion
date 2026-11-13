@@ -151,6 +151,14 @@ test('混合信号：好气又好笑 → anger + laugh；哭笑不得 → 无奈
   assert.ok(cry.emotions.includes('sadness'));
 });
 
+test('自嘲语气跨家族识别混合信号，否定发笑仍保留', () => {
+  const mixed = normalizeText('有点好笑又有点无奈地吐槽');
+  assert.equal(mixed.mixed, true);
+  assert.ok(mixed.intents.includes('laugh'));
+  assert.ok(mixed.emotions.includes('resignation'));
+  assert.equal(normalizeText('笑不出来，又很无奈').intents.includes('laugh'), false);
+});
+
 test('确定性：同一输入永远同一输出；空串/纯标点没有信号', () => {
   for (const literal of ['好气又好笑', '笑着答应、乖巧点头、轻松愉快', '笑不出来']) {
     assert.equal(JSON.stringify(normalizeText(literal)), JSON.stringify(normalizeText(literal)));

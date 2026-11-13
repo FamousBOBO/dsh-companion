@@ -37,6 +37,7 @@ import { SESSION_PREFIX, splitRoom } from '../../core/room.js'
 import type { Trust } from '../../core/trust.js'
 import type { QQToolDeps } from '../tool-deps.js'
 import { messagingTools } from '../messaging/tools.js'
+import { expressionServiceOf } from '../../adapters/dsh-host/expression-service.js'
 import { lookupTools } from '../lookup/tools.js'
 import { groupAdminTools } from '../group-admin/tools.js'
 import { groupFilesTools } from '../group-files/tools.js'
@@ -122,6 +123,7 @@ function toolDeps(args: RegisterToolsArgs): QQToolDeps {
     memorySearch: args.memorySearch,
     extract: args.extract,
     history: args.history,
+    expressionCandidates: (input) => expressionServiceOf(() => args.ctx).service?.candidates(input),
     knownGroups,
     assertDangerous,
   }

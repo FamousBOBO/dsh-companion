@@ -8,6 +8,7 @@
  */
 
 import { looksLikeCode } from '../../core/guards/code.js'
+import { expressionHint } from './expression-hint.js'
 import { isInnerMonologueLeak } from '../../core/guards/monologue.js'
 import type { OneBotMessageSegment } from '../../types.js'
 import type { ToolSpec } from '../../adapters/dsh-host/tools.js'
@@ -190,7 +191,7 @@ function qqSendText(deps: QQToolDeps): ToolSpec {
           // 等 5–9 秒才能继续（实测 turn 的工具耗时里这一段占 3.3–8.8 秒）。
           const last = await sendPiece(deps, isGroup, target, pieces[0] as string)
           scheduleTailSends(deps, isGroup, target, pieces)
-          return { ...(last as Record<string, unknown> | null), segments: pieces.length, queued: Math.max(0, pieces.length - 1) }
+          return { ...(last as Record<string, unknown> | null), segments: pieces.length, queued: Math.max(0, pieces.length - 1), ...await expressionHint(deps, args, text) }
         },
       }
 }
@@ -249,7 +250,7 @@ function qqReplyQuote(deps: QQToolDeps): ToolSpec {
             const mid = (result as { message_id?: number } | null)?.message_id ?? null
             await roomLog.add({ messageId: typeof mid === 'number' ? mid : null, quotedId: Number(args.messageId) || null, text, time: Date.now() })
           }
-          return result
+          return { ...(result as Record<string, unknown> | null), ...await expressionHint(deps, args, text) }
         },
       }
 }
