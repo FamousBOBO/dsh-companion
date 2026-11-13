@@ -64,13 +64,27 @@ export interface GroupModelConfig {
 }
 export interface STTConfig {
   enabled: boolean
+  /** 转写后端。缺省（老配置、手写配置）按 OpenAI 兼容处理，与今天一致。 */
+  backend?: 'openai-compatible' | 'deepseek-asr'
   /** 本地 Whisper 不可用时，改用协议端的语音转文字。 */
   serverFallback: boolean
-  /** OpenAI-compatible /audio/transcriptions base, e.g. https://host/v1 */
+  /**
+   * 接口地址。
+   *
+   * - `openai-compatible`：OpenAI 兼容的 `/audio/transcriptions` 基址，例如 `https://host/v1`；
+   * - `deepseek-asr`：留空 = `https://api.deepseek.com`。
+   */
   baseUrl: string | null
-  /** API key (plain, or $ENV to read from environment). */
+  /**
+   * API key（明文，或 `$ENV` 从环境变量读）。
+   *
+   * 留空时尝试从宿主凭据库取 `DEEPSEEK_API_KEY`——平台 Key 存在那里就不必写进配置文件。
+   */
   apiKey: string | null
+  /** 仅 `openai-compatible` 用；官方 ASR 没有模型参数。 */
   model: string
+  /** 仅 `deepseek-asr` 用；缺省 30 秒。 */
+  timeoutMs?: number
 }
 export interface BatchingConfig {
   dmEnabled?: boolean
@@ -222,13 +236,39 @@ export const CHAT_GROUPS: FieldGroup[] = [
     fields: {
       // 读法：转写时整个 `config.stt` 子对象按引用传入（live）。
       enabled: b('启用', true, { hot: 'live' }),
+      backend: e('后端', 'openai-compatible', [
+        ['openai-compatible', 'OpenAI 兼容（/audio/transcriptions）'],
+        ['deepseek-asr', 'DeepSeek 官方 ASR'],
+      ], {
+        hot: 'live',
+        help: 'DeepSeek 官方 ASR 只收 16 位 PCM WAV / Ogg Opus，单条 ≤120 秒、≤8 MiB，按音频时长计费。',
+      }),
       serverFallback: b('本地失败时用协议端转写', false, {
         hot: 'live',
         help: '默认关。打开后本地 STT 没配或转写失败，会调用协议端的语音转文字（SnowLuma fetch_ptt_text）。',
       }),
-      baseUrl: s('接口地址', null, { help: 'OpenAI 兼容的 /audio/transcriptions，例如本机 whisper。', hot: 'live' }),
-      apiKey: s('接口密钥', null, { secret: true, hot: 'live' }),
-      model: s('模型名', 'whisper-1', { hot: 'live', advanced: true }),
+      baseUrl: s('接口地址', null, {
+        help: 'OpenAI 兼容填 /audio/transcriptions 的基址（例如本机 whisper）；官方 ASR 留空 = https://api.deepseek.com。',
+        hot: 'live',
+      }),
+      apiKey: s('接口密钥', null, {
+        secret: true,
+        hot: 'live',
+        help: '留空则去宿主凭据库取 DEEPSEEK_API_KEY；也可写 $ENV 名。',
+      }),
+      model: s('模型名', 'whisper-1', {
+        hot: 'live',
+        advanced: true,
+        hiddenIf: { field: 'stt.backend', notEquals: 'openai-compatible' },
+      }),
+      timeoutMs: n('超时（毫秒）', 30000, {
+        hot: 'live',
+        advanced: true,
+        min: 1000,
+        max: 120000,
+        step: 1000,
+        hiddenIf: { field: 'stt.backend', notEquals: 'deepseek-asr' },
+      }),
     },
   },
   {

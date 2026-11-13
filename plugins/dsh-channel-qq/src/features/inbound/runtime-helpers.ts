@@ -15,11 +15,14 @@ export async function transcribeOne(
   stt: QQChannelConfig['stt'],
   messageId: number,
   log: (line: string) => void,
+  /** 从宿主凭据库现取平台 Key；没装 credentials 服务时缺省。 */
+  resolveCredentialsKey?: () => Promise<string | null>,
 ): Promise<string | null> {
-  // 本地 STT：没配/失败都不抛穿——开了兜底就换协议端，没开就返回 null（原行为）。
+  // 官方 ASR 的声音条不抛穿：没配/失败都不该让整条语音把回合打挂。
+  // 开了兜底就换协议端，没开就返回 null（原行为）。
   let local: string | null = null
   try {
-    const result = await transcribeVoiceMessage(api, stt, messageId, log)
+    const result = await transcribeVoiceMessage(api, stt, messageId, log, { resolveCredentialsKey })
     local = result === null ? null : result[0]
   } catch (error) {
     if (stt.serverFallback !== true) throw error

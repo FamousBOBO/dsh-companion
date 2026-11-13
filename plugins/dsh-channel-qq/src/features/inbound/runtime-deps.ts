@@ -9,6 +9,7 @@ import { createAdminCommand } from '../approval/index.js'
 import { approvalEnabled } from '../approval/store.js'
 import { transcribeOne, turnHooksOf } from './runtime-helpers.js'
 import { lazyEvidence } from './lazy-evidence.js'
+import { DEEPSEEK_API_KEY_REF } from '../../adapters/providers/stt-deepseek.js'
 import type { GatewayHealth } from '../../app/conversation/gateway-health.js'
 import type { RuntimeDeps } from './index.js'
 import type { ChatPlatform, QQApi } from '../../ports/platform.js'
@@ -48,7 +49,17 @@ export function runtimeDepsOf(input: {
     knowledge: () => host.get('knowledge')?.store ?? null,
     ...lazyEvidence(host),
     screen: { scanner: input.bundle === null ? null : input.bundle.scanner },
-    transcribe: (messageId: number) => transcribeOne(parts.api, config.stt, messageId, host.log),
+    transcribe: (messageId: number) => transcribeOne(
+      parts.api,
+      config.stt,
+      messageId,
+      host.log,
+      // 平台 Key 存在宿主凭据库里就不必写进配置；每次转写现取，改了立刻生效。
+      // 显式填了 apiKey（明文或 $ENV）时不再去翻凭据库，免得两处不一致。
+      config.stt.apiKey === null || config.stt.apiKey.trim() === ''
+        ? () => host.bridge.credential?.(DEEPSEEK_API_KEY_REF) ?? Promise.resolve(null)
+        : undefined,
+    ),
     openSentLog: (room: string) => input.sentLogHub.for(room),
     onGatewayError: (room, detail) => input.gatewayErrors.handler?.(room, detail),
     // context.v2 uses the companion agent's scoped runtime context instead.

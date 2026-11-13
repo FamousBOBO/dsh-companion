@@ -31,6 +31,20 @@ export class DmBuffer {
     this.schedule(conversation, chars)
   }
 
+  /**
+   * 立刻投递，不等合并窗口。
+   *
+   * 给**已经是一段完整的话**的消息用：语音条转写完就是整句，再等 1.5–6 秒的
+   * "他可能还没说完"窗口没有意义，只会让回复变慢。队列里先前攒的文字一并带上，
+   * 不会被拆成两轮。
+   * @param conversation - 目标会话。
+   */
+  async flushNow(conversation: Conversation): Promise<void> {
+    conversation.batchTimer?.cancel()
+    conversation.batchTimer = null
+    await this.flush(conversation)
+  }
+
   /** 短句更可能还没说完；长句缩短等待。上轮未结束时保留队列，不排多个 followup。 */
   private schedule(conversation: Conversation, chars: number): void {
     const cfg = this.deps.config().batching

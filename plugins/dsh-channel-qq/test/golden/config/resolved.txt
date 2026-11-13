@@ -90,10 +90,12 @@
   },
   "stt": {
     "enabled": true,
+    "backend": "openai-compatible",
     "serverFallback": false,
     "baseUrl": null,
     "apiKey": null,
-    "model": "whisper-1"
+    "model": "whisper-1",
+    "timeoutMs": 30000
   },
   "groupModel": {
     "provider": null,

@@ -9,7 +9,9 @@ export type OneBotMessageSegment =
   | { type: 'at'; data: { qq: string } }
   | { type: 'reply'; data: { id: string } }
   | { type: 'face'; data: { id: number } }
-  | { type: 'record'; data: { file: string } }
+  // `path` / `url` 是 NapCat 额外给的：`path` 是已经落盘的 silk 绝对路径，
+  // 直接读它就不必让协议端调 ffmpeg 转码（本机没有 ffmpeg）。
+  | { type: 'record'; data: { file: string; path?: string; url?: string } }
   | { type: 'file'; data: { file: string; name?: string; url?: string; file_id?: string; file_size?: number | string } }
   | { type: 'video'; data: { file: string } }
   | { type: 'forward'; data: { id: string } }

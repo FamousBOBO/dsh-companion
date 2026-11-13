@@ -233,6 +233,26 @@ test('core/message/render：没有可说的内容返回 null；带图无文字�
   )
 })
 
+test('core/message/render：只有语音条的消息不能判成 null（2026-11-14 生产 bug）', () => {
+  // 实测漏过：转写成功、日志打出 `transcribed: …`，但这一行被判 null，
+  // `deliverDm` 于是整条消息 return，语音永远进不了模型。
+  const voice = groupEvent({ message: [{ type: 'record', data: { file: 'a.amr' } }] })
+  const parsed = parseInbound(voice)
+  const line = renderMessageLine({
+    event: voice, parsed, called: true, quoted: null, voiceText: '喂喂，听得到吗？', nowMs: NOW_MS,
+  })
+  assert.ok(line !== null, '只有语音条的消息必须能渲染出一行')
+  assert.match(line, /\[语音条说：喂喂，听得到吗？\]/)
+})
+
+test('core/message/render：语音转写为空串时仍按"没内容"处理', () => {
+  const voice = groupEvent({ message: [{ type: 'record', data: { file: 'a.amr' } }] })
+  assert.equal(
+    renderMessageLine({ event: voice, parsed: parseInbound(voice), called: true, quoted: null, voiceText: '', nowMs: NOW_MS }),
+    null,
+  )
+})
+
 test('core/message/render：语气提示只在被叫到时出现', () => {
   const event = groupEvent()
   const parsed = parseInbound(event)

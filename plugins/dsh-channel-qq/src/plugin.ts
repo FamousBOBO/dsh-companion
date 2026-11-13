@@ -33,6 +33,7 @@ import { installSkills } from './adapters/dsh-host/skills.js'
 import { createSessionSizeProbe } from './adapters/dsh-host/session-size.js'
 import { createUsageProbe } from './adapters/dsh-host/usage.js'
 import { readRuntimeFacts } from './adapters/dsh-host/runtime-info.js'
+import { credentialResolver } from './adapters/dsh-host/credentials.js'
 import { guardTemplateKey, policyEnabled } from './app/policy/tool-policy.js'
 import { toolsV2Enabled } from './features/tools-v2/index.js'
 import { SendSignatureGuard } from './core/guards/output-signatures.js'
@@ -318,6 +319,9 @@ export class ChannelQQ extends Service {
         agentDefaultModel: this.ctx.agentDefaultModel,
       }),
       logHostError: (message: string) => { this.ctx.logger.error(message) },
+      // 凭据：按引用名现取，每次操作重新读一次。宿主没装 credentials 服务时返回 null，
+      // 由调用方退化成"未配置"（voice 不转写），不拦启动。
+      credential: (ref: string) => credentialResolver(this.ctx, ref)(),
       reloadSections: async (patch: Record<string, unknown>) => await this.applyEffects(patch),
     }
   }

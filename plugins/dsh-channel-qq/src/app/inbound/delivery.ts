@@ -39,6 +39,11 @@ export async function deliverDm(
   if (!deps.dmBuffer.accept(conversation, event)) return
   if (deps.config().batching.dmEnabled) {
     deps.dmBuffer.enqueue(conversation, line, materials.imageRefs, parsed.plainText.length)
+    // 语音条不走合并窗口：转写出来已经是一句完整的话，再等 1.5–6 秒没有意义。
+    // 队列里先前攒的文字会被**一起**发出去，不会拆成两轮。
+    if (materials.voiceText !== null && materials.voiceText !== '') {
+      await deps.dmBuffer.flushNow(conversation)
+    }
     return
   }
   // 召回交给组包器（它才知道 memory.v2 与房间）；这里只给素材。

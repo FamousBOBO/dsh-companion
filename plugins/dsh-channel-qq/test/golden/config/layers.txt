@@ -93,10 +93,12 @@ override = {}
  },
  "stt": {
   "enabled": true,
+  "backend": "openai-compatible",
   "serverFallback": false,
   "baseUrl": null,
   "apiKey": null,
-  "model": "whisper-1"
+  "model": "whisper-1",
+  "timeoutMs": 30000
  },
  "groupModel": {
   "provider": null,
@@ -822,10 +824,12 @@ override = {}
  },
  "stt": {
   "enabled": true,
+  "backend": "openai-compatible",
   "serverFallback": false,
   "baseUrl": null,
   "apiKey": null,
-  "model": "whisper-1"
+  "model": "whisper-1",
+  "timeoutMs": 30000
  },
  "groupModel": {
   "provider": null,
@@ -1549,10 +1553,12 @@ override = {"batching":{"windowMs":20000}}
  },
  "stt": {
   "enabled": true,
+  "backend": "openai-compatible",
   "serverFallback": false,
   "baseUrl": null,
   "apiKey": null,
-  "model": "whisper-1"
+  "model": "whisper-1",
+  "timeoutMs": 30000
  },
  "groupModel": {
   "provider": null,
@@ -2276,10 +2282,12 @@ override = {"admin":{"port":8790}}
  },
  "stt": {
   "enabled": true,
+  "backend": "openai-compatible",
   "serverFallback": false,
   "baseUrl": null,
   "apiKey": null,
-  "model": "whisper-1"
+  "model": "whisper-1",
+  "timeoutMs": 30000
  },
  "groupModel": {
   "provider": null,
@@ -3003,10 +3011,12 @@ override = {"imageGen":{"model":"flux"}}
  },
  "stt": {
   "enabled": true,
+  "backend": "openai-compatible",
   "serverFallback": false,
   "baseUrl": null,
   "apiKey": null,
-  "model": "whisper-1"
+  "model": "whisper-1",
+  "timeoutMs": 30000
  },
  "groupModel": {
   "provider": null,
@@ -3730,10 +3740,12 @@ override = {"tts":{"voice":"b"}}
  },
  "stt": {
   "enabled": true,
+  "backend": "openai-compatible",
   "serverFallback": false,
   "baseUrl": null,
   "apiKey": null,
-  "model": "whisper-1"
+  "model": "whisper-1",
+  "timeoutMs": 30000
  },
  "groupModel": {
   "provider": null,
@@ -4457,10 +4469,12 @@ override = {"flood":{"windowSec":30}}
  },
  "stt": {
   "enabled": true,
+  "backend": "openai-compatible",
   "serverFallback": false,
   "baseUrl": null,
   "apiKey": null,
-  "model": "whisper-1"
+  "model": "whisper-1",
+  "timeoutMs": 30000
  },
  "groupModel": {
   "provider": null,
@@ -5184,10 +5198,12 @@ override = {}
  },
  "stt": {
   "enabled": true,
+  "backend": "openai-compatible",
   "serverFallback": false,
   "baseUrl": null,
   "apiKey": null,
-  "model": "whisper-1"
+  "model": "whisper-1",
+  "timeoutMs": 30000
  },
  "groupModel": {
   "provider": null,
@@ -5918,10 +5934,12 @@ override = {"keywordTriggers":[]}
  },
  "stt": {
   "enabled": true,
+  "backend": "openai-compatible",
   "serverFallback": false,
   "baseUrl": null,
   "apiKey": null,
-  "model": "whisper-1"
+  "model": "whisper-1",
+  "timeoutMs": 30000
  },
  "groupModel": {
   "provider": null,
@@ -6645,10 +6663,12 @@ override = {"rss":{"pollIntervalMin":5}}
  },
  "stt": {
   "enabled": true,
+  "backend": "openai-compatible",
   "serverFallback": false,
   "baseUrl": null,
   "apiKey": null,
-  "model": "whisper-1"
+  "model": "whisper-1",
+  "timeoutMs": 30000
  },
  "groupModel": {
   "provider": null,
@@ -7379,10 +7399,12 @@ override = {"groupEnabled":false}
  },
  "stt": {
   "enabled": true,
+  "backend": "openai-compatible",
   "serverFallback": false,
   "baseUrl": null,
   "apiKey": null,
-  "model": "whisper-1"
+  "model": "whisper-1",
+  "timeoutMs": 30000
  },
  "groupModel": {
   "provider": null,
@@ -8106,10 +8128,12 @@ override = {}
  },
  "stt": {
   "enabled": true,
+  "backend": "openai-compatible",
   "serverFallback": false,
   "baseUrl": null,
   "apiKey": null,
-  "model": "whisper-1"
+  "model": "whisper-1",
+  "timeoutMs": 30000
  },
  "groupModel": {
   "provider": null,
@@ -8833,10 +8857,12 @@ override = {"groupEnabled":true}
  },
  "stt": {
   "enabled": true,
+  "backend": "openai-compatible",
   "serverFallback": false,
   "baseUrl": null,
   "apiKey": null,
-  "model": "whisper-1"
+  "model": "whisper-1",
+  "timeoutMs": 30000
  },
  "groupModel": {
   "provider": null,
@@ -9560,10 +9586,12 @@ override = {"admin":{"host":"127.0.0.1"}}
  },
  "stt": {
   "enabled": true,
+  "backend": "openai-compatible",
   "serverFallback": false,
   "baseUrl": null,
   "apiKey": null,
-  "model": "whisper-1"
+  "model": "whisper-1",
+  "timeoutMs": 30000
  },
  "groupModel": {
   "provider": null,
@@ -10287,10 +10315,12 @@ override = {}
  },
  "stt": {
   "enabled": true,
+  "backend": "openai-compatible",
   "serverFallback": false,
   "baseUrl": null,
   "apiKey": null,
-  "model": "whisper-1"
+  "model": "whisper-1",
+  "timeoutMs": 30000
  },
  "groupModel": {
   "provider": null,
@@ -11014,10 +11044,12 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
  },
  "stt": {
   "enabled": true,
+  "backend": "openai-compatible",
   "serverFallback": false,
   "baseUrl": null,
   "apiKey": null,
-  "model": "whisper-1"
+  "model": "whisper-1",
+  "timeoutMs": 30000
  },
  "groupModel": {
   "provider": null,

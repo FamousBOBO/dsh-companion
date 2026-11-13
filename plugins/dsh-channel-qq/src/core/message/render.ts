@@ -119,8 +119,12 @@ export function renderMessageLine(input: RenderInput): string | null {
   // 表情单独兜底：一条只有表情的消息（`[表情：困]`）没有正文，但那**就是**它的内容。
   // 以前这里会退到 `[图片]` 甚至 `(无文字)`，模型于是拿不到「他困了」这个意思。
   const content = renderMessageContent(parsed)
+  // 一条**只有语音条**的消息同样"有得说"：它的内容在 `voiceText` 里。
+  // 2026-11-14 实测漏了这一条：转写成功、日志打出 `transcribed: …`，但这一行被
+  // 判成 null，`deliverDm` 于是整条消息 return——语音永远进不了模型。
+  const hasVoice = typeof input.voiceText === 'string' && input.voiceText !== ''
   // 纯合并转发（无文字无图但有展开内容）也是"有得说"的消息。
-  if (content === null && parsed.imageSummaries.length === 0 && (input.forwardText ?? '') === '') return null
+  if (content === null && parsed.imageSummaries.length === 0 && (input.forwardText ?? '') === '' && !hasVoice) return null
   const time = new Date((event.time || Math.floor(input.nowMs / 1000)) * 1000)
   const hhmm = `${String(time.getHours()).padStart(2, '0')}:${String(time.getMinutes()).padStart(2, '0')}`
   // COMPANION-QQ-PATCH-4：消息行的时间戳带年月日（本地时区）。

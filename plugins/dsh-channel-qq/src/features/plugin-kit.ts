@@ -60,6 +60,7 @@ import type { ChatLogRecorder } from './chatlog/index.js'
 import type { ContactService } from './contact/types.js'
 import type { SharePort } from './contact/share-port.js'
 import type { SongService } from './song/queue.js'
+import type { CredentialLookup } from '../ports/credentials.js'
 export type { SongService } from './song/queue.js'
 
 /** platform 子插件提供的四件套（传输对象 + 端口 + 出站队列）。 */
@@ -178,7 +179,7 @@ export interface ServiceBag {
 }
 
 /** 根转交进来的宿主能力；这里也是 cordis `ctx` 唯一被"窄化"的地方。 */
-export interface HostBridge {
+export interface HostBridge extends CredentialLookup {
   /** 宿主工具表的注册面（各工具注册器直接收它）。 */
   toolHost(): ToolHost
   /** agent 网关（建会话/恢复/健康回调），已由根用真 ctx 建好。 */

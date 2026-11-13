@@ -1,4 +1,4 @@
-﻿import { test } from 'node:test'
+import { test } from 'node:test'
 import assert from 'node:assert/strict'
 import { DmBuffer } from '../src/app/inbound/dm-buffer.js'
 
@@ -60,4 +60,16 @@ test('busy previous turn retains all pending content until idle', async () => {
   h.add('补充', 2); h.setBusy(false); await h.advance(500)
   assert.equal(h.submitted.length, 1)
   assert.match(h.submitted[0]!.packet, /补充/)
+})
+test('flushNow：语音条立刻投递，不等合并窗口，也不丢先前攒的文字', async () => {
+  // 语音转写完就是一句完整的话，再等 1.5–6 秒没有意义。队列里先前的文字要一起发。
+  const h = harness()
+  h.add('在吗', 1)
+  h.add('[语音条] 喂喂，听得到吗？', 2)
+  await h.buffer.flushNow(h.conv as never)
+  assert.equal(h.submitted.length, 1, '不该等定时器就该发出去')
+  assert.equal(h.submitted[0]!.packet, '在吗\n[语音条] 喂喂，听得到吗？', '先前攒的文字要一起带上，不拆两轮')
+  // 定时器已取消：时间推进到窗口之外也不该再发一次
+  await h.advance(20000)
+  assert.equal(h.submitted.length, 1, '立刻投递后不能又被定时器重复投一次')
 })
