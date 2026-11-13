@@ -163,7 +163,7 @@ function formatLines(replyMaxChars: number): string[] {
     '【输出格式】只输出**一行** JSON（不要代码块、不要解释、不要换行）：',
     '{"speak":true,"reply":"要对群里说的话","why":"一句话理由"}',
     '{"speak":false,"reply":"","why":"一句话理由"}',
-    `- speak=true：reply 是发到群里的那句中文，**一句话**（最多两句）、**不超过 ${String(replyMaxChars)} 字**；群里不分段，只发一条；`,
+    `- speak=true：reply 是本轮完整正文，总共不超过 ${String(replyMaxChars)} 字；可用句末标点自然分成一至三条短消息，不必凑满；整轮只占一次额度，冷却从本轮结束后计算；`,
     '  不要 @ 任何人、不要 [CQ: 码、不要复述背景、不要写「我注意到你们在聊…」「作为当前角色…」这类旁白。',
     '- speak=false：reply 必须是空字符串。',
   ]

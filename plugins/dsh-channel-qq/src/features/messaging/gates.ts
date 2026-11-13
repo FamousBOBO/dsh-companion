@@ -66,15 +66,14 @@ async function friendListHas(deps: QQToolDeps, target: number): Promise<boolean>
  *   - **内心戏不进群**：一次真实事故——她决定"本轮先不说话"，然后把这个决定本身
  *     当成消息发了出去（判据见 `core/guards/monologue.ts`）；
  *   - **长文不进群**（2026-11-06）：群聊和私聊的规矩不一样。私聊可以写长、可以分段，
- *     群里一条超长消息既刷屏又没人看。群聊单条上限 120 字，超了直接拒（提示她短一点），
- *     与"群聊不分段"（`tools.ts` 里群聊不拆条）配套。
+ *     群聊整轮正文默认上限 120 字，超了直接拒；允许在这份总预算内自然拆成最多三条。
  */
 export const GROUP_TEXT_MAX_CHARS = 120
 
 export function assertGroupTextLength(text: string,maxChars=GROUP_TEXT_MAX_CHARS): void {
   const length = [...text].length
   if (length <= maxChars) return
-  throw new Error(`群聊一条不超过 ${String(maxChars)} 字（现在是 ${String(length)} 字）。群里说话短一点：留最想说的那一句，剩下的下一轮再说。`)
+  throw new Error(`群聊一轮不超过 ${String(maxChars)} 字（现在是 ${String(length)} 字）。可自然分成一至三条短消息，总正文仍需简短。`)
 }
 
 export function assertGroupTextAllowed(deps: QQToolDeps, text: string, isGroup: boolean): void {

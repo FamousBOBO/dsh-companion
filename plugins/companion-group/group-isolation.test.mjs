@@ -97,6 +97,17 @@ test('voice sending: only qq_voice action=send_file of a media-layer file inside
   assert.equal(typeof groupToolDenial(voice(a), {}), 'string', 'no mediaRoot → fail closed');
 });
 
+test('media output in workspace/media is allowed without opening the workspace', () => {
+  const a = agent(); markGroupReady(a);
+  const root = path.resolve('synthetic/workspace/media');
+  const options = { ...OPTS, mediaRoots: [root] };
+  assert.equal(groupToolDenial(voice(a, { file: path.join(root, 'speech/generated.wav') }), options), undefined);
+  assert.equal(groupToolDenial(sticker(a, { file: path.join(root, 'image/generated.png') }), options), undefined);
+  for (const file of [path.join(root, '../secret.wav'), path.join(root, '../media-other/secret.wav')]) {
+    assert.equal(typeof groupToolDenial(voice(a, { file }), options), 'string');
+  }
+});
+
 test('same-room text only: reject cross-room, spoofing, CQ, wrong types and unexpected fields', () => {
   const a = agent(); markGroupReady(a);
   for (const over of [{ target: 999 }, { isGroup: false }, { action: 'reply', messageId: 42 }, { action: 'code_review' }, { target: '123' }, { text: '[CQ:image,file=C:/secret.png]' }, { text: '' }, { text: 'x'.repeat(4001) }, { file: 'C:/secret' }, { phase: 'unknown' }]) {

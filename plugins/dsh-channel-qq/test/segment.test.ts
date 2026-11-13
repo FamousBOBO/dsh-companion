@@ -2,7 +2,7 @@
  *
  * 这段逻辑在 P4.6 被删过一次（当时确实没人调用它），P6h 把它作为出站阶段接回来。
  * 所以两条都要钉住：**规则本身**（逐字搬回，不许在搬的过程中走样）与**开关语义**
- * （私聊默认按句发送，显式关闭时保持一条；群聊始终只发一条）。
+ * （私聊默认按句发送，显式关闭时保持一条；群聊一轮可自然拆条）。
  */
 
 import { test } from 'node:test'
@@ -112,13 +112,13 @@ function sendText(overrides: Record<string, unknown>, text: string, isGroup = fa
   }
 }
 
-test('群聊即使开启分段也只发送一条，超长拒绝且不外发', async () => {
+test('群聊一轮按语意拆条，总正文超长仍拒绝且不外发', async () => {
   const text = '先吃饭。然后写代码。最后早点睡。'
   const h = sendText({ segmentation: { enabled: true } }, text, true)
-  assert.equal((await h.run()).segments, 1)
+  assert.equal((await h.run()).segments, 3)
   const calls = h.client.calls.filter(call => call.action === 'send_group_msg')
-  assert.equal(calls.length, 1)
-  assert.equal((calls[0]!.params.message as Array<{data:{text:string}}>)[0]!.data.text, text)
+  assert.equal(calls.length, 3)
+  assert.equal(calls.map(call => (call.params.message as Array<{data:{text:string}}>)[0]!.data.text).join(''), text)
   const long = sendText({}, '字'.repeat(121), true)
   await assert.rejects(long.run, /120 字/)
   assert.equal(long.client.calls.some(call => call.action === 'send_group_msg'), false)

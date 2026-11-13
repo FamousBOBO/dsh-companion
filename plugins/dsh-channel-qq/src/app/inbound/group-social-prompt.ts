@@ -116,7 +116,7 @@ function formatLines(replyMaxChars: number): string[] {
     '{"action":"reply","targetMessageId":123,"text":"要说的话","reason":"一句话理由"}',
     '{"action":"join","topic":"话题名","text":"要说的话","reason":"一句话理由"}',
     '{"action":"react","targetMessageId":123,"text":"要说的话","reason":"一句话理由"}',
-    `- text 是发到群里的那句中文，**一句话**（最多两句）、**不超过 ${String(replyMaxChars)} 字**；群里不分段，只发一条；`,
+    `- text 是本轮要发到群里的完整正文，总共不超过 ${String(replyMaxChars)} 字；可自然分成一至三条短消息，用句末标点分开；不必凑满，不要重复。整轮只占一次发言额度，冷却从本轮结束后计算；`,
     '  不要 @ 任何人、不要 [CQ: 码、不要复述背景、不要写「我注意到你们在聊…」「作为当前角色…」这类旁白；',
     '- targetMessageId 必须是背景里真实出现过的消息号（写别的号会被代码拦掉，这一次就白判断了）；',
     '- 选 silent / observe 时不要给 text。',

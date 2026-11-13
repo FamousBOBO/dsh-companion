@@ -21,6 +21,7 @@ import {
   type PresenceState,
 } from '../../core/presence.js'
 import type { ChatPlatform } from '../../ports/platform.js'
+import { groupSegments } from '../../core/text/group-segments.js'
 import { limitsOf, type CycleDeps, type CycleInput, type CycleOutcome, type SpeakingDecision } from './presence-flow.js'
 
 /** 说：先复核发言限频，再过模式闸门，再发；**只有拿到回执**才记账。 */
@@ -32,8 +33,20 @@ export async function speak(input: CycleInput, deps: CycleDeps, decision: Speaki
   // 真正决定"发不发"的是模式。
   const mode = currentMode(deps)
   if (mode !== 'live') return shadowed(input, deps, decision, mode)
-  const sent = await send(input, deps, decision)
-  if (sent.kind === 'failed') return sent.outcome
+  const confirmed: Array<{ messageId: number; selfId: number | null; text: string }> = []
+  for (const text of groupSegments(decision.text)) {
+    // 每条仍复核停发开关，但冷却与额度只在轮次边界计算。
+    if (currentMode(deps) !== 'live') break
+    const result = await send(input, deps, { ...decision, text })
+    if (result.kind === 'failed') {
+      if (confirmed.length === 0) return result.outcome
+      break // 部分送达也占一轮；剩余部分不重试。
+    }
+    confirmed.push({ ...result, text })
+  }
+  const sent = confirmed.at(-1)
+  if (sent === undefined) return silent(input, deps, '发送前模式已切换，本轮未发送')
+  decision = { ...decision, text: confirmed.map(part => part.text).join('\n') }
   const atMs = deps.clock.now()
   const state = recordSpeak(recordJudge(input.state, atMs, 'spoke', limitsOf(input.settings)), atMs)
   const target = decision.action === 'reply' ? `，引用 #${String(decision.targetMessageId)}` : ''
@@ -42,15 +55,15 @@ export async function speak(input: CycleInput, deps: CycleDeps, decision: Speaki
     + `（${String([...decision.text].length)} 字${target}）`,
   )
   try {
-    await deps.recordSent(input.groupId, sent.messageId, decision.text)
+    for (const part of confirmed) await deps.recordSent(input.groupId, part.messageId, part.text)
   } catch (error) {
     deps.log(`presence: 群 ${String(input.groupId)} sent-log 写入失败（已忽略）：${describe(error)}`)
   }
   try {
-    deps.recordEvent?.({
+    for (const part of confirmed) deps.recordEvent?.({
       kind: 'proactive_message',
-      messageId: sent.messageId,
-      text: decision.text,
+      messageId: part.messageId,
+      text: part.text,
       atMs,
       ...(decision.action === 'reply' ? { targetMessageId: decision.targetMessageId } : {}),
     })

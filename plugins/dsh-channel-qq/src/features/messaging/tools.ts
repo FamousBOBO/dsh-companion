@@ -14,6 +14,7 @@ import type { OneBotMessageSegment } from '../../types.js'
 import type { ToolSpec } from '../../adapters/dsh-host/tools.js'
 import { smartSplitMessage } from '../../outbound.js'
 import { segmentText } from '../../core/text/segment.js'
+import { groupSegments } from '../../core/text/group-segments.js'
 import type { QQToolDeps } from '../tool-deps.js'
 import { dmRoom, groupRoom } from '../../core/room.js'
 import { assertGroupTextAllowed, assertGroupTextLength, assertTargetAllowed, assertWindowReachable } from './gates.js'
@@ -179,10 +180,15 @@ function qqSendText(deps: QQToolDeps): ToolSpec {
           await assertWindowReachable(deps, args)
           assertGroupTextAllowed(deps, text, args.isGroup === true)
           await assertTargetAllowed(deps, args)
-          // 群聊不分段（2026-11-06）：群里连发几条像刷屏，一条说完更自然；私聊仍按下发节奏拆。
+          // 群聊按一轮拆成最多三条，整轮在工具返回前发送完成。
           const isGroup = args.isGroup === true
           const target = Number(args.target)
-          const pieces = isGroup ? [text] : segmentText(text, config.segmentation)
+          const pieces = isGroup ? groupSegments(text) : segmentText(text, config.segmentation)
+          if (isGroup) {
+            let last: unknown = null
+            for (const piece of pieces) last = await sendPiece(deps, true, target, piece)
+            return { ...(last as Record<string, unknown> | null), segments: pieces.length, ...await expressionHint(deps, args, text) }
+          }
           // A3：够长就改一张合并转发卡片；不走（关着/超限/失败）就继续逐条发。
           const forwarded = await tryForward(deps, isGroup, target, pieces)
           if (forwarded !== null) return { ...forwarded, segments: pieces.length }
@@ -197,6 +203,21 @@ function qqSendText(deps: QQToolDeps): ToolSpec {
 }
 
 /** `qq_reply_quote` — 引用回复某条消息：带上对方消息的#编号发一条引用回复，让对方明确知道我回应的是哪条。文本里不要重复#编号。… */
+async function sendGroupQuote(deps: QQToolDeps, args: Record<string, unknown>, text: string): Promise<unknown> {
+  let last: unknown = null
+  const pieces = groupSegments(text)
+  const roomLog = await sentLogFor(deps, true, Number(args.target))
+  for (const piece of pieces) {
+    last = await deps.out.push(() => deps.api.sendGroupMessage(Number(args.target), [
+      { type: 'reply', data: { id: String(args.messageId) } },
+      { type: 'text', data: { text: piece } },
+    ]))
+    const mid = (last as { message_id?: number } | null)?.message_id
+    await roomLog?.add({ messageId: typeof mid === 'number' ? mid : null, quotedId: Number(args.messageId) || null, text: piece, time: Date.now() })
+  }
+  return { ...(last as Record<string, unknown> | null), segments: pieces.length, ...await expressionHint(deps, args, text) }
+}
+
 function qqReplyQuote(deps: QQToolDeps): ToolSpec {
   const { api, out, log, sentLog, config } = deps
   const knownGroupIds = deps.knownGroups
@@ -236,6 +257,7 @@ function qqReplyQuote(deps: QQToolDeps): ToolSpec {
           }
           // 群聊长度上限（2026-11-06）：引用回复也走同一条群聊规矩。
           if (args.isGroup === true) assertGroupTextLength(text,config.segmentation.groupMaxChars??120)
+          if (args.isGroup === true) return await sendGroupQuote(deps, args, text)
           const message: OneBotMessageSegment[] = [
             { type: 'reply', data: { id: String(args.messageId) } },
             { type: 'text', data: { text } },

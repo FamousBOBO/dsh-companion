@@ -54,6 +54,13 @@ function only(responses: Record<string, unknown> = {}, overrides: Record<string,
 
 // ── 发送闸门 ────────────────────────────────────────────────────────────────
 
+test('群聊一轮自然拆条，工具返回前全部发送完成', async () => {
+  const t = only({ get_group_list: [{ group_id: GROUP }], get_group_info: { group_name: '主群' }, send_group_msg: { message_id: 123 } })
+  const result = await t.run({ __tool: 'qq_send_text', isGroup: true, target: GROUP, text: '好呀。我们先试试。然后再调整。' }) as { segments: number }
+  assert.equal(result.segments, 3)
+  assert.equal(t.calls.filter(call => call.action === 'send_group_msg').length, 3)
+})
+
 test('qq_send_text：目标群不是我加入的群 → 拦下（且没有真的发送）', async () => {
   const t = only({ get_group_list: [], get_group_info: { group_name: '某群' } })
   await assert.rejects(

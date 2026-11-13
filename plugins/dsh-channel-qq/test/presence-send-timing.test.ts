@@ -95,7 +95,7 @@ interface Harness {
   tick(ms: number): Promise<void>
 }
 
-function harness(platform: FakePlatform, over: { modelMs?: number } = {}): Harness {
+function harness(platform: FakePlatform, over: { modelMs?: number; reply?: string } = {}): Harness {
   const clock = new FakeClock(START)
   const ambient = new AmbientStore({ log: () => {} })
   const sendLog: Harness['sendLog'] = []
@@ -103,7 +103,7 @@ function harness(platform: FakePlatform, over: { modelMs?: number } = {}): Harne
     async complete() {
       // 模型耗时：推进假时钟（模拟一次 2 秒的补全）。
       clock.advance(over.modelMs ?? 2_000)
-      return { kind: 'text', text: REPLY }
+      return { kind: 'text', text: over.reply ?? REPLY }
     },
   }
   const presence = new GroupPresence({
@@ -141,6 +141,18 @@ async function firstJudgment(h: Harness): Promise<void> {
   h.push(1001, '小李(10002) 22:05：是不是得用三脚架')
   await h.tick(50_000)
 }
+
+test('一轮三条消息全部发出；下一轮仍受冷却限制', async () => {
+  const platform = new FakePlatform({ clock: new FakeClock(START) })
+  const h = harness(platform, { reply: JSON.stringify({ action: 'reply', targetMessageId: 1000, text: '先用三脚架。再把快门提一点。最后试试定时拍摄。', reason: '回答参数' }) })
+  await firstJudgment(h)
+  assert.equal(platform.sent.length, 3, '同轮后续消息不被五分钟冷却拦下')
+  assert.equal(h.presence.diagnostics().groups.find(row => row.groupId === GROUP)?.spoken, 1, '三条只算一轮发言')
+  assert.deepEqual(platform.sent.map(message => message.text), ['先用三脚架。', '再把快门提一点。', '最后试试定时拍摄。'])
+  h.push(1002, '那还需要怎么调')
+  await h.tick(50_000)
+  assert.equal(platform.sent.length, 3, '新一轮仍受冷却限制')
+})
 
 test('失败也计入尝试', () => {
   const clock = new FakeClock(START)

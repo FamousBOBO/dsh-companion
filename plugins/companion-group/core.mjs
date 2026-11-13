@@ -201,6 +201,7 @@ export function groupToolDenial(exec, options = {}) {
   }
 
   // 图片/语音：只允许发媒体层自己产出的文件（home/media 下面），不把任意磁盘文件当图发出去。
-  if (!insideRoot(options.mediaRoot, args.file)) return '群聊只能发送媒体层生成的图片或语音（绝对路径且位于 home/media 下）。';
+  const roots = [options.mediaRoot, ...(options.mediaRoots ?? [])];
+  if (!roots.some(root => insideRoot(root, args.file))) return '群聊只能发送媒体层生成的图片或语音（绝对路径且位于已授权媒体产物目录下）。';
   return undefined;
 }

@@ -463,7 +463,7 @@ test('presence.enabled=false（配了白名单但总开关关着）：与旧版�
   assert.equal(h.submitted.length, 0)
 })
 
-// ── 8. 主人特权（2026-11-06）：主人在群里说话必须回，旁人照样可以不回 ──────────
+// ── 8. 主人与群友使用相同触发规则，不因管理员身份强制回复 ──────────
 
 const OWNER = 90010001
 
@@ -478,13 +478,13 @@ test('mirror: mentions and owner messages only enter ambient, without attachment
   assert.deepEqual(h.sttCalls, [])
 })
 
-test('主人在群里说话（没有 @）：照常组包并提交回合，不被 requireMention 拦下', async () => {
+test('主人在群里说话（没有 @）：只旁听，不强制提交回合', async () => {
   const h = harness({ presence: 'on', admins: [OWNER] })
   await h.pipeline.handle(groupEvent(OWNER, '今天有点累', 31))
 
-  assert.equal(h.composeCalls.length, 1, '主人说话要进组包（要回）')
-  assert.equal(h.submitted.length, 1, '要真的提交一次回合')
-  assert.match((h.conv.queue.join('\n')), /今天有点累/, '当前消息就是他说的那句')
+  assert.equal(h.composeCalls.length, 0)
+  assert.equal(h.submitted.length, 0)
+  assert.equal(ambientOf(h.store).length, 1, '仍然进入旁听，由自主接话判断')
 })
 
 test('旁人说话（没有 @）：仍然只旁听，不因为"别人也必须回"而打开', async () => {
@@ -496,8 +496,16 @@ test('旁人说话（没有 @）：仍然只旁听，不因为"别人也必须�
   assert.equal(ambientOf(h.store).length, 1, '但仍然进旁听')
 })
 
-test('主人发的消息即使 @ 的是别人，也要回（特权只看发送者身份）', async () => {
+test('主人 @ 别人：不因发送者身份强制回复', async () => {
   const h = harness({ presence: 'on', admins: [OWNER] })
   await h.pipeline.handle(groupEvent(OWNER, '[CQ:at,qq=200] 你看这个', 33))
-  assert.equal(h.composeCalls.length, 1, '主人发的照样要回')
+  assert.equal(h.composeCalls.length, 0)
+  assert.equal(h.submitted.length, 0)
+})
+
+test('主人 @ 机器人：仍然正常组包并提交回合', async () => {
+  const h = harness({ presence: 'on', admins: [OWNER] })
+  await h.pipeline.handle(groupEvent(OWNER, '你看这个', 34, { at: true }))
+  assert.equal(h.composeCalls.length, 1)
+  assert.equal(h.submitted.length, 1)
 })

@@ -172,7 +172,7 @@ export const CHAT_GROUPS: FieldGroup[] = [
       }),
       delayMinMs: n('分段间隔下限', 200, { min: 0, max: 10_000, hot: 'live', unit: 'ms' }),
       delayMaxMs: n('分段间隔上限', 3000, { min: 0, max: 60_000, hot: 'live', unit: 'ms' }),
-      groupMaxChars: n('群聊单条字数上限', 120, { min:20, max:4000, hot:'live' }),
+      groupMaxChars: n('群聊每轮正文上限', 120, { min:20, max:4000, hot:'live' }),
     },
   },
   {

@@ -13,7 +13,7 @@ import { parseInbound, type ParsedInbound } from '../../core/message/parse.js'
 import { renderMessageLine } from '../../core/message/render.js'
 import { isBatchFull, queueChars } from '../../core/batching.js'
 import { plannerAllows } from './planner-gate.js'
-import { isCalled, isOwnerMessage, reactionHintOf } from '../../core/trigger.js'
+import { isCalled, reactionHintOf } from '../../core/trigger.js'
 import { resolveRoomPolicy } from '../../core/room-policy.js'
 import { roomOf } from '../../core/room.js'
 import type { AgentGateway } from '../../ports/agent-gateway.js'
@@ -201,7 +201,7 @@ export class InboundPipeline {
     if (this.observeOnly) return
     const called = event.message_type === 'private'
       ? true
-      : isCalled(event, parsed, config) || isOwnerMessage(event, config)
+      : isCalled(event, parsed, config)
     if (watched && groupId !== null
       && resolveRoomPolicy(config, groupId).requireMention && !called) {
       if (config.debug) this.deps.log(`ambient only (requireMention, not called) ${key}`)

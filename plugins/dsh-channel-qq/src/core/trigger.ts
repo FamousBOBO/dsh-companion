@@ -16,16 +16,6 @@ export interface TriggerConfig {
   readonly primaryGroup: number | null
   readonly talkValue: number
   readonly primaryTalkValue?: number | null | undefined | undefined
-  /** 管理员/主人 QQ 号（2026-11-06：主人在群里说话必须回，不受 requireMention 拦）。 */
-  readonly admins?: readonly number[]
-}
-
-/** 主人（管理员）在群里发的消息：不管有没有 @ 都要回一句。 */
-export function isOwnerMessage(event: OneBotEvent, config: TriggerConfig): boolean {
-  if (event.message_type !== 'group') return false
-  const userId = event.user_id
-  if (typeof userId !== 'number') return false
-  return (config.admins ?? []).includes(userId)
 }
 
 /**
