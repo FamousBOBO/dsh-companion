@@ -21,7 +21,8 @@ test('group, progress and unavailable library do not query', async () => {
 
 test('declines and library failures leave successful text delivery unchanged', async () => {
   for (const response of [{ send: false, candidates: [1] }, { send: true, candidates: [] }]) {
-    assert.deepEqual(await expressionHint({ log() {}, expressionCandidates: () => response }, { target: 123 }, '正文'), {})
+    const result = await expressionHint({ log() {}, expressionCandidates: () => response }, { target: 123 }, '正文')
+    assert.deepEqual(result, { expression: { checked: true, send: false, reason: 'no-candidates' } })
   }
   assert.deepEqual(await expressionHint({ log() {}, expressionCandidates() { throw Error('offline') } }, { target: 123 }, '正文'), {})
 })
