@@ -5,7 +5,7 @@ import { fileURLToPath } from 'node:url';
 import { suite } from './paths.mjs';
 const log=fs.readFileSync(path.join(suite,'data/logs/production-host.log'),'utf8');
 const currentStartup=log.slice(log.lastIndexOf('Production Node host started'));
-const matches=[...currentStartup.matchAll(/dsh web:\s*(http:\/\/127\.0\.0\.1:3100\/\?token=\S+)/g)];
+const matches=[...currentStartup.matchAll(/dsh web:\s*(http:\/\/127\.0\.0\.1:\d+\/\?token=\S+)/g)];
 if(!matches.length)throw Error('No production URL');
 const url=new URL(matches.at(-1)[1]);
 function request(target,cookie='') {return new Promise((resolve,reject)=>{
@@ -36,7 +36,7 @@ for(const pathname of ['/','/api/companion-memory/summary','/api/companion-memor
 }
 const report={at:new Date().toISOString(),authenticated:true,results,ok:results.every(r=>r.ok)};
 const latest=log.slice(log.lastIndexOf('Production Node host started'));
-report.pluginActivationClean=!/entries? did not activate|failed to import|pending \(waiting for service/.test(latest);
+report.pluginActivationClean = /\[companion-foundation\] mounted; memory backend=sqlite; tools registered/.test(latest) && /\[companion-group\].*monotonic tool boundary.*mounted/.test(latest.replace(/[\r\n]/g, ' ')) && !/\[companion-foundation\].*(did not activate|failed to import)|\[companion-group\].*(did not activate|failed to import)/.test(latest);
 report.ok=report.ok&&report.pluginActivationClean;
 fs.writeFileSync(path.join(suite,'data/logs/production-health.json'),JSON.stringify(report,null,2));
 console.log(JSON.stringify(report,null,2));
