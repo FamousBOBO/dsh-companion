@@ -50,6 +50,12 @@ test('提示词写法指南存在、是英文、且含第 4 节身体部位词�
   assert.match(text, /completely nude/, '第 5 节必须给裸露写法');
   assert.match(text, /nothing cropped out of the picture/, '第 6 节必须给构图约束');
   assert.match(text, /rating:general/, '第 8 节必须列反向压制词');
+  // 6.1 / 6.2：脸必须留在画面里，背景必须退让，否则主体注意力会被环境抢走
+  assert.match(text, /Keep the face in frame/, '6.1 必须讲脸在画面内');
+  assert.match(text, /her face in the upper third/, '6.1 必须给脸的位置写法');
+  assert.match(text, /Point the attention at the subject/, '6.2 必须讲主体优先级');
+  assert.match(text, /shallow depth of field/i, '6.2 必须给景深写法');
+  assert.match(text, /fall softly out of focus/, '6.2 必须给背景虚化写法');
   // 明确声明这是写 prompt 前必读
   assert.match(text, /before writing an image prompt/i, '指南开头必须声明使用时机');
 });

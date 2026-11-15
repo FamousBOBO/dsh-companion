@@ -111,6 +111,43 @@ With two or more characters or viewpoints in one image, name every part for ever
 
 A tall frame such as 832×1216 easily pushes the lower body out of shot with an extended pose. Add `frame from the knees up` or `pussy fully visible inside the frame` there.
 
+### 6.1 Keep the face in frame
+
+A shot that crops the head out loses the character: the viewer gets legs or a torso with no identity, and the camera reads the pose instead of her. Keep the face inside the frame and name its position.
+
+| Requirement | How to write it |
+| --- | --- |
+| Face in shot | `her face in the upper third`, `frame her from the head down to her knees` |
+| Face is the anchor | `her face in sharp focus`, `her eyes are the sharpest point in the image` |
+| Eye contact | `looking up at the viewer`, `her gaze meets the camera` |
+| Body close-up that still shows the face | `frame her from the shoulders down to her knees, her face and chest in the upper third` |
+
+When the request is a body close-up, extend the crop upward until the face enters the frame, and say so explicitly. `frame her from the waist down` never shows a face.
+
+### 6.2 Point the attention at the subject
+
+A bright window, a lamp, a sunlit floor or an open doorway behind the subject competes with her for attention. Name the subject as the sharp, lit part and push everything else back.
+
+| Requirement | How to write it |
+| --- | --- |
+| Subject is sharp | `shallow depth of field`, `her body in sharp focus` |
+| Background recedes | `the window and the room behind her fall softly out of focus`, `the background is blurred` |
+| Background is dim | `the background stays dim and quiet`, `the room behind her falls into shadow` |
+| Light serves the subject | `the light shapes her face and thighs`, `warm light on her skin` |
+| Do not let the backdrop dominate | avoid `bright sunlit` scenery behind the subject unless it is the point of the shot |
+
+One sentence is enough: `Shallow depth of field: the window, the floor and the room behind her fall softly out of focus, and the background stays dim and quiet.` Put it after the framing sentence.
+
+### 6.3 Camera props
+
+The character carries a camera, so naming it once as the thing she holds is enough. Repeating it in the identity, the clothing and the action spends attention on the prop instead of her.
+
+| Situation | How to write it |
+| --- | --- |
+| She holds it | `holding a small camera up with one hand` |
+| She shoots into it | `looking into the lens at the viewer` |
+| Not needed | leave it out entirely; the camera is not part of her body |
+
 ## 7. Complete Examples
 
 Replace the bracketed character appearance and scene details. Keep the anatomical sentence structure.
@@ -189,6 +226,8 @@ The V5 `qualityPreset: light` appends `very aesthetic, amazing quality, no text`
 - [ ] Every part carries a state word.
 - [ ] Every part has an in-frame position and orientation.
 - [ ] A composition guard such as `nothing cropped out of the picture` is present.
+- [ ] Face is inside the frame and its position is stated (section 6.1).
+- [ ] Subject is named as the sharp, lit part and the background recedes (section 6.2).
 - [ ] Hand action says what is touched and what it does.
 - [ ] Negative prompt is free of the suppression words in section 8.
 - [ ] Anatomical sentences sit in the first half and are not truncated by the length limit.
