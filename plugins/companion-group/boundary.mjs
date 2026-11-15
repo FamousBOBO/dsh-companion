@@ -1,5 +1,5 @@
 import path from 'node:path';
-import { groupIdOf, groupIsReady, groupToolDenial } from './core.mjs?v=group-media-20261102-restrict3';
+import { groupIdOf, groupIsReady, groupToolDenial } from './core.mjs?v=group-song-20261115b';
 import { resolveDataRoot } from '../companion-foundation/suite-paths.mjs';
 
 export const name = 'companion-group-boundary';

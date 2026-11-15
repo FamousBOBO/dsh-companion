@@ -109,7 +109,7 @@ function registerTools(ctx, service) {
     {}, async () => service.status());
 
   register('companion_media_visual',
-    '为陪伴角色生图前必须先调用：只读获取当前人格英文视觉身份、当前衣物、场景来源，以及提示词写法指南的路径。**读到指南路径后先读 docs/image-prompt-guide.md**，再按指南构思完整英文 prompt，把外观与衣物融入画面，不能机械追加参考串。缺少资料时说明缺项，不猜测。群聊不读取私聊衣柜。',
+    '为陪伴角色生图前必须先调用：只读获取当前人格英文视觉身份、当前衣物、场景来源，以及提示词写法指南的路径。**读到指南路径后先读 docs/image-prompt-guide.md**，再按指南构思完整英文 prompt，把外观与衣物融入画面，不能机械追加参考串。缺少资料时说明缺项，不猜测。群聊不读取私聊衣柜：返回里 ok=true + outfitRequired=true 表示身份可读、着装要在 draw 里用 outfit 显式给，不算失败。',
     {}, async (_args, exec) => service.readVisual({ sessionId: exec?.agent?.session?.id }));
 
   register('companion_media_draw',
@@ -119,7 +119,7 @@ function registerTools(ctx, service) {
       negative: { type: 'string', description: '可选英文反向提示词，与配置反向预设合并。' },
       aspect: { type: 'string', description: '由你按本次构图选择：portrait 竖图、landscape 横图、square 方图。自动分辨率开启时每次填写；尺寸由程序计算。' },
       subject: { type: 'string', description: '陪伴角色图片填 companion；先读取 companion_media_visual 并自行写完整 prompt。其他图片省略。' },
-      outfit: { type: 'string', description: '兼容旧调用的英文换装参考，不会拼入 prompt。新调用先更新衣柜并重新读取，再将衣物写进完整 prompt。' },
+      outfit: { type: 'string', description: '一句英文衣物短语，不会拼入 prompt。私聊里是可选参考；**群聊里必填**——群聊不读私人衣柜，没有它就无法确定着装（会被拒）。衣物仍要自己写进完整 prompt。' },
       dryRun: { type: 'boolean', description: 'true 核对最终 prompt、身份与衣柜参考、预设族与分辨率，不发网络请求。' },
     },
     async (args, exec) => service.generateImage({

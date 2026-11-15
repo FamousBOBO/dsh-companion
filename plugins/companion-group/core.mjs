@@ -29,6 +29,9 @@ export function groupIsReady(agent) { return ready.has(agent); }
  */
 export const GROUP_MEDIA_TOOLS = Object.freeze([
   'companion_media_status',
+  // 只读的身份/指南读取口。群聊**不读私聊衣柜**，但英文外观必须来自数据文件而不是模型
+  // 编造——所以画陪伴角色前，群里也要能拿到 `visual-identity` 的外观与提示词指南路径。
+  'companion_media_visual',
   'companion_media_draw',
   'companion_media_speak',
   'companion_media_job',
@@ -49,8 +52,24 @@ export const GROUP_EXPRESSION_TOOLS = Object.freeze([
   'expression_sticker_note',
 ]);
 
+/**
+ * 点歌翻唱工具：只开放"点一首"本身。
+ *
+ * `qq_song_cover` **不接受** `isGroup`/`target`：房间由 `context.agentId` 推出（宿主侧强事实），
+ * 所以群聊这一层只管参数键——语音条只会落回当前群，跨群在这条路径上本来就走不通。
+ *
+ * 另外两个刻意**不**放：
+ *   - `qq_song_cancel` 只认 `taskId`、没有任何房间信息，等于让群友取消别人（甚至别的房间）
+ *     正在做的任务；取消是运维动作，留在私聊。
+ *   - `qq_song_status` 读的是**整个队列**（`queue.status(limit)`），返回里有
+ *     `room`/`requesterId`，会把主人私聊里点过的歌一并交给群里。它的 `run` 拿得到
+ *     `context.agentId` 却没按房间过滤，所以放它进群等于顺手开一个跨房间读取口。
+ *     要做就把过滤加在 `qq_song_status` 里（按房间键筛），再回来放开这一行。
+ */
+export const GROUP_SONG_TOOLS = Object.freeze(['qq_song_cover']);
+
 /** 群聊允许出现的工具集合：与 `index.mjs` 的 `tools.restrict({ allow })` 共用一份。 */
-export const GROUP_ALLOWED_TOOLS = Object.freeze(['qq_message', 'qq_sticker', 'qq_voice', ...GROUP_MEDIA_TOOLS, ...GROUP_EXPRESSION_TOOLS]);
+export const GROUP_ALLOWED_TOOLS = Object.freeze(['qq_message', 'qq_sticker', 'qq_voice', ...GROUP_MEDIA_TOOLS, ...GROUP_EXPRESSION_TOOLS, ...GROUP_SONG_TOOLS]);
 
 /**
  * 表情包的只读旁路：不参与 isGroup/target 校验（它们不发消息、没有目标群），
@@ -66,6 +85,9 @@ const READ_KEYS = Object.freeze({
   expression_feedback: ['isGroup', 'target', 'assetId', 'action', 'signal', 'note'],
   // 表情词典：只认消息行里给出的指纹与「意思」文本，路径类键进不来（FORBIDDEN_KEYS 兜底）。
   expression_sticker_note: ['isGroup', 'target', 'action', 'stickerKey', 'meaning', 'label', 'animated', 'limit'],
+  // 点歌：房间来自 `context.agentId`，所以这里只做**键白名单**与路径禁令。
+  // `requesterId` 必须留：群里的每人每日额度只认它（缺了 `qq_song_cover` 自己会拒）。
+  qq_song_cover: ['isGroup', 'target', 'song', 'artist', 'bvid', 'from', 'chorusSeconds', 'messageId', 'requesterId'],
 });
 
 /** 发送类动作的白名单：工具名 → 允许的 action 与允许的参数键。 */
@@ -184,14 +206,18 @@ export function groupToolDenial(exec, options = {}) {
 
   const rule = SEND_RULES[name];
   // 默认拒绝包括宿主 shell/文件/网络、委派、私聊记忆、跨群、管理与所有未来工具。
-  if (!rule) return '群聊目前只开放：给当前群发文字/图片/语音、挑一张表情包，以及看图、生成图片和合成语音。';
+  if (!rule) return '群聊目前只开放：给当前群发文字/图片/语音、挑一张表情包、点一首歌，以及看图、生成图片和合成语音。';
 
   const args = argsOf(exec);
   if (args === null) return '群聊工具参数无效。';
   // 表情包投递：素材只由 assetId 指名，路径由表情包模块自己 stage 到 home/media。
   // 它的 `target` 在工具 schema 里是字符串，所以三元组与路径禁令都自己判。
   if (name === 'expression_reply') return expressionReplyDenial(args, group);
-  if (args.action !== rule.action || args.isGroup !== true || args.target !== group) return '只能向当前群发送消息，不能跨群、私聊或执行管理动作。';
+  // `target` 的形态由工具 schema 决定（`qq_message`/`qq_sticker`/`qq_voice` 是 number，
+  // `expression_reply` 是 string），而模型**照样会**把数字写成字符串（实测 group 里传
+  // `"145326153"` 被旧的 `!==` 判成跨群，整句回复发不出去）。两条路都认，判据仍是
+  // "是不是当前群"，不放宽到任何别的房间。
+  if (args.action !== rule.action || args.isGroup !== true || !isThisGroup(args.target, group)) return '只能向当前群发送消息，不能跨群、私聊或执行管理动作。';
   if (Object.keys(args).some(key => !rule.keys.includes(key))) return '群聊发送不接受额外参数。';
 
   if (name === 'qq_message') {
