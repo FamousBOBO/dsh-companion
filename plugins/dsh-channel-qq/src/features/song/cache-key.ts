@@ -43,8 +43,14 @@ export const PLAN_ALGO_TAG = 'plan-v2'
  * Roformer karaoke）、混音/响度参数；`adapters/song/cover.ts` 里的 `PREROLL_SECONDS` /
  * `TAIL_SECONDS` / 裁切偏移与 `ffmpeg` 参数。否则旧缓存会被当成有效——那意味着
  * 操作员以为"换了模型"，实际听到的还是上一版的声音。
+ *
+ * 版本史：
+ *   - `cover-v1` → `cover-v2`：分离上下文（`separatorChunk` / `separatorOverlap` /
+ *     `separatorDtype`）成为可配置项并进键（见 `SEPARATION_KEY_MARK`）。
+ *     v1 的成品是在旧上下文（DirectML 22050/5512）下做出来的，与新参数的结果
+ *     **不是同一段音频**，所以整个成品层一起过期；旧文件不删，只是不再被命中。
  */
-export const COVER_ALGO_TAG = 'cover-v1'
+export const COVER_ALGO_TAG = 'cover-v2'
 
 /**
  * 把一段任意文本变成文件名里安全的一段（`~XXXX` 是可逆编码，不会与 `_` 分隔符撞车）。
@@ -75,10 +81,15 @@ export function planCacheKey(bvid: string, cid: number, keyUp: number, maxSecond
 }
 
 /**
- * 成品层的键：`clip_<bvid>_<cid>_k<keyUp>_c<chorusStart>_s<seconds>_<COVER_ALGO_TAG>`。
+ * 成品层的键：`clip_<bvid>_<cid>_k<keyUp>_c<chorusStart>_s<seconds>_<sep>_<COVER_ALGO_TAG>`。
  *
- * `seconds` 在键里，所以网关嫌长缩到 45/30/20/15 之后的那一条**天然是另一个键**：
- * 下次同一首歌被网关同样拒收时，缩短这一步也不必重跑。
+ * 两段都属于"这条音频是怎么做出来的"：
+ *   - `seconds` 在键里，所以网关嫌长缩到 45/30/20/15 之后的那一条**天然是另一个键**：
+ *     下次同一首歌被网关同样拒收时，缩短这一步也不必重跑；
+ *   - `sep` 是分离上下文（`separation.ts::separationKeyMark`）。分块/重叠/精度/设备
+ *     变了就是另一段音频，共用一个键等于把上一版的声音当成这次的结果发出去。
+ *     默认（`sep-default`）是常量，所以没动过这组配置的部署不会因为多这一节就把
+ *     自己的旧缓存判死——真正判死旧缓存的是 `COVER_ALGO_TAG` 的版本升级。
  */
 export function clipCacheKey(
   bvid: string,
@@ -86,9 +97,10 @@ export function clipCacheKey(
   keyUp: number,
   chorusStart: number,
   seconds: number,
+  separationMark: string = 'sep-default',
 ): string {
   return [
     'clip', segment(bvid), String(cid), `k${String(keyUp)}`,
-    `c${num(chorusStart)}`, `s${num(seconds)}`, COVER_ALGO_TAG,
+    `c${num(chorusStart)}`, `s${num(seconds)}`, separationMark, COVER_ALGO_TAG,
   ].join('_')
 }

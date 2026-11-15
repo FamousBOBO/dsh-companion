@@ -104,6 +104,20 @@ export interface SongConfig {
   readonly dailyUserCap: number
   /** 自主选歌的曲目（每条 `歌名` 或 `歌名 歌手`）；空 = 自主选歌什么都不做。 */
   readonly autoSongs: readonly string[]
+  /**
+   * 分离分块（采样点）；**-1 = 用下层默认**（DirectML 22050 ≈ 0.5 s，CPU 352800 ≈ 8 s）。
+   *
+   * 这一项与下面三项是本轮质量实验（`docs/karaoke-cover.md` §10）的入口：它们只影响
+   * 翻唱那一次调用的分离上下文，不改 WebUI 等其他分离功能的默认值。默认 -1 时
+   * `make_cover.py` 一个调优参数都不收，行为与加这些字段之前逐字一致。
+   */
+  readonly separatorChunk: number
+  /** 分离重叠（采样点）；`-1` = 用下层默认，`0` = 不重叠（要求 < `separatorChunk`）。 */
+  readonly separatorOverlap: number
+  /** 分离模型精度：`auto` / `float16` / `float32`（仅 DirectML 有意义）。 */
+  readonly separatorDtype: string
+  /** 分离设备：`auto` = 跟随 RVC 自动选择，`cpu` = 强制 CPU（只作诊断参照）。 */
+  readonly separatorDevice: string
 }
 
 /**
@@ -146,6 +160,10 @@ export const SONG_DEFAULTS: SongConfig = {
   dailyAutoCap: 1,
   dailyUserCap: 2,
   autoSongs: [],
+  separatorChunk: -1,
+  separatorOverlap: -1,
+  separatorDtype: 'auto',
+  separatorDevice: 'auto',
 }
 
 /** 一份可直接用的默认配置（浅拷贝；全是标量，没有要深拷的数组）。 */
@@ -307,6 +325,29 @@ export const SONG_GROUPS: FieldGroup[] = [
           + '已经发出去的与还在排队/在做的都占额度（否则同一个人的两条并发请求会双双通过）；'
           + '失败、取消、演练过的**不占**，用户可以重新点。'
           + '自主选歌另有一条账（「自主选歌每日上限」），两者不混。',
+      }),
+      separatorChunk: n('分离分块（采样点，-1 = 默认）', SONG_DEFAULTS.separatorChunk, {
+        hot: 'live', min: -1, max: 1_000_000, step: 1, unit: '采样点',
+        help: '人声分离器的分块长度。**-1 = 用下层默认**（本机 DirectML 22050 ≈ 0.5 s，'
+          + 'CPU 352800 ≈ 8 s）。这一项只影响翻唱这一次调用，不改 WebUI 等其它分离功能的默认值。'
+          + '44.1 kHz 下 22050/44100/55152/66150 分别约 0.5/1/1.25/1.5 秒；'
+          + '实测本机 88200（2 s）起 DirectML 显存不足（见 `docs/karaoke-cover.md` §10）。'
+          + '块长直接改缓存键（不同参数不共用成品缓存）。',
+      }),
+      separatorOverlap: n('分离重叠（采样点，-1 = 默认）', SONG_DEFAULTS.separatorOverlap, {
+        hot: 'live', min: -1, max: 999_999, step: 1, unit: '采样点',
+        help: '相邻分块的重叠量，必须 < 分块长度（-1 = 用下层默认，DirectML 5512；0 = 不重叠）。'
+          + '重叠越大接缝越平滑，但推理耗时按"分块数"线性上涨（实测 25%→50% 约 +40%）。',
+      }),
+      separatorDtype: s('分离模型精度', SONG_DEFAULTS.separatorDtype, {
+        hot: 'live', placeholder: 'auto',
+        help: 'DirectML 上的模型精度：`auto`（先 fp16，失败回退 fp32）/ `float16` / `float32`。'
+          + '本机实测 `auto` 落在 fp32（Radeon RX 6700 XT）。只在 DirectML 下有效，CPU 恒为 fp32。',
+      }),
+      separatorDevice: s('分离设备', SONG_DEFAULTS.separatorDevice, {
+        hot: 'live', placeholder: 'auto',
+        help: '`auto` = 跟随 RVC 的自动设备选择（本机为 DirectML）；`cpu` = 强制 CPU。'
+          + 'CPU 的分块默认与 DirectML 不同，且慢得多——只作为诊断参照，不要长期开着。',
       }),
     },
   },

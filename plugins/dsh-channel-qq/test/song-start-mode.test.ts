@@ -45,6 +45,7 @@ function configOf(overrides: Partial<SongConfig> = {}): () => SongConfig {
     downloadTimeoutMs: 60_000, chorusTimeoutMs: 30_000, coverTimeoutMs: 480_000,
     sendTimeoutMs: 30_000, maxQueue: 8, cacheEnabled: true, cacheMaxEntries: 50,
     dailyAutoCap: 1, dailyUserCap: 2, autoSongs: [],
+    separatorChunk: -1, separatorOverlap: -1, separatorDtype: 'auto', separatorDevice: 'auto',
     ...overrides,
   }
   return () => base

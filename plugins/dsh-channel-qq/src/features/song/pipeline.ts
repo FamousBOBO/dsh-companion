@@ -30,6 +30,7 @@ import type {
 } from './types.js'
 import { SongStepError } from './types.js'
 import { prepareSong, renderCover, type Prepared } from './prepare.js'
+import { separationOr } from './separation.js'
 
 /** 流水线需要的全部外部能力（装配在 `features/song/index.ts`）。 */
 export interface PipelineDeps {
@@ -241,7 +242,8 @@ async function sendWithShortenRetry(
       // 命中缓存时音轨还没下载：这里才去下（一次 HTTP，几秒），而不是因为缓存而做不成。
       const audioFile = await prepared.ensureAudio()
       cover = await renderCover(
-        deps, audioFile, workDir, prepared.chorusStart, Math.min(shorter, config.seconds), request.keyUp, signal,
+        deps, audioFile, workDir, prepared.chorusStart, Math.min(shorter, config.seconds), request.keyUp,
+        signal, separationOr(config),
       )
       await prepared.rememberClip(cover)
     } catch (error) {

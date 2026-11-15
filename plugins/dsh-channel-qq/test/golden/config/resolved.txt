@@ -691,7 +691,11 @@
     "cacheMaxEntries": 50,
     "dailyAutoCap": 1,
     "autoSongs": [],
-    "dailyUserCap": 2
+    "dailyUserCap": 2,
+    "separatorChunk": -1,
+    "separatorOverlap": -1,
+    "separatorDtype": "auto",
+    "separatorDevice": "auto"
   },
   "presence": {
     "mode": "",
