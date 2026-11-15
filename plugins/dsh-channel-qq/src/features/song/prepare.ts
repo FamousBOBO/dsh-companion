@@ -27,6 +27,7 @@ import { MIN_PHRASE_CLIP_SECONDS, clipLengthFor } from './phrase.js'
 import {
   readClip, readPlan, rememberClip, rememberPlan, type CacheContext,
 } from './cache-flow.js'
+import { separationKeyMark, separationOr, type SeparationSettings } from './separation.js'
 import { SongStepError } from './types.js'
 import type { BiliPage, CoverResult, SongRequest } from './types.js'
 import type { PipelineDeps, PipelineHooks } from './pipeline.js'
@@ -222,9 +223,12 @@ export async function renderCover(
   seconds: number,
   keyUp: number,
   signal: AbortSignal,
+  separation: SeparationSettings,
 ): Promise<CoverResult> {
   try {
-    return await deps.cover.render({ audioFile, outDir: workDir, chorusStart, seconds, keyUp, signal })
+    return await deps.cover.render({
+      audioFile, outDir: workDir, chorusStart, seconds, keyUp, separation, signal,
+    })
   } catch (error) {
     throw new SongStepError('covering', `翻唱没做成：${reasonOf(error, '未知错误')}`)
   }
@@ -248,6 +252,7 @@ function cacheContextOf(
   return {
     cache, log: deps.log, taskId: request.id, bvid, cid,
     keyUp: request.keyUp, maxSeconds: config.seconds, minConfidence: config.minConfidence,
+    separationMark: separationKeyMark(separationOr(config)),
   }
 }
 
@@ -346,6 +351,7 @@ export async function prepareSong(
   await hooks.advance('covering', { chorusStart: plan.chorusStart })
   const cover = await renderCover(
     deps, await audio.get(), workDir, plan.chorusStart, plan.seconds, request.keyUp, signal,
+    separationOr(config),
   )
   await hooks.advance('covering', { chorusStart: plan.chorusStart, seconds: cover.seconds })
   if (cache !== null) {

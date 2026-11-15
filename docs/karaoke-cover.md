@@ -143,12 +143,35 @@ autoPickOnce（只有"计划里有"才调）─┘
   要 `groupEnabled` 打开；哪些群能点**由 `access.allowGroups` 管**——本插件只服务
   允许名单里的群，那个名单之外的群根本进不到这一步。失败/取消的说明也发回同一个群。
   群里要 `requesterId`（见 §4.1），缺了直接拒，不静默退化成"不限额"。
+  **还有一道更外层的闸**：群聊预设用 `companion-group/core.mjs` 的 `GROUP_ALLOWED_TOOLS`
+  做 `tools.restrict({allow})`，未知工具默认拒绝。`qq_song_cover` 必须在那个名单里，
+  否则 `groupEnabled` 打开了也没用——模型手里没有这个工具。同名单里**故意不放**
+  `qq_song_status`（它读整个队列，带 `room`/`requesterId`，会跨房间泄露）与
+  `qq_song_cancel`（只认 `taskId`，没有房间信息）。
 - **自主入口**：`queue.autoPickOnce()`。**没有任何定时器会调它。**
   它只由三种显式途径触发：计划（计划里的那一拍要求唱一首）、后台「音乐」页点歌表的
   `pick` 动作、或人工调用服务袋上的 `song`。只在**绑定主人的私聊**、只在主动规则允许时发，
   日上限是 `dailyAutoCap`（默认 1，**0 = 不限额**），日键按 `Asia/Shanghai` 算。
   发送前**再查一次**授权/免打扰/绑定（用 `contact.outboundBudget()` 那套共享门控）：
   一首歌要跑两三分钟，判断必须用"发送那一刻"的事实。
+
+### 4.0 群聊的第二本账（`companion-group/song-quota.mjs`）
+
+`dailyUserCap` 是**私聊与群聊共用的全局口径**，它挡不住"一个人把串行队列占满"：8 格队列、
+一首两三分钟 RVC 推理，两个人各点两首就把后面所有人（包括主人的私聊点歌）挤掉了。
+所以群聊这一层再挂一道同步闸门（`ctx.tools.guard`，与边界闸门串行叠加，只会更严）：
+
+| 判据 | 行为 |
+|---|---|
+| `requesterId` 缺失或不是正整数 | 拒绝，文案指出要填"这条消息发送者的 QQ 号"；**不**退化成不限额 |
+| 同一「群 + 人 + 自然日」已达上限 | 拒绝，文案带已用次数与上限（默认 **每人每天每群 1 首**） |
+| 不同群的同一个人 / 同一群的不同人 | 各算一格，互不影响 |
+| 私聊 | 这条闸门一个字都不说，交回 `dailyUserCap` |
+
+- 存储：`data/home/group-song-quota.json`（跨日自动归零，原子替换写入；文件坏了按"今天还没点过"处理——它是成本闸，不是授权闸）。
+- 覆盖默认：`COMPANION_GROUP_SONG_DAILY_CAP=0` 不限额（`requesterId` 仍必填），正数为该值。
+- **计数发生在放行那一刻**，不是任务成功之后：放行即占掉队列一格（与 §4.1「排队中也算一格」同一口径）。代价是 B站没搜到也会消耗一格；最坏只是等一天，比"额度永不生效"安全。
+- `requesterId` 由模型从渲染文本行读出（宿主不把发送者注进工具上下文），所以它是**计费口径**而不是授权边界；授权仍由群允许名单与 `core/trust.ts` 判。
 
 ### 4.1 每人每天几首（`dailyUserCap`）
 
@@ -240,7 +263,7 @@ autoPickOnce（只有"计划里有"才调）─┘
 
 | | **方案层** `plans/<键>.json` | **成品层** `clips/<键>.mp3` + `.json` |
 |---|---|---|
-| 键 | `bvid_cid_keyUp_maxSeconds_PLAN_ALGO_TAG` | `bvid_cid_keyUp_chorusStart_seconds_COVER_ALGO_TAG` |
+| 键 | `bvid_cid_keyUp_maxSeconds_PLAN_ALGO_TAG` | `bvid_cid_keyUp_chorusStart_seconds_<sep>_COVER_ALGO_TAG` |
 | 命中省掉 | 下载 + 副歌定位（约 10 s） | 上面那些 **+ 分离 + RVC**（约 100 s） |
 | 额外校验 | `confidence ≥ 当前 minConfidence`（门槛调高，旧方案立刻失效） | `ffprobe` 时长与期望差 ≤ **0.75 s**（与 `cover.ts::verifyVoice` 同一口径） |
 
@@ -252,10 +275,13 @@ autoPickOnce（只有"计划里有"才调）─┘
 
 - **命中也要校验时长**。缓存文件可能被手工删一半、被安全软件截断、磁盘写坏——
   **发出半条语音条比慢 90 秒糟得多**。校验不过就删掉这一条、当未命中重做。
-- **算法版本是源码里的常量**（`PLAN_ALGO_TAG='plan-v1'`、`COVER_ALGO_TAG='cover-v1'`）。
+- **算法版本是源码里的常量**（`PLAN_ALGO_TAG='plan-v2'`、`COVER_ALGO_TAG='cover-v2'`）。
   改了 `find_chorus.py` 的判据 → `PLAN_ALGO_TAG` +1（只让"上次切哪一段"过期，成品仍可复用）；
   改了 `make_cover.py` 的模型/分离器/混音参数，或改了裁剪逻辑 → `COVER_ALGO_TAG` +1。
   忘了 +1 的后果是"发出旧参数做的音频"，所以这两个常量在 `cover.ts::runCover` 旁边也留了指路。
+- **分离上下文另有一段 `<sep>`**（见 §10）。它是**请求值**而不是"后端采用值"，因为键必须
+  在跑之前算得出来；全默认时是常量 `sep-default`，所以没配过这组字段的部署键形状稳定，
+  配了之后就是一个新键——两组参数不会共用一条成品缓存。
 
 淘汰：两层各自最多 `cacheMaxEntries`（默认 50，按 1 MB/条算约 50 MB），按 `lastUsedAt`
 （命中即刷新）删最旧，同时清孤儿（有文件没记账、有记账没文件、JSON 坏）——只记一行日志，不抛。
@@ -322,3 +348,63 @@ node tools/song/e2e-acceptance.mjs --song 晴天 --artist 周杰伦 --send
   所以超上限直接拒，不转码。
 - **`seconds` 与 `find_chorus.py --seconds` 两边默认都是 25，但 `chorus.ts` 不传它**。
   哪天有人把 `seconds` 改成 20 或 30，段长与条长会脱钩。要配置化时必须把它透传。
+
+## 10. 分离上下文（分块 / 重叠 / 精度 / 设备）
+
+这一节记的是**参数与证据**，不是"质量已经更好"。结论只到"某个候选在本机可跑、值得试听"。
+
+### 10.1 为什么这组参数会决定"伴奏变薄 / 人声夹带乐器"
+
+`pymss` 的分离是**滑窗**的：把音轨切成 `chunk_size` 个采样点一块，块间留 `overlap_size`
+个采样点的重叠，`step = chunk - overlap`，再用余弦窗把各块结果叠回去（`tools/pymss/utils.py`
+的 `_build_chunk_plan` / `_fold_chunk_batch`）。所以：
+
+- **块长 = 模型一次能看到的上下文**。MelBand Roformer karaoke 的 YAML 里训练段长是
+  485100 采样点（≈11 s），而 DirectML 分支的默认块长是 **22050（≈0.5 s）**——模型每次只看到
+  半秒音频就要决定"哪部分是人声"。中频乐器（钢琴/吉他/弦乐）与人声基频/低次谐波重叠最多，
+  在这么短的上下文里最容易被整体判给人声，听感就是"伴奏中频被切掉、变薄"。
+- **重叠 = 接缝的余量**。`fade_size = min(chunk/10, overlap)`，所以重叠小于 `chunk/10` 时，
+  窗口的淡入淡出区比重叠区还长，边界处必然出现能量凹陷（抽吸感）。
+- 约束是硬的：`0 ≤ overlap_size < chunk_size`（`_get_inference_step` 直接 `raise`），
+  并且这里的重叠是**采样点**，不是某些分离器用的"重叠次数"。
+
+### 10.2 生产实际用的是哪一组
+
+`separate_song.py` 在 DirectML 下取模块默认 `DML_CHUNK_SIZE=22050` / `DML_OVERLAP_SIZE=5512`，
+CPU 分支是 `352800` + 模型 YAML 的 `inference.overlap_size`。`make_cover.py` 之前**没有**
+把任何分离参数往下传，所以生产一直是 DirectML 的 22050/5512、`dtype=float32`（`auto` 在
+DirectML 上先试 fp16，本机最终落在 fp32）、`use_tta=False`、`standardize/normalize=False`。
+
+现在参数走**每次调用**：`song.separatorChunk` / `separatorOverlap` / `separatorDtype` /
+`separatorDevice`（默认 `-1 / -1 / auto / auto` = 不传任何参数，行为与旧版逐字一致），经
+`features/song/separation.ts` 校验后由 `adapters/song/cover.ts` 拼成 `make_cover.py` 的命令行，
+再透传给 `separate_song.py`。**不改** `tools/pymss_webui.py` 的模块默认值，所以 WebUI 的其它
+分离功能不受影响。`separate_song.py` 会把后端**回读**到的 chunk/overlap/device/dtype 及权重
+SHA256 写进 `separation-report.json`，`make_cover.py` 再抄进 `summary.json` 的 `separation`。
+
+### 10.3 本机实测（2026-11-13，RX 6700 XT / DirectML / 52 s 片段）
+
+| 分块/重叠（采样点） | 44.1 kHz 约合 | 结果 | 推理耗时 |
+|---|---|---|---|
+| 22050 / 5512（默认） | 0.5 s / 12.5% | 成功 | 15.2–15.5 s |
+| 44100 / 11025 | 1.0 s / 25% | 成功 | 17.3–20.3 s（+13%…+33%） |
+| 55125 / 13781 | 1.25 s / 25% | 成功 | 37.4 s（+144%） |
+| 66150 / 16537 | 1.5 s / 25% | 成功 | 51.9 s（+239%） |
+| 88200 / 22050 | 2.0 s / 25% | **DirectML 显存不足** | — |
+| 176400 / 44100 | 4.0 s / 25% | **DirectML 显存不足** | — |
+| 44100 / 22050 | 1.0 s / 50% | 成功 | 23.9–24.2 s（+57%） |
+
+模型对比（同参数 22050/5512）：`bs-roformer-317` 与 `bs-roformer-gabox` 28.0–28.5 s，
+彼此指标几乎相同；它们在 44100 分块下**跑不起来**（6 次里 5 次 OOM）。
+
+无真值分轨，所以**没有**计算 SDR/SI-SDR；技术侧只做可复核的检查（重建残差、200–2000 Hz
+能量占比、伴奏里的原唱谐波残留、人声轨 HNR、静音帧泄漏、耗时、NaN/Inf）。实测结论是
+**混合的**：1 s 分块在两组片段上让伴奏残留下降、人声谐波度微升，但让人声轨在安静处漏进
+更多伴奏；再加大块长只涨耗时。所以**生产默认仍是 22050/5512**，候选参数要不要切由试听决定。
+
+### 10.4 想改的时候
+
+后台「音乐」页 → 点歌翻唱 → 「分离分块 / 分离重叠 / 分离模型精度 / 分离设备」。四项都是
+`hot: live`（每条任务现取），但**代码**改动要重启 Companion 才生效（插件从 `build/lib/` 加载）。
+改完先跑一条真实点歌（演练模式即可）核对 `summary.json` 里的 `separation.effective`，
+不要只看请求值。回滚就是把四项改回 `-1 / -1 / auto / auto`。

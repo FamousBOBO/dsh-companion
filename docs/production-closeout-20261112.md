@@ -4,7 +4,7 @@ Codex 在 DSH 交接之后独立执行只读核验与专项测试。本文区分
 
 ## 本轮实测
 
-- 目标 `C:/Users/bobo/Documents/Bot/dsh-production`，分支 main，审阅基线 d20cf1a。`git merge-base --is-ancestor 854ff28 HEAD` 退出 0：完整集成历史已进入目标，没有退回仅 cherry-pick 最后验收提交的状态。后续表情线提交仍在。
+- 目标 `C:[…]/Documents/Bot/dsh-production`（收尾审阅时的生产源码目录；2026-11-13 起该方向的 `config/`、`data/`、`plugins/` 已改为指向 D 盘的目录联接），分支 main，审阅基线 d20cf1a。`git merge-base --is-ancestor 854ff28 HEAD` 退出 0：完整集成历史已进入目标，没有退回仅 cherry-pick 最后验收提交的状态。后续表情线提交仍在。
 - `git diff --check` 退出 0；docs/07 无行首 Git 冲突标记。
 - supervisor 69520 与宿主 39944 均存活，启动时间为北京时间 14:31；foundation 挂载记录 pid 与宿主一致。此证据证明实例存活和模块挂载，不能单独证明所有源码已按预期执行。
 - 北京时间 15:25 复跑 `node dsh-ops/check-production.mjs`：三个端点 HTTP 200，authenticated/ok/pluginActivationClean 均为 true。此健康判定只覆盖指定核心挂载与三个端点，不能解释成所有插件、模型和外部服务正常。

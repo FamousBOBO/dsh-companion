@@ -3,7 +3,7 @@ import assert from 'node:assert/strict';
 import fs from 'node:fs';
 import os from 'node:os';
 import path from 'node:path';
-import { groupIdOf, groupToolDenial, markGroupReady, GROUP_ALLOWED_TOOLS, GROUP_MEDIA_TOOLS, GROUP_EXPRESSION_TOOLS } from './core.mjs?v=group-media-20261102-restrict3';
+import { groupIdOf, groupToolDenial, markGroupReady, GROUP_ALLOWED_TOOLS, GROUP_MEDIA_TOOLS, GROUP_EXPRESSION_TOOLS, GROUP_SONG_TOOLS } from './core.mjs?v=group-song-20261115b';
 import { apply as boundary } from './boundary.mjs';
 import { apply as persona, GROUP_PERSONA } from './index.mjs';
 import { createIdentity } from '../companion-foundation/identity.mjs';
@@ -42,22 +42,65 @@ test('group tool boundary defaults deny, even if tools/policy switches change', 
   assert.match(groupToolDenial(send(a)), /未就绪/);
   markGroupReady(a);
   assert.equal(groupToolDenial(send(a)), undefined);
-  for (const name of ['pwsh', 'bash', 'read', 'write', 'edit', 'run_code', 'subagent_codex', 'bili_run', 'companion_recall', 'companion_remember', 'companion_media_warm', 'qq_lookup', 'qq_group_admin', 'qq_memory', 'qq_file', 'qq_music', 'future_unknown_tool']) {
+  for (const name of ['pwsh', 'bash', 'read', 'write', 'edit', 'run_code', 'subagent_codex', 'bili_run', 'companion_recall', 'companion_remember', 'companion_media_warm', 'qq_lookup', 'qq_group_admin', 'qq_memory', 'qq_file', 'qq_music', 'qq_song_cancel', 'future_unknown_tool']) {
     assert.match(groupToolDenial({ ...send(a), name }, OPTS), /只开放/);
   }
   assert.equal(groupToolDenial({ ...send(agent('qq-dm-456')), name: 'pwsh' }), undefined, 'owner DM unchanged');
 });
 
-test('media tools are open to the group: draw / speak / job / status never touch QQ directly', () => {
+test('media tools are open to the group: visual / draw / speak / job / status never touch QQ directly', () => {
   const a = agent(); markGroupReady(a);
-  assert.deepEqual(GROUP_MEDIA_TOOLS, ['companion_media_status', 'companion_media_draw', 'companion_media_speak', 'companion_media_job']);
+  // `companion_media_visual` 是只读的身份读取口：群聊不读私人衣柜，但英文外观必须来自
+  // `visual-identity.json` 而不是模型编造，所以它必须在名单里。
+  assert.deepEqual(GROUP_MEDIA_TOOLS, ['companion_media_status', 'companion_media_visual', 'companion_media_draw', 'companion_media_speak', 'companion_media_job']);
   assert.equal(GROUP_PERSONA.includes('companion_media_inspect'), false);
+  assert.match(GROUP_PERSONA, /companion_media_visual\(\)/);
+  assert.match(GROUP_PERSONA, /outfit=一句英文衣物短语/);
   assert.match(groupToolDenial({ agent: a, name: 'companion_media_inspect', arguments: {} }, OPTS), /只开放/);
   for (const name of GROUP_MEDIA_TOOLS) {
     assert.equal(groupToolDenial({ agent: a, name, arguments: {} }, OPTS), undefined, name);
   }
   assert.match(groupToolDenial({ agent: a, name: 'companion_media_warm', arguments: { action: 'warm', target: 'voice' } }, OPTS), /只开放/, 'GPU warm/release stays closed');
   assert.equal(typeof groupToolDenial({ agent: agent(), name: 'companion_media_draw', arguments: { prompt: 'x' } }, OPTS), 'string', 'unready preset still refuses');
+});
+
+test('song tools: only cover is open, status and cancel stay closed, and no path key gets through', () => {
+  const a = agent(); markGroupReady(a);
+  assert.deepEqual(GROUP_SONG_TOOLS, ['qq_song_cover']);
+  assert.equal(GROUP_ALLOWED_TOOLS.includes('qq_song_cancel'), false, '取消只认 taskId，群友能取消别人的任务');
+  // `qq_song_status` 读整个队列（含 room/requesterId），放进来等于开一个跨房间读取口。
+  assert.equal(GROUP_ALLOWED_TOOLS.includes('qq_song_status'), false, '状态工具读的是全局队列');
+  assert.match(groupToolDenial({ agent: a, name: 'qq_song_status', arguments: {} }), /只开放/);
+  assert.match(GROUP_PERSONA, /qq_song_cover\(song=/);
+  assert.match(GROUP_PERSONA, /requesterId/);
+  assert.equal(GROUP_PERSONA.includes('qq_song_status'), false);
+  // 真人实测过：让它"唱歌"，它去调 companion_media_speak（TTS 朗读），把那一段当成歌声。
+  // 群里必须把"唱"和"念"分开写死，否则这不只是模型选错工具，是它在骗人。
+  assert.match(GROUP_PERSONA, /唱歌只有 qq_song_cover 这一条路/);
+  assert.match(GROUP_PERSONA, /TTS 朗读/);
+  assert.match(GROUP_PERSONA, /念歌词不等于唱/);
+  assert.match(GROUP_PERSONA, /不要自己找替代方案/);
+
+  // 房间来自 context.agentId，工具本身不吃 isGroup/target；给了也只认当前群。
+  assert.equal(groupToolDenial({ agent: a, name: 'qq_song_cover', arguments: { song: '晴天', requesterId: 456 } }), undefined);
+  assert.equal(groupToolDenial({ agent: a, name: 'qq_song_cover', arguments: { song: '晴天', requesterId: 456, isGroup: true, target: '123' } }), undefined);
+
+  // 额外键、路径键、跨群一律拒绝（默认拒绝未知工具的那条路径不放松）。
+  for (const over of [
+    { song: '晴天', requesterId: 456, output: 'C:/x.mp3' },
+    { song: '晴天', file: mediaFile('speech/abc.mp3') },
+    { song: '晴天', path: '/etc/passwd' },
+    { song: '晴天', url: 'https://x/y.mp3' },
+    { song: '晴天', isGroup: false },
+    { song: '晴天', target: '999' },
+    { song: '晴天', isGroup: true, target: '999' },
+  ]) {
+    assert.equal(typeof groupToolDenial({ agent: a, name: 'qq_song_cover', arguments: over }), 'string', JSON.stringify(over));
+  }
+  // 别的群的 agent 照样能点歌——但房间是它自己的：`qq_song_cover` 不吃 target，
+  // 语音条只会落回 `context.agentId` 推出来的那个群，所以这一层不需要跨群判定。
+  const other = agent('qq-group-456'); markGroupReady(other);
+  assert.equal(groupToolDenial({ agent: other, name: 'qq_song_cover', arguments: { song: '晴天', requesterId: 456 } }), undefined);
 });
 
 test('image sending: only qq_sticker action=send_image of a media-layer file inside home/media', () => {
@@ -110,8 +153,12 @@ test('media output in workspace/media is allowed without opening the workspace',
 
 test('same-room text only: reject cross-room, spoofing, CQ, wrong types and unexpected fields', () => {
   const a = agent(); markGroupReady(a);
-  for (const over of [{ target: 999 }, { isGroup: false }, { action: 'reply', messageId: 42 }, { action: 'code_review' }, { target: '123' }, { text: '[CQ:image,file=C:/secret.png]' }, { text: '' }, { text: 'x'.repeat(4001) }, { file: 'C:/secret' }, { phase: 'unknown' }]) {
-    assert.equal(typeof groupToolDenial(send(a, over)), 'string');
+  // `target: '123'` 现在**是放行的**：schema 写的是 number，但模型实测会把群号写成字符串，
+  // 旧实现用 `!==` 比较，于是整个群回合的回复都被判成"跨群"发不出去。判据仍是"是不是当前群"。
+  assert.equal(groupToolDenial(send(a, { target: '123' })), undefined, 'string form of the current group must pass');
+  assert.equal(groupToolDenial(send(a, { target: '0123' })), undefined, 'leading zero is still this group');
+  for (const over of [{ target: 999 }, { target: '999' }, { target: '123abc' }, { target: 123.5 }, { isGroup: false }, { action: 'reply', messageId: 42 }, { action: 'code_review' }, { text: '[CQ:image,file=C:/secret.png]' }, { text: '' }, { text: 'x'.repeat(4001) }, { file: 'C:/secret' }, { phase: 'unknown' }]) {
+    assert.equal(typeof groupToolDenial(send(a, over)), 'string', JSON.stringify(over));
   }
   assert.equal(groupToolDenial({ ...send(a), arguments: JSON.stringify(send(a).arguments) }), undefined);
   assert.match(groupToolDenial({ ...send(a), arguments: '{' }), /无效/);
@@ -126,7 +173,7 @@ test('real mount wiring: monotonic global guard + group scoped restriction and m
   boundary({ get: () => ({ identity: { owner: () => ({ id: '456' }), resolve: id => ({ id }) } }), tools: { guard(fn) { guard = fn; } }, on(name, hook) { if (name === 'agent/pre-step') rootHook = hook; } });
   persona({ tools: { guard() {}, restrict(value) {
     // Mirror the host contract: local media names are not restrictable globals.
-    const globals = new Set(['qq_message', 'qq_sticker', 'qq_voice']);
+    const globals = new Set(['qq_message', 'qq_sticker', 'qq_voice', ...GROUP_SONG_TOOLS]);
     for (const name of value.allow) assert.ok(globals.has(name), 'unknown global tool: ' + name);
     restriction = value;
   } }, systemPrompt: { section(value) { if (value.name === 'companion:group-persona') section = value; } }, on(name, hook) { if (name === 'agent/pre-step') groupHook = hook; } });
@@ -172,8 +219,12 @@ test('successful group receipt ends turn; failure and fresh user input allow rec
 });
 
 test('group preset installs its own execution guard even without the optional root boundary', async () => {
-  let scopedGuard, step;
-  persona({ tools: { guard(fn) { scopedGuard = fn; }, restrict() {} }, systemPrompt: { section() {} }, on(name, fn) { if (name === 'agent/pre-step') step = fn; } });
+  // 两个 guard：边界闸门 + 点歌额度闸门。宿主的语义是"任一条返回 reason 就拒绝"，
+  // 所以这里也按同一条链跑，而不是只记最后一个注册的。
+  const guards = []; let step;
+  const scopedGuard = exec => guards.map(fn => fn(exec)).find(reason => typeof reason === 'string');
+  persona({ tools: { guard(fn) { guards.push(fn); }, restrict() {} }, systemPrompt: { section() {} }, on(name, fn) { if (name === 'agent/pre-step') step = fn; } });
+  assert.equal(guards.length, 2, 'boundary + song quota');
   const a = agent();
   assert.equal(typeof scopedGuard(send(a)), 'string');
   await step({ agent: a, step: 1, turn: 1 }, async () => ({ kind: 'enter' }));
@@ -197,16 +248,20 @@ test('restrictions bind to each agent scope once, preserving inherited preset me
 test('strict host registry accepts current media surface and QQ-only deployments without unknown tools', async () => {
   let step;
   persona({tools:{guard(){},restrict(){}},systemPrompt:{section(){}},on(name,fn){if(name==='agent/pre-step')step=fn;}});
-  for(const media of [true,false]){
+  // 最后一个组合是"还没装点歌子插件的旧 channel-qq"：白名单里的名字不在册时必须被过滤掉，
+  // 否则 `tools.restrict` 会因未知全局工具抛错，整个群聊回合都进不去。
+  for(const [media,song] of [[true,true],[false,true],[true,false]]){
     // 表情包工具与媒体工具一样是**可选插件**提供的：注册了就应留下，没注册就不该被下发。
-    const a=agent(),registered=new Set(['qq_message','qq_sticker','qq_voice','pwsh',...(media?GROUP_MEDIA_TOOLS:[]),...GROUP_EXPRESSION_TOOLS]);
+    const a=agent(),registered=new Set(['qq_message','qq_sticker','qq_voice','pwsh',...(media?GROUP_MEDIA_TOOLS:[]),...GROUP_EXPRESSION_TOOLS,...(song?GROUP_SONG_TOOLS:[])]);
     let restriction;
     a.ctx.tools.view=()=>({restrictableNames:registered});
     a.ctx.tools.restrict=filter=>{for(const name of filter.allow)assert.ok(registered.has(name),`unknown tool: ${name}`);restriction=filter;};
     let entered=false;
     await step({agent:a,step:1,turn:1},async()=>{entered=true;return {kind:'enter'};});
     assert.equal(entered,true);
-    assert.deepEqual(restriction.allow,media?[...GROUP_ALLOWED_TOOLS]:['qq_message','qq_sticker','qq_voice',...GROUP_EXPRESSION_TOOLS]);
+    assert.deepEqual(restriction.allow,GROUP_ALLOWED_TOOLS.filter(name=>registered.has(name)));
+    if(!media)assert.equal(restriction.allow.includes('companion_media_draw'),false);
+    if(!song)assert.equal(restriction.allow.includes('qq_song_cover'),false);
     assert.equal(restriction.allow.includes('pwsh'),false);
     assert.equal(restriction.allow.includes('companion_media_inspect'),false);
     assert.equal(groupToolDenial(send(a)),undefined);

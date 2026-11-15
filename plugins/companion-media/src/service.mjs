@@ -317,19 +317,22 @@ export function createMediaService({
     }
 
     const missing = [];
+    const group = isGroupSession(sessionId);
     // Identity first: it is the part that cannot be substituted by the model or by an
     // argument, and it is the part the acceptance run found was never enforced.
     if (visual.identity?.state !== 'configured') missing.push('identity');
     else if (!visual.identityClause) missing.push('identity-english');
     if (!explicitOutfit && !(visual.wardrobe?.clothingClause ?? '')) missing.push('wardrobe');
 
-    const report = companionVisualReport(visual, { outfit: explicitOutfit });
+    const report = companionVisualReport(visual, { outfit: explicitOutfit, group });
     if (!missing.length) return { ok: true, refusal: null, report };
 
     const identityMissing = missing.includes('identity') || missing.includes('identity-english');
     const message = identityMissing
       ? `当前无法为陪伴角色生图：${missing.includes('identity-english') ? '视觉身份缺少英文外观描述' : '没有可用的视觉身份'}（${visual.identity?.code ?? 'identity-missing'}）；先在 home/companion/visual-identity.json 里为该人格配置身份，画面提示词必须是英文`
-      : `当前无法确定角色着装（${visual.wardrobe?.code ?? 'unresolved'}）；先设置衣柜，或显式传英文 outfit`;
+      : group
+        ? '群聊里不读私人衣柜，所以这一次的着装要由调用方显式给出：在 outfit 里填一句英文衣物短语（例如 "a cream knit sweater and dark jeans"），再照常写完整 prompt'
+        : `当前无法确定角色着装（${visual.wardrobe?.code ?? 'unresolved'}）；先设置衣柜，或显式传英文 outfit`;
 
     return {
       ok: false,
@@ -346,7 +349,8 @@ export function createMediaService({
             file: 'home/companion/visual-identity.json',
           },
           wardrobe: { code: visual.wardrobe?.code ?? 'unresolved', context: visual.wardrobe?.context ?? '' },
-          outfitSource: explicitOutfit ? 'explicit-arg' : 'wardrobe-resolver',
+          outfitSource: explicitOutfit ? 'explicit-arg' : (group ? 'explicit-arg-required' : 'wardrobe-resolver'),
+          ...(group ? { groupPolicy: { wardrobeReadable: false, outfitRequired: true } } : {}),
           hint: 'This call sent no request to any provider.',
         },
       },
@@ -354,8 +358,24 @@ export function createMediaService({
     };
   }
 
+  /**
+   * Is this a QQ group session?
+   *
+   * The wardrobe resolver refuses group sessions by design (`wardrobe-unavailable-in-group`):
+   * a group must not learn what the character is wearing in private. That refusal is right
+   * and stays. What was missing is the *other* half — inside a group the identity half of a
+   * companion picture is still legitimate (the appearance comes from
+   * `home/companion/visual-identity.json`, not from the private wardrobe), so a group can
+   * draw her **if the caller supplies the clothing explicitly** as an English `outfit`
+   * phrase. Without that, every `subject=companion` call from a group ended in
+   * `missing:["wardrobe"]` and the feature looked broken rather than gated.
+   */
+  function isGroupSession(sessionId) {
+    return String(sessionId ?? '').startsWith('qq-group-');
+  }
+
   /** The structured `visual` block reported by `dryRun`, a refusal, and a success alike. */
-  function companionVisualReport(visual, { outfit = '' } = {}) {
+  function companionVisualReport(visual, { outfit = '', group = false } = {}) {
     if (!visual) return null;
     return {
       personaId: visual.personaId,
@@ -368,10 +388,12 @@ export function createMediaService({
       isOverride: visual.wardrobe?.isOverride === true,
       pieces: visual.wardrobe?.pieces ?? {},
       missing: visual.missing,
-      outfitSource: outfit ? 'explicit-arg' : 'wardrobe-resolver',
+      outfitSource: outfit ? 'explicit-arg' : (group ? 'explicit-arg-required' : 'wardrobe-resolver'),
       clothingClause: visual.wardrobe?.clothingClause ?? '',
       promptComposition: 'model-authored',
       identityClause: visual.identityClause ?? '',
+      // The one group-specific fact a caller needs: identity is readable here, clothing is not.
+      ...(group ? { groupPolicy: { wardrobeReadable: false, outfitRequired: true, identityFrom: 'home/companion/visual-identity.json' } } : {}),
     };
   }
 
@@ -398,13 +420,24 @@ export function createMediaService({
     const persona = resolvePersonaId({ env, suiteConfig: readSuiteConfig(suiteRoot) });
     const visual = resolveCompanionVisualState({ root: dataDir, personaId: persona.id || '',
       sessionId: String(sessionId ?? ''), now: now().getTime() });
+    const group = isGroupSession(sessionId);
+    // In a group the gate's answer is deliberately **not** a refusal of this read: the identity
+    // is legitimate here, only the clothing is unavailable. Reporting `ok:false` made the tool
+    // look broken and pushed the model towards TTS/voice instead of an explicit `outfit`.
+    // `ok` therefore means "the identity half is usable"; the missing clothing is reported as
+    // `outfitRequired` so the caller knows exactly what to supply.
     const gate = companionPictureGate(visual, { personaId: persona.id || '', sessionId });
+    const identityUsable = !(gate.refusal?.details?.missing ?? []).some(name => name === 'identity' || name === 'identity-english');
+    const ok = group ? identityUsable : gate.ok;
     const guide = promptGuidePath();
-    return { ok: gate.ok, visual: gate.report, ...(gate.refusal ? { error: gate.refusal } : {}),
+    const groupInstruction = '这是群聊：私人衣柜不在这里读，角色外观按上面的 identityClause 用，着装必须在 companion_media_draw 里用 outfit 显式给一句英文衣物短语（例如 "a cream knit sweater and dark jeans"），再照常把完整画面写成英文 prompt。';
+    const baseInstruction = guide
+      ? `读取身份与当前衣物后，先读提示词写法指南 ${guide}，再按指南把外观、衣物、动作、表情、构图、环境和光线写成完整英文 prompt；参考串不是固定后缀，习惯性配饰按场景取舍。身体部位、裸露与遮挡、位置与视角、反向提示词自检都按指南对应章节执行。画面正文为配置画师串 + prompt，所选官方质量预设单独生效。`
+      : `提示词写法指南缺失（预期位置 ${PROMPT_GUIDE_RELATIVE}）。读取身份与当前衣物后，仍把可见外观、衣物、动作、表情、构图、环境和光线写成完整英文 prompt；身体部位用解剖名词直写（nipples/areola/pussy/labia/clitoris/vagina/anus/ass/groin/pubic hair），裸露与遮挡状态、部位在画面内位置与朝向都要写明。画面正文为配置画师串 + prompt，所选官方质量预设单独生效。`;
+    return { ok, visual: gate.report, ...(group ? {} : (gate.refusal ? { error: gate.refusal } : {})),
+      ...(group ? { outfitRequired: true, error: identityUsable ? undefined : gate.refusal } : {}),
       promptGuide: guide ?? 'missing',
-      instruction: guide
-        ? `读取身份与当前衣物后，先读提示词写法指南 ${guide}，再按指南把外观、衣物、动作、表情、构图、环境和光线写成完整英文 prompt；参考串不是固定后缀，习惯性配饰按场景取舍。身体部位、裸露与遮挡、位置与视角、反向提示词自检都按指南对应章节执行。画面正文为配置画师串 + prompt，所选官方质量预设单独生效。`
-        : `提示词写法指南缺失（预期位置 ${PROMPT_GUIDE_RELATIVE}）。读取身份与当前衣物后，仍把可见外观、衣物、动作、表情、构图、环境和光线写成完整英文 prompt；身体部位用解剖名词直写（nipples/areola/pussy/labia/clitoris/vagina/anus/ass/groin/pubic hair），裸露与遮挡状态、部位在画面内位置与朝向都要写明。画面正文为配置画师串 + prompt，所选官方质量预设单独生效。` };
+      instruction: group ? `${groupInstruction}${baseInstruction}` : baseInstruction };
   }
 
   async function generateImage({

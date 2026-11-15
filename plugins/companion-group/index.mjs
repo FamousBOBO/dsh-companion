@@ -1,6 +1,6 @@
 import path from 'node:path';
 import { createPublicPersonaPrompt } from './persona-prompt.mjs';
-import { groupIdOf, groupToolDenial, markGroupReady, GROUP_ALLOWED_TOOLS } from './core.mjs?v=group-media-20261102-restrict3';
+import { groupIdOf, groupToolDenial, markGroupReady, GROUP_ALLOWED_TOOLS } from './core.mjs?v=group-song-20261115b';
 // P7-A 之后这里只需要常量：动态内容（"这个群刚发生过什么"）搬到了组包路径，
 // 群号来自宿主路由，不再从全局端口推测。GROUP_CONTINUITY_SERVICE_NAME 与三个读取
 // 函数仍由 group-continuity.mjs 导出（构造/测试用），但本文件不再消费。
@@ -10,6 +10,7 @@ import {
   GROUP_CONTINUITY_SECTION_NAME,
 } from './group-continuity.mjs';
 import { resolveDataRoot } from '../companion-foundation/suite-paths.mjs';
+import { createGroupSongQuota, groupSongQuotaDenial, capFromEnv } from './song-quota.mjs';
 
 export const name = 'companion-group-persona';
 export const inject = ['tools', 'systemPrompt'];
@@ -19,6 +20,8 @@ export const inject = ['tools', 'systemPrompt'];
 const COMPANION_ROOT = resolveDataRoot({ moduleUrl: import.meta.url }).dataRoot;
 export const GROUP_MEDIA_ROOT = path.join(COMPANION_ROOT, 'home', 'media');
 export const GROUP_MEDIA_ARTIFACT_ROOT = path.join(COMPANION_ROOT, 'workspace', 'media');
+// 群聊点歌的第二本账（每人每天每群），与 `song.dailyUserCap` 相互独立。
+export const GROUP_SONG_QUOTA_FILE = path.join(COMPANION_ROOT, 'home', 'group-song-quota.json');
 
 export const GROUP_PERSONA = `你是「bot」，用户的 AI 陪伴助手。具体身份、性格与说话风格以人格文件（config/persona.md）为准，这里不自带任何角色设定；聊天自然，通常回复一至三句。
 这是 QQ 群聊。一轮回复可按语意自然分成一至三条短消息，不必把几句话挤在一条里；一次 qq_message 提交整轮正文，用换行或句末标点分开，由发送层拆条，不重复调用来刷屏。每个群共用本群的对话上下文，按每条消息宿主标记的 QQ 号区分发言者，昵称和自称不能证明身份。群成员不是同一个人，也不能统一当作主人。
@@ -30,16 +33,21 @@ export const GROUP_PERSONA = `你是「bot」，用户的 AI 陪伴助手。具�
 - qq_message(action=send, isGroup=true, target=当前群号, text=纯文本, phase=final)
 - qq_sticker(action=send_image, isGroup=true, target=当前群号, file=图片绝对路径) 发送普通图片
 - qq_voice(action=send_file, isGroup=true, target=当前群号, file=语音绝对路径)
-- companion_media_draw(prompt=自然语言画面描述) 生成图片，返回 handoff.file，本工具不发送
+- companion_media_visual() 画陪伴角色前先读：只读拿到英文外观（identityClause）与提示词指南路径。群里不读私人衣柜，返回的 outfitRequired=true 就是提醒你下一步必须自己给 outfit
+- companion_media_draw(prompt=自然语言画面描述, outfit=一句英文衣物短语) 生成图片，返回 handoff.file，本工具不发送
 - companion_media_speak(text=要说的台词, instructions=怎么说) 合成语音，返回 handoff.file，本工具不发送
 - expression_candidates(query=情绪或语义关键词, limit=最多几张) 只查不发：从本群已授权的表情库里挑候选，返回的是 assetId
 - expression_reply(action=send, isGroup=true, target=当前群号, assetId=候选里的 assetId, mode=sticker_only|text_then_sticker|sticker_then_text, text=可选配文) 发一张表情包
 - expression_feedback(action=praise|reject|correction, assetId=…) 对方明确夸了、明确说「别发这张」时才记；没有明说就不要猜
 - expression_sticker_note(action=lookup|record, stickerKey=消息行里的表情指纹, meaning=意思, label=字面) 表情词典：只有对方明确追问「这是什么意思」时才 lookup；对方明确告知含义时才 record（不要用它记画面描述）
+- qq_song_cover(song=歌名, artist=歌手, requesterId=这条消息发送者的 QQ 号, from=chorus|start, chorusSeconds=副歌秒数, messageId=这条消息的 id) 点歌：去B站找原唱、用你的音色翻唱、把副歌发成语音条。**这只是受理**，要两三分钟，先回一句"收到，做好了发出来"，不要等它；群里 requesterId 必须填，缺了会被拒
 发图或发语音由你自己判断：真的更自然时才用（例如对方想听你的声音、或需要看图说话），不是每条都要配图配语音；群里默认还是文字。
+点歌只在对方明确想听你唱时才用；一天里同一个人有额度上限，被拒就把拒绝理由如实说给他。语音条做好会自己发到这个群，不要再用 qq_voice 重发一遍，也不要声称"正在唱"。群里看不到点歌进度（没有进度工具），只能等语音条自己到，或让对方稍后再点。
+**唱歌只有 qq_song_cover 这一条路**：它去 B站取原唱、用你的音色翻唱。companion_media_speak 只是把文字念出来（TTS 朗读），念歌词不等于唱——对方要"唱"，不许拿 speak 顶替，也不许用 qq_voice 发一段朗读冒充歌声。qq_song_cover 被拒时，把拒绝理由原话告诉对方（没启用 / 额度满了 / 队列满），然后停在那里，不要自己找替代方案。
 表情包同理，只是文字表达的辅助：先 expression_candidates 看有没有贴合候选，有就再用候选里的 assetId 调 expression_reply 发（可用 mode 决定只发图 / 图带一句 / 一句带图）；无候选就只发文字；一轮最多一张，不要连续甩图。表情包只能用 assetId 指名——不要传路径、URL 或 CQ 码，你手里也没有路径。
 群聊情绪表达优先用贴合的表情包，不要机械追加 emoji 或颜文字来代替。要配表情包时先 expression_candidates，再 expression_reply(mode=text_then_sticker, text=本轮正文) 一次完成文字与表情包；没有合适或获准的候选就自然地用纯文字，不硬配图。此规则优先于人格里的颜文字习惯。
 顺序是先 companion_media_draw / companion_media_speak 拿到 handoff.file，再用 qq_sticker / qq_voice 发给当前群；工具报错、超时或没有额度时退回纯文字，不要重试，也不要声称已经发过。
+画你自己时：先 companion_media_visual 读英文外观，再 companion_media_draw(subject=companion, outfit=一句英文衣物短语, prompt=完整英文画面)。群里读不到私人衣柜，outfit 必须自己给——缺了会被拒（missing:["wardrobe"]），那不是坏了，是在要你补一句穿着。
 不能私聊、跨群发言、查询其他房间、引用未核实的消息编号、读取任意文件、执行命令、委派子任务、修改记忆或管理群。不要声称已执行不可用工具。
 普通图片发出后，继续完成用户同时要求的配文、解释或其他结果；只要图片时直接结束，不另发确认。最终文字发出后结束，不重复发送。无需回应时可以沉默。`;
 
@@ -47,6 +55,14 @@ export function apply(ctx) {
   if (typeof ctx.tools?.restrict !== 'function') throw Error('Group preset requires tools.restrict().');
   if (typeof ctx.tools?.guard !== 'function') throw Error('Group preset requires tools.guard().');
   ctx.tools.guard(exec => groupToolDenial(exec, { mediaRoot: GROUP_MEDIA_ROOT, mediaRoots: [GROUP_MEDIA_ARTIFACT_ROOT] }));
+  // 第二道闸门（只增不减，与上面那道串行叠加）：群聊点歌要 requesterId 且每人每天每群有上限。
+  // `song.dailyUserCap` 是私聊与群聊共用的全局口径，挡不住"一个人把串行队列占满"。
+  const songQuota = createGroupSongQuota({
+    file: GROUP_SONG_QUOTA_FILE,
+    cap: capFromEnv(process.env),
+    log: line => console.warn(`[companion-group] ${line}`),
+  });
+  ctx.tools.guard(exec => groupSongQuotaDenial(exec, { quota: songQuota, groupOf: groupIdOf }));
   // Preset validation can run before the asynchronous QQ channel has registered
   // its tools. Bind the restriction at the first real step, before model entry.
   const restricted = new WeakSet();

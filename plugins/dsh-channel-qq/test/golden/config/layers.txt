@@ -694,7 +694,11 @@ override = {}
   "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
-  "dailyUserCap": 2
+  "dailyUserCap": 2,
+  "separatorChunk": -1,
+  "separatorOverlap": -1,
+  "separatorDtype": "auto",
+  "separatorDevice": "auto"
  },
  "presence": {
   "mode": "",
@@ -1425,7 +1429,11 @@ override = {}
   "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
-  "dailyUserCap": 2
+  "dailyUserCap": 2,
+  "separatorChunk": -1,
+  "separatorOverlap": -1,
+  "separatorDtype": "auto",
+  "separatorDevice": "auto"
  },
  "presence": {
   "mode": "",
@@ -2154,7 +2162,11 @@ override = {"batching":{"windowMs":20000}}
   "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
-  "dailyUserCap": 2
+  "dailyUserCap": 2,
+  "separatorChunk": -1,
+  "separatorOverlap": -1,
+  "separatorDtype": "auto",
+  "separatorDevice": "auto"
  },
  "presence": {
   "mode": "",
@@ -2883,7 +2895,11 @@ override = {"admin":{"port":8790}}
   "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
-  "dailyUserCap": 2
+  "dailyUserCap": 2,
+  "separatorChunk": -1,
+  "separatorOverlap": -1,
+  "separatorDtype": "auto",
+  "separatorDevice": "auto"
  },
  "presence": {
   "mode": "",
@@ -3612,7 +3628,11 @@ override = {"imageGen":{"model":"flux"}}
   "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
-  "dailyUserCap": 2
+  "dailyUserCap": 2,
+  "separatorChunk": -1,
+  "separatorOverlap": -1,
+  "separatorDtype": "auto",
+  "separatorDevice": "auto"
  },
  "presence": {
   "mode": "",
@@ -4341,7 +4361,11 @@ override = {"tts":{"voice":"b"}}
   "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
-  "dailyUserCap": 2
+  "dailyUserCap": 2,
+  "separatorChunk": -1,
+  "separatorOverlap": -1,
+  "separatorDtype": "auto",
+  "separatorDevice": "auto"
  },
  "presence": {
   "mode": "",
@@ -5070,7 +5094,11 @@ override = {"flood":{"windowSec":30}}
   "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
-  "dailyUserCap": 2
+  "dailyUserCap": 2,
+  "separatorChunk": -1,
+  "separatorOverlap": -1,
+  "separatorDtype": "auto",
+  "separatorDevice": "auto"
  },
  "presence": {
   "mode": "",
@@ -5806,7 +5834,11 @@ override = {}
   "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
-  "dailyUserCap": 2
+  "dailyUserCap": 2,
+  "separatorChunk": -1,
+  "separatorOverlap": -1,
+  "separatorDtype": "auto",
+  "separatorDevice": "auto"
  },
  "presence": {
   "mode": "",
@@ -6535,7 +6567,11 @@ override = {"keywordTriggers":[]}
   "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
-  "dailyUserCap": 2
+  "dailyUserCap": 2,
+  "separatorChunk": -1,
+  "separatorOverlap": -1,
+  "separatorDtype": "auto",
+  "separatorDevice": "auto"
  },
  "presence": {
   "mode": "",
@@ -7271,7 +7307,11 @@ override = {"rss":{"pollIntervalMin":5}}
   "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
-  "dailyUserCap": 2
+  "dailyUserCap": 2,
+  "separatorChunk": -1,
+  "separatorOverlap": -1,
+  "separatorDtype": "auto",
+  "separatorDevice": "auto"
  },
  "presence": {
   "mode": "",
@@ -8000,7 +8040,11 @@ override = {"groupEnabled":false}
   "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
-  "dailyUserCap": 2
+  "dailyUserCap": 2,
+  "separatorChunk": -1,
+  "separatorOverlap": -1,
+  "separatorDtype": "auto",
+  "separatorDevice": "auto"
  },
  "presence": {
   "mode": "",
@@ -8729,7 +8773,11 @@ override = {}
   "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
-  "dailyUserCap": 2
+  "dailyUserCap": 2,
+  "separatorChunk": -1,
+  "separatorOverlap": -1,
+  "separatorDtype": "auto",
+  "separatorDevice": "auto"
  },
  "presence": {
   "mode": "",
@@ -9458,7 +9506,11 @@ override = {"groupEnabled":true}
   "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
-  "dailyUserCap": 2
+  "dailyUserCap": 2,
+  "separatorChunk": -1,
+  "separatorOverlap": -1,
+  "separatorDtype": "auto",
+  "separatorDevice": "auto"
  },
  "presence": {
   "mode": "",
@@ -10187,7 +10239,11 @@ override = {"admin":{"host":"127.0.0.1"}}
   "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
-  "dailyUserCap": 2
+  "dailyUserCap": 2,
+  "separatorChunk": -1,
+  "separatorOverlap": -1,
+  "separatorDtype": "auto",
+  "separatorDevice": "auto"
  },
  "presence": {
   "mode": "",
@@ -10916,7 +10972,11 @@ override = {}
   "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
-  "dailyUserCap": 2
+  "dailyUserCap": 2,
+  "separatorChunk": -1,
+  "separatorOverlap": -1,
+  "separatorDtype": "auto",
+  "separatorDevice": "auto"
  },
  "presence": {
   "mode": "",
@@ -11645,7 +11705,11 @@ override = {"imageGen":{"model":"flux"},"batching":{"windowMs":20000},"admin":{"
   "cacheMaxEntries": 50,
   "dailyAutoCap": 1,
   "autoSongs": [],
-  "dailyUserCap": 2
+  "dailyUserCap": 2,
+  "separatorChunk": -1,
+  "separatorOverlap": -1,
+  "separatorDtype": "auto",
+  "separatorDevice": "auto"
  },
  "presence": {
   "mode": "",

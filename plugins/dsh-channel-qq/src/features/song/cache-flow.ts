@@ -30,6 +30,13 @@ export interface CacheContext {
   readonly maxSeconds: number
   /** 副歌定位置信度门槛（`song.minConfidence`）；命中时按**当前**值复判。 */
   readonly minConfidence: number
+  /**
+   * 分离上下文进成品键的那一段（`separation.ts::separationKeyMark`）。
+   *
+   * 为什么不在这里重新算：算它要读配置，而配置坏时会抛。装配期算一次、算不出来
+   * 退回 `sep-default`，比每条请求都在这里 try/catch 更省事，也更好测。
+   */
+  readonly separationMark: string
 }
 
 /** 方案命中/定位得出的这一段：起点、长度、置信度。 */
@@ -80,7 +87,9 @@ export async function readClip(
   chorusStart: number,
   seconds: number,
 ): Promise<CoverResult | null> {
-  const key = ctx.cache.clipKey(ctx.bvid, ctx.cid, ctx.keyUp, chorusStart, seconds)
+  const key = ctx.cache.clipKey(
+    ctx.bvid, ctx.cid, ctx.keyUp, chorusStart, seconds, ctx.separationMark,
+  )
   let clip: { readonly file: string; readonly durationSeconds: number } | null
   try {
     clip = await ctx.cache.getClip(key, seconds)
@@ -121,7 +130,9 @@ export async function rememberClip(
   seconds: number,
   sourceFile: string,
 ): Promise<void> {
-  const key = ctx.cache.clipKey(ctx.bvid, ctx.cid, ctx.keyUp, chorusStart, seconds)
+  const key = ctx.cache.clipKey(
+    ctx.bvid, ctx.cid, ctx.keyUp, chorusStart, seconds, ctx.separationMark,
+  )
   try {
     await ctx.cache.putClip(key, sourceFile)
   } catch (error) {

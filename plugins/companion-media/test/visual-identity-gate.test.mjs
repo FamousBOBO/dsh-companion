@@ -355,7 +355,63 @@ test('P0-A：群聊会话不解析私人衣柜，缺身份时同样拒绝', asyn
     assert.equal(result.error.code, Code.BAD_INPUT);
     assert.deepEqual(result.error.details.missing, ['wardrobe']);
     assert.equal(result.error.details.wardrobe.code, 'wardrobe-unavailable-in-group');
+    assert.equal(result.error.details.outfitSource, 'explicit-arg-required');
+    assert.match(result.error.message, /outfit/);
     assert.equal(calls.length, 0);
+  } finally {
+    cleanup();
+  }
+});
+
+test('群聊：身份是合法的一半，显式 outfit 补上另一半就能画，且照旧不发多余请求', async () => {
+  const { dir, cleanup } = tempDataDir();
+  try {
+    configured(dir);
+    everydayWardrobe(dir);
+    writeIdentity(dir, DEFAULT_IDENTITY);
+    const { fetchImpl, calls } = successRoutes();
+    const service = createMediaService({ dataDir: dir, env: {}, fetchImpl, now: NOON });
+
+    // `readVisual` 在群里不再整片报错：身份可读，缺的只是着装。旧行为返回 ok:false +
+    // error，模型以为功能坏了，转头去调 TTS 唱歌——这就是那一轮的实际故障。
+    const reference = service.readVisual({ sessionId: 'qq-group-123' });
+    assert.equal(reference.ok, true, '身份在群里是可用的');
+    assert.equal(reference.outfitRequired, true);
+    assert.equal(reference.error, undefined);
+    assert.deepEqual(reference.visual.groupPolicy, { wardrobeReadable: false, outfitRequired: true, identityFrom: 'home/companion/visual-identity.json' });
+    assert.match(reference.visual.identityClause, /silver/i);
+    assert.match(reference.instruction, /outfit/);
+    assert.equal(calls.length, 0, 'readVisual 是只读的');
+
+    // 显式 outfit 通过校验，并且 prompt 原样保留（不追加身份、不追加衣物）。
+    const drawn = await service.generateImage({
+      subject: 'companion',
+      prompt: 'She sits by a rain-streaked window in a quiet cafe.',
+      outfit: 'a pale blue cable-knit cardigan over an ivory blouse',
+      sessionId: 'qq-group-123',
+    });
+    assert.equal(drawn.ok, true, JSON.stringify(drawn.error ?? {}));
+    // 画面正文由调用方写，程序不追加身份或衣物（`handoff` 里有真实产物）。
+    assert.match(String(drawn.handoff?.file ?? drawn.artifact?.absolutePath ?? ''), /\.png$/i);
+    assert.equal(calls.length, 1, '放行之后只发一次计费请求');
+  } finally {
+    cleanup();
+  }
+});
+
+test('群聊：显式 outfit 不能绕过身份校验（缺身份照样零网络）', async () => {
+  const { dir, cleanup } = tempDataDir();
+  try {
+    configured(dir);
+    everydayWardrobe(dir);
+    const { fetchImpl, calls } = successRoutes();
+    const service = createMediaService({ dataDir: dir, env: {}, fetchImpl, now: NOON });
+
+    const result = await service.generateImage({
+      subject: 'companion', prompt: 'A portrait.',
+      outfit: 'a cream knit sweater', sessionId: 'qq-group-123',
+    });
+    assertRefusedBeforeNetwork(result, calls, { code: Code.VISUAL_IDENTITY_REQUIRED, missing: ['identity'] });
   } finally {
     cleanup();
   }

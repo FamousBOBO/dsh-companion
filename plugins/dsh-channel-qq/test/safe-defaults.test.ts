@@ -195,6 +195,16 @@ test('qq-idle-compaction：默认关（没有套件配置、没有环境变量�
     rmSync(home, { recursive: true, force: true })
   }
   // ④ 关着时一个定时器都不注册；开着才注册（同一条断言模式，见上面 Scheduler 那条）。
+  //
+  // 这一段的**前提**是"没有套件配置"，而 `mod.apply(ctx)` 内部走的是 `decide()` 的默认参数
+  // ——它会从本包位置向上找 `dsh-companion-suite` 并读那份真的 `config/suite.json`。在源码仓库里
+  // 向上找不到套件根（所以默认关，断言成立），但在**部署形态**下本包就住在套件里、且
+  // `qqIdleCompaction` 可能已被用户打开，于是真实的 `apply()` 理所当然会装那个定时器 ——
+  // 测试失败，可行为是对的。
+  //
+  // 因此这里把前提**做真**：用一个空的套件根目录（没有 config/suite.json）压住自动发现，
+  // 让断言测的是"没有任何配置时的默认关"，而不是"这台机器上碰巧关着"。这不是为通过检查而
+  // 放宽断言 —— 断言仍是"一个定时器都不许注册"。
   const ctx = {
     agents: { roots: () => [] },
     llm: { resolveModelInfo: async () => ({}) },
@@ -202,9 +212,13 @@ test('qq-idle-compaction：默认关（没有套件配置、没有环境变量�
     compaction: { compactNow: async () => null },
     on: () => {},
   }
+  const emptySuite = mkdtempSync(path.join(tmpdir(), 'qq-idle-compaction-none-'))
+  writeFileSync(path.join(emptySuite, 'package.json'), JSON.stringify({ name: 'dsh-companion-suite' }), 'utf8')
   const before = process.env.QQ_IDLE_COMPACTION
+  const beforeRoot = process.env.DSH_COMPANION_SUITE_ROOT
   try {
     delete process.env.QQ_IDLE_COMPACTION
+    process.env.DSH_COMPANION_SUITE_ROOT = emptySuite
     const off = countTimers(() => { mod.apply(ctx) })
     assert.deepEqual(off, { timeouts: 0, intervals: 0 }, '默认关时不许起 60 秒轮询')
     process.env.QQ_IDLE_COMPACTION = '1'
@@ -213,5 +227,8 @@ test('qq-idle-compaction：默认关（没有套件配置、没有环境变量�
   } finally {
     if (before === undefined) delete process.env.QQ_IDLE_COMPACTION
     else process.env.QQ_IDLE_COMPACTION = before
+    if (beforeRoot === undefined) delete process.env.DSH_COMPANION_SUITE_ROOT
+    else process.env.DSH_COMPANION_SUITE_ROOT = beforeRoot
+    rmSync(emptySuite, { recursive: true, force: true })
   }
 })
