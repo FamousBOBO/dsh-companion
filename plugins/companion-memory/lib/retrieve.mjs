@@ -1,6 +1,8 @@
 import { cosineSimilarity } from './embed.mjs';
 import { fuse, mmrSelect } from './fusion.mjs';
+import { countInjectionRenders, eligibleForRetrieval } from './injection-gate.mjs';
 import { RETRIEVAL_DEFAULTS, isActive, scopeMatches } from './policy.mjs';
+import { buildQueryPlan, summarizeQueryPlan } from './query-plan.mjs';
 import { createReranker, RerankError } from './rerank.mjs';
 import { terms } from './text.mjs';
 
@@ -73,6 +75,12 @@ export const RECALL_SECTIONS = Object.freeze(['stable', 'related', 'current']);
 /** Kinds that describe the user's stable identity rather than a story beat. */
 const STABLE_KINDS = new Set(['fact', 'preference', 'profile']);
 
+/**
+ * 第二轮（承接）词法命中的权重。用户自己这一句仍是主信号，锚点补的上下文
+ * 只负责把「陪父亲复诊」那条祖先记忆提进候选，不该压过原句直接命中的内容。
+ */
+const CONTINUATION_WEIGHT = 0.85;
+
 function numberOr(value, fallback = 0) {
   const number = Number(value);
   return Number.isFinite(number) ? number : fallback;
@@ -128,8 +136,22 @@ function resolveSettings(config) {
       ? Math.min(1, Math.max(-1, requestedFloor))
       : null,
     semanticEnabled: source.semanticEnabled !== false,
+    // --- 查询构造与两道门（计划 §5 A，全部为可选标量；缺省即旧行为）-------
+    queryPlanEnabled: source.queryPlanEnabled !== false,
+    continuationEnabled: source.continuationEnabled !== false,
+    historyFallbackEnabled: source.historyFallbackEnabled !== false,
+    // 弱意图的身份配额：缺省 3，与 config.mjs 的 DEFAULT_CONFIG 对齐（0 = 关闭该分支）。
+    identityTopK: clampInt(source.identityTopK, 0, 20, 3),
+    identityReserve: clampInt(source.identityReserve, 0, 20, 0),
+    anchorWindowMs: clampInt(source.anchorWindowMs, 0, 30 * 24 * 60 * 60 * 1000, DEFAULT_ANCHOR_WINDOW_MS),
+    anchorLimit: clampInt(source.anchorLimit, 1, 10, DEFAULT_ANCHOR_LIMIT),
   };
 }
+
+/** 承接连接受 6 小时内用户自己确认过的内容（计划 §5 A.2）。 */
+export const DEFAULT_ANCHOR_WINDOW_MS = 6 * 60 * 60 * 1000;
+/** 最多采纳几个承接锚点。 */
+export const DEFAULT_ANCHOR_LIMIT = 3;
 
 /** Is this the deterministic `hash-bigram-*` channel rather than a real model? */
 function isLexicalEmbedder(embedder) {
@@ -442,26 +464,43 @@ function normalizeViewer(viewer) {
 
 /**
  * Why a row may not be recalled. Empty string means "usable".
- * `scopeMatches` runs before the validity checks so a fiction row from another
- * world is reported as a scope problem, not as an expiry problem.
+ * Delegates to the single retrieval-eligibility gate so the recall path and the
+ * injection gate cannot drift apart (plan §5 A.4: two gates, one visibility rule).
+ * `scopeMatches` still runs before the validity checks (inside the gate), so a
+ * fiction row from another world is reported as a scope problem, not as expiry.
  */
 function filterReasonFor(record, viewer, clock) {
-  if (!record) return 'missing-record';
-  const status = String(record.status ?? '');
-  if (status !== 'confirmed') return `status-${status || 'unknown'}`;
-  if (!scopeMatches(record, viewer)) return 'scope-mismatch';
-  if (record.validTo) {
-    const until = Date.parse(record.validTo);
-    if (Number.isFinite(until) && until <= clock) return 'expired';
+  return eligibleForRetrieval(record, { viewer, now: clock }).reason;
+}
+
+/**
+ * 承接锚点：本会话最近若干条**用户自己说的**话（只用于补上下文，不参与正文注入）。
+ * 读不到就退回空数组；这绝不是一个会抛错的路径。
+ */
+function loadAnchors(db, sessionId, limit = 12) {
+  const id = String(sessionId ?? '').trim();
+  if (!id || !db || typeof db.eventsForSession !== 'function') return [];
+  try {
+    const rows = db.eventsForSession(id, { limit }) ?? [];
+    const anchors = [];
+    for (const row of rows) {
+      if (String(row?.role ?? '') !== 'user') continue;
+      const text = String(row?.content ?? '').trim();
+      if (!text) continue;
+      anchors.push({
+        role: 'user',
+        text,
+        scope: 'session_recent',
+        realityLevel: 'explicit_user_statement',
+        occurredAt: String(row?.occurredAt ?? ''),
+        at: Date.parse(String(row?.occurredAt ?? '')) || 0,
+        ref: String(row?.sourceId ?? ''),
+      });
+    }
+    return anchors;
+  } catch {
+    return [];
   }
-  if (record.validFrom) {
-    const from = Date.parse(record.validFrom);
-    if (Number.isFinite(from) && from > clock) return 'not-yet-valid';
-  }
-  // Second gate: isActive() also enforces the session_recent TTL and re-checks
-  // status/validity, so a future policy change cannot silently widen recall.
-  if (!isActive(record, clock)) return 'inactive';
-  return '';
 }
 
 /**
@@ -564,6 +603,21 @@ export async function recall(input = {}) {
 
   let collected = [];
   let coverageStats = null;
+  /**
+   * 查询构造与两道门的产出。`finish()` 把它们并进返回值：新字段只追加，
+   * `explain` 的键集合保持不变（有测试逐键断言）。
+   */
+  let purposeOut = 'auto';
+  let viewerOut = null;
+  let clockOut = Date.now();
+  /** 门 1 拒掉的条目数（按条计，不按理由计）与放行的条目数。 */
+  let gateRejected = 0;
+  let gateAdmitted = 0;
+  let queryPlanOut = buildQueryPlan({ query: '', enabled: false });
+  let gateOut = {
+    retrieval: { purpose: 'auto', admitted: 0, suppressed: 0 },
+    injection: { mode: 'auto', counts: { full: 0, soft: 0, hint: 0, placeholder: 0, skip: 0 } },
+  };
   const finish = entries => {
     collected = Array.isArray(entries) ? entries : [];
     explain.filteredReasons = countReasons(reasons);
@@ -576,19 +630,33 @@ export async function recall(input = {}) {
         terms: coverageStats.terms,
       };
     }
+    gateOut = {
+      retrieval: { purpose: purposeOut, admitted: gateAdmitted, suppressed: gateRejected },
+      injection: {
+        mode: purposeOut,
+        counts: countInjectionRenders(
+          collected.map(entry => (entry && entry.record ? entry.record : entry)),
+          { viewer: viewerOut, now: clockOut, purpose: purposeOut },
+        ),
+      },
+    };
     explain.elapsedMs = Math.max(0, Date.now() - startedAt);
-    return { entries: collected, explain };
+    return { entries: collected, explain, queryPlan: summarizeQueryPlan(queryPlanOut), gates: gateOut };
   };
 
   try {
     const {
       db, embedder = null, viewer = null, query = '', config = {}, now,
       reranker: providedReranker = null, log = null,
+      sessionId = '', purpose: purposeIn = null, mode: modeIn = null,
     } = input ?? {};
     const settings = resolveSettings(config);
     explain.coverage.floor = settings.coverageFloor;
     const clock = asClock(now);
     const identity = normalizeViewer(viewer);
+    // 用途：自动注入（agent/pre-step）必须克制，显式查询（companion_recall）可以展开。
+    // 缺省是 auto，所以不传新参数的旧调用行为不变。
+    purposeOut = String(purposeIn ?? modeIn ?? 'auto') === 'explicit' ? 'explicit' : 'auto';
     if (!db || typeof db !== 'object') {
       noteReason('no-database');
       return finish([]);
@@ -597,8 +665,26 @@ export async function recall(input = {}) {
       noteReason('no-viewer');
       return finish([]);
     }
+    viewerOut = identity;
+    clockOut = clock;
 
-    const text = String(query ?? '').trim();
+    // -- query construction (plan §5 A.2/A.3) --------------------------------
+    // 原句 → 短句主题 + 承接上下文。问候与元记忆查询各自走专门分支，不再让一句
+    // 「早」或「上次我说过什么」把整句切成二元组丢进两条通道。
+    queryPlanOut = buildQueryPlan({
+      query,
+      anchors: loadAnchors(db, sessionId),
+      enabled: settings.queryPlanEnabled,
+      continuationEnabled: settings.continuationEnabled,
+      historyFallbackEnabled: settings.historyFallbackEnabled,
+      anchorWindowMs: settings.anchorWindowMs,
+      anchorLimit: settings.anchorLimit,
+      now: clock,
+    });
+    const text = String(queryPlanOut.topicText ?? '').trim();
+    // 承接的第二轮查询：只用用户自己确认过的锚点词元，命中的是同一段上下文，
+    // 不是助手自己的猜测。第一轮原句仍然照跑，因为「他太顽固」自己也可能命中。
+    const contextText = String(queryPlanOut.matchText ?? '').trim();
     // One token set for both channels: the coverage gate and the hash overlap gate
     // must agree with each other and with the indexed form.
     const queryTerms = new Set(terms(text));
@@ -629,7 +715,12 @@ export async function recall(input = {}) {
       if (classified.has(record.id)) return classified.get(record.id);
       const reason = filterReasonFor(record, identity, clock);
       classified.set(record.id, reason);
-      if (reason) noteReason(reason);
+      if (reason) {
+        gateRejected += 1;
+        noteReason(reason);
+      } else {
+        gateAdmitted += 1;
+      }
       return reason;
     };
 
@@ -640,49 +731,73 @@ export async function recall(input = {}) {
       }
       return coverageStats;
     };
-    if (text) {
+    /**
+     * One lexical pass. `passText` is what FTS matches; `passStats` is the df/idf
+     * statistics of THAT text's terms, because round two is about the ancestor
+     * context, not about the pronoun that pointed at it.
+     *
+     * `weight` scales the score of a row when it arrives through the context
+     * round: the sentence the user actually typed stays the primary signal, the
+     * inherited context is what promotes the ancestor row.
+     */
+    const lexicalPass = async (passText, passStats, weight) => {
+      let list = [];
       try {
         const hits = typeof db.fullTextSearch === 'function'
           ? await db.fullTextSearch({
             userId: identity.userId,
             personaId: identity.personaId,
             worldId: identity.worldId,
-            query: text,
+            query: passText,
             limit: settings.candidates,
             statuses: ['confirmed'],
           })
           : [];
-        const list = Array.isArray(hits) ? hits : [];
-        explain.channels.lexical = list.length;
-        for (const hit of list) {
-          const id = typeof hit?.id === 'string' ? hit.id : '';
-          if (!id) continue;
-          considered.add(id);
-          const record = recordFor(id);
-          if (!record) {
-            // The FTS row outlived its memory row (interrupted delete/rebuild).
-            noteReason('missing-record');
-            continue;
-          }
-          if (pool.has(id)) continue;
-          if (classify(record)) continue;
-          // OR-ed bigrams make every long question match something; demand enough
-          // df-weighted query mass before an "unrelated but least bad" row is kept.
-          const stats = ensureCoverageStats();
-          const { coverage, matchedTerms } = recordCoverage(record, stats);
-          stats.total += 1;
-          if (coverage > stats.best) stats.best = coverage;
-          if (!coveragePasses(stats, coverage, matchedTerms)) {
-            noteReason('low-coverage');
-            continue;
-          }
-          stats.kept += 1;
-          pool.set(id, record);
-          lexicalScores.set(id, numberOr(hit.score, 0));
-        }
+        list = Array.isArray(hits) ? hits : [];
       } catch {
         noteReason('lexical-error');
+        return;
       }
+      explain.channels.lexical += list.length;
+      for (const hit of list) {
+        const id = typeof hit?.id === 'string' ? hit.id : '';
+        if (!id) continue;
+        considered.add(id);
+        const record = recordFor(id);
+        if (!record) {
+          // The FTS row outlived its memory row (interrupted delete/rebuild).
+          noteReason('missing-record');
+          continue;
+        }
+        if (pool.has(id)) {
+          // Already admitted by the previous round: keep the stronger score.
+          const previous = numberOr(lexicalScores.get(id), 0);
+          lexicalScores.set(id, Math.max(previous, numberOr(hit.score, 0) * weight));
+          continue;
+        }
+        if (classify(record)) continue;
+        // OR-ed bigrams make every long question match something; demand enough
+        // df-weighted query mass before an "unrelated but least bad" row is kept.
+        const { coverage, matchedTerms } = recordCoverage(record, passStats);
+        passStats.total += 1;
+        if (coverage > passStats.best) passStats.best = coverage;
+        if (!coveragePasses(passStats, coverage, matchedTerms)) {
+          noteReason('low-coverage');
+          continue;
+        }
+        passStats.kept += 1;
+        pool.set(id, record);
+        lexicalScores.set(id, numberOr(hit.score, 0) * weight);
+      }
+    };
+    if (text) await lexicalPass(text, ensureCoverageStats(), 1);
+    // Round two (continuation): 「他太顽固」自己没有主体，「陪父亲复诊」才有。
+    // 用锚点词元再查一次，命中同一段上下文，权重略低于用户原句。
+    if (text && contextText) {
+      const contextStats = buildCoverageStats(
+        db, identity, new Set(terms(contextText)), settings.coverageFloor,
+      );
+      await lexicalPass(contextText, contextStats, CONTINUATION_WEIGHT);
     }
 
     // -- bounded "recent + important" pool ----------------------------------
@@ -720,7 +835,33 @@ export async function recall(input = {}) {
       }
     }
 
-    // -- empty query: recent important facts, never the whole table ---------
+    // -- weak intent: identity material only, no topic -----------------------
+    // 问候/附和/应答没有主题可查。「早」不该被扩写成「刚睡醒」之类的猜测，也不该
+    // 把随便一条高重要度旧事倒出来；它只该看到「这个人是谁」这段稳定资料。
+    // 这是一条独立的配额，和话题召回分开计数（settings.identityTopK）。
+    if (queryPlanOut.weakIntent && settings.identityTopK > 0) {
+      const usable = [];
+      for (const record of recent) {
+        if (classify(record)) continue;
+        if (sectionFor(record) !== 'stable') continue;
+        usable.push(record);
+      }
+      usable.sort((left, right) => numberOr(right.importance, 0) - numberOr(left.importance, 0)
+        || String(right.updatedAt ?? '').localeCompare(String(left.updatedAt ?? ''))
+        || String(left.id).localeCompare(String(right.id)));
+      const picked = usable.slice(0, settings.identityTopK).map(record => ({
+        record,
+        score: numberOr(record.importance, 0),
+        channels: [],
+        section: 'stable',
+      }));
+      explain.backend = picked.length ? 'identity' : 'none';
+      explain.candidates = considered.size;
+      explain.afterFilter = usable.length;
+      explain.afterDedupe = picked.length;
+      return finish(picked);
+    }
+
     if (!text) {
       const usable = [];
       for (const record of recent) {
@@ -896,6 +1037,33 @@ export async function recall(input = {}) {
     else if (lexicalScores.size) explain.backend = 'lexical';
     else if (semanticScores.size) explain.backend = 'semantic';
     else explain.backend = 'none';
+
+    // -- identity quota on the topic path (plan §5 A.3) ----------------------
+    // 身份稳定资料（profile/preference/fact）不该被话题候选挤光：话题命中很具体时，
+    // 「这个人是谁」这一层仍然要有固定位置。`identityReserve` 是上限，只在还没被
+    // 选中的稳定行里补，绝不重复、绝不超 topK。
+    if (settings.identityReserve > 0 && entries.length < settings.topK) {
+      const chosen = new Set(entries.map(entry => entry.record.id));
+      const spare = [];
+      for (const record of recent) {
+        if (chosen.has(record.id)) continue;
+        if (classify(record)) continue;
+        if (sectionFor(record) !== 'stable') continue;
+        spare.push(record);
+      }
+      spare.sort((left, right) => numberOr(right.importance, 0) - numberOr(left.importance, 0)
+        || String(left.id).localeCompare(String(right.id)));
+      const room = Math.min(settings.identityReserve, settings.topK - entries.length, spare.length);
+      for (const record of spare.slice(0, room)) {
+        entries.push({
+          record,
+          score: numberOr(record.importance, 0),
+          channels: [],
+          section: 'stable',
+        });
+      }
+      explain.afterDedupe = entries.length;
+    }
     return finish(entries);
   } catch {
     // Last line of defence: a recall failure must never fail the chat turn.
