@@ -2519,6 +2519,48 @@ export function mountRuntime(ctx, root, options = {}) {
       // must not vanish: the round-5 defect was exactly a swallowed ReferenceError here.
       noteError('p2-dedupe-claim-unsettled', error?.message ?? String(error));
     }
+    // Share production (F package). This is the missing link the audit found: `createShareCandidate`
+    // had no producer on the *completion* path, so a finished activity with real evidence never
+    // became a candidate unless the model happened to call `companion_share_activity` itself.
+    //
+    // Called **after** the memory ingest, never before: the share decision reads the same evidence
+    // the fact does, and a crash between the two must leave the memory written, because a memory is
+    // the durable half and a candidate is re-derivable from the activity row.
+    //
+    // Fail-closed by construction: the hook is optional, it is wrapped in try/catch, its answer only
+    // reaches `noteError`, and it can never turn a recorded completion into a failure. It also never
+    // sends anything: the candidate is one row, and the contact gate still decides delivery.
+    let shareResult = null;
+    if (typeof options.onActivityFinished === 'function') {
+      try {
+        let checkpoint = null;
+        try {
+          const row = db.get('SELECT checkpoint FROM p2_activities WHERE scope = ? AND activity_id = ?', scopeKeyValue, activityId);
+          checkpoint = row?.checkpoint ? JSON.parse(String(row.checkpoint)) : null;
+        } catch { checkpoint = null; }
+        shareResult = options.onActivityFinished({
+          scopeKey: scopeKeyValue,
+          activityId,
+          slotId: String(input.slotId ?? ''),
+          kind,
+          phase,
+          reason: code,
+          reality,
+          target,
+          sourceRef: String(input.sourceRef ?? ''),
+          consumedPrefix: covered,
+          totalUnits: total,
+          artifactVersion: version,
+          checkpoint,
+          at: Number(input.at) || Number(clock()),
+          receiptId,
+          memoryOk: ingestResult?.ok === true,
+        }) ?? null;
+      } catch (error) {
+        noteError('p2-share-hook-failed', error?.message ?? String(error));
+        shareResult = null;
+      }
+    }
     return ingestResult;  }
 
   /**

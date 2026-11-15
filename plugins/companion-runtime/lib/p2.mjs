@@ -428,6 +428,17 @@ export function createP2({
       dispatchEnabled: config.p2?.activities?.dispatchEnabled === true,
       activitiesEnabled: config.p2?.activities?.enabled === true,
       paused: config.p2?.activities?.paused === true || db.metaGet?.('p2_activities_paused', '0') === '1',
+      // B 站 provider 的**实际**就绪状态，与 capability 目录同一判据（`ports.runBilibili.available()`）。
+      //
+      // 为什么要单独报：派发闸门（本函数下面的 `deferred`）在 provider 未就绪时不该把整拍 defer 掉
+      // ——那会把 read/explore/write 也一起停掉——但 planner 不该再排一条注定失败的 B 站活动。
+      // 所以这里如实报 `providerReady`，让 plan 阶段自己排除 bilibili，而心跳仍可派发其它三类。
+      bilibiliProviderReady: (() => {
+        try {
+          if (typeof ports.runBilibili !== 'function') return false;
+          return ports.runBilibili.available?.() !== false;
+        } catch { return false; }
+      })(),
       // `null` = nothing blocks this scope; a string is the *named* deferral the heartbeat would
       // persist as `dispatch-deferred:<code>`.
       deferred,
@@ -513,9 +524,32 @@ export function createP2({
     // R4: same block as `dueSlotsForHeartbeat` — a job whose external effect is unresolved must not
     // be handed to `start()` a second time from the pump path either.
     const blocked = blockedJobKeys(scopeKey, now);
+    /**
+     * B 站 slot 的派发前置：provider 真的就绪。
+     *
+     * 事实（F 包审计 + 首席裁决 2026-11-14）：装在本机 profile 的 `dsh-bili-scroll@2.4.0` 副本
+     * **不含** provider publish 代码（同版本号、不同字节）。`runBilibili.available()` 因此是
+     * false，而派发路径此前不查它 —— planner 照常排 B 站、pump 照常 start、执行阶段必然失败。
+     * 现在 start 之前在**这里**再验一次（planner 侧也排除，见 planner 的 biliAvailable 判据），
+     * 于是"派了一条注定失败的活"变成"这一拍跳过它、留下具名 code"。
+     *
+     * 只用既有端口，不新增探针、不联网；不可用不等于崩溃 —— 跳过并记录，其它三类照常派发。
+     */
+    const bilibiliReady = (() => {
+      try {
+        if (typeof ports.runBilibili !== 'function') return false;
+        return ports.runBilibili.available?.() !== false;
+      } catch { return false; }
+    })();
+    let bilibiliSkipped = 0;
     for (const slot of due) {
       if (!slot.activity) continue;
-      if (blocked.has(jobKeyFor({ scopeKey, startAt: Number(slot.start_at) || 0, endAt: Number(slot.end_at) || 0, kind: String(slot.activity) }))) {
+      if (String(slot.activity) === 'bilibili' && !bilibiliReady) {
+        bilibiliSkipped += 1;
+        lastStart = { at: now, slotId: slot.slot_id, activityId: '', code: 'bilibili-provider-not-ready' };
+        noteError('p2-activity-start-bilibili-provider-not-ready', `slot ${slot.slot_id} skipped: the Bilibili provider is not ready`);
+        continue;
+      }      if (blocked.has(jobKeyFor({ scopeKey, startAt: Number(slot.start_at) || 0, endAt: Number(slot.end_at) || 0, kind: String(slot.activity) }))) {
         lastStart = { at: now, slotId: slot.slot_id, activityId: '', code: 'effect-unresolved' };
         noteError('p2-activity-start-effect-unresolved', `slot ${slot.slot_id} is blocked by an unresolved external effect`);
         continue;
@@ -1515,12 +1549,17 @@ export function createP2({
     if (row.status !== 'pending') return { ok: false, code: 'candidate-not-pending', status: row.status };
     const acceptance = await port.submit({ scope: row.scope, candidateId: row.candidate_id, kind: row.kind, title: row.title, body: row.body, sourceRef: row.source_ref });
     const now = Number(clock());
+    // Same rule as the pump below: a JSONL-only sink is **not** contact. `submitted` would claim
+    // "handed to the contact owner"; the honest state is `gated` + `local-only-jsonl` (词表不变).
+    const localOnly = acceptance?.ok === true && String(acceptance?.sink ?? '') === 'jsonl';
+    const status = localOnly ? 'gated' : (acceptance?.ok ? 'submitted' : 'rejected');
+    const reason = String(localOnly ? 'local-only-jsonl' : (acceptance?.code ?? 'share-rejected')).slice(0, 60);
     db.tx(() => {
       db.assertLeaseHeld({ owner, generation, at: now });
       db.run(`UPDATE p2_share_candidates SET status = ?, decision_at = ?, decision_reason = ? WHERE scope = ? AND candidate_id = ?`,
-        acceptance?.ok ? 'submitted' : 'rejected', now, String(acceptance?.code ?? 'share-rejected').slice(0, 60), scopeKey, candidateId);
+        status, now, reason, scopeKey, candidateId);
     });
-    return { ok: true, accepted: acceptance?.ok === true, code: acceptance?.code ?? '', owner: 'contact' };
+    return { ok: true, accepted: acceptance?.ok === true && !localOnly, localOnly, code: reason, owner: localOnly ? 'local-sink' : 'contact' };
   }
 
   // ------------------------------------------------------------------ share gate classes
@@ -1657,7 +1696,7 @@ export function createP2({
     const max = Math.max(1, Math.min(5, Number(limit) || 5));
     const only = String(scopeKey ?? '');
     const now = Number(clock());
-    const out = { ok: true, examined: 0, queued: 0, gated: 0, retryableGated: 0, terminalGated: 0, expired: 0, skipped: '', reasons: {} };
+    const out = { ok: true, examined: 0, queued: 0, gated: 0, retryableGated: 0, terminalGated: 0, localOnly: 0, expired: 0, skipped: '', reasons: {} };
 
     // Eligible = still pending, or gated for a *retryable* reason whose backoff has elapsed.
     //
@@ -1800,10 +1839,24 @@ export function createP2({
         answer = { ok: false, code: error?.code ?? 'share-port-threw' };
       }
       const accepted = answer?.ok === true;
-      const reason = String(accepted ? 'contact-queued' : (answer?.code ?? 'share-rejected')).slice(0, 60);
+      /**
+       * JSONL 降级 sink ≠ contact。
+       *
+       * `contactSharePort` 在"没有 contact 服务"时会落本地 JSONL 队列，并按 `sink:'jsonl'`
+       * 上报（`autonomy-share.mjs:204` 返回 `ok:true, written:true`）。此前这里只看 `ok`，于是
+       * **只落盘的候选被记成 `queued` + `contact-queued`**：状态说"已交给 contact"，实际只是
+       * 一行本地追加日志。首席裁决（2026-11-14）：保持状态词表不变，把它记成 `gated` +
+       * `local-only-jsonl`——`gated` 本来就是"没进 contact"，而原因是具名的、可 grep 的。
+       *
+       * 之后接上 contact 时的恢复流程由人决定（撤回/重新提交），这里**不**自动复活。
+       */
+      const localOnly = accepted && String(answer?.sink ?? '') === 'jsonl';
+      const reason = String(
+        localOnly ? 'local-only-jsonl' : (accepted ? 'contact-queued' : (answer?.code ?? 'share-rejected')),
+      ).slice(0, 60);
       const at = Number(clock());
 
-      if (accepted) {
+      if (accepted && !localOnly) {
         try {
           db.tx(() => {
             db.assertLeaseHeld({ owner, generation, at });
@@ -1814,6 +1867,24 @@ export function createP2({
         } catch (error) { noteError('p2-share-mark-failed', error?.message ?? String(error)); continue; }
         clearShareRetryState(row.candidate_id);
         out.queued += 1;
+        continue;
+      }
+
+      if (localOnly) {
+        // Terminal for the *delivery* question: this machine has no contact owner, so waiting cannot
+        // change the answer. The candidate itself is kept (local history), it is just not queued.
+        try {
+          db.tx(() => {
+            db.assertLeaseHeld({ owner, generation, at });
+            db.run(`UPDATE p2_share_candidates SET status = 'gated', decision_at = ?, decision_reason = ?
+                    WHERE scope = ? AND candidate_id = ? AND status IN ('pending','gated')`,
+            at, reason, row.scope, row.candidate_id);
+          });
+        } catch (error) { noteError('p2-share-mark-failed', error?.message ?? String(error)); continue; }
+        clearShareRetryState(row.candidate_id);
+        out.gated += 1;
+        out.localOnly += 1;
+        out.reasons[reason] = (out.reasons[reason] ?? 0) + 1;
         continue;
       }
 
