@@ -7,7 +7,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import * as path from 'node:path'
 
@@ -27,7 +27,10 @@ const BOT_B = 3_000_000_002
 
 /** 一个临时"套件根"：里面有 `home`（= DSH_HOME）与 `home/companion/participants.json`。 */
 function scratchHome(): { readonly root: string; readonly dshHome: string; readonly registry: string } {
-  const root = mkdtempSync(path.join(tmpdir(), 'participants-'))
+  // `realpathSync` 是必须的：被测实现的 `dataRootOfDshHome` 会把 DSH_HOME 走一遍 realpath
+  // （折叠 junction / 8.3 短名 / macOS 的 `/var` → `/private/var`）。夹具不折的话，
+  // 断言比的就是"没折的路径 vs 折过的路径"，在 macOS 上必然不等。
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'participants-')))
   const dshHome = path.join(root, 'home')
   mkdirSync(path.join(dshHome, 'companion'), { recursive: true })
   return { root, dshHome, registry: path.join(dshHome, 'companion', 'participants.json') }
