@@ -725,3 +725,30 @@ git clone https://github.com/FamousBOBO/dsh-companion.git
 **没有新增的级别：** `host-load`、`real-api`、`real-send`、`hardware` 一律未执行。
 
 **明确未做：** 真实浏览器视觉检查与截图、真实屏幕阅读器（NVDA/JAWS/VoiceOver）读数、真实宿主重载这一版 `client.js`、其它页面逐页的"外部 revision 冲突提示"。
+### 2026-11-16 补充：PR #3 审查后的修正
+
+审查报告见同目录《PR3-审查报告-合并版》（1 阻断 + 4 高）。以下是**修了什么、怎么验的**，与"声称"分开记。
+
+| 项 | 修法 | 证据级别与结果 | 限制 |
+|---|---|---|---|
+| **B1** `/work-detail` 可跨 scope 读正文 | 把"归属"提到第一道闸：**先要求当前 scope 有一条 `artifact_ref` 等于该文件的 activity，再读正文**；stat/read 走同一个已打开的 fd（关掉 realpath→stat→read 的 TOCTOU 窗口） | `offline-test`：跨 scope 用例断言 `not-in-scope` 且**响应里没有 `text` 字段**；`works-artifacts` 用例补了"存在但未被引用"的拒绝路径 | 沙箱内真 SQLite + 真文件，不是真实部署 |
+| **H1** SSE 单 tick 超 200 条静默丢事件 | 偏移语义改成"尚未消费的第一行的起点"（按**字节**）；一批停在 `BATCH_CAP`、偏移只到最后一条已消费行，其余留给下一 tick 并计入 `backlog` | `offline-test`：450 条**全部送达**，`backlog` 归零（原实现 369 / 286） | 同上 |
+| **H2** 残余半行被拼两遍、必丢 | 删掉 `partials` 缓冲；偏移本身即半行起点 | `offline-test`：先送达一条让偏移非 0，再写半行再补齐 → 送达；非 ASCII 不漂移 | 同上 |
+| **H3** 媒体页本次引入的 dirty 回归 | 删掉合成的 `generationFields`（真 descriptor 里这些键本来就在 `fields`） | `offline-test`：冒烟 P1/P2 全绿；未修改的 NAI 不再 dirty | 无真实浏览器 |
+| **H4** 搜索面板被 `aria-hidden` 包住 | 遮罩与面板改兄弟节点、面板 `tabIndex=-1` + 焦点陷阱、输入框与面板补 `:focus-visible`；a11y 检查器新增 `aria-hidden-subtree` 规则 | `static-audit` + `offline-test`（4 条正反用例） | **无真实屏幕阅读器读数** |
+| **M1/M2** 快照取最老事件、`sinceId` 只丢一条 | 文件序改"最老 → 当日"；`sinceId` 语义改"这条及之前都不要"；把错误的 API 断言改对 | `offline-test`：两条新用例 + API 用例断言 `['evt_3','evt_4']` | — |
+| **M3** `at` 不过内容判据、NaN 抛错 | `at` 走同一套 `looksLikeContent` + 可解析判据；不可解析记 `bad-at` 并回退；`isSafeEvent` 也补判据 | `offline-test`：正文被降级、NaN 不抛、合法 ISO 原样通过 | — |
+| **M4** 只写密钥永远报"未设置" | 先判配置层有没有，再对密钥降级成 `secret-set` / `secret-unset`；两层都拿不到回 `unknown` | `offline-test`：三条分支各一条用例 | — |
+| **M5** `/works` 回绝对 `artifactRoot` | 绝对路径对外只给占位符 `<绝对路径·仅服务端可见>` | `offline-test`：绝对 root 用例断言响应里不含该路径 | — |
+| **M6** a11y 检查器四处盲区 + 21 个未定义 token | 判据按单条规则块算（不互相豁免）、行内 style 也扫、新增 `undefined-token` 规则、`core.js` 补齐 42 个 `--cpx-*` 定义 | `static-audit`：规则 5 → 7 条；14 条用例覆盖正反两面 + 4 个盲区；`✓ 7 条规则全部通过` | 静态判据，非真实可访问性验收 |
+| **M7** 目录核对的三处盲区 | 新增 `SECRET_SPEC ⊆ SECRET_LABELS` 与"恒真 `check`"两条规则 | `static-audit`：镜像改坏后**退出 1**（原来 exit 0） | — |
+| **M8** 冒烟三条死断言 | `role=dialog` 是否真关闭、真的发越界/跨 scope 请求并断言 `ok:false`+`reason` | `offline-test`：冒烟 0 失败，且新增断言会真的失败 | — |
+| **M9** "全局"快捷键只在设置页 | 面板开关改模块级可订阅状态，全局挂载点在页面壳 | 代码路径 | **无真实浏览器快捷键实测** |
+| **M10** 生成编辑器渲染两次 | 只由 `ProviderCard` 渲染一次 | `offline-test`：冒烟全绿 | — |
+| **M12** "密钥不泄漏"断言是空的 | 夹具把哨兵明文写进权威密钥文件 `remote-models.json`，并断言目录**读到了它**（状态 `secret-set`）且响应里没有明文 | `offline-test`：断言非空且真有内容 | — |
+
+**另一条必须写明的事实**：`createTraceWriter()` 全树**零生产调用方**（只有测试引用）。本 PR 上线后生产里不会有任何 `trace-*.jsonl` 写入者，因此 H1/H2/M1/M2 这些修正在线上是**潜伏**状态；模块头的"不丢、不重放"目前只对**读端**成立，接写端是下一步工作。已在 `docs/27 §11` 标注。
+
+**本轮措辞纠偏**：`docs/30` §5 原写「13 项失败 → 0」，base 实测是 **15 项**（13 媒体 + 设置 tab 数 + 聊天提示），"13"只是子集；`verify --only=static` 原写「38 ok / 1 failed」，修掉 `host-temp` 夹具后是 **39 / 0**。两处已改。
+
+**没有新增的级别**：`host-load`、`real-api`、`real-send`、`hardware`、真实浏览器、真实屏幕阅读器一律未执行。

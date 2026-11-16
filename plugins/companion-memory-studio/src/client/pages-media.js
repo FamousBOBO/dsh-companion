@@ -498,13 +498,14 @@
     const hasSecrets = Object.keys(secrets || {}).some(path => within(path) && String(secrets[path] ?? '').trim() !== '');
     const hasClears = Object.keys(clears || {}).some(path => within(path) && clears[path]);
     if (hasSecrets || hasClears) return true;
-  // 生成字段（步数/种子/采样器…）不在 provider.fields 里，但同样属于这个 provider 的草稿；
-  // 漏掉它们会让"改了步数却按不动保存"（实测踩过）。
-  const dirtyFields = [
-    ...(provider.fields || []),
-    ...(provider.generationFields ? provider.generationFields.map((key) => ({ path: `${provider.prefix}.${key}`, type: null })) : []),
-  ];
-  const changed = dirtyFields.some((field) => {
+  // 只比 provider.fields。生成字段（步数/种子/采样器…）在真 descriptor 里**本来就在**
+  // provider.fields 里（实测 nai 的 fields 有 steps/scale/sampler 等 26 项）。
+  //
+  // 曾经这里额外把 generationFields 合成 `{path, type:null}` 追加进来，结果是踩出一个回归：
+  // 合成项没有 `original`，`sameValue(coerce('text', value), undefined)` 恒 false →
+  // **未做任何修改也 dirty=true**，NAI 卡片永远挂"有未保存的修改"、「测试连接」永久禁用。
+  // 所以：别再合成。dirty 的判据必须只来自带 original 的真实字段。
+  const changed = (provider.fields || []).some((field) => {
       if (field.secret || field.locked) return false;
       const value = draft ? draft[field.path] : undefined;
       if (value === undefined) return false;
@@ -844,7 +845,9 @@
         variant: 'primary',
         loading: busy === `save:${provider.kind}`,
         disabled: !dirty || Boolean(busy),
-        onClick: () => onSave(provider.kind),
+        // 传 provider.prefix（如 image.nai），不是 section 的 kind（image）：
+        // 后者会把同一 section 下**所有**脏 provider 一起提交（审查报告低项，base 既存）。
+        onClick: () => onSave(provider.prefix),
         title: '只保存这个 provider 的改动（留空的密钥不会被写回）',
       }, '保存这个 provider'),
       h(ui.Button, {
@@ -1002,7 +1005,9 @@
         section.fields.length?h('div',{className:'cpxp-media-fields'},section.fields.map(field=>h(FieldControl,{key:field.path,entry:field,value:draft[field.path],disabled:field.locked||!!busy,error:errors[field.path],onChange:value=>onDraft(field.path,value)}))):null,
         section.providers.length?h('div',{className:'cpxp-media-provider-list'},
           section.providers.map(item=>h(ProviderCard,{key:'pc-'+item.id,provider:item,selected:item.id===selected,presets:section.presets,states,draft,secrets,clears,errors,testing,busy,onDraft,onSecret,onClear,onSave,onTest}))):null,
-        provider?.generationFields?h(GenerationEditor,{provider,presets:section.presets,draft,busy,errors,onDraft}):null,
+        // 生成编辑器**只由 ProviderCard 渲染一次**（见其内部）。这里再渲染一遍会让
+        // `media-preset-scheme`、`media-image.nai.steps` 等 id 在 DOM 里各出现两次，
+        // 而 `ui.Field` 的 htmlFor 只落到第一个 —— 正是本 PR 在修的那类缺陷（M10）。
         section.preview?h('div',{className:'cpxp-preview'},h('div',{className:'cpxp-preview-head'},h('p',{className:'cpxp-media-note'},section.preview.note||''),h(ui.Button,{size:'sm',disabled:!!busy,title:'只算尺寸，不生成图片',onClick:()=>onPreview(section)} ,'预览')),previewState&&previewState.section===section.id?h('p',{className:'cpxp-media-note'},previewState.text):null):null,
         !section.locked?h('div',{className:'cpxp-media-footer'},h('span',{className:'cpx-muted'},dirty?'有未保存的修改':'已保存'),h(ui.Button,{variant:'primary',disabled:!dirty||!!busy,loading:busy===`save:${section.id}`,onClick:()=>onSave(section.id),title:'只保存这一块里改动过的字段'},'保存这一块')):null):null);
   }

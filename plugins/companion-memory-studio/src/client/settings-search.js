@@ -24,7 +24,9 @@
     .cpx-cat-overlay { position: fixed; inset: 0; z-index: 120; background: color-mix(in srgb, var(--dsw-alias-bg-inverse, #000) 38%, transparent); display: flex; align-items: flex-start; justify-content: center; padding: 12vh 16px 16px; }
     .cpx-cat-panel { width: min(760px, 100%); max-height: 70vh; display: flex; flex-direction: column; background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-secondary); border-radius: 14px; box-shadow: 0 24px 64px color-mix(in srgb, var(--dsw-alias-bg-inverse, #000) 45%, transparent); overflow: hidden; }
     .cpx-cat-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--dsw-alias-border-secondary); }
-    .cpx-cat-input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 15px; outline: none; }
+    .cpx-cat-input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 15px; border-radius: 6px; }
+    .cpx-cat-input:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
+    .cpx-cat-panel:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
     .cpx-cat-list { overflow: auto; overscroll-behavior: contain; padding: 6px; }
     .cpx-cat-group { padding: 10px 10px 4px; color: var(--dsw-alias-label-tertiary); font-size: 12px; letter-spacing: .04em; }
     .cpx-cat-item { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px 12px; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
@@ -76,6 +78,7 @@
     const [debounced, setDebounced] = useState('');
     const inputRef = useRef(null);
     const listRef = useRef(null);
+    const panelRef = useRef(null);
 
     // 输入抖动：200ms 足够挡住连打，又不至于让搜索看起来卡。
     useEffect(() => {
@@ -124,8 +127,29 @@
       if (typeof P.toastOnce === 'function') P.toastOnce(`「${match.label}」没有可跳转的入口。`);
     };
 
+    // Tab 焦点陷阱：模态面板里 Tab 不能走到背景（背景那时对辅助技术仍可见，
+    // 但焦点跑出去就等于"对话框只是视觉上的"）。
+    const trapTab = (event) => {
+      if (event.key !== 'Tab' || !panelRef.current) return false;
+      const focusables = panelRef.current.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusables.length) return false;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const current = document.activeElement;
+      if (!event.shiftKey && current === last) { event.preventDefault(); first.focus(); return true; }
+      if (event.shiftKey && (current === first || !panelRef.current.contains(current))) {
+        event.preventDefault();
+        last.focus();
+        return true;
+      }
+      return false;
+    };
+
     const onKeyDown = (event) => {
       if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
+      if (trapTab(event)) return;
       if (event.key === 'ArrowDown') { event.preventDefault(); setActive((value) => Math.min(value + 1, matches.length - 1)); return; }
       if (event.key === 'ArrowUp') { event.preventDefault(); setActive((value) => Math.max(value - 1, 0)); return; }
       if (event.key === 'Enter') { event.preventDefault(); choose(matches[active]); }
@@ -140,19 +164,20 @@
     }
     let indexCursor = 0;
 
-    return h('div', {
-      className: 'cpx-cat-overlay',
-      role: 'presentation',
-      'aria-hidden': 'true',
-      onClick: (event) => { if (event.target === event.currentTarget) onClose(); },
+    // 遮罩与面板是**兄弟**，不是父子。
+    //
+    // 旧版把 role="dialog" 放在 aria-hidden="true" 的遮罩子树里：按 ARIA，整棵子树的语义
+    // 被移出无障碍树，屏幕阅读器**看不到**这个模态面板。装饰性的"点外面关掉"只能自己
+    // 带 aria-hidden，不能把面板一起盖住。
+    const dialogNode = h('div', {
+      className: 'cpx-cat-panel',
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-label': '搜索设置项',
+      tabIndex: -1,
+      ref: panelRef,
+      onKeyDown,
     },
-      h('div', {
-        className: 'cpx-cat-panel',
-        role: 'dialog',
-        'aria-modal': 'true',
-        'aria-label': '搜索设置项',
-        onKeyDown,
-      },
         h('div', { className: 'cpx-cat-head' },
           h(ui.Icon, { name: 'search', size: 16 }),
           h('input', {
@@ -222,16 +247,53 @@
           h('span', null, '↑↓ 选择 · Enter 打开 · Esc 关闭'),
           state.data ? h('span', null, `${state.data.returned}/${state.data.total} 条`) : null,
           catalog ? h('span', null, `字段 ${catalog.totalFields}`) : null),
-      ));
+    );
+    return h('div', { className: 'cpx-cat-overlay', onKeyDown },
+      h('div', {
+        key: 'backdrop',
+        className: 'cpx-cat-backdrop',
+        'aria-hidden': 'true',
+        onClick: (event) => { if (event.target === event.currentTarget) onClose(); },
+      }),
+      dialogNode);
   }
 
   /**
-   * 触发器：设置页头部一个按钮 + 全局 `Ctrl/⌘+K`。
+   * 触发器：设置页头部一个按钮 + **全局** `Ctrl/⌘+K`。
    *
-   * 快捷键只在没有别的输入焦点时生效（输入框里的 `Ctrl+K` 仍然是浏览器/宿主的行为）。
+   * 快捷键必须全局：挂在窗口上、且只在「当前页面确实有这个触发器」时才抬手。
+   * 旧版把 listener 写在组件 `useEffect` 里，唯一挂载点是设置页 —— 离开设置页组件
+   * 卸载、listener 随之移除，"全局"名不副实（M9）。
+   *
+   * 面板常驻在 `P` 级状态里（`mountCatalog`），由 `core.js` 的页面壳在所有页面渲染，
+   * 所以从任何页面按 `Ctrl/⌘+K` 都能打开。
    */
-  function SettingsSearch({ compact }) {
-    const [open, setOpen] = useState(false);
+  // 面板开关是**模块级可订阅状态**：全局挂载点与各页触发器共享同一个开关，
+  // 因此从任何页面按 Ctrl/⌘+K 打开的都是同一块面板（不是每页各自一份）。
+  const catalogState = {
+    open: false,
+    listeners: new Set(),
+    set(next) {
+      const value = Boolean(next);
+      if (catalogState.open === value) return;
+      catalogState.open = value;
+      catalogState.listeners.forEach((listener) => {
+        try { listener(value); } catch { /* 忽略 */ }
+      });
+    },
+    subscribe(listener) {
+      catalogState.listeners.add(listener);
+      return () => {
+        catalogState.listeners.forEach((item) => { if (item === listener) catalogState.listeners.delete(item); });
+      };
+    },
+  };
+
+  function SettingsSearch({ compact, standalone }) {
+    const [open, setOpenState] = useState(catalogState.open);
+    const setOpen = (next) => catalogState.set(next);
+
+    useEffect(() => catalogState.subscribe((next) => setOpenState(next)), []);
 
     useEffect(() => {
       const listener = (event) => {
@@ -241,6 +303,7 @@
         const typing = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
         if (typing) return;
         event.preventDefault();
+        openerRef.current = target && typeof target.focus === 'function' ? target : null;
         setOpen(true);
       };
       window.addEventListener('keydown', listener);
@@ -248,7 +311,7 @@
     }, []);
 
     return h('div', { className: 'cpx-cat' },
-      h('button', {
+      standalone ? null : h('button', {
         type: 'button',
         className: 'cpx-cat-trigger',
         onClick: () => setOpen(true),
@@ -259,8 +322,22 @@
         h(ui.Icon, { name: 'search', size: 14 }),
         compact ? null : h('span', null, '搜索设置'),
         compact ? null : h('kbd', null, 'Ctrl K')),
+      // 全局那一份只负责"看不见的监听 + 面板"，不重复渲染按钮。
+      // 全局那一份只负责「监听 + 面板」，不重复渲染按钮；页面内的那一份两者都有，
+      // 但两处共享同一个开关，绝不会出现两块面板。
       open ? h(CatalogPanel, { onClose: () => setOpen(false) }) : null);
   }
+
+  /** 关闭时把焦点还给打开它的那个控件（键盘用户不会掉到文档开头）。 */
+  const openerRef = { current: null };
+
+  /**
+   * 全局挂载点：`core.js` 的页面壳渲染 `<P.ui.SettingsSearch standalone />` 一次，
+   * 面板因此对所有页面可用；各页仍可放自己的触发按钮。
+   */
+  P.mountCatalog = function mountCatalog() {
+    return h(SettingsSearch, { standalone: true });
+  };
 
   P.ui.SettingsSearch = SettingsSearch;
   P.focusSetting = focusSetting;

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict';
 import { spawnSync } from 'node:child_process';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
+import { catalogFromQQ } from '../lib/settings-catalog.mjs';
 
 // W1 前置：设置字段目录的「唯一 owner」判据（计划 W1 验收项之一）。
 //
@@ -46,4 +47,31 @@ test('catalog check reports the expected key counts so a silent shrink is visibl
   assert.equal(summary.counts.readView, 21);
   assert.equal(summary.counts.clientFields, 21);
   assert.equal(summary.counts.writeOnlySecrets, 2);
+});
+// ── 审查报告 M4 的回归点 ────────────────────────────────────────────────────
+
+test('a write-only secret that IS in the config layer reports secret-set, not secret-unset (M4)', () => {
+  const refs = [
+    { path: 'onebot.accessToken', section: 'onebot', page: 'connections', spec: { label: '访问令牌', secret: true, hot: 'reload' } },
+    { path: 'chat.replyRate', section: 'chat', page: 'chat', spec: { label: '回复概率', hot: 'live' } },
+  ];
+  // 密钥出现在 override 层 → 已设置（不可读，但存在这件事可证明）。
+  const withSecret = catalogFromQQ(refs, {
+    overridePaths: new Set(['onebot.accessToken']),
+    patchPaths: new Set(['chat.replyRate']),
+  });
+  const token = withSecret.find((entry) => entry.path === 'onebot.accessToken');
+  assert.equal(token.status, 'secret-set', '已配置的只写密钥不能报「未设置」');
+  const rate = withSecret.find((entry) => entry.path === 'chat.replyRate');
+  assert.equal(rate.status, 'configured');
+
+  // 真的没出现 → 未设置。
+  const withoutSecret = catalogFromQQ(refs, { overridePaths: new Set(), patchPaths: new Set(['chat.replyRate']) });
+  const missing = withoutSecret.find((entry) => entry.path === 'onebot.accessToken');
+  assert.equal(missing.status, 'secret-unset');
+
+  // 两层都拿不到：密钥的"有没有"证明不了 → 未知（不猜）。
+  const blind = catalogFromQQ(refs, {});
+  const unknown = blind.find((entry) => entry.path === 'onebot.accessToken');
+  assert.equal(unknown.status, 'unknown');
 });

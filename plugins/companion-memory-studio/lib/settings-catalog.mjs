@@ -155,11 +155,22 @@ export function catalogFromQQ(refs, options = {}) {
     const hotLevel = HOT_LEVELS.includes(spec.hot) ? spec.hot : 'restart';
     let status = 'unknown';
     if (!available) status = 'unavailable';
-    else if (secret) status = 'secret-unset';
     else if (overridePaths || patchPaths) {
+      // 先判「配置层里有没有这一项」，再对密钥做降级说明。
+      //
+      // 旧顺序是先写 `secret-unset`，于是只写密钥（`accessToken` 之类）**永远**显示
+      // 「未设置」——即使它已经配好（M4 实测）。而这与 `STATUSES` 的注释
+      // 「只表达目录能证明的事」正好相反：目录能证明"它在配置层里"，就该说已配置；
+      // 目录证明不了"值是什么"（密钥不可读），所以状态用 `secret-set` 表示
+      // "存在但不可读"，而不是 `secret-unset`。
       const inOverride = overridePaths ? overridePaths.has(ref.path) : false;
       const inPatch = patchPaths ? patchPaths.has(ref.path) : false;
-      status = inOverride || inPatch ? 'configured' : 'default';
+      const present = inOverride || inPatch;
+      if (secret) status = present ? 'secret-set' : 'secret-unset';
+      else status = present ? 'configured' : 'default';
+    } else if (secret) {
+      // 既没有 override 也没有 patch 视图：密钥的"有没有"证明不了，只能报未知。
+      status = 'unknown';
     }
     entries.push({
       id: `qq:${ref.path}`,

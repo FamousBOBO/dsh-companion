@@ -694,6 +694,28 @@ function fakeExpressionFetch(sub, method, body) {
   return expressionJson({ ok: false, error: { code: 'not-found', message: `smoke: 未实现的表情包端点 ${sub}` } }, 404);
 }
 
+
+/** `/work-detail` 的拒绝信封：与真实实现同一口径，供冒烟断言"拒绝真的发生了"。 */
+function deniedWorkDetail(relative) {
+  const at = '2026-11-16T10:00:00.000Z';
+  const text = String(relative ?? '');
+  if (!text) return { ok: false, reason: 'path-required', meta: null, observedAt: at };
+  if (text.startsWith('../') || text.startsWith('/') || text.includes('..') || /^[A-Za-z]:/.test(text)) {
+    return { ok: false, reason: 'path-denied', meta: null, observedAt: at };
+  }
+  if (text !== 'bot/c1/rain.md' && text !== 'bot/c1/sun.txt') {
+    // 属于另一个 scope（或没有被本 scope 的 activity 引用）：先授权再读正文，所以不给 text。
+    return {
+      ok: false,
+      reason: 'not-in-scope',
+      detail: '这个文件不在当前身份的作品记录里。',
+      meta: { relative: text, size: null, type: 'md' },
+      observedAt: at,
+    };
+  }
+  return null;
+}
+
 async function fakeFetch(input, init) {
   const url = typeof input === 'string' ? input : String(input && input.url ? input.url : input);
   const parsed = new URL(url, 'http://127.0.0.1:52623/');
@@ -713,6 +735,13 @@ async function fakeFetch(input, init) {
   requests.push({ method, endpoint, query: Object.fromEntries(parsed.searchParams), body });
   calls.push(endpoint);
   const key = endpoint === 'maintenance' ? 'summary' : endpoint === 'review' ? 'reviews' : endpoint;
+  // work-detail 要按 `path` 分派：越界与跨 scope 各自该拿到 `ok:false` 的信封
+  // （否则冒烟只能测"列表非空"，测不到越界拒绝 —— 审查报告 M8）。
+  if (endpoint === 'work-detail') {
+    const relative = String(parsed.searchParams.get('path') ?? '');
+    const denied = deniedWorkDetail(relative);
+    if (denied) return stubResponse(denied);
+  }
   // 心跳「开始」失败的信封（`pulse-unreachable` + errorCode 细分）：只在显式放进去时生效。
   if (method === 'POST' && endpoint.includes('companion-health/pulse') && FIXTURES['__pulse-post-failure']) {
     return { ok: true, status: 200, json: async () => FIXTURES['__pulse-post-failure'] };
@@ -1839,7 +1868,13 @@ for (const groupLabel of ['记忆与档案', '设置']) {
         tree = await renderUntilStable(createElement(main.component, {}));
         const anchors = findAll(tree, (node) => node.props && node.props['data-field-path'] === 'retrieval.topK');
         if (!anchors.length) failures.push('深链：设置页的控件没有 data-field-path 锚点（无法聚焦）');
-        if (text(tree).includes('搜索设置项')) failures.push('深链：点选结果后面板没有关闭');
+        // 面板是否关闭要看**树上还有没有对话框**：`text()` 只拼文本节点，永远拼不到
+    // `aria-label`，旧断言其实从不命中（审查报告 M8）。
+    const stillOpen = findAll(tree, (node) => node.props && node.props.role === 'dialog');
+    if (stillOpen.length) failures.push(`深链：点选结果后面板没有关闭（仍有 ${stillOpen.length} 个 role=dialog）`);
+    // 拿到的锚点还要真的带 data-field-path（能聚焦的实现依据）。
+    const anchored = anchors.length ? anchors[0] : null;
+    if (anchored && !anchored.props['data-field-path']) failures.push('深链：锚点没有 data-field-path');
       }
     }
   }
@@ -1907,7 +1942,17 @@ for (const groupLabel of ['记忆与档案', '设置']) {
       if (!after.includes('FIXTURE-WORK-BODY')) failures.push('作品：预览没有渲染正文');
       if (!findAll(tree, (node) => node.tag === 'pre').length) failures.push('作品：预览不是纯文本容器');
     }
-    // 越界路径的预览必须给出可读原因，而不是空白。
+    // 越界/不属于本 scope 的路径必须给出可读原因，而不是空白。
+    //
+    // 旧断言只是"列表非空"，与注释写的越界拒绝毫无关系（审查报告 M8）。这里真的
+    // 发一次越界与一次跨 scope 的请求，断言都拿到 ok:false 且带上可读 reason。
+    const escaped = await (await fakeFetch('http://127.0.0.1:52623/api/companion-memory/work-detail?path=' + encodeURIComponent('../outside.md'))).json();
+    if (escaped.ok !== true || escaped.data.ok !== false) failures.push('作品：越界路径没有被拒绝');
+    else if (!escaped.data.reason) failures.push('作品：越界拒绝没有给 reason');
+    const crossScope = await (await fakeFetch('http://127.0.0.1:52623/api/companion-memory/work-detail?path=' + encodeURIComponent('other-world/secret.md'))).json();
+    if (crossScope.ok !== true || crossScope.data.ok !== false) failures.push('作品：跨 scope 路径没有被拒绝');
+    else if (crossScope.data.reason !== 'not-in-scope') failures.push('作品：跨 scope 拒绝的 reason 不是 not-in-scope（' + crossScope.data.reason + '）');
+    else if (crossScope.data.text !== undefined) failures.push('作品：跨 scope 拒绝仍然回了正文');
     const blocked = findAll(tree, (node) => classOf(node).includes('cpx-wk-item'));
     if (!blocked.length) failures.push('作品：过滤后列表为空');
   }

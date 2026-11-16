@@ -191,3 +191,56 @@ test('writer rejects an event whose sanitized form is unsafe', () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+// ── 审查报告 M1 / M2 的回归点 ───────────────────────────────────────────────
+
+test('a snapshot limit picks the newest generation, not the oldest (M1)', () => {
+  const root = tmpRoot();
+  try {
+    const base = traceFilePath(root, NOW);
+    fs.mkdirSync(path.dirname(base), { recursive: true });
+    const line = (id) => JSON.stringify({
+      eventId: id, traceId: 'tr_1', at: new Date(NOW).toISOString(), module: 'memory',
+      stage: 'retrieve', status: 'ok', reasonCode: 'low-coverage', durationMs: 1,
+      counts: {}, configRevision: null,
+    }) + '\n';
+    // .1 是更老的一代，base 是当日正在写的。
+    fs.writeFileSync(`${base}.1`, ['o1', 'o2', 'o3'].map(line).join(''), 'utf8');
+    fs.writeFileSync(base, ['n1', 'n2', 'n3'].map(line).join(''), 'utf8');
+
+    const snapshot = readTraceEvents({ root, now: () => NOW, limit: 2 });
+    // 契约：优先返回最新。旧实现回 ['o2','o3']（最老一代的尾部）。
+    assert.deepEqual(snapshot.events.map((event) => event.eventId), ['n2', 'n3']);
+    assert.equal(snapshot.total, 6);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('sinceId drops that event and everything before it (M2)', () => {
+  const root = tmpRoot();
+  try {
+    const base = traceFilePath(root, NOW);
+    fs.mkdirSync(path.dirname(base), { recursive: true });
+    const line = (id) => JSON.stringify({
+      eventId: id, traceId: 'tr_1', at: new Date(NOW).toISOString(), module: 'memory',
+      stage: 'retrieve', status: 'ok', reasonCode: 'low-coverage', durationMs: 1,
+      counts: {}, configRevision: null,
+    }) + '\n';
+    fs.writeFileSync(base, ['e1', 'e2', 'e3', 'e4', 'e5'].map(line).join(''), 'utf8');
+
+    const incremental = readTraceEvents({ root, now: () => NOW, sinceId: 'e3', limit: 100 });
+    // 契约：只取这条**之后**新增的。旧实现回 e1,e2,e4,e5。
+    assert.deepEqual(incremental.events.map((event) => event.eventId), ['e4', 'e5']);
+
+    // 边界：sinceId 是最新那条 → 空。
+    const caughtUp = readTraceEvents({ root, now: () => NOW, sinceId: 'e5', limit: 100 });
+    assert.deepEqual(caughtUp.events, []);
+
+    // 找不到这条（已被轮转掉）：不猜边界，按原样给。
+    const missing = readTraceEvents({ root, now: () => NOW, sinceId: 'nope', limit: 100 });
+    assert.equal(missing.events.length, 5);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

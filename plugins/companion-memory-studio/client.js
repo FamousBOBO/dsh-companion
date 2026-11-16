@@ -236,6 +236,16 @@ P.fmt = {
     if (!date) return '—';
     return date.toLocaleTimeString('zh-CN', { timeZone: TZ, hour12: false, hour: '2-digit', minute: '2-digit' });
   },
+  /**
+   * 带秒的时间（诊断事件用）。
+   *
+   * 必须走 `TZ`：诊断时间戳是 UTC，直接截字符串会让中国用户看到早 8 小时的时间。
+   */
+  clockSeconds: (iso) => {
+    const date = safeDate(iso);
+    if (!date) return '—';
+    return date.toLocaleTimeString('zh-CN', { timeZone: TZ, hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  },
   /** `14:00–15:30`, with the date kept when the two ends are not the same day. */
   range: (start, end) => {
     const from = safeDate(start);
@@ -1441,6 +1451,32 @@ button.cpx-health-board-row:focus-visible { outline: 2px solid var(--dsw-alias-b
   --cpx-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --cpx-sakura-soft: var(--dsw-alias-bg-layer-2);
   --cpx-sakura-line: var(--dsw-alias-border-l1);
+  /* 深色控制台（运行日志）的配色：终端本来就不跟随页面主题（浅色背景下黑底终端是惯例），
+     所以它有自己的几个 token。**这里必须真的定义**——只在用到处写 var(--x, #hex) 兜底，
+     等于换主题时这些颜色永远不生效，还让"已全部 token 化"这句话变成假话。 */
+  --cpx-console-bg: #101319;
+  --cpx-console-fg: #dae0eb;
+  --cpx-console-head: #191e27;
+  --cpx-console-border: #2b313c;
+  --cpx-console-muted: #9ca8bb;
+  --cpx-console-dim: #929eb0;
+  --cpx-console-faint: #69758a;
+  --cpx-console-empty: #909aab;
+  --cpx-console-warn: #e5b868;
+  --cpx-console-amber: #e4c183;
+  --cpx-console-ok: #62c99b;
+  --cpx-console-ok-soft: #62c99b55;
+  --cpx-console-error: #f49b9b;
+  --cpx-console-hover: #ffffff06;
+  /* 关键词地图的连线/端点配色。 */
+  --cpx-keymap-port: #b48da7;
+  --cpx-keymap-port-active: #dca2c5;
+  --cpx-keymap-link: #64a9ed;
+  --cpx-keymap-line: #73737a55;
+  --cpx-keymap-ring: #191c23;
+  /* 通用：柔和阴影与柔和遮罩。 */
+  --cpx-shadow-soft: #0002;
+  --cpx-overlay-soft: #0002;
   display: grid;
   grid-template-columns: var(--cpx-rail) minmax(0, 1fr);
   flex: 1 1 auto;
@@ -1665,7 +1701,7 @@ button.cpx-health-board-row:focus-visible { outline: 2px solid var(--dsw-alias-b
   background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-secondary);
   min-width: 0; flex: 1 1 auto;
 }
-.cpx-search-input { border: 0; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 13.5px; padding: 7px 0; min-width: 0; flex: 1; outline: none; }
+.cpx-search-input { border: 0; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 13.5px; padding: 7px 0; min-width: 0; flex: 1; }\n.cpx-search-input:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; border-radius: 6px; }
 .cpx-segmented { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 999px; background: var(--dsw-alias-bg-layer-2); flex-wrap: wrap; }
 .cpx-segment {
   display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px;
@@ -2174,7 +2210,10 @@ function Shell() {
           }, def.label);
         }))
       : null,
-    h('div', { className: 'cpx-scroll' }, body)),
+    h('div', { className: 'cpx-scroll' }, body),
+    // 全局设置搜索：监听器与面板挂在页面壳上，因此任何页面按 Ctrl/⌘+K 都能打开
+    // （旧版只在设置页挂载，离开设置页就失效 —— M9）。
+    P.ui.SettingsSearch ? h(P.ui.SettingsSearch, { key: 'catalog-global', standalone: true }) : null),
   h(ToastHost, { toasts: notices })));
 }
 
@@ -9936,13 +9975,14 @@ P.THEME_LABEL = THEME_LABEL;
     const hasSecrets = Object.keys(secrets || {}).some(path => within(path) && String(secrets[path] ?? '').trim() !== '');
     const hasClears = Object.keys(clears || {}).some(path => within(path) && clears[path]);
     if (hasSecrets || hasClears) return true;
-  // 生成字段（步数/种子/采样器…）不在 provider.fields 里，但同样属于这个 provider 的草稿；
-  // 漏掉它们会让"改了步数却按不动保存"（实测踩过）。
-  const dirtyFields = [
-    ...(provider.fields || []),
-    ...(provider.generationFields ? provider.generationFields.map((key) => ({ path: `${provider.prefix}.${key}`, type: null })) : []),
-  ];
-  const changed = dirtyFields.some((field) => {
+  // 只比 provider.fields。生成字段（步数/种子/采样器…）在真 descriptor 里**本来就在**
+  // provider.fields 里（实测 nai 的 fields 有 steps/scale/sampler 等 26 项）。
+  //
+  // 曾经这里额外把 generationFields 合成 `{path, type:null}` 追加进来，结果是踩出一个回归：
+  // 合成项没有 `original`，`sameValue(coerce('text', value), undefined)` 恒 false →
+  // **未做任何修改也 dirty=true**，NAI 卡片永远挂"有未保存的修改"、「测试连接」永久禁用。
+  // 所以：别再合成。dirty 的判据必须只来自带 original 的真实字段。
+  const changed = (provider.fields || []).some((field) => {
       if (field.secret || field.locked) return false;
       const value = draft ? draft[field.path] : undefined;
       if (value === undefined) return false;
@@ -10282,7 +10322,9 @@ P.THEME_LABEL = THEME_LABEL;
         variant: 'primary',
         loading: busy === `save:${provider.kind}`,
         disabled: !dirty || Boolean(busy),
-        onClick: () => onSave(provider.kind),
+        // 传 provider.prefix（如 image.nai），不是 section 的 kind（image）：
+        // 后者会把同一 section 下**所有**脏 provider 一起提交（审查报告低项，base 既存）。
+        onClick: () => onSave(provider.prefix),
         title: '只保存这个 provider 的改动（留空的密钥不会被写回）',
       }, '保存这个 provider'),
       h(ui.Button, {
@@ -10440,7 +10482,9 @@ P.THEME_LABEL = THEME_LABEL;
         section.fields.length?h('div',{className:'cpxp-media-fields'},section.fields.map(field=>h(FieldControl,{key:field.path,entry:field,value:draft[field.path],disabled:field.locked||!!busy,error:errors[field.path],onChange:value=>onDraft(field.path,value)}))):null,
         section.providers.length?h('div',{className:'cpxp-media-provider-list'},
           section.providers.map(item=>h(ProviderCard,{key:'pc-'+item.id,provider:item,selected:item.id===selected,presets:section.presets,states,draft,secrets,clears,errors,testing,busy,onDraft,onSecret,onClear,onSave,onTest}))):null,
-        provider?.generationFields?h(GenerationEditor,{provider,presets:section.presets,draft,busy,errors,onDraft}):null,
+        // 生成编辑器**只由 ProviderCard 渲染一次**（见其内部）。这里再渲染一遍会让
+        // `media-preset-scheme`、`media-image.nai.steps` 等 id 在 DOM 里各出现两次，
+        // 而 `ui.Field` 的 htmlFor 只落到第一个 —— 正是本 PR 在修的那类缺陷（M10）。
         section.preview?h('div',{className:'cpxp-preview'},h('div',{className:'cpxp-preview-head'},h('p',{className:'cpxp-media-note'},section.preview.note||''),h(ui.Button,{size:'sm',disabled:!!busy,title:'只算尺寸，不生成图片',onClick:()=>onPreview(section)} ,'预览')),previewState&&previewState.section===section.id?h('p',{className:'cpxp-media-note'},previewState.text):null):null,
         !section.locked?h('div',{className:'cpxp-media-footer'},h('span',{className:'cpx-muted'},dirty?'有未保存的修改':'已保存'),h(ui.Button,{variant:'primary',disabled:!dirty||!!busy,loading:busy===`save:${section.id}`,onClick:()=>onSave(section.id),title:'只保存这一块里改动过的字段'},'保存这一块')):null):null);
   }
@@ -14362,7 +14406,9 @@ P.THEME_LABEL = THEME_LABEL;
     .cpx-cat-overlay { position: fixed; inset: 0; z-index: 120; background: color-mix(in srgb, var(--dsw-alias-bg-inverse, #000) 38%, transparent); display: flex; align-items: flex-start; justify-content: center; padding: 12vh 16px 16px; }
     .cpx-cat-panel { width: min(760px, 100%); max-height: 70vh; display: flex; flex-direction: column; background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-secondary); border-radius: 14px; box-shadow: 0 24px 64px color-mix(in srgb, var(--dsw-alias-bg-inverse, #000) 45%, transparent); overflow: hidden; }
     .cpx-cat-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--dsw-alias-border-secondary); }
-    .cpx-cat-input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 15px; outline: none; }
+    .cpx-cat-input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 15px; border-radius: 6px; }
+    .cpx-cat-input:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
+    .cpx-cat-panel:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
     .cpx-cat-list { overflow: auto; overscroll-behavior: contain; padding: 6px; }
     .cpx-cat-group { padding: 10px 10px 4px; color: var(--dsw-alias-label-tertiary); font-size: 12px; letter-spacing: .04em; }
     .cpx-cat-item { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px 12px; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
@@ -14414,6 +14460,7 @@ P.THEME_LABEL = THEME_LABEL;
     const [debounced, setDebounced] = useState('');
     const inputRef = useRef(null);
     const listRef = useRef(null);
+    const panelRef = useRef(null);
 
     // 输入抖动：200ms 足够挡住连打，又不至于让搜索看起来卡。
     useEffect(() => {
@@ -14462,8 +14509,29 @@ P.THEME_LABEL = THEME_LABEL;
       if (typeof P.toastOnce === 'function') P.toastOnce(`「${match.label}」没有可跳转的入口。`);
     };
 
+    // Tab 焦点陷阱：模态面板里 Tab 不能走到背景（背景那时对辅助技术仍可见，
+    // 但焦点跑出去就等于"对话框只是视觉上的"）。
+    const trapTab = (event) => {
+      if (event.key !== 'Tab' || !panelRef.current) return false;
+      const focusables = panelRef.current.querySelectorAll(
+        'button:not([disabled]), input:not([disabled]), [tabindex]:not([tabindex="-1"])',
+      );
+      if (!focusables.length) return false;
+      const first = focusables[0];
+      const last = focusables[focusables.length - 1];
+      const current = document.activeElement;
+      if (!event.shiftKey && current === last) { event.preventDefault(); first.focus(); return true; }
+      if (event.shiftKey && (current === first || !panelRef.current.contains(current))) {
+        event.preventDefault();
+        last.focus();
+        return true;
+      }
+      return false;
+    };
+
     const onKeyDown = (event) => {
       if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
+      if (trapTab(event)) return;
       if (event.key === 'ArrowDown') { event.preventDefault(); setActive((value) => Math.min(value + 1, matches.length - 1)); return; }
       if (event.key === 'ArrowUp') { event.preventDefault(); setActive((value) => Math.max(value - 1, 0)); return; }
       if (event.key === 'Enter') { event.preventDefault(); choose(matches[active]); }
@@ -14478,19 +14546,20 @@ P.THEME_LABEL = THEME_LABEL;
     }
     let indexCursor = 0;
 
-    return h('div', {
-      className: 'cpx-cat-overlay',
-      role: 'presentation',
-      'aria-hidden': 'true',
-      onClick: (event) => { if (event.target === event.currentTarget) onClose(); },
+    // 遮罩与面板是**兄弟**，不是父子。
+    //
+    // 旧版把 role="dialog" 放在 aria-hidden="true" 的遮罩子树里：按 ARIA，整棵子树的语义
+    // 被移出无障碍树，屏幕阅读器**看不到**这个模态面板。装饰性的"点外面关掉"只能自己
+    // 带 aria-hidden，不能把面板一起盖住。
+    const dialogNode = h('div', {
+      className: 'cpx-cat-panel',
+      role: 'dialog',
+      'aria-modal': 'true',
+      'aria-label': '搜索设置项',
+      tabIndex: -1,
+      ref: panelRef,
+      onKeyDown,
     },
-      h('div', {
-        className: 'cpx-cat-panel',
-        role: 'dialog',
-        'aria-modal': 'true',
-        'aria-label': '搜索设置项',
-        onKeyDown,
-      },
         h('div', { className: 'cpx-cat-head' },
           h(ui.Icon, { name: 'search', size: 16 }),
           h('input', {
@@ -14560,16 +14629,53 @@ P.THEME_LABEL = THEME_LABEL;
           h('span', null, '↑↓ 选择 · Enter 打开 · Esc 关闭'),
           state.data ? h('span', null, `${state.data.returned}/${state.data.total} 条`) : null,
           catalog ? h('span', null, `字段 ${catalog.totalFields}`) : null),
-      ));
+    );
+    return h('div', { className: 'cpx-cat-overlay', onKeyDown },
+      h('div', {
+        key: 'backdrop',
+        className: 'cpx-cat-backdrop',
+        'aria-hidden': 'true',
+        onClick: (event) => { if (event.target === event.currentTarget) onClose(); },
+      }),
+      dialogNode);
   }
 
   /**
-   * 触发器：设置页头部一个按钮 + 全局 `Ctrl/⌘+K`。
+   * 触发器：设置页头部一个按钮 + **全局** `Ctrl/⌘+K`。
    *
-   * 快捷键只在没有别的输入焦点时生效（输入框里的 `Ctrl+K` 仍然是浏览器/宿主的行为）。
+   * 快捷键必须全局：挂在窗口上、且只在「当前页面确实有这个触发器」时才抬手。
+   * 旧版把 listener 写在组件 `useEffect` 里，唯一挂载点是设置页 —— 离开设置页组件
+   * 卸载、listener 随之移除，"全局"名不副实（M9）。
+   *
+   * 面板常驻在 `P` 级状态里（`mountCatalog`），由 `core.js` 的页面壳在所有页面渲染，
+   * 所以从任何页面按 `Ctrl/⌘+K` 都能打开。
    */
-  function SettingsSearch({ compact }) {
-    const [open, setOpen] = useState(false);
+  // 面板开关是**模块级可订阅状态**：全局挂载点与各页触发器共享同一个开关，
+  // 因此从任何页面按 Ctrl/⌘+K 打开的都是同一块面板（不是每页各自一份）。
+  const catalogState = {
+    open: false,
+    listeners: new Set(),
+    set(next) {
+      const value = Boolean(next);
+      if (catalogState.open === value) return;
+      catalogState.open = value;
+      catalogState.listeners.forEach((listener) => {
+        try { listener(value); } catch { /* 忽略 */ }
+      });
+    },
+    subscribe(listener) {
+      catalogState.listeners.add(listener);
+      return () => {
+        catalogState.listeners.forEach((item) => { if (item === listener) catalogState.listeners.delete(item); });
+      };
+    },
+  };
+
+  function SettingsSearch({ compact, standalone }) {
+    const [open, setOpenState] = useState(catalogState.open);
+    const setOpen = (next) => catalogState.set(next);
+
+    useEffect(() => catalogState.subscribe((next) => setOpenState(next)), []);
 
     useEffect(() => {
       const listener = (event) => {
@@ -14579,6 +14685,7 @@ P.THEME_LABEL = THEME_LABEL;
         const typing = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
         if (typing) return;
         event.preventDefault();
+        openerRef.current = target && typeof target.focus === 'function' ? target : null;
         setOpen(true);
       };
       window.addEventListener('keydown', listener);
@@ -14586,7 +14693,7 @@ P.THEME_LABEL = THEME_LABEL;
     }, []);
 
     return h('div', { className: 'cpx-cat' },
-      h('button', {
+      standalone ? null : h('button', {
         type: 'button',
         className: 'cpx-cat-trigger',
         onClick: () => setOpen(true),
@@ -14597,8 +14704,22 @@ P.THEME_LABEL = THEME_LABEL;
         h(ui.Icon, { name: 'search', size: 14 }),
         compact ? null : h('span', null, '搜索设置'),
         compact ? null : h('kbd', null, 'Ctrl K')),
+      // 全局那一份只负责"看不见的监听 + 面板"，不重复渲染按钮。
+      // 全局那一份只负责「监听 + 面板」，不重复渲染按钮；页面内的那一份两者都有，
+      // 但两处共享同一个开关，绝不会出现两块面板。
       open ? h(CatalogPanel, { onClose: () => setOpen(false) }) : null);
   }
+
+  /** 关闭时把焦点还给打开它的那个控件（键盘用户不会掉到文档开头）。 */
+  const openerRef = { current: null };
+
+  /**
+   * 全局挂载点：`core.js` 的页面壳渲染 `<P.ui.SettingsSearch standalone />` 一次，
+   * 面板因此对所有页面可用；各页仍可放自己的触发按钮。
+   */
+  P.mountCatalog = function mountCatalog() {
+    return h(SettingsSearch, { standalone: true });
+  };
 
   P.ui.SettingsSearch = SettingsSearch;
   P.focusSetting = focusSetting;
@@ -14667,9 +14788,16 @@ P.THEME_LABEL = THEME_LABEL;
   }
 
   function timeOf(at) {
+    // 时间必须按本机时区渲染（`P.fmt.clockSeconds` 走 core.js 的 Asia/Shanghai）。
+    // 旧实现直接从 UTC 的 ISO 串里截 `T` 后面那段，中国用户看到的时间早 8 小时。
     const text = String(at ?? '');
-    const match = text.match(/T(\d{2}:\d{2}:\d{2})/);
-    return match ? match[1] : (text.slice(11, 19) || '—');
+    if (!text) return '—';
+    if (P.fmt && typeof P.fmt.clockSeconds === 'function') {
+      const local = P.fmt.clockSeconds(text);
+      if (local !== '—') return local;
+    }
+    // 兜底：拿不到 core 的格式化器时至少别把 UTC 当本地时间糊上去。
+    return text.slice(11, 19) || '—';
   }
 
   /**
@@ -14729,7 +14857,11 @@ P.THEME_LABEL = THEME_LABEL;
       });
       source.onerror = () => {
         if (closed) return;
-        // 不自动无限重连：告诉用户发生了什么，让他们自己决定。
+        // **真的**不自动无限重连：`EventSource` 原生会无限重连，光写注释没用。
+        // 每次重连都会在服务端新建一条定时器 + 一个 4096 环，所以断开就 close，
+        // 由用户决定要不要重来（切页或切模式都会重新建流）。
+        closed = true;
+        try { source.close(); } catch { /* 已关 */ }
         setNote('事件流断开（宿主可能在重启）。切到快照模式可读已落盘的事件。');
       };
       return () => {
@@ -15021,7 +15153,7 @@ P.THEME_LABEL = THEME_LABEL;
     return h(ui.Page, {
       title: '作品',
       lead: '工作区里的产出：按标题/类型/日期过滤，只读预览；没有编辑、删除或分享入口。',
-      status: data.total ? `${data.total} 份` : '空',
+      status: data.total ? `${data.items.length}/${data.total} 份` : '空',
     },
       h(ui.Band, {
         key: 'list',
@@ -15081,7 +15213,7 @@ P.THEME_LABEL = THEME_LABEL;
             )))
           : h('div', { className: 'cpx-wk-empty' },
             data.total
-              ? `搜索/过滤条件下没有结果（全量 ${data.total} 份）。`
+              ? `搜索/过滤条件下没有结果（这一页展示 ${data.items.length} 条，total ${data.total} 是过滤后的命中数）。`
               : (data.evidence && !data.evidence.available
                 ? '运行时还没有写作品的记录（证据库不可用）。'
                 : '作品目录里还没有被活动引用过的文件。')),

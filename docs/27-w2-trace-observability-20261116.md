@@ -11,11 +11,11 @@
 
 | 模块 | 作用 | 行数 |
 |---|---|---|
-| `lib/trace-schema.mjs` | 10 字段白名单 + 枚举 + 理由码表 + 内容判据 + `sanitizeEvent` | 178 |
-| `lib/trace-store.mjs` | 环状落盘（2000 行 / 3 代轮转）、丢弃记账、只读过滤读取 | 218 |
-| `lib/trace-stream.mjs` | SSE：过滤、按 eventId 去重、轮转续读、半行等待、丢事件计数 | 193 |
+| `lib/trace-schema.mjs` | 10 字段白名单 + 枚举 + 理由码表 + 内容判据 + `sanitizeEvent` | 210 |
+| `lib/trace-store.mjs` | 环状落盘（2000 行 / 3 代轮转）、丢弃记账、只读过滤读取 | 195 |
+| `lib/trace-stream.mjs` | SSE：过滤、按 eventId 去重、轮转续读、半行等待、丢事件计数 | 241 |
 | `lib/trace-project.mjs` | 既有 `memory-recall.jsonl` → 事件的**投影**（不新增写入口） | 138 |
-| `lib/trace-route.mjs` | `GET /trace-events`、`GET /trace/stream`、`GET /trace-memory` | 96 |
+| `lib/trace-route.mjs` | `GET /trace-events`、`GET /trace/stream`、`GET /trace-memory` | 124 |
 | `src/client/pages-trace.js` | 诊断事件页：实时/快照时间线 + 记忆侧折叠 + 状态图例 | 20 片段之一 |
 | `src/client/settings-search.js` 等 | （W1 已有）本轮只补 `P.api.url` 供 SSE 用 | — |
 
@@ -30,7 +30,7 @@
 | `module` | `memory` / `prompt` / `router` / `tool` / `studio` / `host`，不在这 6 个里就降级并记 `unknown-module` |
 | `stage` | `retrieve / filter / inject / route / compose / tool-start / tool-end / finalize`（顺序即时间线顺序） |
 | `status` | `ok / empty / filtered / degraded / failed` |
-| `reasonCode` | 有限表（28 个），含既有记忆侧码（`low-coverage`、`empty-candidate-pool`、`scope-mismatch`、`recall-error`、`no-database`、`no-viewer`、`semantic-*`、`rerank-*` 等**原样沿用**，不自创同义词）。表外的码**不拒绝**，收敛成 `unknown-reason` 并在 UI 上可见——新码先落地，归类后补表 |
+| `reasonCode` | 有限表（37 个），含既有记忆侧码（`low-coverage`、`empty-candidate-pool`、`scope-mismatch`、`recall-error`、`no-database`、`no-viewer`、`semantic-*`、`rerank-*` 等**原样沿用**，不自创同义词）。表外的码**不拒绝**，收敛成 `unknown-reason` 并在 UI 上可见——新码先落地，归类后补表 |
 | `durationMs` | 0 ≤ x ≤ 3,600,000（超界截断并记 `bad-duration`） |
 | `counts` | 只允许 13 个计数键（`candidates/filtered/injected/characters/budgetChars/toolsVisible/toolsCalled/toolsFailed/events/dropped/records/tokens/modules`），值一律非负整数并封顶 1,000,000 |
 | `configRevision` | 不透明短标识（≤48，`[A-Za-z0-9._:-]`）；不合规的清空而不是截半 |
@@ -131,7 +131,7 @@
 |---|---|---|
 | 一次对话能按 traceId 看到检索/过滤/注入/路由/组装/工具/最终输出各阶段 | **部分** | 记忆侧（检索→过滤→注入）与工具侧（`tool-start`/`tool-end`）的**承载机制**已就绪并有投影；路由/组装/最终输出的**事件源尚未接入**（需要 §6 说的方向决策，见下） |
 | 日志能区分系统错误、业务空结果、降级、用户取消 | ✓ | 五个状态词是有限枚举，`empty`（业务空结果）与 `failed`（系统错误）分开；`degraded` 专指"违背契约" |
-| 每个失败可解释最小 reasonCode | ✓ | 28 个码来自既有实现；表外码显示为 `unknown-reason` 而不是吞掉 |
+| 每个失败可解释最小 reasonCode | ✓ | 37 个码来自既有实现；表外码显示为 `unknown-reason` 而不是吞掉 |
 | 前端可按模块/等级/traceId 过滤；时间线视图 | ✓（离线冒烟） | chip 过滤 + 服务端过滤生效；时间线行含时间/stage/模块/理由码/计数/耗时 |
 | SSE 支持模块过滤、traceId 过滤、丢事件计数、轮转续读、2000 行客户端缓冲 | ✓ | §5 四条各有用例；客户端 `.slice(-2000)` |
 | 不记录正文；敏感字段先过滤再落盘 | ✓ | 四类判据 + 落盘前 `isSafeEvent` 二审 + 读端再过滤（坏行/不安全行不入流） |
@@ -156,3 +156,25 @@
 | 真实模型调用导致的真实 reasonCode 分布 | **未执行** |
 
 **明确未做：真实宿主加载、浏览器实机与屏幕阅读器实测、`prompt/compose/snapshot/最终输出` 阶段的埋点、8790 listener 关停、任何真实模型调用或外发。**
+
+## 11. 审查后的修正（PR #3 review）
+
+首版提交被独立审查发现 1 个阻断与 4 个高危问题，本节记录实际改了什么、怎么验的。
+
+| 项 | 问题 | 修法 | 现在的证据 |
+|---|---|---|---|
+| **H1** | SSE 单 tick 超过 `BATCH_CAP(200)` 就 `return`，超出上限的完整行**既不推送也不计数**；下一轮从块末尾读，它们静默消失，而 `drops.parsed` 与送达数还自洽到查不出来（实测 450 条只送达 369 / 286） | 偏移语义改成"**尚未消费的第一行的起点**"（按字节）；一批读到的行按 `BATCH_CAP` 停下，偏移只推进到那一行行尾，其余留给下一 tick 并计入 `backlog`（不是丢弃） | `more than BATCH_CAP in one tick is delivered across ticks, nothing silently lost`：450 条全部送达，`backlog` 最终归零 |
+| **H2** | 残余半行被拼两遍（`carried` 拼在块前 + 偏移停在半行起点），该行必丢且 `corrupt` 仍为 0；原用例只覆盖 `start === 0`（`carried = ''`）所以是绿的 | 删掉 `partials` 缓冲：偏移本身就指向半行起点，重读不需要 carry。偏移一律按**字节**算（原实现用 `text.length` 减字节偏移，非 ASCII 会漂移） | `a half-written line is delivered even after the offset already exists`（先送达一条让偏移非 0，再写半行、再补齐）+ `non-ASCII lines do not make the byte offset drift` |
+| **M1** | 文件序是"当日 → .1 → .2"，`rows.slice(-limit)` 取到**最老一代的尾部** | 读取顺序改成"最老代数 → … → 当日"，`rows` 按时间正序，`slice(-limit)` 自然取最新 | `a snapshot limit picks the newest generation, not the oldest` |
+| **M2** | `sinceId` 只丢命中的那一条（e1..e5 传 e3 → `e1,e2,e4,e5`），而 `trace-api.test.mjs` 还把错误行为固化成断言 | 语义改成"这条及之前都不要"（`start = found + 1`）；找不到这条时不猜边界、原样给 | `sinceId drops that event and everything before it`（含"已追平 → 空"与"找不到 → 全给"两个边界）；API 用例改成断言 `['evt_3','evt_4']` |
+| **M3** | `at` 是唯一不过内容判据的字符串字段（中文正文可原样落盘），且 `at: NaN` 让 `new Date(NaN).toISOString()` 抛 `RangeError`，而写入端从不该抛给调用方 | `at` 走与其它字段同一套 `looksLikeContent`；不可解析时记 `bad-at` 并回退到处理时间；`isSafeEvent()` 也补上 `at` 的内容与可解析判据 | 三条用例：正文被降级成 `event-rejected`、`NaN` 不再抛、合法 ISO 原样通过 |
+| **M11** | `/trace-memory` 每次请求把整个 `memory-recall.jsonl` 读进内存再切尾 | 按字节从末尾读，最多 512 KiB；从中间切进来的首行丢弃；非普通文件（例如被建成目录）明确回 `read-failed`，不装作"空日志" | 既有 `readable:false` 用例 + `truncated` 字段 |
+| 低 | `EventSource` 原生无限重连，注释却写"不自动重连" | 断开即 `close()`，由用户决定重开 | 代码路径（无 SSE 浏览器环境，未做浏览器实测） |
+| 低 | 时间显示用 UTC 的截串，中国用户看到早 8 小时 | `P.fmt.clockSeconds`（走 `core.js` 的 `Asia/Shanghai`） | 代码路径（同上） |
+
+### 必须点明的事实：写端还没有接线
+
+`createTraceWriter()` **全树零生产调用方**（只有测试引用）。所以本 PR 上线后，
+生产里不会有任何 `trace-*.jsonl` 写入者，上图这些丢事件修正在线上是**潜伏**的。
+模块头的"不丢、不重放"目前只对**读端**成立；接写端（router / compose / final）是下一步的工作。
+这一点在 `docs/07-verification-status.md` 里也如实标注了。

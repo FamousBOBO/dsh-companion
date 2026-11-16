@@ -147,15 +147,22 @@ export function createTraceWriter(options = {}) {
   const limit = Number.isInteger(options.limit) && options.limit > 0 ? Math.min(500, options.limit) : 100;
   const files = [];
   const base = traceFilePath(root, now());
-  for (let index = 0; index <= DEFAULT_MAX_FILES; index += 1) {
-    const file = index === 0 ? base : `${base}.${index}`;
-    if (io.existsSync(file)) files.push(file);
+  // 文件顺序 = **从旧到新**：最老的轮转代数在前，当日正在写的 `base` 在最后。
+  // `rows` 因此按时间正序排列，`slice(-limit)` 自然取到最新那一段。
+  // 旧实现按 `0,1,2,3` push（当日在前），于是 `slice(-limit)` 取到的是**最老一代的尾部**
+  // （实测：base=n1..n3 + base.1=o1..o3，limit=2 → ['o2','o3']，契约要 ['n2','n3']）。
+  const generations = [];
+  for (let index = DEFAULT_MAX_FILES; index >= 1; index -= 1) {
+    const file = `${base}.${index}`;
+    if (io.existsSync(file)) generations.push(file);
   }
-  // 前一天的文件也可能有内容（跨零点的会话）。只在没有当日文件时回退一天。
-  if (!files.length) {
+  if (io.existsSync(base)) generations.push(base);
+  // 前一天的文件也可能有内容（跨零点的会话）。只在没有任何当日文件时回退一天。
+  if (!generations.length) {
     const previous = traceFilePath(root, now() - 24 * 3600 * 1000);
-    if (io.existsSync(previous)) files.push(previous);
+    if (io.existsSync(previous)) generations.push(previous);
   }
+  files.push(...generations);
 
   const wanted = {
     traceId: options.traceId ? String(options.traceId) : '',
@@ -180,15 +187,24 @@ export function createTraceWriter(options = {}) {
       if (wanted.module && parsed.module !== wanted.module) continue;
       if (wanted.status && parsed.status !== wanted.status) continue;
       if (wanted.reasonCode && parsed.reasonCode !== wanted.reasonCode) continue;
-      if (wanted.sinceId && parsed.eventId === wanted.sinceId) continue;
       rows.push(parsed);
     }
   }
 
+  // `sinceId` 的语义是"**这条及之前都不要**"（增量续读），不是"只丢这一条"。
+  // 旧实现只跳过命中那一条，于是 e1..e5 传 sinceId=e3 会回 e1,e2,e4,e5（实测）。
+  let start = 0;
+  if (wanted.sinceId) {
+    const found = rows.findIndex((row) => String(row.eventId ?? '') === wanted.sinceId);
+    // 找不到这条：说明它已经被轮转掉了，无法判断边界，就按原样给（并在 total 上体现）。
+    if (found >= 0) start = found + 1;
+  }
+  const fresh = rows.slice(start);
+
   return {
     source: files.map((file) => path.basename(file)),
-    total: rows.length,
+    total: fresh.length,
     skipped,
-    events: rows.slice(-limit),
+    events: fresh.slice(-limit),
   };
 }

@@ -104,6 +104,20 @@ export function resolveArtifactRoot(root) {
   return { configured, absolute: base, exists: fs.existsSync(base) };
 }
 
+/**
+ * 对外可说的"配置值"。
+ *
+ * 部署可以把 `artifactRoot` 配成绝对本机路径；那是**服务端的运行事实**，不该回给浏览器
+ * （模块头第 2 条：绝对路径永远留在服务端）。这里只做一件事：绝对路径 → 占位符，
+ * 相对路径照原样给（它本来就是相对 suite 根的可读值）。
+ */
+export function publicRootOf(configured) {
+  const text = String(configured ?? '');
+  if (!text) return '';
+  if (path.isAbsolute(text)) return '<绝对路径·仅服务端可见>';
+  return text;
+}
+
 /** realpath 二次校验：符号链接可能把"根内"变成"根外"。 */
 function realpathInside(rootAbsolute, candidateAbsolute) {
   let rootReal = '';
@@ -169,7 +183,7 @@ export function buildWorksIndex({ root, scope }) {
     return {
       available: false,
       reason: 'artifact-root-missing',
-      root: { configured: artifactRoot.configured },
+      root: { configured: publicRootOf(artifactRoot.configured) },
       evidence: { available: evidence.available, reason: evidence.reason || '' },
       total: 0,
       items: [],
@@ -248,7 +262,7 @@ export function buildWorksIndex({ root, scope }) {
   return {
     available: true,
     reason: '',
-    root: { configured: artifactRoot.configured },
+    root: { configured: publicRootOf(artifactRoot.configured) },
     evidence: { available: evidence.available, reason: evidence.reason || '' },
     total: deduped.length,
     items: deduped.slice(0, MAX_ITEMS),
@@ -278,8 +292,18 @@ export function filterWorks(items, { q = '', type = '', status = '', from = '', 
 /**
  * 读一份作品的预览。
  *
- * 三道闸都在这里，缺一不可：路径（runtime 判据 + realpath）、类型与大小（`previewableOf`）、
+ * **顺序很重要：先授权，再读正文。**
+ *
+ * 这里的第一道闸不是路径，而是**归属**：`artifactRoot` 默认是所有 scope 共享的目录
+ * （`home/companion/works`），所以"路径在根内"根本不等于"这是你的作品"。必须先问
+ * 「当前 scope 里有没有一条 activity 的 `artifact_ref` 正是这个文件」，答不上来就
+ * `not-in-scope`，一次 `readFileSync` 都不做。
+ *
+ * 然后才是三道原有闸：路径（runtime 判据 + realpath）、类型与大小（`previewableOf`）、
  * 内容形态（只回文本，不回二进制/base64；不做 HTML 渲染）。
+ *
+ * stat 与 read 都走**同一个已打开的 fd**：`realpath → stat → read` 三步之间文件可能被
+ * 换成符号链接，用 fd 让"判过的那个 inode"就是"读的那个 inode"。
  */
 export function readWorkPreview({ root, scope, relative }) {
   const artifactRoot = resolveArtifactRoot(root);
@@ -291,15 +315,40 @@ export function readWorkPreview({ root, scope, relative }) {
   } catch (error) {
     return { ok: false, reason: 'path-denied', detail: String(error?.message ?? '').slice(0, 160) };
   }
+
+  // ── 第一道闸：归属。跨 scope 的路径在这里就回去，正文一个字节都不读。
+  const evidence = readWorkEvidence({ root, scope });
+  const wanted = normaliseRelative(resolved.relative);
+  const activity = (evidence.activities ?? []).find((row) => normaliseRelative(row.artifact_ref) === wanted);
+  if (!activity) {
+    return {
+      ok: false,
+      reason: 'not-in-scope',
+      detail: '这个文件不在当前身份的作品记录里：预览只对 p2_activities 里引用过的文件开放。',
+      meta: { relative: resolved.relative, size: null, type: typeOf(resolved.relative) },
+    };
+  }
+
   const real = realpathInside(artifactRoot.absolute, resolved.absolute);
   if (!real.ok) return { ok: false, reason: real.reason };
 
+  let fd = null;
   let stat = null;
-  try { stat = fs.statSync(real.absolute); } catch { return { ok: false, reason: 'missing' }; }
-  if (!stat.isFile()) return { ok: false, reason: 'not-a-file' };
+  try {
+    fd = fs.openSync(real.absolute, 'r');
+    stat = fs.fstatSync(fd);
+  } catch {
+    try { if (fd !== null) fs.closeSync(fd); } catch { /* 已关 */ }
+    return { ok: false, reason: 'missing' };
+  }
+  if (!stat.isFile()) {
+    try { fs.closeSync(fd); } catch { /* 已关 */ }
+    return { ok: false, reason: 'not-a-file' };
+  }
 
   const preview = previewableOf(resolved.relative, stat.size);
   if (!preview.ok) {
+    try { fs.closeSync(fd); } catch { /* 已关 */ }
     // 不可预览也要给出元信息（大小/类型/时间），UI 才能说明"为什么不能在这里读"。
     return {
       ok: false,
@@ -310,15 +359,15 @@ export function readWorkPreview({ root, scope, relative }) {
 
   let text = '';
   try {
-    text = fs.readFileSync(real.absolute, 'utf8');
+    text = fs.readFileSync(fd, 'utf8');
   } catch {
     return { ok: false, reason: 'read-failed', meta: { relative: resolved.relative, size: stat.size } };
+  } finally {
+    try { fs.closeSync(fd); } catch { /* 已关 */ }
   }
 
   // 证据同样要回：预览页不能只显示内容而丢掉"这一版有没有收据"。
-  const evidence = readWorkEvidence({ root, scope });
-  const activity = (evidence.activities ?? []).find((row) => String(row.artifact_ref ?? '') === resolved.relative);
-  const receipts = (evidence.receipts ?? []).filter((receipt) => activity && receipt.activity_id === activity.activity_id);
+  const receipts = (evidence.receipts ?? []).filter((receipt) => receipt.activity_id === activity.activity_id);
 
   return {
     ok: true,
@@ -330,7 +379,7 @@ export function readWorkPreview({ root, scope, relative }) {
     modifiedAt: new Date(stat.mtimeMs).toISOString(),
     text,
     truncated: false,
-    status: activity ? workStatusOf(activity, evidence.receipts ?? []) : 'draft',
+    status: workStatusOf(activity, evidence.receipts ?? []),
     version: Number(activity?.artifact_version ?? 0),
     hashPrefix: String(activity?.artifact_hash ?? '').slice(0, 16),
     evidence: {
@@ -340,6 +389,11 @@ export function readWorkPreview({ root, scope, relative }) {
       receiptCodes: receipts.slice(0, 10).map((receipt) => `${receipt.operation}${receipt.ok ? '+' : '-'}${receipt.code ? `:${receipt.code}` : ''}`),
     },
   };
+}
+
+/** 相对路径归一：两种分隔符折成 `/`，用于 scope 归属比较（不做大小写折叠）。 */
+function normaliseRelative(value) {
+  return String(value ?? '').replace(/\\/g, '/').replace(/^\//, '');
 }
 
 export { STATUS_LABEL, scopeKey };

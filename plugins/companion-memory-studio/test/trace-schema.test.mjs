@@ -146,3 +146,32 @@ test('a rejected event never carries a content-shaped field after sanitization',
   assert.equal(looksLikeContent(scan), false, `事件正文仍在：${scan}`);
   assert.equal(event.counts.toolsFailed, 1, '拒绝事件保留可用的计数');
 });
+// ── 审查报告 M3 的回归点 ────────────────────────────────────────────────────
+
+test('at is held to the same content rule as every other string field (M3)', () => {
+  const sentence = '主人说他今天不太舒服，让我晚上早点睡，别熬夜等他消息';
+  // `sanitizeEvent` 的返回面是 `{ event, rejected }`（不是裸 event）。
+  const { event, rejected } = sanitizeEvent({ module: 'host', stage: 'finalize', status: 'ok', at: sentence });
+  // 不许原样落盘：要么被拒（回退到处理时间），要么整条事件标 degraded。
+  assert.notEqual(event.at, sentence, '中文正文不能原样出现在 at 字段里');
+  assert.equal(Number.isFinite(Date.parse(event.at)), true, 'at 必须是可解析的时间');
+  assert.equal(rejected.includes('bad-at'), true, '带正文的 at 必须被记成 bad-at');
+  assert.equal(event.status, 'degraded', '带正文的 at 要让事件降级，不能装作没事');
+  assert.equal(isSafeEvent(event), true, '回退后的事件本身仍然安全（不会被当坏行丢掉）');
+});
+
+test('a NaN timestamp degrades instead of throwing a RangeError (M3)', () => {
+  // 诊断写入端从不该抛给调用方：new Date(NaN).toISOString() 原来会抛 RangeError。
+  const { event, rejected } = sanitizeEvent({ module: 'host', stage: 'finalize', status: 'ok', at: Number.NaN });
+  assert.equal(Number.isFinite(Date.parse(event.at)), true, 'NaN 要回退到有效时间');
+  assert.equal(rejected.includes('bad-at'), true);
+  assert.equal(event.status, 'degraded');
+});
+
+test('a valid ISO at passes through untouched', () => {
+  const at = '2026-11-16T10:00:00.000Z';
+  const { event, rejected } = sanitizeEvent({ module: 'host', stage: 'finalize', status: 'ok', at });
+  assert.equal(event.at, at);
+  assert.equal(event.status, 'ok');
+  assert.deepEqual(rejected, []);
+});

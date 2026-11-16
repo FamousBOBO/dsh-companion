@@ -59,7 +59,9 @@ test('catalog projects QQ schema into the mandated meta shape', () => {
   // secret / dormant 必须原样透传，不能因为「目录里看不到值」就丢掉标记。
   const token = entries.find((e) => e.id === 'qq:accessToken');
   assert.equal(token.secret, true);
-  assert.equal(token.status, 'secret-unset');
+  // 没有任何配置层视图时，只写密钥的「有没有」证明不了 → unknown（不猜）。
+  // 旧实现在这里恒回 secret-unset，于是"已配置的密钥永远显示未设置"（M4）。
+  assert.equal(token.status, 'unknown');
   assert.equal(entries.find((e) => e.id === 'qq:maxMessageLength').dormant, true);
 });
 

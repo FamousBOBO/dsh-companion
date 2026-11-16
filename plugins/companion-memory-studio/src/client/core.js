@@ -226,6 +226,16 @@ P.fmt = {
     if (!date) return '—';
     return date.toLocaleTimeString('zh-CN', { timeZone: TZ, hour12: false, hour: '2-digit', minute: '2-digit' });
   },
+  /**
+   * 带秒的时间（诊断事件用）。
+   *
+   * 必须走 `TZ`：诊断时间戳是 UTC，直接截字符串会让中国用户看到早 8 小时的时间。
+   */
+  clockSeconds: (iso) => {
+    const date = safeDate(iso);
+    if (!date) return '—';
+    return date.toLocaleTimeString('zh-CN', { timeZone: TZ, hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  },
   /** `14:00–15:30`, with the date kept when the two ends are not the same day. */
   range: (start, end) => {
     const from = safeDate(start);
@@ -1431,6 +1441,32 @@ button.cpx-health-board-row:focus-visible { outline: 2px solid var(--dsw-alias-b
   --cpx-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --cpx-sakura-soft: var(--dsw-alias-bg-layer-2);
   --cpx-sakura-line: var(--dsw-alias-border-l1);
+  /* 深色控制台（运行日志）的配色：终端本来就不跟随页面主题（浅色背景下黑底终端是惯例），
+     所以它有自己的几个 token。**这里必须真的定义**——只在用到处写 var(--x, #hex) 兜底，
+     等于换主题时这些颜色永远不生效，还让"已全部 token 化"这句话变成假话。 */
+  --cpx-console-bg: #101319;
+  --cpx-console-fg: #dae0eb;
+  --cpx-console-head: #191e27;
+  --cpx-console-border: #2b313c;
+  --cpx-console-muted: #9ca8bb;
+  --cpx-console-dim: #929eb0;
+  --cpx-console-faint: #69758a;
+  --cpx-console-empty: #909aab;
+  --cpx-console-warn: #e5b868;
+  --cpx-console-amber: #e4c183;
+  --cpx-console-ok: #62c99b;
+  --cpx-console-ok-soft: #62c99b55;
+  --cpx-console-error: #f49b9b;
+  --cpx-console-hover: #ffffff06;
+  /* 关键词地图的连线/端点配色。 */
+  --cpx-keymap-port: #b48da7;
+  --cpx-keymap-port-active: #dca2c5;
+  --cpx-keymap-link: #64a9ed;
+  --cpx-keymap-line: #73737a55;
+  --cpx-keymap-ring: #191c23;
+  /* 通用：柔和阴影与柔和遮罩。 */
+  --cpx-shadow-soft: #0002;
+  --cpx-overlay-soft: #0002;
   display: grid;
   grid-template-columns: var(--cpx-rail) minmax(0, 1fr);
   flex: 1 1 auto;
@@ -1655,7 +1691,7 @@ button.cpx-health-board-row:focus-visible { outline: 2px solid var(--dsw-alias-b
   background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-secondary);
   min-width: 0; flex: 1 1 auto;
 }
-.cpx-search-input { border: 0; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 13.5px; padding: 7px 0; min-width: 0; flex: 1; outline: none; }
+.cpx-search-input { border: 0; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 13.5px; padding: 7px 0; min-width: 0; flex: 1; }\n.cpx-search-input:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; border-radius: 6px; }
 .cpx-segmented { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 999px; background: var(--dsw-alias-bg-layer-2); flex-wrap: wrap; }
 .cpx-segment {
   display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px;
@@ -2164,7 +2200,10 @@ function Shell() {
           }, def.label);
         }))
       : null,
-    h('div', { className: 'cpx-scroll' }, body)),
+    h('div', { className: 'cpx-scroll' }, body),
+    // 全局设置搜索：监听器与面板挂在页面壳上，因此任何页面按 Ctrl/⌘+K 都能打开
+    // （旧版只在设置页挂载，离开设置页就失效 —— M9）。
+    P.ui.SettingsSearch ? h(P.ui.SettingsSearch, { key: 'catalog-global', standalone: true }) : null),
   h(ToastHost, { toasts: notices })));
 }
 

@@ -25,6 +25,13 @@ function writeMemoryConfig(root) {
     // 故意写两个键：目录应把它们报成 configured，没写的报 default。
     retrieval: { topK: 6, semanticEnabled: true },
   }, null, 2));
+  // **哨兵**：把密钥明文真的写进权威密钥文件，否则"目录不泄漏密钥"这条断言恒真
+  // （审查报告 M12：夹具从没把哨兵写进任何密钥文件，`includes(...) === false` 永远成立）。
+  // 位置与形状必须走 companion-memory 自己的约定 —— 目录的 `secretSetOf()` 读的就是这一份。
+  fs.writeFileSync(path.join(dir, 'remote-models.json'), JSON.stringify({
+    embedding: { apiKey: '' },
+    rerank: { apiKey: 'sk-test-secret-value' },
+  }, null, 2));
 }
 
 function call(route, { method = 'GET', body, query = '' } = {}) {
@@ -81,6 +88,12 @@ test('catalog returns the mandated meta shape and never leaks stored secret valu
   // 搜索结果是目录元信息，不是配置值：整包不能出现测试里写进配置的密钥字样。
   const serialized = JSON.stringify(result);
   assert.equal(serialized.includes('sk-test-secret-value'), false);
+  // 这条断言必须**非空**：哨兵真的写进了配置文件，而目录确实读到了它（状态变成
+  // secret-set）—— 两件事都成立，"不泄漏"才是有意义的证据（审查报告 M12）。
+  const secret = result.data.matches.find((match) => match.id === 'studio:rerankApiKey');
+  assert.ok(secret, '目录里应该有 rerankApiKey 这一项（否则哨兵没被读到，断言恒真）');
+  assert.equal(secret.status, 'secret-set', `目录没读到哨兵：${secret.status}`);
+  assert.equal(secret.secret, true);
 });
 
 test('studio side reports configured vs default from the real config layer', async () => {

@@ -7,6 +7,7 @@ import { DatabaseSync } from 'node:sqlite';
 
 import { createMemoryEngine } from '../../companion-memory/index.mjs';
 import { createStudioHandlers, API_PREFIX, ROUTES } from '../server.mjs';
+import { buildWorksIndex } from '../lib/works-artifacts.mjs';
 import { scopeKey } from '../../companion-runtime/lib/scope.mjs';
 
 // W3 路由：只读、fail-closed、不暴露绝对路径。
@@ -163,13 +164,64 @@ test('work-detail previews text and refuses escapes', async () => {
     assert.equal(body.data.reason, 'path-denied', `${bad} → ${body.data.reason}`);
   }
 
-  const missing = await (await call('work-detail', '?path=bot/c1/nope.md')).json();
-  assert.equal(missing.data.ok, false);
-  assert.equal(missing.data.reason, 'missing');
+  // 文件存在但没有被本 scope 的 activity 引用：先授权再读正文，所以是 not-in-scope，
+  // 不是 missing（后者会让人以为"文件不在"，掩盖了授权这一层）。
+  const unrelated = await (await call('work-detail', '?path=bot/c1/other.md')).json();
+  assert.equal(unrelated.data.ok, false);
+  assert.equal(unrelated.data.reason, 'not-in-scope');
 
   const noPath = await (await call('work-detail')).json();
   assert.equal(noPath.data.ok, false);
   assert.equal(noPath.data.reason, 'path-required');
+});
+
+test('work-detail refuses a file that belongs to another scope, and never reads it', async () => {
+  // 另一个 scope 的正文 + 没有被本 scope 任何 activity 引用。
+  // `artifactRoot` 是所有 scope 共享的目录，所以"路径在根内"根本不等于"这是你的作品"。
+  const otherScopeFile = path.join(state.worksDir, 'other-world/secret.md');
+  fs.mkdirSync(path.dirname(otherScopeFile), { recursive: true });
+  fs.writeFileSync(otherScopeFile, 'SCOPE-B-SECRET 只属于另一个 scope 的作品\n', 'utf8');
+
+  for (const relative of ['other-world/secret.md', 'home/companion/remote-models.json']) {
+    const body = await (await call('work-detail', `?path=${encodeURIComponent(relative)}`)).json();
+    assert.equal(body.ok, true, '信封本身是 ok:true（HTTP 200）');
+    assert.equal(body.data.ok, false, `${relative} 必须拒绝`);
+    assert.equal(body.data.reason, 'not-in-scope', `${relative} → ${body.data.reason}`);
+    // 关键：正文一个字节都不许回。
+    assert.equal('text' in body.data, false, `${relative} 不该带 text 字段`);
+    const serialized = JSON.stringify(body.data);
+    assert.equal(serialized.includes('SCOPE-B-SECRET'), false, `${relative} 泄漏了另一个 scope 的正文`);
+  }
+
+  // 同一条断言在列表这一侧也成立：列表按 scope 过滤，看不到那个文件。
+  const list = await (await call('works')).json();
+  assert.equal(list.data.items.some((item) => item.relative === 'other-world/secret.md'), false);
+
+  fs.rmSync(path.dirname(otherScopeFile), { recursive: true, force: true });
+});
+
+test('an absolute artifactRoot never reaches the browser', async () => {
+  const root = fs.mkdtempSync(path.join(os.tmpdir(), 'studio-works-abs-'));
+  try {
+    const dir = path.join(root, 'home/companion');
+    fs.mkdirSync(dir, { recursive: true });
+    // 部署可以把它配成绝对本机路径（模块头允许，也确实是运行事实）。
+    const absoluteRoot = path.join(root, 'absolute-works');
+    fs.mkdirSync(absoluteRoot, { recursive: true });
+    fs.writeFileSync(path.join(dir, 'runtime.config.json'), JSON.stringify({
+      p2: { activities: { artifactRoot: absoluteRoot } },
+    }, null, 2));
+
+    const index = buildWorksIndex({ root, scope: scopeKey({ userId: USER_ID, personaId: PERSONA_ID }) });
+    assert.equal(index.available, true);
+    // 对外只说"配了绝对路径"，不说是哪一条。
+    assert.equal(index.root.configured, '<绝对路径·仅服务端可见>');
+    const serialized = JSON.stringify(index);
+    assert.equal(serialized.includes(absoluteRoot), false, '绝对 artifactRoot 泄漏进了响应');
+    assert.equal(serialized.includes(root), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
 });
 
 test('an unbound viewer is denied on both works routes', async () => {

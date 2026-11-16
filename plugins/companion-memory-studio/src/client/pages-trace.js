@@ -60,9 +60,16 @@
   }
 
   function timeOf(at) {
+    // 时间必须按本机时区渲染（`P.fmt.clockSeconds` 走 core.js 的 Asia/Shanghai）。
+    // 旧实现直接从 UTC 的 ISO 串里截 `T` 后面那段，中国用户看到的时间早 8 小时。
     const text = String(at ?? '');
-    const match = text.match(/T(\d{2}:\d{2}:\d{2})/);
-    return match ? match[1] : (text.slice(11, 19) || '—');
+    if (!text) return '—';
+    if (P.fmt && typeof P.fmt.clockSeconds === 'function') {
+      const local = P.fmt.clockSeconds(text);
+      if (local !== '—') return local;
+    }
+    // 兜底：拿不到 core 的格式化器时至少别把 UTC 当本地时间糊上去。
+    return text.slice(11, 19) || '—';
   }
 
   /**
@@ -122,7 +129,11 @@
       });
       source.onerror = () => {
         if (closed) return;
-        // 不自动无限重连：告诉用户发生了什么，让他们自己决定。
+        // **真的**不自动无限重连：`EventSource` 原生会无限重连，光写注释没用。
+        // 每次重连都会在服务端新建一条定时器 + 一个 4096 环，所以断开就 close，
+        // 由用户决定要不要重来（切页或切模式都会重新建流）。
+        closed = true;
+        try { source.close(); } catch { /* 已关 */ }
         setNote('事件流断开（宿主可能在重启）。切到快照模式可读已落盘的事件。');
       };
       return () => {

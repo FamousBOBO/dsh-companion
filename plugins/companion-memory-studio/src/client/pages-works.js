@@ -98,7 +98,7 @@
     return h(ui.Page, {
       title: '作品',
       lead: '工作区里的产出：按标题/类型/日期过滤，只读预览；没有编辑、删除或分享入口。',
-      status: data.total ? `${data.total} 份` : '空',
+      status: data.total ? `${data.items.length}/${data.total} 份` : '空',
     },
       h(ui.Band, {
         key: 'list',
@@ -158,7 +158,7 @@
             )))
           : h('div', { className: 'cpx-wk-empty' },
             data.total
-              ? `搜索/过滤条件下没有结果（全量 ${data.total} 份）。`
+              ? `搜索/过滤条件下没有结果（这一页展示 ${data.items.length} 条，total ${data.total} 是过滤后的命中数）。`
               : (data.evidence && !data.evidence.available
                 ? '运行时还没有写作品的记录（证据库不可用）。'
                 : '作品目录里还没有被活动引用过的文件。')),

@@ -20,6 +20,7 @@ import { traceFilePath } from './trace-store.mjs';
 
 const LINE_CAP = 500;
 const BATCH_CAP = 200;
+const READ_CHUNK = 65536;
 const SEEN_RING = 4096;
 
 /** 从 query 里取过滤条件（只认白名单键，其余忽略）。 */
@@ -79,10 +80,11 @@ export function createTraceStream(root, { signal, filters, pollMs = 400, now = (
       // 每个文件各自的读取偏移：轮转会把 base 挪成 base.1，如果只记"当前文件 + 偏移"，
       // 越过一代之后就再也追不到新文件里的事件（实测踩过：永远只读最老那一份）。
       const offsets = new Map();
-      // 每个文件可能被读到一半（写入端还在 append），未完成的半行存在这里。
-      const partials = new Map();
+      // 偏移本身就是半行起点：不需要额外的 partials 缓冲（旧实现有，正是 H2 的来源）。
       const seen = createSeenRing();
-      const counters = { parsed: 0, unsafe: 0, corrupt: 0, duplicate: 0, readError: 0, filtered: 0 };
+      // `backlog` = 已落盘但这一 tick 还没消费的字节数（批次上限或末尾半行），
+      // 不是丢弃：下一 tick 会继续读。前端据此可以显示还有多少在路上。
+      const counters = { parsed: 0, unsafe: 0, corrupt: 0, duplicate: 0, readError: 0, filtered: 0, backlog: 0 };
 
       const send = (event, data) => {
         if (closed || controller.desiredSize <= 0) return;
@@ -128,35 +130,63 @@ export function createTraceStream(root, { signal, filters, pollMs = 400, now = (
       /**
        * 读一个文件的新增部分。
        *
-       * **只消费到最后一个换行**：写入端是 append-only，我们可能在它写一半时读到半行；
-       * 把半行算成"坏行"并推进偏移，会让那条事件永久消失（实测踩过）。
-       * 所以偏移只推到最后一个 `\n` 之后，残余半行留在 `partials` 里等下次拼上。
+       * 偏移只有一种含义：**尚未消费的第一行的起点**，并且按**字节**算。
+       *
+       * 两个实测踩出来的坑，都由这一条语义解决：
+       *   1. 写入端 append-only，我们可能读到半行。旧实现既把半行 carry 到块前、又把偏移
+       *      停在半行起点，于是同一段字节被拼两遍、那条事件永久丢失，corrupt 还是 0。
+       *      现在偏移本身就指向半行起点，重读时不需要任何 carry。
+       *   2. 一批超过 BATCH_CAP 时不能先把偏移推到底再逐行推送——那样超上限的完整行既没
+       *      推送也不计数，下一轮从块末尾读，它们静默消失，而 drops.parsed 与送达数还自洽
+       *      到查不出来。现在偏移只推进到第 BATCH_CAP 条的行尾，剩下的留给下一 tick，
+       *      记为 backlog 字节（不是丢弃）。
+       * 唯一例外：单行本身超过 64 KiB 读窗口时永远解析不了，按坏行计一次并跳过，
+       * 否则读指针会原地打转。
        */
       function readNew(file, events) {
-        const stat = fs.statSync(file);
-        const previous = offsets.get(file);
-        // 第一次见到它 → 从头读；文件变短（轮转/截断）→ 从头读。两种都由 eventId 去重兜住。
-        const start = previous === undefined || stat.size < previous ? 0 : previous;
-        if (stat.size === start) return false;
-        const count = Math.min(stat.size - start, 65536);
-        const bytes = Buffer.alloc(count);
-        const fd = fs.openSync(file, 'r');
+        let stat = null;
+        try { stat = fs.statSync(file); } catch { return false; }
+        const recorded = offsets.get(file);
+        // 首次见到 → 从头读；文件变短（轮转/截断）→ 从头读。两种都由 eventId 去重兜住。
+        const cursor = recorded === undefined || stat.size < recorded ? 0 : recorded;
+        if (stat.size <= cursor) return false;
+
+        const want = Math.min(stat.size - cursor, READ_CHUNK);
+        const bytes = Buffer.alloc(want);
         let read = 0;
-        try { read = fs.readSync(fd, bytes, 0, count, start); } finally { fs.closeSync(fd); }
-        const chunk = bytes.subarray(0, read).toString('utf8');
-        const carried = start === 0 ? '' : (partials.get(file) ?? '');
-        const text = carried + chunk;
-        const lastBreak = text.lastIndexOf('\n');
+        let fd = null;
+        try {
+          fd = fs.openSync(file, 'r');
+          read = fs.readSync(fd, bytes, 0, want, cursor);
+        } catch {
+          counters.readError += 1;
+          return false;
+        } finally {
+          try { if (fd !== null) fs.closeSync(fd); } catch { /* 已关 */ }
+        }
+        if (read <= 0) return false;
+
+        const chunk = bytes.subarray(0, read);
+        const lastBreak = chunk.lastIndexOf(0x0a);
         if (lastBreak < 0) {
-          // 一个完整的行都还没到：偏移原地不动，下次从头再拼。
-          partials.set(file, text.slice(0, 65536));
+          if (read >= READ_CHUNK) {
+            // 一整行就超过读窗口：永远解析不了。计一次坏行并跳过，别让读指针原地打转。
+            counters.corrupt += 1;
+            offsets.set(file, cursor + read);
+            counters.backlog = Math.max(0, stat.size - offsets.get(file));
+            return false;
+          }
+          // 还没凑够一行：偏移原地不动，留给下一次 tick 重读。
+          offsets.set(file, cursor);
+          counters.backlog = Math.max(0, stat.size - cursor);
           return false;
         }
-        const committed = text.slice(0, lastBreak);
-        partials.set(file, text.slice(lastBreak + 1).slice(0, 65536));
-        // 偏移 = 本次读到的新文件末尾 - 残余半行长度（按字节算不出来，所以用已知的字符串长度差）。
-        offsets.set(file, start + read - (text.length - (lastBreak + 1)));
-        for (const line of committed.split('\n')) {
+
+        const lines = chunk.subarray(0, lastBreak).toString('utf8').split('\n');
+        let consumedBytes = 0;
+        let stopped = false;
+        for (const line of lines) {
+          consumedBytes += Buffer.byteLength(line, 'utf8') + 1; // 行 + 换行
           if (!line.trim()) continue;
           let parsed = null;
           try { parsed = JSON.parse(line); } catch { counters.corrupt += 1; continue; }
@@ -167,9 +197,13 @@ export function createTraceStream(root, { signal, filters, pollMs = 400, now = (
           if (id && seen.has(id)) { counters.duplicate += 1; continue; }
           if (id) seen.add(id);
           events.push(parsed);
-          if (events.length >= BATCH_CAP) return true;
+          if (events.length >= BATCH_CAP) { stopped = true; break; }
         }
-        return false;
+
+        offsets.set(file, Math.min(cursor + consumedBytes, stat.size));
+        // 还没消费的字节：批次上限挡住的完整行，或末尾那半行。都不是丢弃。
+        counters.backlog = Math.max(0, stat.size - offsets.get(file));
+        return stopped;
       }
 
       function tick() {
@@ -179,7 +213,7 @@ export function createTraceStream(root, { signal, filters, pollMs = 400, now = (
           if (!files.length) {
             if (offsets.size) {
               offsets.clear();
-              partials.clear();
+              counters.backlog = 0;
               send('trace', { reset: true, source: null, events: [], drops: drops() });
             }
             return;
@@ -197,6 +231,10 @@ export function createTraceStream(root, { signal, filters, pollMs = 400, now = (
               events: events.slice(-LINE_CAP),
               drops: drops(),
             });
+          } else if (counters.backlog > 0 && (counters.corrupt || counters.unsafe || counters.duplicate || counters.filtered)) {
+            // 本 tick 一条都没送出去，但计数器涨了（或被 backlog 挡住）：必须让客户端看见，
+            // 否则"某 tick 只涨 corrupt/unsafe/filtered"这件事永远不显示。
+            send('trace', { reset: false, source: path.basename(files.at(-1)), events: [], drops: drops() });
           }
         } catch {
           counters.readError += 1;

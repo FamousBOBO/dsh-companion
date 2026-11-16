@@ -65,11 +65,37 @@ export async function memoryTraceEvents(request, kernel) {
   if (!fs.existsSync(file)) {
     return kernel.ok({ source: null, records: 0, skipped: 0, events: [], observedAt: new Date().toISOString() });
   }
+  // 只读**尾部窗口**，不把整个 recall 日志读进内存。
+  //
+  // 这份日志由 memory 引擎长期追加，不属于本 PR 的有界 store；`limit` 最多 500 条，
+  // 但旧实现每次请求都 `readFileSync` 全文再切尾 —— 成本随文件线性增长（M11）。
+  // 这里按字节从末尾往前读：读到足够多的完整行就停（最多 512 KiB，避免异常情况下
+  // 单行超长把请求拖住）。
+  const TAIL_BYTES = 512 * 1024;
   const records = [];
   let skippedLines = 0;
+  let truncated = false;
   try {
-    const text = fs.readFileSync(file, 'utf8');
-    for (const line of text.split('\n')) {
+    const stat = fs.statSync(file);
+    // 不是普通文件（例如被建成目录）：直接判"读不到"，而不是读出一份空日志。
+    // 旧实现靠 `readFileSync` 抛错兜住；改成按字节读之后，长度 0 的目录会让读取
+    // "成功"返回空内容，于是"空"和"读不到"又被糊在一起（实测踩过）。
+    if (!stat.isFile()) throw Object.assign(new Error('not a regular file'), { code: 'ENOTFILE' });
+    const from = stat.size > TAIL_BYTES ? stat.size - TAIL_BYTES : 0;
+    truncated = from > 0;
+    const handle = fs.openSync(file, 'r');
+    let text = '';
+    try {
+      const bytes = Buffer.alloc(Math.max(0, stat.size - from));
+      const read = fs.readSync(handle, bytes, 0, bytes.length, from);
+      text = bytes.subarray(0, read).toString('utf8');
+    } finally {
+      try { fs.closeSync(handle); } catch { /* 已关 */ }
+    }
+    // 从中间切进来的第一行可能是半截：它不计数为坏行，直接丢掉。
+    const lines = text.split('\n');
+    if (truncated) lines.shift();
+    for (const line of lines) {
       if (!line.trim()) continue;
       try { records.push(JSON.parse(line)); } catch { skippedLines += 1; }
     }
@@ -81,6 +107,7 @@ export async function memoryTraceEvents(request, kernel) {
       reason: 'read-failed',
       records: 0,
       skipped: 0,
+      truncated: false,
       events: [],
       observedAt: new Date().toISOString(),
     });
@@ -93,6 +120,8 @@ export async function memoryTraceEvents(request, kernel) {
     source: 'logs/memory-recall.jsonl',
     records: tail.length,
     skipped: projected.skipped + skippedLines,
+    // `truncated` 明说"只读了文件尾部"，UI 才能解释"更早的记录为什么不在"。
+    truncated,
     filters,
     events,
     observedAt: new Date().toISOString(),

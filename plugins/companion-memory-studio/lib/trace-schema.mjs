@@ -157,8 +157,28 @@ export function sanitizeEvent(input, { now = () => Date.now() } = {}) {
   const configRevision = opaqueId(source.configRevision, '');
   if (String(source.configRevision ?? '').trim() && !configRevision) rejected.push('bad-revision');
 
-  const rawAt = source.at ?? now();
-  const at = typeof rawAt === 'number' ? new Date(rawAt).toISOString() : String(rawAt);
+  // `at` 也必须过一遍内容判据：别的字符串字段都过了，只有它原来原样落盘，
+  // 于是 `at: '中文时间'` 能带着正文进日志（M3 实测）。
+  // 而且 `at: NaN` 会让 `new Date(NaN).toISOString()` 抛 RangeError —— 诊断写入端
+  // 从不该抛给调用方，所以这里必须收敛成"回退到当前时间 + 记一条 bad-at"。
+  const rawAt = source.at ?? null;
+  let at = '';
+  if (rawAt === null || rawAt === undefined) {
+    at = new Date(now()).toISOString();
+  } else if (typeof rawAt === 'number' || typeof rawAt === 'string') {
+    const parsed = typeof rawAt === 'number' ? new Date(rawAt) : new Date(String(rawAt));
+    if (Number.isFinite(parsed.getTime()) && typeof rawAt === 'number') {
+      at = parsed.toISOString();
+    } else if (typeof rawAt === 'string' && !looksLikeContent(rawAt) && Number.isFinite(Date.parse(rawAt))) {
+      at = new Date(Date.parse(rawAt)).toISOString();
+    } else {
+      rejected.push('bad-at');
+      at = new Date(now()).toISOString();
+    }
+  } else {
+    rejected.push('bad-at');
+    at = new Date(now()).toISOString();
+  }
 
   let durationMs = null;
   if (source.durationMs !== undefined && source.durationMs !== null) {
@@ -207,7 +227,9 @@ export function isSafeEvent(event) {
   for (const key of Object.keys(event)) {
     if (!EVENT_KEYS.includes(key)) return false;
   }
-  if (looksLikeContent(event.reasonCode) || looksLikeContent(event.traceId) || looksLikeContent(event.eventId)) return false;
+  // t 与其他字符串字段同一套内容判据：它原来被漏掉了，正文可以从这里进日志。
+  if (looksLikeContent(event.reasonCode) || looksLikeContent(event.traceId) || looksLikeContent(event.eventId) || looksLikeContent(event.at)) return false;
+  if (typeof event.at === 'string' && event.at !== '' && !Number.isFinite(Date.parse(event.at))) return false;
   if (event.counts && typeof event.counts === 'object') {
     for (const key of Object.keys(event.counts)) if (!COUNT_KEYS.includes(key)) return false;
   }

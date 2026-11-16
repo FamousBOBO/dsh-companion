@@ -122,8 +122,12 @@ test('limit trims the page but total still reports every match', async () => {
 });
 
 test('sinceId skips up to and including that event', async () => {
+  // 语义是"这条**及之前**都不要"（增量续读）：evt_0..evt_4 传 evt_2 → 只剩 evt_3、evt_4。
+  // 旧实现只跳过命中那一条，于是会回 evt_0、evt_1、evt_3、evt_4 —— 而这里原本的断言
+  // （total === 4）正是把错误行为固化成了"通过"。
   const body = await (await call(`${API_PREFIX}/trace-events?sinceId=evt_2`)).json();
-  assert.equal(body.data.total, 4, 'sinceId 之后还有 4 条');
+  assert.equal(body.data.total, 2, 'evt_2 之后只剩 2 条');
+  assert.deepEqual(body.data.events.map((event) => event.eventId), ['evt_3', 'evt_4']);
 });
 
 test('trace/stream is an SSE response that emits ready and events', async () => {

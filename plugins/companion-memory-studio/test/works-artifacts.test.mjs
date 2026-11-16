@@ -233,9 +233,15 @@ test('preview refuses escape paths, symlinks, binaries and oversized files', () 
       'bot/c1/a.md': '# 正文\n',
       'bot/c1/big.md': 'x'.repeat(MAX_PREVIEW_BYTES + 10),
       'bot/c1/c.bin': 'binary',
+      'bot/c1/loose.md': '# 没被任何 activity 引用\n',
     });
     seedRuntime(root, [
       { activityId: 'a1', ref: 'bot/c1/a.md', receipts: [{ operation: 'finish', ok: 1 }] },
+      // 引用了但文件不在：用来测「授权过了、文件却没了」这条路径。
+      { activityId: 'a2', ref: 'bot/c1/nope.md' },
+      // 引用了但超限 / 类型不支持：用来测 previewableOf 的两道闸。
+      { activityId: 'a3', ref: 'bot/c1/big.md' },
+      { activityId: 'a4', ref: 'bot/c1/c.bin' },
     ]);
 
     const good = readWorkPreview({ root, scope: SCOPE, relative: 'bot/c1/a.md' });
@@ -264,6 +270,13 @@ test('preview refuses escape paths, symlinks, binaries and oversized files', () 
     const bin = readWorkPreview({ root, scope: SCOPE, relative: 'bot/c1/c.bin' });
     assert.equal(bin.ok, false);
     assert.equal(bin.reason, 'unsupported-type');
+
+    // 文件存在、但**没有被本 scope 引用**：先授权再读正文，所以是 not-in-scope，
+    // 而且一个字节正文都不读（这是 B1 的回归点）。
+    const unreferenced = readWorkPreview({ root, scope: SCOPE, relative: 'bot/c1/loose.md' });
+    assert.equal(unreferenced.ok, false);
+    assert.equal(unreferenced.reason, 'not-in-scope');
+    assert.equal('text' in unreferenced, false);
   } finally {
     fs.rmSync(root, { recursive: true, force: true });
   }
@@ -273,6 +286,8 @@ test('a symlink pointing outside the root is refused', () => {
   const root = tmpRoot();
   try {
     seedWorkspace(root, { 'bot/c1/a.md': 'ok\n' });
+    // 引用存在：授权先过，然后才轮到 realpath 这道闸。
+    seedRuntime(root, [{ activityId: 'a1', ref: 'bot/c1/link.md' }]);
     // 根外的真文件 + 根内的符号链接。
     const outside = path.join(root, 'secret.txt');
     fs.writeFileSync(outside, 'secret\n', 'utf8');

@@ -23,7 +23,7 @@
 import fs from 'node:fs';
 import path from 'node:path';
 import { fileURLToPath } from 'node:url';
-import { objectEntries, editableEntries } from '../lib/client-fields.mjs';
+import { objectEntries, editableEntries, parseSecretLabels } from '../lib/client-fields.mjs';
 
 const ROOT = path.resolve(path.dirname(fileURLToPath(import.meta.url)), '..');
 const WRITE = path.join(ROOT, 'lib', 'write.mjs');
@@ -43,6 +43,7 @@ const spec = objectEntries(writeText, /const SETTINGS_SPEC\s*=\s*Object\.freeze\
 const secret = objectEntries(writeText, /const SECRET_SPEC\s*=\s*Object\.freeze\(/);
 const view = editableEntries(readTextSrc);
 const fields = objectEntries(clientText, /const FIELDS\s*=\s*\{/);
+const secretLabels = parseSecretLabels(clientText);
 
 if (!spec) problems.push({ kind: 'fatal', key: 'SETTINGS_SPEC', detail: `找不到 ${path.relative(ROOT, WRITE)} 里的 SETTINGS_SPEC` });
 if (!secret) problems.push({ kind: 'fatal', key: 'SECRET_SPEC', detail: `找不到 ${path.relative(ROOT, WRITE)} 里的 SECRET_SPEC` });
@@ -79,7 +80,23 @@ if (spec && view && fields && secret) {
     if (viewKeys.includes(key)) note('secret-in-view', key, '只写密钥不该出现在 editableView（读投影会带出明文）');
   }
 
-  // 4) 客户端每条必须有渲染所需的 label / control / path。
+  // 3b) 每个只写密钥都要有中文名（SECRET_SPEC ⊆ SECRET_LABELS）。
+//
+// 缺 label 的只写密钥在界面上无法命名（"清除…？"对话框、校验错误都会读到
+// `undefined`）。这一条不判就永远发现不了：只写密钥不参与三方差分（它本来
+// 就不该出现在那三份可读目录里），所以它是**唯一**一条只写密钥自己的规则。
+for (const key of secretKeys) {
+  if (!Object.hasOwn(secretLabels, key)) {
+    note('secret-missing-label', key, 'SECRET_SPEC 里的密钥在 SECRET_LABELS 里没有中文名');
+  }
+}
+for (const key of Object.keys(secretLabels)) {
+  if (!secretKeys.includes(key)) {
+    note('label-missing-secret', key, 'SECRET_LABELS 里有名字，但 SECRET_SPEC 里没有这个只写密钥');
+  }
+}
+
+// 4) 客户端每条必须有渲染所需的 label / control / path。
   for (const entry of fields) {
     for (const required of ['label', 'control', 'path']) {
       if (!new RegExp(`\\b${required}\\s*:`).test(entry.text)) note('client-missing-meta', entry.key, `FIELDS.${entry.key} 缺 ${required}`);
@@ -93,7 +110,15 @@ if (spec && view && fields && secret) {
       continue;
     }
     if (!/\bsection\s*:/.test(entry.text) || !/\bkey\s*:/.test(entry.text)) note('spec-shape', entry.key, `SETTINGS_SPEC.${entry.key} 缺 section 或 key`);
-    if (!/\bcheck\s*:/.test(entry.text)) note('spec-shape', entry.key, `SETTINGS_SPEC.${entry.key} 缺 check（没有校验就等于没有约束）`);
+    // `check` 必须存在，而且**不能是恒真的空校验**。
+  //
+  // 只判"有没有 check:" 等于放行 `check: () => true` —— 那和没有校验完全等价，
+  // 却会让核对打印「✓ 三份一致」（审查实测：把 check 换成 () => true，脚本仍 exit 0）。
+  if (!/\bcheck\s*:/.test(entry.text)) {
+    note('spec-shape', entry.key, `SETTINGS_SPEC.${entry.key} 缺 check（没有校验就等于没有约束）`);
+  } else if (/check\s*:\s*\(?\)?\s*=>\s*(true|!0)\b/.test(entry.text) || /check\s*:\s*function\s*\(?\)?\s*\{\s*return\s+true/.test(entry.text)) {
+    note('spec-shape', entry.key, `SETTINGS_SPEC.${entry.key} 的 check 恒真（等于没有校验）`);
+  }
   }
 
   // 6) 客户端 path 与服务端 {section,key} 拼出来的路径必须一致
