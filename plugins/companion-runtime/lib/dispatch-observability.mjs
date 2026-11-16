@@ -138,11 +138,14 @@ const GATED_COUNT_SQL = `
 // window position and the hole closes. `GATED_SQL`/`GATED_COUNT_SQL` stay as the due-now
 // measurement; this one is only for the row list.
 //
-// **Bounded, not exhaustive** (round-6 N6): every query in this file carries `LIMIT ?`, and
-// `dispatchWatch()` takes `limit` from its caller (default 20). So `rows[]` holds at most
-// `3 × limit` rows — one sample per query, not the whole scope — while `dispatchMetrics()` reports
-// `slots_open` and `slots_due` as exact counts. That is why `rows[]` carries no completeness
-// promise: read the counts for "how many", the rows for "which ones, up to the cap".
+// **Bounded, not exhaustive** (round-6 N6, corrected in round-7 N7/N9): six queries feed
+// `rows[]`, each with its own `LIMIT` — `DUE`/`CLAIMED`/`GATED`/`GATED_ANY` at `min(200, limit)`,
+// `WILL_MISS`/`GATED_CLOSED` at `min(50, limit)` — so the row list is bounded by
+// `4 · min(200, limit) + 2 · min(50, limit)`, and the public entry point `p2DispatchWatch()` does
+// not forward `limit` at all, so in practice `limit = 20` and the bound is 120. Read the counts in
+// `dispatchMetrics()` for "how many"; read these rows for "which ones, up to their cap". Do **not**
+// test truncation with `rows.length >= bound` — each individual query only yields `limit` rows, so
+// one category can be cut to its cap while the total stays far below it.
 const GATED_ANY_SQL = `
   SELECT s.slot_id, s.plan_id, s.day, s.start_at, s.end_at, s.activity, s.reality,
          s.target_ref, s.locked, s.status
@@ -541,6 +544,11 @@ export function dispatchWatch(db, {
   // retires it under `detail:'capability-unavailable'`. Dropping those rows here and reporting them
   // as `blocked-capability` instead is what keeps `counts.willMiss` equal to the number of `missed`
   // facts the pump will actually write.
+  //
+  // round-7 N10: "will actually write" is a statement about the **whole backlog**, not about the
+  // next beat — the pump's own missed sweep has `LIMIT 8`, so 20 closed read slots give
+  // `willMiss 20` while the next pass writes 8. Per-beat the honest number is `min(willMiss, 8)`;
+  // the counts in `dispatchMetrics()` are what converge. See CONTRACT §15.3.
   const missResult = tryAll(db, WILL_MISS_SQL, scope, at, Math.max(1, Math.min(50, Math.trunc(Number(limit) || 20))));
   // A slot is capability-blocked when this build positively reports the provider as not ready and
   // the slot is one of that provider's kinds. `undefined` (not reported) never blocks: the watch
@@ -672,11 +680,12 @@ export function dispatchWatch(db, {
     };
   };
   // The union of the due-now set, the closed set and the any-window set: the first two carry the
-  // rows their predicates selected, the last closes the window gap between them. Each of the three
-  // is capped at `limit` (round-6 N6), so `rows[]` is a sample bounded by `3 × limit`, not the
-  // whole scope — the exact "how many" numbers live in `dispatchMetrics()`. `put()` de-duplicates
-  // by slotId, so a slot found by more than one query still yields exactly one row and the
-  // `counts` below are never inflated by overlap.
+  // rows their predicates selected, the last closes the window gap between them. Every query here
+  // carries its own `LIMIT` (round-7 N7), so `rows[]` is a bounded sample, not the scope — and
+  // because `GATED_ANY_SQL` sorts by `start_at ASC`, an overflow is filled by the earliest slots,
+  // which is why "no row of a category" can also mean "pushed out by older ones". `put()`
+  // de-duplicates by slotId, so a slot found by more than one query still yields exactly one row
+  // and the `counts` below are never inflated by overlap.
   const gatedAll = [
     ...(gatedRows.ok ? gatedRows.rows : []),
     ...(gatedClosed.ok ? gatedClosed.rows : []),
@@ -713,7 +722,8 @@ export function dispatchWatch(db, {
       claimable: claimable.length,
       effectBlocked: rows.filter(row => row.state === 'blocked-effect').length,
       // N5 (round-5): `counts.capabilityBlocked` counts **rows by state** — every window position,
-      // but only for the sampled rows in `rows[]` (round-6 N6: capped, not exhaustive).
+      // but only for the sampled rows in `rows[]` (round-6 N6 / round-7 N7: bounded by six
+      // per-query LIMITs, not exhaustive).
       // `dispatchMetrics().slots_capability_blocked` is a **due-now**, exact count. They are
       // different questions with a similar name, so the field comment here (and CONTRACT §15.3)
       // says which is which instead of leaving the reader to guess.

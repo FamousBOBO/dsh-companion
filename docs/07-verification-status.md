@@ -359,9 +359,13 @@ N4 的**可达性不夸大**：心跳只交窗口覆盖 `now` 的槽，自己不
 
 | 编号 | 缺陷（一句话） | 修法 | 证据 |
 |---|---|---|---|
-| **N6（P3，措辞）** | N4 的注释与用例标题写"`rows[]` 覆盖每一个未结槽"，是**说过头了**。`rows[]` 由三条各带 `LIMIT ?` 的查询拼接，上界 `3 × limit`；`dispatchWatch` **没有** `truncated` 标志（`dispatchMetrics` 有）。实测 25 read + 25 bilibili、`limit=20` ⇒ `slots_open 50` 而 `rows[] 40`。**既有行为**（`GATED_ANY_SQL` 之前也一样），不是 N4 引入 | 只改措辞：`CONTRACT.md` §15.3 新增"`rows[]` 是取样，不是全量"一行（并写明"`rows.length >= 3 × limit` 就是到上限"）；`dispatch-observability.mjs` 三处注释与 `p2-bilibili-watch-capability.test.mjs` 两条用例标题同步改口；代码与断言零改动 | 六轮复核的探针输出（上表数字）+ 本轮 `p2-bilibili-watch-capability` **6/6**、runtime **728/728** 不变；改的是措辞，所以测试计数必然不变——这本身就是"只改注释"的证据 |
+| **N6（P3，措辞）** | N4 的注释与用例标题写"`rows[]` 覆盖每一个未结槽"，是**说过头了**。`rows[]` 由六条各带 `LIMIT` 的查询拼接（`due`/`claimed`/`gated`/`gated-any` 各 `min(200, limit)`，`will-miss`/`gated-closed` 各 `min(50, limit)`）；`dispatchWatch` **没有** `truncated` 标志（`dispatchMetrics` 有）。实测 25 read + 25 bilibili、`limit=20` ⇒ `slots_open 50` 而 `rows[] 40`。**既有行为**（`GATED_ANY_SQL` 之前也一样），不是 N4 引入 | 只改措辞：`CONTRACT.md` §15.3 新增"`rows[]` 是取样，不是全量"一行；`dispatch-observability.mjs` 四处注释与 `p2-bilibili-watch-capability.test.mjs` 两条用例标题同步改口；代码与断言零改动 | 六轮复核的探针输出（上表数字）+ 本轮 `p2-bilibili-watch-capability` **6/6**、runtime **728/728** 不变；改的是措辞，所以测试计数必然不变——这本身就是"只改注释"的证据 |
+| **N7 / N8 / N9（P3，同一段文档的数字）** | 我自己新写的「取样」段有四个错：**N7** 上界写成「三条查询 / `3 × limit`」，实际**六条**、上界 `4·min(200,limit)+2·min(50,limit)`（`limit=20` ⇒ 120）；**N8** 给的截断判据「`rows.length >= 3 × limit`」**会漏报**——每条查询只出 `limit` 条，单条永远够不到总和门槛，于是一类被截到上限、总数却远低于门槛；**N9** 写「`limit` 由 `p2DispatchWatch({ limit })` 决定」是错的，`index.mjs` 公共入口只转 `scopeKey`/`now`，`limit` 固定 20 | 仍然只改文档与注释：§15.3 的取样段改成六条查询的真实上界、删掉会漏报的判据（改成「拿精确计数与 `rows[]` 条数比」）、写明 `limit` 在公共入口固定 20；顺带记下后果——`GATED_ANY_SQL` 是 `ORDER BY start_at ASC LIMIT`，更早的槽先占名额，所以 N4 那一类在超上限时会被挤出取样窗（不是整条消失） | **我自己重跑了三家夹具**（真 controller + 临时 SQLite，`limit=20`）：100 个到点 read 槽 ⇒ `slots_due 100` 而 `rows[]` **20**（复现 N8）；30 已关闭 + 30 未来窗口的 B 站槽 ⇒ `open 60`、`rows[]` **27**、未来窗口 **0** 条（复现挤出）；六类各 20（`open 120`）⇒ `rows[]` **90**；400 混合 ⇒ **100**。另：七轮复核的 `107 / 254` 用不同形状夹具量到，同样 ≤ 上界，不需对齐 |
+| **N10（P3，时间口径）** | `counts.willMiss` 的旧说法「= 泵真的会写多少条」只在**累计**成立。泵的 missed 扫描有 `LIMIT 8`：20 个已关闭 read 槽 ⇒ `willMiss 20`、下一拍只写 8；连跑 5 拍才 `8 → 16 → 20` | §15.3 补一句：按「这一拍会写几条」读是 `min(willMiss, 8)`；按累计读才等于 `willMiss`。lib 的 `missResult` 注释同步 | `p2.mjs:544` 的 `ORDER BY s.end_at ASC LIMIT 8` 是既有代码，本 PR 未改；本机探针复现了 `willMiss 20` 与 `LIMIT 8` 的差 |
 
-**没有做的事**：没给 `dispatchWatch` 补 `truncated` 标志。那是**新增字段**（会改观测契约），不是措辞问题；六轮报告也把它列在"合并后单开一条"里。要加就该连 `counts` 的语义一起定，不该混进这条只改措辞的收口。
+**没有做的事**：没给 `dispatchWatch` 补 `truncated` 标志。那是**新增字段**（会改观测契约），不是措辞问题；六轮与七轮报告都把它列在"合并后单开一条"里。要加就该连 `counts` 的语义一起定，不该混进这条只改措辞的收口。
+
+**证据边界（N7–N10 一并说明）**：`rows[]` 的那些条数来自**探针**（七轮复核一份、我本机另跑四组形状），本仓库**没有**对应的回归用例——现有两条 N4 用例的 scope 只有三个槽，覆盖不到超上限行为。所以本节说的是「文档现在与探针实测一致」，不是「有回归用例守着」。另：`truncated` 仍未加（新字段，单开），所以操作者判断截断目前只能靠「精确计数 vs `rows[]` 条数」。
 
 
 ### 2.9 群聊社交运行时 P5–P8（2026-11-08）：仍只有 `offline-test`，真实发送未开始
