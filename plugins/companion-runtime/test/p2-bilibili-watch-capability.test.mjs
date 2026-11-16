@@ -266,3 +266,86 @@ test('N2 回归：provider 就绪时遗留的 started 槽照旧算 awaiting-star
   assert.equal(watched.metrics.capabilityGate, 'ready');
   assert.equal(watched.rows.find(entry => entry.slotId === 'slot-bili').state, 'awaiting-start');
 });
+
+test('N4：rows[] 必须覆盖每一个未结槽 —— started + 窗口尚未开启 + 能力未就绪也不能消失', async t => {
+  // Round-5 review: after N2 applied the gate to `CLAIMED_SQL`, a `started` Bilibili slot whose
+  // window had **not opened yet** vanished from `rows[]` entirely — it is not due
+  // (`start_at > now`), not `will-miss` (`end_at > now`) and no longer `awaiting-start`. Three
+  // window-bounded queries, one hole between them: `slots_open` said 3, `rows[]` showed 2.
+  //
+  // Reachability, stated without inflating it: the heartbeat itself only offers slots whose window
+  // covers `now`, so it cannot create this state. `claimSlotForHeartbeat()` is looser than that
+  // (it has no window check) and a host may reach it directly, which is exactly what this test
+  // does. The fix is observation-only: one extra predicate with **no** window filter, so the row
+  // list covers every open slot regardless of where the slot sits in time.
+  const clock = { value: T0 };
+  const root = makeRoot(t);
+  const runtime = mount(t, root, { clock, providerReady: false });
+  const sessionId = persistScope(runtime);
+  const db = sideDb(t, root);
+  seedSlot(db, { slotId: 'b-closed', activity: 'bilibili', targetRef: 'bilibili:duty', startAt: T0 - 6 * HOUR, endAt: T0 - 3 * HOUR, status: 'started' });
+  seedSlot(db, { slotId: 'b-open', activity: 'bilibili', targetRef: 'bilibili:duty', startAt: T0 - HOUR, endAt: T0 + HOUR, status: 'started' });
+  seedSlot(db, { slotId: 'b-future', activity: 'bilibili', targetRef: 'bilibili:duty', startAt: T0 + 3 * HOUR, endAt: T0 + 5 * HOUR, status: 'started' });
+
+  // The claim hook really accepts all three — including the future one. That is the宽松 part of
+  // `claimSlotForHeartbeat`, and it is why the hole existed at all.
+  for (const slotId of ['b-closed', 'b-open', 'b-future']) {
+    assert.equal(slotStatus(db, slotId), 'started', 'the fixture genuinely starts in `started`');
+  }
+
+  const watched = runtime.p2DispatchWatch({ sessionId, now: T0 });
+  assert.equal(watched.ok, true, JSON.stringify(watched));
+  assert.equal(watched.metrics.slots_open, 3, 'three open slots are counted');
+
+  // The invariant: every open slot appears exactly once. A missing row is the N4 defect; a
+  // duplicated row would be the other half of the same problem.
+  const ids = watched.rows.map(row => row.slotId).sort();
+  assert.deepEqual(ids, ['b-closed', 'b-future', 'b-open'], `rows[] must cover every open slot: ${JSON.stringify(watched.rows)}`);
+  assert.equal(new Set(ids).size, ids.length, 'and exactly once');
+
+  // Each row says which retirement is coming, and none of them pretends to be a `missed`.
+  for (const id of ids) {
+    const row = watched.rows.find(entry => entry.slotId === id);
+    assert.equal(row.state, 'blocked-capability', `${id}: ${JSON.stringify(row)}`);
+    assert.equal(row.blockReason, 'bilibili-provider-not-ready');
+    assert.equal(row.expectedBeat, null);
+    assert.doesNotMatch(row.blockDetail, /files it as missed/);
+  }
+  const future = watched.rows.find(row => row.slotId === 'b-future');
+  assert.match(future.blockDetail, /window has not opened yet/);
+  const closed = watched.rows.find(row => row.slotId === 'b-closed');
+  assert.match(closed.blockDetail, /capability-unavailable, not as missed/);
+
+  assert.equal(watched.counts.capabilityBlocked, 3, JSON.stringify(watched.counts));
+  assert.equal(watched.counts.awaitingStart, 0, 'none of them is still "waiting for the pump"');
+  assert.equal(watched.counts.willMiss, 0, 'and none will be filed as missed');
+
+
+  // The numbers that a due-now metric reports stay due-now: only `b-open` has a window covering
+  // `now`, but the gate excludes it from `slots_due` — the measurement was never asked to count
+  // history.
+  assert.equal(watched.metrics.slots_due, 0, JSON.stringify(watched.metrics));
+  assert.equal(watched.metrics.slots_capability_blocked, 1, 'due-now only, not 3');
+});
+
+test('N4 回归：provider 就绪时同样三个槽位全部以 awaiting-start 出现（行覆盖不依赖闸门）', async t => {
+  const clock = { value: T0 };
+  const root = makeRoot(t);
+  const runtime = mount(t, root, { clock, providerReady: true });
+  const sessionId = persistScope(runtime);
+  const db = sideDb(t, root);
+  seedSlot(db, { slotId: 'b-closed', activity: 'bilibili', targetRef: 'bilibili:duty', startAt: T0 - 6 * HOUR, endAt: T0 - 3 * HOUR, status: 'started' });
+  seedSlot(db, { slotId: 'b-open', activity: 'bilibili', targetRef: 'bilibili:duty', startAt: T0 - HOUR, endAt: T0 + HOUR, status: 'started' });
+  seedSlot(db, { slotId: 'b-future', activity: 'bilibili', targetRef: 'bilibili:duty', startAt: T0 + 3 * HOUR, endAt: T0 + 5 * HOUR, status: 'started' });
+
+  const watched = runtime.p2DispatchWatch({ sessionId, now: T0 });
+  const ids = watched.rows.map(row => row.slotId).sort();
+  assert.deepEqual(ids, ['b-closed', 'b-future', 'b-open'], JSON.stringify(watched.rows));
+  // `b-closed` keeps its old `will-miss` verdict; the other two are still awaiting the pump.
+  assert.equal(watched.rows.find(row => row.slotId === 'b-closed').state, 'will-miss');
+  for (const id of ['b-open', 'b-future']) {
+    assert.equal(watched.rows.find(row => row.slotId === id).state, 'awaiting-start', id);
+  }
+  assert.equal(watched.counts.capabilityBlocked, 0);
+  assert.equal(watched.metrics.capabilityGate, 'ready');
+});
