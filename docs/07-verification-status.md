@@ -250,7 +250,7 @@ QQ 发送**。下面每一行都写着"改了什么 + 用什么命令证明的"�
 | `tools/` 纳入发布闸门 | **`offline-test`** | `verify` 的 `unit` 段新增一行 `tools（宿主探测 / 外部模块指纹 / 迁移）`：`node --test tools/**/*.test.mjs` 一并跑。之前这些测试只能手动跑，`verify` 全绿并不覆盖它们——上面两条缺陷就是这么漏出来的 |
 | 外部 B 站模块指纹 | **`offline-test` + 本机只读指纹** | `node tools/verify-external-modules.mjs`：生产 profile → `code=hash-mismatch`（`bytes=211655`，pin `127D04BE…`）；`data/backups/pnpm-store-repair-20261113` 的副本 → `code=ok`（`bytes=213810`）。两者 `package.json` 的 `version` 都是 `2.4.0` ⇒ 版本号不能当判据 |
 | B 站 provider 注册生命周期 | **`offline-test`** | `tools/bilibili-provider-integration.test.mjs` → **5/5 通过**：指纹通过的合成副本 import 后真的把 provider 写进 `Symbol.for('dsh.companion.bilibili.providers.v1')` 注册表；`ready()` 转身 → 端口立刻 `available()===false`；删条目（卸载）→ 不可用；重新挂载 → 恢复；未就绪时 `run` 返回 `failed` 且 0 条证据 |
-| B 站派发闸门 | **`offline-test`** | `plugins/companion-runtime/test/{bilibili-provider,bilibili-rounds,p2-bilibili-provider-gate,p2-bilibili-dispatch-order}.test.mjs` → **9/9 通过**（未就绪只丢那一个槽、残留 slot 不 start、就绪时真的 start、两个到点的 duty 不挤掉同窗口的 read）。⚠️ 注意别和上一行的 `tools/bilibili-provider-integration.test.mjs 5/5` 混为一谈：那是**两个不同的文件集合**，5/5 是 `tools/` 下的注册生命周期，9/9 是 `plugins/companion-runtime/test/` 下的派发闸门 |
+| B 站派发闸门 | **`offline-test`** | `plugins/companion-runtime/test/{bilibili-provider,bilibili-rounds,p2-bilibili-provider-gate,p2-bilibili-dispatch-order,p2-bilibili-claim-gate,p2-bilibili-watch-gate}.test.mjs` → **14/14 通过**（三轮后：未就绪只丢那一个槽、残留 slot 不 start、**心跳 due/claim 两条路径也被同一闸门挡住**、窗口关闭按 `capability-unavailable` 退役而不写 `missed`、dry watch 报 `blocked-capability` 而非 `claimable`、就绪时 claim 与 start 都照常）。⚠️ 注意别和上一行的 `tools/bilibili-provider-integration.test.mjs 5/5` 混为一谈：那是**两个不同的文件集合**，5/5 是 `tools/` 下的注册生命周期，**14/14** 是 `plugins/companion-runtime/test/` 下的派发闸门（二轮时是 9/9，三轮新增两个文件 5 个用例） |
 | 真实 B 站观看/评论/发送 | **未验证** | 本轮**没有**登录、没有触发真实观看或发送。`provider-not-ready` 与派发 fail-closed 保持原样，没有用文案把它写成可用 |
 | 模块离线测试 | **`offline-test`** | `npm ci` → `npm run build` → `node scripts/verify.mjs` → `unit` **10 模块通过 / 0 失败 / 1 无测试**（`paste-search` 如实记 `no-tests`）；`static` 39/0；`compose` SKIPPED（干净检出）。`tools/` 那一段如实报 **72 个测试通过**；匹配到 0 个测试文件时它**判失败**而不是记 ok（详见 §2.11） |
 
@@ -287,6 +287,33 @@ QQ 发送**。下面每一行都写着"改了什么 + 用什么命令证明的"�
 **这些仍然不算证据**：本轮没有真宿主装载、没有真模型、没有真 B 站账号、没有真 QQ 发送；
 `purpose:'explicit'` 的门槛下调只在词法覆盖率上生效（向量通道的门限没动，也没测）；
 「B 站只丢一个槽」证明的是**计划与派发语义**，不是"账号能用"。
+
+### 2.12 PR #4 三轮审查的修复（2026-11-17）：一个 P1 + 一个 P2 + 一个 P3
+
+> 二轮修复合入后仍然**只有 `offline-test`**：没有启动陪伴宿主、没有调真实模型 / B 站 / QQ、
+> 没有改本机 `config/suite.json` 或 `data/`。本节把二轮**没有覆盖到的**三个洞补上。
+
+三轮复核确认二轮的 2 个 P1 与 5 个 P2 都已真的落地（逐条用探针复跑过），并新发现三条：
+
+| 编号 | 缺陷（一句话） | 修法 | 证据 |
+|---|---|---|---|
+| **P1-4** | 能力闸门只装在**泵**上，没装在**claim**上。provider 未就绪时 `dueSlotsForHeartbeat()` 仍把 B 站槽交给心跳、`claimSlotForHeartbeat()` 仍答 `ok:true` → 槽 `planned→started`、泵（正确地）不 start、窗口关闭后 missed 扫描把它记成 `{operation:'missed', code:'window-closed'}` 并调 `onMissed(reason:'window-closed')`。**一个从未被允许执行的能力被记成"计划了却没做到"**，明天的 planner 会当成失败喂进 `recentOutcomes` | 判据抽成**唯一实现** `capabilities.mjs bilibiliProviderReady()`，五条路径共用：① capability 目录 ② heartbeat due 查询（`CAPABILITY_GATE_SQL`）③ `claimSlotForHeartbeat()` 直接返回 `{ok:false, code:'capability-unavailable'}` ④ pump due 查询（同一句片段）⑤ wrong watch/metrics。missed 扫描对未就绪能力改记 `detail:'capability-unavailable'` 并**退役但不写 `missed` 收据、不调 `onMissed`**；真 miss（read/explore 等）语义不变。`capability-unavailable` **不** `bumpRejection`（provider 缺失不该消耗 `maxAttempts`） | `plugins/companion-runtime/test/p2-bilibili-claim-gate.test.mjs` **3/3**：① 同一拍里 read 照常 start、B 站槽留在 `planned`、零 `plan-slot` 事件；② 窗口关闭的 B 站槽 `expired` + `detail:'capability-unavailable'`、**0** 条 `missed` 收据、**0** 条 `onMissed`，而同一轮里的 read 槽照旧 `detail:'missed'` + 1 条收据 + 1 条事实；③ provider 就绪时 claim 成功、泵照常建 activity |
+| **P2-6** | dry watch 用的是**没有**能力闸门的 due 判据副本，于是永远跑不了的 B 站槽被报成 `state:'claimable'` 并给出 `expectedBeat` 拍号 —— 一个没人能兑现的承诺；打开开关前看到的正是反的 | `DUE_SQL`/`DUE_COUNT_SQL` 接同一闸门参数，另加 `GATED_SQL` 把被排除的槽报成**新增状态** `blocked-capability`（`blockReason:'bilibili-provider-not-ready'`，`expectedBeat:null`）；`counts.capabilityBlocked`、`metrics.slots_capability_blocked`/`capabilityGate` 一并新增；新状态写进 `CONTRACT.md` §15.3/§15.6，不是悄悄扩词表 | `plugins/companion-runtime/test/p2-bilibili-watch-gate.test.mjs` **2/2**：未就绪时 `claimable` 1 / `capabilityBlocked` 1、`slots_due` 1 且 `slots_open` 2、被报 `blocked-capability` 的槽**没有** `expectedBeat`，随后的真心跳只 claim 了那个 read 槽；就绪时两个槽都回到 `claimable`、`capabilityGate:'ready'`、心跳真的 claim 两条 |
+| **P3-4** | `p2-wiring-web-live.test.mjs` 只在顶层 `code === 'source-fetch-failed'` 时 `skip`，但 `search()` 会把**所有** provider host 的失败聚合成 `search-unavailable`、把真因放进 `failures[]`。于是"这台机器没网"被判成**失败**，"未验证"读成了"坏了" | `skip` 判据同时认 `failures[0]?.code === 'source-fetch-failed'`；并在离线可复现的 `p2-wiring-web.test.mjs` 里固定这个聚合形状（`fetchImpl` 抛 `TypeError('fetch failed')` → `code:'search-unavailable'` + `failures[0].code:'source-fetch-failed'`），让 live 用例的跳过条件本身有证据，而不是靠哪台机器恰好跑它 | `plugins/companion-foundation/p2-wiring-web.test.mjs` **36/36**（含新增的聚合形状用例）；`p2-wiring-web-live.test.mjs` 在有网的本机 **2/2 pass**（本轮**没有**在无网机器上复现那条 skip，属于未验证） |
+
+顺带一处**必须说明的形状变化**：`dueSlotsForHeartbeat()` 的返回值多了 `skipped`（被能力闸门排除的
+到期槽数）。这是一次**只增不改**的字段添加，`p2-heartbeat-dispatch.test.mjs` 的整形状断言同步更新为
+`{slots:[], deferred:'dispatch-disabled', skipped:0}`（整拍拒绝时闸门根本没跑，所以是实测 `0`，不是 `null`）。
+
+总账（本轮本机实测）：`node scripts/verify.mjs` → `unit` 10 通过 / 0 失败 / 1 无测试，`static` 39/0，
+`compose` SKIPPED，exit 0；`plugins/companion-runtime` **722/722**；`plugins/companion-memory`
+**308 tests / 301 pass / 0 fail / 7 skip**；`plugins/companion-foundation` **543 tests / 534 pass /
+0 fail / 9 skip**；`tools/**` 72/72；`@dsh-companion/channel-qq` **1907 tests / 1906 pass / 0 fail / 1 skip**。
+
+**这些仍然不算证据**：没有真宿主装载、没有真模型、没有真 B 站账号、没有真 QQ 发送；
+`blocked-capability` 只是把一个**假事实**（"claimable 但永远不 claim"）换成一个**真事实**
+（"能力未就绪"），**不是**把 B 站跑通；`slots_capability_blocked` 也只在 provider 未就绪时有值
+（`capabilityGate:'not-reported'` 时不做排除，也不假装排除过）。
 
 
 ### 2.9 群聊社交运行时 P5–P8（2026-11-08）：仍只有 `offline-test`，真实发送未开始
