@@ -3293,6 +3293,11 @@ export function mountRuntime(ctx, root, options = {}) {
       heartbeat: heartbeatStatus(),
       p2: p2Status({ scopeKey }),
       agendaPublication,
+      // The same readiness judgement the dispatch paths use, so the eight-group projection never
+      // reports a not-ready capability slot as claimable. This is the raw provider fact, not
+      // `capabilities().bilibili.available` (that one also goes false when activities are merely
+      // switched off, which would make every slot look capability-blocked for the wrong reason).
+      bilibiliReady: p2Controller ? p2Controller.bilibiliProviderReady() : undefined,
     });
   }
 

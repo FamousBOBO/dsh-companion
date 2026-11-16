@@ -20,6 +20,26 @@ function entry({ available, port = null, reason = '', detail = '' }) {
 }
 
 /**
+ * Is the Bilibili provider actually ready?
+ *
+ * One definition, used by **every** path that decides "may a Bilibili slot run": the capability
+ * catalogue (this file), the pump's due query, the heartbeat's due query and its claim, the
+ * missed-window sweep, and the dry watch. The audit history is why this is a function and not an
+ * inline expression: the gate was first added only to the pump, so the heartbeat went on claiming
+ * slots whose provider could never run, and a "capability unavailable" ended up recorded as a
+ * failed fact. A predicate that lives in one place cannot be half-applied.
+ *
+ * Missing port, a throwing `available()`, or `available()` answering `false` all mean "not ready":
+ * the caller is about to hand this slot to real IO, so anything short of a positive answer is a no.
+ */
+export function bilibiliProviderReady(ports = {}) {
+  try {
+    if (typeof ports?.runBilibili !== 'function') return false;
+    return ports.runBilibili.available?.() !== false;
+  } catch { return false; }
+}
+
+/**
  * Detect the capability catalogue for one scope.
  *
  * @param ports   injected ports: `{fetchPage, readFile, writeFile, image?, media?, mc?}`
@@ -34,7 +54,10 @@ export function detectCapabilities({ ports = {}, config = {}, mode = 'active', k
   const base = (kind, portName) => {
     const port = ports?.[portName];
     if (typeof port !== 'function') return entry({ available: false, reason: REASONS.PORT_NOT_MOUNTED, detail: `${portName} port is not mounted` });
-    if (kind === 'bilibili' && port.available?.() === false) return entry({ available: false, reason: 'provider-not-ready' });
+    // Order preserved on purpose: "this deployment cannot run Bilibili at all" outranks "activities
+    // are switched off", because the reason an operator needs first is the one that would survive
+    // turning the switch on. The judgement itself is the shared predicate, not a second copy.
+    if (kind === 'bilibili' && !bilibiliProviderReady(ports)) return entry({ available: false, reason: 'provider-not-ready' });
     if (!activitiesOn) return entry({ available: false, reason: offReason, detail: 'p2.activities.enabled is off or the runtime is not active' });
     if (kinds?.[kind] === false) return entry({ available: false, reason: REASONS.CONFIG_OFF, detail: `${kind} is disabled for this scope` });
     return entry({ available: true, port: portName });

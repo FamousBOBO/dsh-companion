@@ -894,9 +894,11 @@ memory 早就有 `status='superseded'` 取值、`valid_to` 列与 `recordRevisio
 | 字段 | 口径 | 数据来源 | 真假值 |
 |---|---|---|---|
 | `available` | 这一组数是否成立。`false` ⇒ 下面所有数值字段都是 `null` | — | — |
-| `slots_due` | **现在**会被 claim 的槽数。判据与 `dueSlotsForHeartbeat` 逐条相同：`status='planned'`＋`kind='activity'`＋`start_at<=now<end_at`＋plan `committed`＋该槽还没有 activity 行。**精确 COUNT**（不受下方 200 条取样上限影响） | `p2_plan_slots ⋈ p2_plans ⨝ p2_activities` | `measured` |
+| `slots_due` | **现在**会被 claim 的槽数。判据与 `dueSlotsForHeartbeat` 逐条相同：`status='planned'`＋`kind='activity'`＋`start_at<=now<end_at`＋plan `committed`＋**能力闸门**（见 §15.6）＋该槽还没有 activity 行。**精确 COUNT**（不受下方 200 条取样上限影响） | `p2_plan_slots ⋈ p2_plans ⨝ p2_activities` | `measured` |
 | `slots_claimable` | `slots_due` 减去**被未收敛效应挡住的**槽（`blockedJobKeys` 的同一判据） | ＋`p2_activity_receipts (code='lc-effect')` | `measured` |
 | `slots_effect_blocked` | 到期但 job 有未收敛效应的槽数（`effect-in-flight` 或 `effect-unknown`，两者都阻断） | 同上 | `estimated`（`effectIndex` 有界取样） |
+| `slots_capability_blocked` | 到点但**能力闸门**把它排除的槽数（`slots_due` 之外的那一半）。`slots_due` 与它**相加才是"到点总数"**，两个数不重叠 | `p2_plan_slots ⋈ p2_plans ⨝ p2_activities` | `measured` |
+| `capabilityGate` | `'ready'`（provider 就绪）｜`'bilibili-not-ready'`（provider 未就绪，闸门生效）｜`'not-reported'`（调用方没观测端口，闸门**不做排除**且如实标注） | 端口 `runBilibili.available()`（唯一判据 `capabilities.mjs bilibiliProviderReady`） | — |
 | `slots_open` | `status IN ('planned','started')` 的**全部**未结槽（旧 `slots_due` 的真身）。时段/plan 状态一概不看 | `p2_plan_slots` | `measured` |
 | `dispatch_lag_ms` | `now - min(start_at)` over `slots_due`：**最老的一个到期槽已经晚了多久**。`slots_due=0` ⇒ `null`（空闲没有延迟，`0` 会被读成"分毫不差"） | 由上一行派生 | `measured` |
 | `claim_age_ms` | `now - 最老一条 still-waiting claim 的 `recorded_at``，即"心跳认领了、泵还没把它变成 activity"已经等了多久。没有等待中的 claim ⇒ `null` | `domain_events` (`autonomy/plan-slot`, `payload.to='started'`) | `measured` |
@@ -930,9 +932,10 @@ memory 早就有 `status='superseded'` 取值、`valid_to` 列与 `recordRevisio
 `runtime.p2DispatchWatch({ sessionId | scopeKey, now? })` → 只读。回答"下一拍会 claim 哪些槽、会在第几拍、如果不能 claim 是为什么"。
 
 - **槽级** `rows[]`：`{slotId, planId, day, activity, reality, targetRef, status, locked, startAt, endAt, state, blockReason, blockDetail, dueSinceMs, expectedBeat, claimedAtMs, claimAgeMs, claimAgeSource}`
-  - `state`：`claimable`（槽的判据允许 claim）｜`blocked-effect`（job 有未收敛效应，`blockReason`=`effect-in-flight`/`effect-unknown`）｜`awaiting-start`（已认领、泵还没建 activity）｜`will-miss`（窗口已过且没开始，泵下一拍会记 `missed`）
-  - `expectedBeat`：按 `heartbeat.maxDispatchPerCycle` 推算"第几拍能轮到它"（`floor(第N个/每拍上限)+1`）。**是推算，不是承诺**：前提是这段时间没有聊天抢占、没有暂停、没有新计划。
+  - `state`：`claimable`（槽的判据允许 claim）｜`blocked-effect`（job 有未收敛效应，`blockReason`=`effect-in-flight`/`effect-unknown`）｜**`blocked-capability`**（到点但**能力闸门**排除它，`blockReason`=`bilibili-provider-not-ready`；见 §15.6）｜`awaiting-start`（已认领、泵还没建 activity）｜`will-miss`（窗口已过且没开始，泵下一拍会记 `missed`）
+  - `expectedBeat`：按 `heartbeat.maxDispatchPerCycle` 推算"第几拍能轮到它"（`floor(第N个/每拍上限)+1`）。**是推算，不是承诺**：前提是这段时间没有聊天抢占、没有暂停、没有新计划。`blocked-capability` 行**不给** `expectedBeat`（`null`）——承诺一个永远不会到来的拍号就是把闸门藏起来。
   - `locked` **不阻断** claim（`dueSlotsForHeartbeat` 的 SQL 里没有 locked 判据）——锁是 H5 的"不要挪动时间"，不是"不要执行"。这里把它原样暴露，不自己发明规则。
+  - `counts.capabilityBlocked`：上面这类行的条数。它与 `counts.claimable` **不重叠**，所以"这一拍为什么会动/为什么不动"不会两边都数一遍。
 - **拍级** `blockedBy[]`：按 `heartbeat.cycle()` 自己的拒绝顺序给出**具名**原因：`heartbeat-unmounted` / `heartbeat-disabled` / `agenda-disabled` / `heartbeat-paused` / `dispatch-cap-zero` / `runtime-<mode>` / `p2-unmounted`，再加上 P2 侧的 `dispatch-disabled` / `activities-paused` / `chat-priority` / `foreground-signal-unavailable` / `invalid-scope`。
 - **`claimableNow`**：`blockedBy` 为空 **且** 有可 claim 的槽。**注意分工**：`rows[].state` 说的是"槽的判据"，`claimableNow` 说的是"这一拍真的会动"。开关关着时正确的结果是 **`state:'claimable'` + `blockedBy:['dispatch-disabled']` + `claimableNow:false`** —— 这正是"打开前先观察一轮"要看到的形状（否则看不到任何东西就没得观察）。
 - **时刻**不许编：给 `nextBeatWithinMs = pollIntervalMs + jitterMs` 与 `nextBeatNoLaterThan = 上一拍 + 上面这个和`，**不给**"它会在 T 秒后被 claim"。
@@ -956,5 +959,23 @@ memory 早就有 `status='superseded'` 取值、`valid_to` 列与 `recordRevisio
 - **【未验证】真实 60 秒 timer 节奏**：本节所有证据都用可注入时钟 + 显式 `runHeartbeatCycle()`。真实定时器下的抖动、`maxTimeBudgetMs` 截断（`skipped:'cycle-time-budget'`）、多 scope 争用**未跑过**。
 - **【未验证】生产库读数**：`slots_due`/`dispatch_lag_ms` 在**生产库**上的实际数值未采集（本节的数全部来自隔离临时目录）。生产打开开关前应先跑一次 `p2DispatchWatch()` 并记录。
 - **【未验证】跨进程**：`lastClaim`/`lastStart`/`activityDispatchLastCycle` 是**进程内**事实，多实例时只反映"当前进程"。跨进程互斥仍由 `test/lease-crossprocess.test.mjs` 覆盖（本节未复跑单列证据）。
+
+### 15.6 【已实施】能力闸门：一路判据，五条路径（round-3 P1-4 / P2-6）
+
+**判据只有一份**：`lib/capabilities.mjs` 的 `bilibiliProviderReady(ports)`（端口缺失／`available()` 抛异常／`available()` 明确返回 `false` 一律视为未就绪）。它不再是 SSOT 的**唯一**位置，而是 SSOT 的**唯一实现**：下列五条路径全部调它，不允许再写第二份。
+
+| 路径 | 闸门作用 | 未就绪时的行为 |
+|---|---|---|
+| `capabilities.mjs` 目录 | 能力清单 `bilibili.available` | `false` + `reason:'provider-not-ready'`（planner 据此不排 B 站，§16） |
+| `p2.mjs dueSlotsForHeartbeat()` | SQL 里 `(s.activity <> 'bilibili' OR ? = 1)` | 该槽**不进候选集**，另报 `skipped:<被排除条数>`（`LIMIT` 数的是真的能派的槽） |
+| `p2.mjs claimSlotForHeartbeat()` | claim 前读一次槽的 `activity` | 返回 `{ok:false, code:'capability-unavailable'}`，**不落 `planned→started`** 事件 |
+| `p2.mjs startDueActivities()` | 同一句 SQL 片段（`CAPABILITY_GATE_SQL`） | 该槽不 start；每拍一条具名 `p2-activity-start-bilibili-provider-not-ready` |
+| `dispatch-observability.mjs`（watch/metrics） | 同一判据，`bilibiliReady` 显式入参 | 行标 `blocked-capability`，`slots_due` 不含它，另报 `slots_capability_blocked` |
+
+**窗口关掉之后**（`startDueActivities` 的 missed 扫描）：B 站槽仍被**退役**（`status:'planned'|'started'` → `'expired'`，否则未结槽会无限增长），但 `detail` 是 **`'capability-unavailable'`**，且**不写** `missed` 收据、**不调** `onMissed`。理由：`missed`/`window-closed` 会被明天的 planner 当作"计划了却没做到"喂进 `recentOutcomes`；而"这一份构建根本跑不了这个能力"是**跳过一个能力**，不是**失败了一件事**（§13 的"不可用的能力只跳过自己"）。真 miss（read/explore 等窗口关闭）语义**不变**，仍在同一轮扫描里照旧记 `missed`——`test/p2-bilibili-claim-gate.test.mjs` 的第二个用例把两类放在一次扫描里对比断言。
+
+**为什么不把拒绝码塞进 `GATE_CODES`**：`capability-unavailable` 说的是**构建/端口**，不是"这个 worker 不许提交"。`heartbeat.mjs` 因此把它当作普通 refusal 上报（`lastError = slot-claim:capability-unavailable`、`dispatchDecision.refused[]` 最多 5 条），但**不** `bumpRejection`：拿 provider 缺失去消耗 `maxAttempts` 预算，槽位迟早会被标成"已隔离"，读起来像"这条路走不到"，而事实是"这个功能没装"。
+
+**仍然是"未验证"的部分**：本节证据全部来自可注入时钟 + 临时 SQLite + 桩端口。真实宿主装载、真 provider、真 B 站账号**都没跑过**；`blocked-capability` 只是把已有的假事实换成一个真事实，不是把 B 站跑通。
 
 

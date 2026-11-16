@@ -10,7 +10,7 @@ import crypto from 'node:crypto';
 import { RuntimeError } from './errors.mjs';
 import { digest, scopeKey as scopeKeyOf } from './scope.mjs';
 import { createBudget } from './budget.mjs';
-import { detectCapabilities, describeCapabilities } from './capabilities.mjs';
+import { detectCapabilities, describeCapabilities, bilibiliProviderReady as bilibiliReadyOf } from './capabilities.mjs';
 import { createPlanner, applyPlanEvent } from './planner.mjs?v=reading-20261101-v1';
 import { createActivities, applyActivityEvent, missedReceiptEvent, effectIndex, effectBlock, jobKeyFor } from './activities.mjs?v=reading-20261101-v1';
 import { dispatchMetrics as measureDispatch, dispatchWatch as watchDispatch } from './dispatch-observability.mjs';
@@ -67,6 +67,17 @@ export function createP2({
   const timeZone = config.timeZone || 'Asia/Shanghai';
   const artifactRoot = options.artifactRoot || config.p2?.activities?.artifactRoot || 'workspace/companion-works';
   const ownerOf = input => (input?.scope ? input.scope : input?.scopeKey ? null : null);
+  /**
+   * The **one** capability gate, spliced into every due query with the same parameter.
+   *
+   * It lives here, above its users, because the previous round proved the cost of a second copy:
+   * the pump got the clause, the heartbeat did not, and the heartbeat kept claiming Bilibili slots
+   * whose provider could never run. Three call sites now interpolate this same string
+   * (`dueSlotsForHeartbeat`, `startDueActivities`, `dispatchWatch` via `capabilities.mjs`).
+   */
+  const CAPABILITY_GATE_SQL = "(s.activity <> 'bilibili' OR ? = 1)";
+  /** The parameter that goes with `CAPABILITY_GATE_SQL`, from the one readiness predicate. */
+  const capabilityGateParam = () => (bilibiliReadyOf(ports) ? 1 : 0);
   // P2.5-1: the heartbeat's claim route. It is a separate *name* for the same checked dispatcher
   // (the runtime adds an activities-switch guard), so a claim and a pump start can never reach
   // the log through two different write paths.
@@ -214,19 +225,27 @@ export function createP2({
    * claimed it" and "the pump can start it" can never disagree:
    *   - `status = 'planned'` and the window covers `now` (the pump's own due window),
    *   - the plan is still `committed` (a superseded plan's slots are never dispatched),
-   *   - no activity row exists for the slot yet (the pump is the only creator).
+   *   - no activity row exists for the slot yet (the pump is the only creator),
+   *   - the slot's capability is really ready (see `CAPABILITY_GATE_SQL` below).
    *
-   * @returns {{slots: Array<{slotId:string,planId:string,day:string,startAt:number,endAt:number,activity:string,reality:string}>, deferred: string|null}}
+   * That last clause is not decoration. Without it the heartbeat happily claims a Bilibili slot
+   * whose provider can never run: the pump then (correctly) refuses to start it, and the window
+   * closes with the slot still `started` and no activity row — which the missed sweep files as a
+   * *failed fact* (`missed` / `window-closed`) and feeds into tomorrow's planning materials. A
+   * capability that was never allowed to run must never be recorded as "the planned thing did not
+   * happen". The gate has to live on **both** paths or it is half a gate.
+   *
+   * @returns {{slots: Array<{slotId:string,planId:string,day:string,startAt:number,endAt:number,activity:string,reality:string}>, deferred: string|null, skipped: number}}
    */
   function dueSlotsForHeartbeat({ scopeKey, now = Number(clock()), limit = 1 } = {}) {
-    if (disposed) return { slots: [], deferred: 'runtime-disposed' };
-    if (!isActive() || getMode() !== 'active') return { slots: [], deferred: 'runtime-inactive' };
-    if (config.p2?.activities?.enabled !== true) return { slots: [], deferred: 'activities-disabled' };
+    if (disposed) return { slots: [], deferred: 'runtime-disposed', skipped: 0 };
+    if (!isActive() || getMode() !== 'active') return { slots: [], deferred: 'runtime-inactive', skipped: 0 };
+    if (config.p2?.activities?.enabled !== true) return { slots: [], deferred: 'activities-disabled', skipped: 0 };
     // P2.5-1 gray release (plan §6): the *hook injection* is the primary gate, but the same switch
     // is re-checked here so a host that reaches the controller's hooks directly cannot dispatch
     // around it. Default false ⇒ upgrading the code never starts dispatching on its own.
-    if (config.p2?.activities?.dispatchEnabled !== true) return { slots: [], deferred: 'dispatch-disabled' };
-    if (config.p2?.activities?.paused === true || db.metaGet?.('p2_activities_paused', '0') === '1') return { slots: [], deferred: 'activities-paused' };
+    if (config.p2?.activities?.dispatchEnabled !== true) return { slots: [], deferred: 'dispatch-disabled', skipped: 0 };
+    if (config.p2?.activities?.paused === true || db.metaGet?.('p2_activities_paused', '0') === '1') return { slots: [], deferred: 'activities-paused', skipped: 0 };
     // Foreground conversation always wins (P2.5 §2 principle 5). The slot stays due and a later
     // beat may claim it; it is never executed alongside the user.
     //
@@ -235,14 +254,14 @@ export function createP2({
     // "is the user talking?" signal must defer, exactly like a `true` answer.
     if (typeof options.isForegroundBusy === 'function') {
       try {
-        if (options.isForegroundBusy() === true) return { slots: [], deferred: 'chat-priority' };
+        if (options.isForegroundBusy() === true) return { slots: [], deferred: 'chat-priority', skipped: 0 };
       } catch (error) {
         noteError('p2-foreground-signal-failed', error?.message ?? String(error));
-        return { slots: [], deferred: 'foreground-signal-unavailable' };
+        return { slots: [], deferred: 'foreground-signal-unavailable', skipped: 0 };
       }
     }
     const scope = String(scopeKey ?? '').trim();
-    if (!scope) return { slots: [], deferred: 'invalid-scope' };
+    if (!scope) return { slots: [], deferred: 'invalid-scope', skipped: 0 };
     const cap = Math.max(1, Math.min(20, Math.trunc(Number(limit) || 1)));
     let rows;
     try {
@@ -252,12 +271,17 @@ export function createP2({
                      WHERE s.scope = ? AND s.status = 'planned' AND s.kind = 'activity'
                        AND s.start_at <= ? AND s.end_at > ?
                        AND p.status = 'committed'
+                       AND (${CAPABILITY_GATE_SQL})
                        AND NOT EXISTS (SELECT 1 FROM p2_activities a WHERE a.scope = s.scope AND a.plan_slot_id = s.slot_id)
-                     ORDER BY s.start_at ASC, s.slot_id ASC LIMIT ?`, scope, now, now, cap);
+                     ORDER BY s.start_at ASC, s.slot_id ASC LIMIT ?`, scope, now, now, capabilityGateParam(), cap);
     } catch (error) {
       noteError('p2-due-slots-failed', error?.message ?? String(error));
-      return { slots: [], deferred: 'due-query-failed' };
+      return { slots: [], deferred: 'due-query-failed', skipped: 0 };
     }
+    // A slot excluded by the capability gate is *not* a deferral of the whole beat (that would stop
+    // read/explore/write too) and it is *not* a failure either. It is counted so the operator can
+    // see "there is work here, and the capability behind it is not ready" as one named number.
+    const skipped = countDueButGated(scope, now);
     // R4: a job with an unresolved external effect (a `prepared` intent that is still in flight or
     // past its deadline, or a human-unresolved `unknown`) must not be dispatched again — the claim
     // is what eventually turns into a second external call. Filtering happens here, not in SQL,
@@ -277,7 +301,23 @@ export function createP2({
         reality: String(row.reality ?? ''),
       })).filter(slot => slot.slotId !== ''),
       deferred: null,
+      skipped,
     };
+  }
+
+  /** How many due slots this beat skipped *because* their capability is not ready. */
+  function countDueButGated(scope, now) {
+    if (bilibiliReadyOf(ports)) return 0;
+    try {
+      const row = db.get(`SELECT COUNT(*) AS n FROM p2_plan_slots s
+                           JOIN p2_plans p ON p.plan_id = s.plan_id AND p.scope = s.scope
+                           WHERE s.scope = ? AND s.status = 'planned' AND s.kind = 'activity'
+                             AND s.activity = 'bilibili'
+                             AND s.start_at <= ? AND s.end_at > ?
+                             AND p.status = 'committed'
+                             AND NOT EXISTS (SELECT 1 FROM p2_activities a WHERE a.scope = s.scope AND a.plan_slot_id = s.slot_id)`, scope, now, now);
+      return Number(row?.n ?? 0) || 0;
+    } catch { return 0; }
   }
 
   /**
@@ -328,6 +368,18 @@ export function createP2({
     const scope = String(scopeKey ?? '').trim();
     if (!slot) return refused('invalid-input');
     if (!scope) return refused('invalid-scope');
+    // Defence in depth for the same gate `dueSlotsForHeartbeat` applies: a host that reaches this
+    // hook directly must not be able to claim a slot whose capability this build cannot run. The
+    // claim would otherwise sit in `started` until the window closes, and the missed sweep would
+    // record a failure for work that was never executable.
+    //
+    // The code is `capability-unavailable`, not a heartbeat gate code: refusing one slot must not
+    // abort a whole round, and it must not count against `maxAttempts` either (a provider being
+    // absent is not this slot's fault — `heartbeat.mjs` skips the rejection bump for this code).
+    try {
+      const row = db.get('SELECT activity FROM p2_plan_slots WHERE scope = ? AND slot_id = ?', scope, slot);
+      if (String(row?.activity ?? '') === 'bilibili' && !bilibiliReadyOf(ports)) return refused('capability-unavailable');
+    } catch { /* an unreadable row falls through to the reducer, which fails closed on its own */ }
     try {
       const outcome = dispatchClaim({
         kind: 'autonomy/plan-slot',
@@ -379,7 +431,14 @@ export function createP2({
    */
   function dispatchMetrics({ scopeKey, now = Number(clock()) } = {}) {
     const scope = String(scopeKey ?? '').trim();
-    const measured = measureDispatch(db, { scopeKey: scope, now: Number(now) || Number(clock()) });
+    const measured = measureDispatch(db, {
+      scopeKey: scope,
+      now: Number(now) || Number(clock()),
+      // The same readiness fact every other dispatch path uses. Without it the metrics would
+      // report a not-ready Bilibili slot as "due and claimable" — the exact number an operator
+      // reads before flipping the switch.
+      bilibiliReady: bilibiliReadyOf(ports),
+    });
     return {
       ...measured,
       // The switch state is this controller's fact, not a table's.
@@ -407,7 +466,12 @@ export function createP2({
     const intervalMs = Math.max(1000, Math.min(3600000, Math.trunc(Number(raw.pollIntervalMs) || 60000)));
     const jitterMs = Math.max(0, Math.min(60000, Math.trunc(Number(raw.jitterMs ?? 2500) || 0)));
     const maxPerBeat = Math.max(0, Math.min(20, Math.trunc(Number(raw.maxDispatchPerCycle ?? 1) || 1)));
-    const watched = watchDispatch(db, { scopeKey: scope, now: at, limit, maxPerBeat: Math.max(1, maxPerBeat), intervalMs, jitterMs });
+    const watched = watchDispatch(db, {
+      scopeKey: scope, now: at, limit, maxPerBeat: Math.max(1, maxPerBeat), intervalMs, jitterMs,
+      // CONTRACT §15.3: the watch must predict the *real* beat, and the real beat now excludes
+      // not-ready capability slots. Same predicate, same parameter, one source of truth.
+      bilibiliReady: bilibiliReadyOf(ports),
+    });
     // Why this scope would not be claimed even if it had due slots: the same ordered gate list
     // `dueSlotsForHeartbeat()` walks, reported instead of returned early.
     const deferred = (() => {
@@ -428,18 +492,15 @@ export function createP2({
       dispatchEnabled: config.p2?.activities?.dispatchEnabled === true,
       activitiesEnabled: config.p2?.activities?.enabled === true,
       paused: config.p2?.activities?.paused === true || db.metaGet?.('p2_activities_paused', '0') === '1',
-      // B 站 provider 的**实际**就绪状态，与 capability 目录同一判据（`ports.runBilibili.available()`）。
+      // B 站 provider 的**实际**就绪状态，与 capability 目录同一判据（`capabilities.mjs` 的
+      // `bilibiliProviderReady()`，round-3 起这是唯一实现）。
       //
       // 为什么要单独报：派发闸门（本函数下面的 `deferred`）在 provider 未就绪时不该把整拍 defer 掉
       // ——那会把 read/explore/write 也一起停掉——但 `startDueActivities()` 会把到点的 B 站 slot
       // 从 due 集合里排除（同一句 SQL），于是"这一拍为什么没派 B 站"必须有一个具名答案。
-      // 该字段现在真的被消费：`index.mjs` 的 `p2DispatchWatch()` 把它放进 `p2.*` 投影。
-      bilibiliProviderReady: (() => {
-        try {
-          if (typeof ports.runBilibili !== 'function') return false;
-          return ports.runBilibili.available?.() !== false;
-        } catch { return false; }
-      })(),
+      // 该字段真的被消费：`index.mjs` 的 `p2DispatchWatch()` 把它放进 `p2.*` 投影，同一份布尔
+      // 也喂给 `dispatchWatch()` 的槽级判定（`state:'blocked-capability'`）。
+      bilibiliProviderReady: bilibiliReadyOf(ports),
       // `null` = nothing blocks this scope; a string is the *named* deferral the heartbeat would
       // persist as `dispatch-deferred:<code>`.
       deferred,
@@ -466,19 +527,40 @@ export function createP2({
     // claim would sit in `started` forever, which is exactly the orphan state A3 found in the
     // production database. A claimed slot with no activity row is therefore filed as a miss too —
     // with the slot's own status as `from`, so the frozen transition table stays honest.
+    //
+    // P1-4 (round-3): but "the zone closed while the capability was not ready" is **not** a miss.
+    // The slot never had a chance to run, so filing it as `missed` writes a false fact — a receipt
+    // the planner reads tomorrow as "the character failed to do something it planned" — for a
+    // provider that was never mounted. Those slots are still retired (the window really did close,
+    // and leaving them `planned` would grow the backlog for ever), under their own named detail
+    // and with **no** receipt and **no** `onMissed` fact.
+    const bilibiliReadyBeforeSweep = bilibiliReadyOf(ports);
     try {
       const missed = db.all(`SELECT s.slot_id, s.plan_id, s.day, s.activity, s.end_at, s.status, s.title, s.target_ref, s.reality FROM p2_plan_slots s
                              JOIN p2_plans p ON p.plan_id = s.plan_id AND p.scope = s.scope
                              WHERE s.scope = ? AND s.status IN ('planned','started') AND s.kind = 'activity' AND s.end_at <= ?
                                AND p.status = 'committed'
                                AND NOT EXISTS (SELECT 1 FROM p2_activities a WHERE a.scope = s.scope AND a.plan_slot_id = s.slot_id)
-                             LIMIT 8`, scopeKey, now);
+                             ORDER BY s.end_at ASC LIMIT 8`, scopeKey, now);
       for (const slot of missed) {
+        // The same gate as the due query, applied one step later in the slot's life. A slot is
+        // "missed" only if this build could have executed it.
+        const capabilityGated = String(slot.activity ?? '') === 'bilibili' && !bilibiliReadyBeforeSweep;
         emit({
           kind: 'autonomy/plan-slot', scopeKey,
           occurredAt: now,
-          payload: { slotId: slot.slot_id, planId: slot.plan_id ?? '', day: slot.day ?? '', from: slot.status, to: 'expired', detail: 'missed' },
+          payload: {
+            slotId: slot.slot_id, planId: slot.plan_id ?? '', day: slot.day ?? '',
+            from: slot.status, to: 'expired',
+            detail: capabilityGated ? 'capability-unavailable' : 'missed',
+          },
         });
+        if (capabilityGated) {
+          // Retired, but nothing happened: report it as one named skip for this beat and stop here.
+          lastStart = { at: now, slotId: slot.slot_id, activityId: '', code: 'bilibili-provider-not-ready' };
+          noteError('p2-slot-expired-capability-unavailable', `slot ${slot.slot_id} expired with its window closed while the Bilibili provider was not ready`);
+          continue;
+        }
         // A missed window also files its evidence: one `missed` receipt against the activity the
         // slot would have produced, written by the activities reducer (the only writer of
         // `p2_activity_receipts`). Deterministic, so a repeated tick cannot duplicate it.
@@ -521,28 +603,29 @@ export function createP2({
      * `LIMIT` 数的是**真的能派**的槽位。
      *
      * 只用既有端口，不新增探针、不联网；不可用不等于崩溃 —— 跳过并记录，其它三类照常派发。
+     *
+     * round-3 P1-4：这个判据已经不在这里就地算，而是 `capabilities.mjs` 的
+     * `bilibiliProviderReady()`，与 heartbeat 的 due/claim 查询、missed 扫描、capability 目录、
+     * dispatchWatch 共用同一份定义。值在本次 tick 开始时算一次，扫描与取 due 用同一个快照，
+     * 避免一分钟内 provider 状态翻转导致"扫描说不可用、取 due 说可用"。
      */
-    const bilibiliReady = (() => {
-      try {
-        if (typeof ports.runBilibili !== 'function') return false;
-        return ports.runBilibili.available?.() !== false;
-      } catch { return false; }
-    })();
+    const bilibiliReady = bilibiliReadyBeforeSweep;
     try {
       // P2.5-1: `started` is a *claim* the heartbeat (or a previous pump tick) already made, and
       // it is only executable while no activity row exists for the slot. The plan join and the
       // `NOT EXISTS` are what make "claimed by the heartbeat" and "started by the pump" one
       // logical job: a superseded plan's slots and an already-created activity are both excluded.
       //
-      // The last clause is the Bilibili gate: a slot whose provider is not ready is not due, so
-      // it neither consumes the two-row window nor the loop's attention.
+      // The last clause is the capability gate: a slot whose provider is not ready is not due, so
+      // it neither consumes the two-row window nor the loop's attention. It is the **same string**
+      // `dueSlotsForHeartbeat` splices in, so the claim path and the start path cannot disagree.
       due = db.all(`SELECT s.slot_id, s.plan_id, s.day, s.start_at, s.end_at, s.status, s.activity, s.title, s.target_ref, s.intent, s.reality
                     FROM p2_plan_slots s
                     JOIN p2_plans p ON p.plan_id = s.plan_id AND p.scope = s.scope
                     WHERE s.scope = ? AND s.status IN ('planned','started') AND s.kind = 'activity'
                       AND s.start_at <= ? AND s.end_at > ?
                       AND p.status = 'committed'
-                      AND (s.activity <> 'bilibili' OR ? = 1)
+                      AND (${CAPABILITY_GATE_SQL})
                       AND NOT EXISTS (SELECT 1 FROM p2_activities a WHERE a.scope = s.scope AND a.plan_slot_id = s.slot_id)
                     ORDER BY s.start_at ASC LIMIT 2`, scopeKey, now, now, bilibiliReady ? 1 : 0);
     } catch { return started; }
@@ -2234,6 +2317,15 @@ export function createP2({
     resume,
     status,
     capabilities: capabilitiesFor,
+    /**
+     * The one capability readiness fact, without the catalogue's other gates.
+     *
+     * `capabilities().bilibili.available` mixes three different answers (port missing, provider not
+     * ready, activities switched off). A caller that needs "would the dispatch gate exclude this
+     * slot" must ask this instead, or an installation with activities off would report every
+     * Bilibili slot as capability-blocked for the wrong reason.
+     */
+    bilibiliProviderReady: () => bilibiliReadyOf(ports),
     createShareCandidate,
     listShareCandidates,
     submitShareCandidate,
