@@ -73,8 +73,14 @@ function sha256OfFile(file) {
   return crypto.createHash('sha256').update(bytes).digest('hex');
 }
 
-export function verifyModule({ moduleRoot, name = 'dsh-bili-scroll' } = {}) {
-  const pin = PINS[name];
+/**
+ * @param {{moduleRoot: string, name?: string, pins?: object}} options
+ *   `pins` exists so the two gates can be tested independently: gate 1 (hash) and gate 2
+ *   (provider publish markers) must each be provable, and forging a sha256 for the real pin is
+ *   not something a test should have to do.
+ */
+export function verifyModule({ moduleRoot, name = 'dsh-bili-scroll', pins = PINS } = {}) {
+  const pin = pins[name];
   if (!pin) return { ok: false, code: 'no-pin', name, note: '这个模块没有固定指纹，不能校验' };
   const directory = path.join(moduleRoot, name);
   const entry = path.join(directory, 'index.js');

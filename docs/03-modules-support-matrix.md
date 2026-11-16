@@ -36,6 +36,15 @@
 | `dsh-bili-scroll`（B站值班） | `https://github.com/c1overzz/dsh-bili-scroll` | 固定 `2.4.0`（tarball），**不跟随 latest** | 第三方代码，本仓库不打包、不代管、不为许可背书 |
 
 - 安装是**用户显式操作**：`dsh plugin --profile <profile> add <tarball URL>`
+- **装上了不等于能用**：`2.4.0` 至少有两个不同字节的构建（`211655` 与 `213810`），只有后者带
+  `dsh.companion.bilibili.providers.v1` 的 `providers.set` 注册代码。版本号无法区分它们，所以部署期
+  用固定指纹判定：
+  ```bash
+  node tools/verify-external-modules.mjs --module-root <dataDir>/home/profiles/<profile>/node_modules
+  # ok / hash-mismatch / provider-publish-absent / file-missing 四个具名 code，退出码 0/1
+  ```
+  `doctor` 也读同一份指纹：已安装但指纹不符时，那一行是 `[注意]` 并写明 `code=…`，**不会**再说
+  「已安装」就完事。未就绪时 runtime 保持 `provider-not-ready`，派发 fail-closed（不排 B 站活动）
 - 它自带 Python 依赖（ASR/转写虚拟环境）；**本套件不代管这个 venv**
 - 默认关闭：`modules.bilibili=false`；「自动评论 / 自动投递」必须**单独**开启，且受 `safety.autoComment` 总闸
 - 它的许可证与来源需用户自行核实

@@ -17,7 +17,8 @@ import path from 'node:path';
 import { spawnSync } from 'node:child_process';
 import { SUITE_ROOT, SUITE_PATHS } from '../tools/lib/paths.mjs';
 import { loadConfig, enabledModules } from '../tools/lib/config.mjs';
-import { dshEnv, dumpFileUrls, fileUrlToPath, patchFileUrls } from '../tools/lib/dsh.mjs';
+import { resolveHost } from '../tools/lib/host.mjs';
+import { dshEnv, describeLauncher, dumpFileUrls, fileUrlToPath, patchFileUrls } from '../tools/lib/dsh.mjs';
 import { activePatchBlocks, renderPatchTemplate, PATCH_TEMPLATE } from './setup.mjs';
 
 const argv = process.argv.slice(2);
@@ -148,6 +149,38 @@ function runUnit() {
       record('unit', label, 'failed', detail);
     }
   }
+
+  // Suite-level tools (host discovery, external-module fingerprints, migration) are part of the
+  // release gate too. They used to be runnable only by hand, which is how a fixture that broke
+  // the leak scan and a host resolver that ignored `app.asar` both stayed green in `verify`.
+  runToolTests();
+}
+
+// Run every `*.test.mjs` under tools/ in one Node test process. `tools` is a directory here and
+// not a bare directory path: Node's test runner does not scan directories, so the glob is what
+// selects them.
+function runToolTests() {
+  const res = spawnSync(process.execPath, ['--test', 'tools/**/*.test.mjs'], {
+    cwd: SUITE_ROOT,
+    stdio: 'pipe',
+    encoding: 'utf8',
+    env: { ...process.env, CI: '1' },
+    timeout: 20 * 60 * 1000,
+  });
+  const out = `${res.stdout || ''}\n${res.stderr || ''}`;
+  const label = 'tools（宿主探测 / 外部模块指纹 / 迁移）';
+  if (res.status === 0) {
+    const passMatch = out.match(/# pass (\d+)/);
+    record('unit', label, 'ok', passMatch ? `${passMatch[1]} 个测试通过` : '通过');
+    return;
+  }
+  const named = out
+    .split('\n')
+    .filter((l) => /^\s*(?:✖|not ok)\s/.test(l))
+    .map((l) => l.trim())
+    .slice(0, 8);
+  const tail = out.trim().split('\n').slice(-12).join('\n      ');
+  record('unit', label, 'failed', named.length ? `exit ${res.status}\n      失败用例：\n      ${named.join('\n      ')}` : `exit ${res.status}\n      ${tail}`);
 }
 
 /* ────────────────────────── static ────────────────────────── */
@@ -655,31 +688,40 @@ async function checkDataRootParity() {
 /* ────────────────────────── compose ───────────────────────── */
 function runCompose() {
   section('compose — 宿主合成检查');
-  let host;
+  let configured = {};
   let dataHome;
+  let hasConfig = false;
   try {
-    const { config, dataPaths } = loadConfig();
-    host = config.dsh || {};
-    dataHome = dataPaths.home;
+    const loaded = loadConfig();
+    configured = loaded.config.dsh || {};
+    dataHome = loaded.dataPaths.home;
+    hasConfig = fs.existsSync(SUITE_PATHS.configFile);
   } catch {
-    host = {};
+    configured = {};
     dataHome = path.join(SUITE_ROOT, 'data', 'home');
   }
-  const exe = host.executable && fs.existsSync(host.executable) ? host.executable : '';
-  const cli = host.moduleRoot
-    ? path.join(host.moduleRoot, '@deepseek-ai', 'dsh-desktop-host', 'lib', 'cli.js')
-    : '';
+  // Resolve the host the same way doctor does: `app.asar` roots are only visible from inside the
+  // desktop binary, so a plain `fs.existsSync(cli)` would report "no host" on an install that
+  // demonstrably has one.
+  const host = resolveHost(configured);
+  const launcher = describeLauncher(host);
   const patch = path.join(SUITE_PATHS.configDir, 'profile', 'companion.patch.yml');
 
-  if (!exe || !cli || !fs.existsSync(cli)) {
-    record('compose', 'dsh --dump-config', 'skipped', '未检测到 DSH 宿主（CI 正常现象，不算失败）');
+  if (!hasConfig) {
+    // The real reason a clean checkout cannot compose: without `config/suite.json` there is no
+    // profile to compose against. Saying "no host" here would be a wrong diagnosis.
+    record('compose', 'dsh --dump-config', 'skipped', '没有 config/suite.json，也就没有 profile 可合成（先跑 npm run setup；CI 里这属于正常现象）');
+    return;
+  }
+  if (!launcher.ready) {
+    record('compose', 'dsh --dump-config', 'skipped', `没有可用的宿主 CLI：${launcher.reason}`);
     return;
   }
   if (!fs.existsSync(patch)) {
     record('compose', 'dsh --dump-config', 'skipped', '还没有生成 profile 补丁，先跑 npm run setup');
     return;
   }
-  const res = spawnSync(exe, ['--expose-internals', cli, '--profile', host.profile || 'companion', '--patch', patch, '--dump-config'], {
+  const res = spawnSync(launcher.command, ['--expose-internals', launcher.cliPath, '--profile', configured.profile || 'companion', '--patch', patch, '--dump-config'], {
     encoding: 'utf8',
     timeout: 120000,
     env: {
@@ -695,7 +737,7 @@ function runCompose() {
   const out = `${res.stdout || ''}${res.stderr || ''}`;
   if (res.status === 0 && out.includes('- id:')) {
     const rows = (out.match(/^- id: /gm) || []).length;
-    record('compose', 'dsh --dump-config', 'ok', `${rows} 个 loader 行`);
+    record('compose', 'dsh --dump-config', 'ok', `${rows} 个 loader 行（launcher=${launcher.launcher}）`);
   } else {
     record('compose', 'dsh --dump-config', 'failed', `exit ${res.status}: ${out.trim().split('\n').slice(-6).join(' | ')}`);
   }

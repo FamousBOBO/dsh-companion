@@ -210,16 +210,16 @@ QQ 发送**。下面每一行都写着"改了什么 + 用什么命令证明的"�
 | 「无 `message_id` 不记为已发送」（P2 第 10 条） | `offline-test` | `src/delivery.mjs` 的 `statusOf()` 原先把 `{ok:true}` 但无回执记成 `sent`；现在记 `unknown`（显式 `status=failed/unknown` 照它自己的话）。`test/expression-chain-p2.test.mjs` **6 项**把 docs/11 P2 第 7–10 条钉在一起：无候选不随机挑图 / `reply` 只认候选 `assetId` / 同轮最多一张 / 无回执不算发过且不重投 |
 | 出站配图与入站理解分离（P1） | `offline-test` | 入站那条（用户发表情）不再触碰出站逻辑；出站那条（Bot 自己配图）仍走 `presence-afterspeak.ts` 的 `stickerStep`，受 `presence.stickers`、每群 10 分钟冷却与每小时额度约束。`test/presence-stickers.test.ts` **10 项**钉住：`stickers=false` 时一次图库都不问；额度允许时先问候选再用候选 `assetId` 发、且 `mode=text_then_sticker`；冷却/额度按群记且不同群互不影响；**没发成功（`no-candidate` / 无回执）时账本不前进**（一次失败不锁死 10 分钟）；图库抛错与没有服务都只记一行、不冒泡。出站实现本身**未改**（`git diff e2bde2c..HEAD` 对该文件为空） |
 | 整体离线验证 | `offline-test` | 开发 worktree：`npm test --workspace=@dsh-companion/channel-qq` → **1793 tests / 1792 pass / 0 fail / 1 skip**（该 skip 是既有的「真实会话文件逐帧解码」用例）；`plugins/companion-expression` `node --test "test/*.test.mjs"` → **227/227 通过**；`npm run verify` → `unit` 9 模块通过 0 失败、`static` 32 通过 0 失败、`compose` **SKIPPED**（本机 `doctor` 探测不到宿主 CLI 入口，见下一行）；channel-qq 的 `check:size` / `check:layers` / `check:syntax` / `check:admin` 全通过 |
-| 宿主装载（`host-load`） | **未验证** | 开发 worktree 的 `doctor` 报 `[失败] 宿主 CLI 入口 — 宿主目录里找不到 CLI 入口`：本机装的是 `0.2.2-rc.1`，CLI 在 `app.asar` 内而不是 `resources/app/dsh`，`tools/lib/host.mjs` 的推导路径对不上。**这是环境差异，不是本次改动引入的**（基线 `verify` 的 `compose` 同样 SKIPPED）。因此 `expression_*` 工具在真宿主上是否注册、是否有会话可见、发送器是否可见，**本轮没有实测证据**——诊断代码已经就位，但「诊断能跑」不等于「链路在真宿主上通了」 |
+| 宿主装载（`host-load`） | **未验证** | ~~开发 worktree 的 `doctor` 报 `[失败] 宿主 CLI 入口 — 宿主目录里找不到 CLI 入口`~~ **2026-11-16 已修**（见 §2.10）：`resources/app.asar/dsh/node_modules` 现在由桌面二进制内部探测，本机 `doctor` 该项转 `[通过]`，版本报 `0.2.2-rc.1`（来源 `probe`）。**但这一条仍然未验证**：探测通过只说明能定位 CLI，不等于插件在运行实例里装载成功。要看装载证据仍得启动日志里那两行 |
 | 真实 QQ 发送（`real-send`） | **未验证，且本轮不允许** | 独立 worktree 的 `config/suite.json` 全部沿用模板：`modules.expression=false`、`delivery.enabled=false`、`safety.*` 全关。真实发送必须由操作者在**生产环境**显式触发，并按 §2.6 的口径记录 `provider_message_id` 与回读 `sub_type` |
 
 > 结论措辞只能用：「表情包链路的工具名、服务发现、入站语义、可见性诊断与发送纪律在**离线测试**层面
 > 通过（channel-qq 1792 项 + expression 227 项，0 失败）；**宿主装载与真实发送本轮未验证**」。
 >
 > 三个容易读错的点：
-> 1. **`offline-test` 全绿 ≠ 宿主装载通过**：本机宿主版本 `0.2.2-rc.1` 与 `tools/lib/host.mjs`
->    推导的 CLI 路径不一致，`compose` 一直是 SKIPPED（基线如此）。要升级这条证据，得先在能探测到
->    CLI 的机器上跑 `npm run doctor` 到「核心检查通过」，再看启动日志里有没有
+> 1. **`offline-test` 全绿 ≠ 宿主装载通过**：本轮之前 `tools/lib/host.mjs` 推导的 CLI 路径与本机
+>    `0.2.2-rc.1` 的 `app.asar` 布局对不上，`compose` 一直是 SKIPPED；2026-11-16 已修（§2.10），
+>    现在探测与合成都能跑通，但**装载**仍未验证。要升级这条证据，得看启动日志里有没有
 >    `已注册 5 个工具` 与 `宿主接线：发送器=有/采集http=有/入库=有/主人判定=有` 那两行。
 > 2. **「表情包不发了」现在可以一句话查清**：后台状态快照的 `expressionVisibility` 与
 >    `expression` 两格，加上 `node plugins/companion-expression/scripts/diagnose.mjs --dm … --group …`，
@@ -234,6 +234,27 @@ QQ 发送**。下面每一行都写着"改了什么 + 用什么命令证明的"�
 >    它里面有跨进程/`Atomics.wait` 的用例，并行跑时对机器负载敏感。按 §4.1 的口径，这类红
 >    要先用「单模块复跑」证明不是代码坏了，再往下走。
 
+
+### 2.10 非 UI 修复轮（2026-11-16）：宿主布局探测 / 静态扫描 / 外部模块指纹
+
+> 这一轮**没有**启动陪伴宿主、没有调真实模型或平台 API、没有改本机 `config/suite.json` 或 `data/`。
+> 下面每一行的证据都停在 `offline-test`，只有 `compose` 那一条标了它用的是哪个宿主。
+
+| 项目 | 等级 | 结果与边界 |
+|---|---|---|
+| 宿主布局探测（`tools/lib/host.mjs`） | **`offline-test`** | `node --test tools/lib/host.test.mjs` → **15/15 通过**（`exists`/`readJson`/`probe` 全部注入，不读本机安装）。矩阵覆盖：`resources/app/dsh`、`resources/app.asar.unpacked/dsh`、`app.asar` 内部、显式 `moduleRoot` 优先、headless 只配 `moduleRoot`、可执行文件在但入口缺失、元数据损坏/缺失、版本低于最低要求 |
+| 宿主版本读取 | **`offline-test` + 本机只读实测** | 本机 `resolveHost({})` → `version=0.2.2-rc.1`、`versionSource=probe`、`moduleRoot=…\resources\app.asar\dsh\node_modules`、`cliExists=true`。版本来自桌面二进制**内部**（`app.asar/dsh/package.json` 或 `runtime/primary-runtime/runtime.json`）。plain `node` 读不到 `app.asar`，所以这条路径只能由二进制自己回答；读不到时仍报 `unknown`，不猜 |
+| `compose`（隔离实例） | **`host-load`（隔离合成）** | 在本机临时 `DSH_HOME` 里用真实桌面宿主合成：**198 个 loader 行 / exit 0 / 234 ms**，`preset-companion`、`companion-workspace-context`、`companion-foundation` 都在结果里，补丁的 2 个 `file://` 入口全部存在。**这是 `--dump-config` 合成，不是装载**——不代表插件在运行实例里被挂上 |
+| `compose`（干净检出） | **`SKIPPED`** | 没有 `config/suite.json` 就没有 profile 可合成。`verify` 现在把这条原因写清楚；旧文案一律说"未检测到宿主"，会把"缺配置"误诊成"缺宿主" |
+| 静态发布扫描 | **`offline-test`** | `node scripts/verify.mjs --only=static` → **39 通过 / 0 失败**（基线 38/1：`tools/lib/host-temp.test.mjs:5` 命中 `author-path`）。修法是把测试夹具路径改成运行时拼装，**没有**给该文件加扫描豁免，也没有放松 `author-path` 规则 |
+| `tools/` 纳入发布闸门 | **`offline-test`** | `verify` 的 `unit` 段新增一行 `tools（宿主探测 / 外部模块指纹 / 迁移）`：`node --test tools/**/*.test.mjs` 一并跑。之前这些测试只能手动跑，`verify` 全绿并不覆盖它们——上面两条缺陷就是这么漏出来的 |
+| 外部 B 站模块指纹 | **`offline-test` + 本机只读指纹** | `node tools/verify-external-modules.mjs`：生产 profile → `code=hash-mismatch`（`bytes=211655`，pin `127D04BE…`）；`data/backups/pnpm-store-repair-20261113` 的副本 → `code=ok`（`bytes=213810`）。两者 `package.json` 的 `version` 都是 `2.4.0` ⇒ 版本号不能当判据 |
+| B 站 provider 注册生命周期 | **`offline-test`** | `tools/bilibili-provider-integration.test.mjs` → **5/5 通过**：指纹通过的合成副本 import 后真的把 provider 写进 `Symbol.for('dsh.companion.bilibili.providers.v1')` 注册表；`ready()` 转身 → 端口立刻 `available()===false`；删条目（卸载）→ 不可用；重新挂载 → 恢复；未就绪时 `run` 返回 `failed` 且 0 条证据 |
+| B 站派发闸门 | **`offline-test`** | `plugins/companion-runtime/test/{bilibili-provider,p2-bilibili-provider-gate}.test.mjs` → **4/4 通过**（未就绪不排 B 站、残留 slot 不 start、就绪时真的 start） |
+| 真实 B 站观看/评论/发送 | **未验证** | 本轮**没有**登录、没有触发真实观看或发送。`provider-not-ready` 与派发 fail-closed 保持原样，没有用文案把它写成可用 |
+| 模块离线测试 | **`offline-test`** | `npm ci` → `npm run build` → `node scripts/verify.mjs` → `unit` **10 模块通过 / 0 失败 / 1 无测试**（`paste-search` 如实记 `no-tests`）；`static` 39/0；`compose` SKIPPED（干净检出） |
+
+**这几条明确不算证据**：Windows 上 `memory-studio` 与 `channel-qq` 在**未构建**状态会红（构建产物缺失），`npm run build` 后转绿——既不是缺陷，也不能说成"模块本来就好"；「合成 198 行」不等于「运行实例里 198 个都活着」；指纹通过只说明字节对，不说明 B 站账号能用。
 
 ### 2.9 群聊社交运行时 P5–P8（2026-11-08）：仍只有 `offline-test`，真实发送未开始
 

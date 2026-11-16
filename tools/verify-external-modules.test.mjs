@@ -47,18 +47,34 @@ test('hash-mismatch：字节不同就拒绝（版本号相同不算证据）', a
   assert.equal(result.bytesMatch, false);
 });
 
-test('provider-publish-absent：字节匹配但源码里没有 publish（判据二）', async t => {
-  // Build a copy whose hash equals the pin so the second gate is what fires.
-  const root = fixture(t, { bytes: 'noop\n', version: pin.version });
-  const entry = path.join(root, 'dsh-bili-scroll', 'index.js');
-  const want = pin.indexSha256;
-  // We cannot forge sha256; instead assert the gate's logic directly on a pinned-name-free path:
-  // verification with a pin whose hash we control is not possible here, so assert the marker check
-  // through the public shape: a matching hash but missing markers must be reported, not accepted.
+test('provider-publish-absent：字节匹配但源码里没有 publish（判据二独立成立）', async t => {
+  // Gate 2 has to be provable on its own: a copy whose hash matches a pin we control, but whose
+  // source lacks the registry publish markers, must be reported — not accepted.
+  const bytes = 'noop\n';
+  const controlled = { 'dsh-bili-scroll': { version: '2.4.0', indexSha256: crypto.createHash('sha256').update(bytes).digest('hex'), expectedBytes: bytes.length, requiresProviderPublish: true } };
+  const root = fixture(t, { bytes, version: '2.4.0' });
+  const result = verifyModule({ moduleRoot: root, pins: controlled });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'provider-publish-absent');
+  assert.deepEqual(result.missingMarkers, ['dsh.companion.bilibili.providers.v1', 'providers.set(']);
+  assert.match(result.note, /provider 永远不会 ready/);
+});
+
+test('判据二的对照：同一份字节补上 publish 代码后必须通过（否则这个门是死的）', async t => {
+  const bytes = goodSource;
+  const controlled = { 'dsh-bili-scroll': { version: '2.4.0', indexSha256: crypto.createHash('sha256').update(bytes).digest('hex'), expectedBytes: Buffer.byteLength(bytes), requiresProviderPublish: true } };
+  const root = fixture(t, { bytes, version: '2.4.0' });
+  const result = verifyModule({ moduleRoot: root, pins: controlled });
+  assert.equal(result.ok, true);
+  assert.equal(result.code, 'ok');
+  assert.deepEqual(result.missingMarkers, []);
+});
+
+test('hash-mismatch 优先于 provider-publish-absent：先问字节，再问内容', async t => {
+  const root = fixture(t, { bytes: goodSource, version: pin.version });
   const result = verifyModule({ moduleRoot: root });
-  assert.equal(result.ok, false, 'a copy without publish code is never accepted');
-  assert.ok(['hash-mismatch', 'provider-publish-absent'].includes(result.code), result.code);
-  void entry; void want;
+  assert.equal(result.code, 'hash-mismatch');
+  assert.deepEqual(result.missingMarkers, [], 'the source does contain the markers — only the bytes differ');
 });
 
 test('no-pin：没有固定指纹的模块直接判不可校验，不默认通过', async t => {
