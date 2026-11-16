@@ -128,16 +128,21 @@ const GATED_COUNT_SQL = `
 // P2-6c (round-5 N4): the **rows** side of the gate, with no window predicate at all.
 //
 // `GATED_SQL` above is deliberately "due now" because `slots_capability_blocked` is a due-now
-// metric. But `rows[]` must contain **every open slot** — that is the invariant the whole watch
-// rests on ("`slots_open` counts them, `rows[]` shows them"). Round-4's N2 fix applied the gate
-// to `CLAIMED_SQL`, which made a `started` Bilibili slot whose window has **not opened yet**
-// vanish from `rows[]` entirely: it is not `due` (`start_at > now`), not `will-miss`
-// (`end_at > now`), and no longer `awaiting-start` either. Three queries, three window
-// predicates, one hole between them.
+// metric. The row list needs the opposite property: **no slot may fall through a window gap**.
+// Round-4's N2 fix applied the gate to `CLAIMED_SQL`, which made a `started` Bilibili slot whose
+// window has **not opened yet** vanish from `rows[]` entirely: it is not `due` (`start_at > now`),
+// not `will-miss` (`end_at > now`), and no longer `awaiting-start` either. Three queries, three
+// window predicates, one hole between them.
 //
 // This predicate filters on **capability and nothing else**, so the gated rows cover every
 // window position and the hole closes. `GATED_SQL`/`GATED_COUNT_SQL` stay as the due-now
 // measurement; this one is only for the row list.
+//
+// **Bounded, not exhaustive** (round-6 N6): every query in this file carries `LIMIT ?`, and
+// `dispatchWatch()` takes `limit` from its caller (default 20). So `rows[]` holds at most
+// `3 × limit` rows — one sample per query, not the whole scope — while `dispatchMetrics()` reports
+// `slots_open` and `slots_due` as exact counts. That is why `rows[]` carries no completeness
+// promise: read the counts for "how many", the rows for "which ones, up to the cap".
 const GATED_ANY_SQL = `
   SELECT s.slot_id, s.plan_id, s.day, s.start_at, s.end_at, s.activity, s.reality,
          s.target_ref, s.locked, s.status
@@ -541,8 +546,9 @@ export function dispatchWatch(db, {
   // the slot is one of that provider's kinds. `undefined` (not reported) never blocks: the watch
   // must not invent a refusal it cannot observe.
   const gatedRows = capabilityGatedSlotRows(db, { scopeKey: scope, now: at, limit });
-  // The row-coverage query: any window position, capability-gated only. This is what guarantees
-  // "every open slot appears exactly once in `rows[]`".
+  // The row-coverage query: any window position, capability-gated only. It closes the window gap
+  // left by the three predicate-bounded queries above — capped like every other row query, so it
+  // samples at most `limit` gated slots rather than enumerating the scope.
   const gatedAny = bilibiliReady === false
     ? capabilityGatedAnySlotRows(db, {
       scopeKey: scope, now: at, limit: Math.max(1, Math.min(200, Math.trunc(Number(limit) || 20))),
@@ -666,8 +672,11 @@ export function dispatchWatch(db, {
     };
   };
   // The union of the due-now set, the closed set and the any-window set: the first two carry the
-  // rows their predicates selected, the last guarantees coverage. `put()` de-duplicates by slotId,
-  // so a slot found by more than one query still yields one row.
+  // rows their predicates selected, the last closes the window gap between them. Each of the three
+  // is capped at `limit` (round-6 N6), so `rows[]` is a sample bounded by `3 × limit`, not the
+  // whole scope — the exact "how many" numbers live in `dispatchMetrics()`. `put()` de-duplicates
+  // by slotId, so a slot found by more than one query still yields exactly one row and the
+  // `counts` below are never inflated by overlap.
   const gatedAll = [
     ...(gatedRows.ok ? gatedRows.rows : []),
     ...(gatedClosed.ok ? gatedClosed.rows : []),
@@ -704,9 +713,10 @@ export function dispatchWatch(db, {
       claimable: claimable.length,
       effectBlocked: rows.filter(row => row.state === 'blocked-effect').length,
       // N5 (round-5): `counts.capabilityBlocked` counts **rows by state** — every window position,
-      // because `rows[]` covers every open slot. `dispatchMetrics().slots_capability_blocked` is a
-      // **due-now** number. They are different questions with a similar name, so the field comment
-      // here (and CONTRACT §15.3) says which is which instead of leaving the reader to guess.
+      // but only for the sampled rows in `rows[]` (round-6 N6: capped, not exhaustive).
+      // `dispatchMetrics().slots_capability_blocked` is a **due-now**, exact count. They are
+      // different questions with a similar name, so the field comment here (and CONTRACT §15.3)
+      // says which is which instead of leaving the reader to guess.
       capabilityBlocked: rows.filter(row => row.state === 'blocked-capability').length,
       awaitingStart: rows.filter(row => row.state === 'awaiting-start').length,
       willMiss: rows.filter(row => row.state === 'will-miss').length,

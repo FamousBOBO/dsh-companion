@@ -340,7 +340,7 @@ CONTRACT §15.3 的那个），也没有让 watch 从"零写入"变成会写。
 
 | 编号 | 缺陷（一句话） | 修法 | 证据 |
 |---|---|---|---|
-| **N4（P3）** | N2 把闸门接进 `CLAIMED_SQL` 后，`started` + **窗口尚未开启**的 B 站槽从 `rows[]` **整条消失**：它不是 `due`（`start_at > now`）、不是 `will-miss`（`end_at > now`）、也不再是 `awaiting-start`。三条窗口有界的查询各差一个时间条件，中间正好漏掉这一段 —— `slots_open` 说 3，`rows[]` 只剩 2，**"每个未结槽出现且只出现一次"这条不变量破了** | 再加一条**没有任何窗口判据**的 `GATED_ANY_SQL` / `capabilityGatedAnySlotRows()`，只按能力过滤，保证行覆盖；行级状态统一由 `gatedState(row)` 按窗口位置判定（已关 / 未开 / 开着），`blockDetail` 分三句写各自的退役方式；`GATED_SQL`/`GATED_COUNT_SQL` 保持 due-now 语义 | `plugins/companion-runtime/test/p2-bilibili-watch-capability.test.mjs` 新增两条：三个 `started` 槽（已关 / 开着 / 未开）⇒ `rows[]` 恰三条且 id 集合 `['b-closed','b-future','b-open']`、全部 `blocked-capability`、`expectedBeat:null`、detail 不含 "files it as missed"；同时 `metrics.slots_capability_blocked` 仍是 **1**（due-now 只数到期的那个），证明把行覆盖和 due-now 计数分开而不混为一谈；就绪回归：同样三条全部出现，`b-closed` 回 `will-miss`、另两条 `awaiting-start` |
+| **N4（P3）** | N2 把闸门接进 `CLAIMED_SQL` 后，`started` + **窗口尚未开启**的 B 站槽从 `rows[]` **整条消失**：它不是 `due`（`start_at > now`）、不是 `will-miss`（`end_at > now`）、也不再是 `awaiting-start`。三条窗口有界的查询各差一个时间条件，中间正好漏掉这一段 —— `slots_open` 说 3，`rows[]` 只剩 2 | 再加一条**没有任何窗口判据**的 `GATED_ANY_SQL` / `capabilityGatedAnySlotRows()`，只按能力过滤，补上三条查询之间的窗口缺口；行级状态统一由 `gatedState(row)` 按窗口位置判定（已关 / 未开 / 开着），`blockDetail` 分三句写各自的退役方式；`GATED_SQL`/`GATED_COUNT_SQL` 保持 due-now 语义 | `plugins/companion-runtime/test/p2-bilibili-watch-capability.test.mjs` 新增两条：三个 `started` 槽（已关 / 开着 / 未开）⇒ `rows[]` 恰三条且 id 集合 `['b-closed','b-future','b-open']`、全部 `blocked-capability`、`expectedBeat:null`、detail 不含 "files it as missed"；同时 `metrics.slots_capability_blocked` 仍是 **1**（due-now 只数到期的那个）；就绪回归：同样三条全部出现，`b-closed` 回 `will-miss`、另两条 `awaiting-start` |
 | **N5（P3）** | `counts.capabilityBlocked`（按 state 数行，覆盖所有窗口位置）与 `metrics.slots_capability_blocked`（due-now）名字相近、数值可能不同（3 vs 1），容易被读成"又打架" | 不改名（观测字段已冻结），在字段旁与 `CONTRACT.md` §15.3/§15.6 各写一句口径；测试里直接用 3 vs 1 把这个差异钉成**有意的** | 同上：N4 主用例断言 `counts.capabilityBlocked === 3 && metrics.slots_capability_blocked === 1`，并在注释里写明这是两个不同的问题 |
 
 总账（本轮本机实测）：`node scripts/verify.mjs` → `unit` 10 通过 / 0 失败 / 1 无测试，`static` 39/0，
@@ -352,6 +352,16 @@ CONTRACT §15.3 的那个），也没有让 watch 从"零写入"变成会写。
 N4 的**可达性不夸大**：心跳只交窗口覆盖 `now` 的槽，自己不会产生"`started` + 未来窗口"；
 `claimSlotForHeartbeat()` 没有窗口校验，宿主直接调它才会造出这个状态——所以判 P3，
 而不是写成"生产必然发生"。本节两条同样只改只读观测，没有新增状态名。
+
+### 2.15 PR #4 六轮审查的收口（2026-11-17）：N6 措辞（`rows[]` 是取样，不是全量）
+
+> 六轮复核确认 N4/N5 都对，并指出我上一版**把 `rows[]` 说成了全量**。这一条只改措辞，代码零改动。
+
+| 编号 | 缺陷（一句话） | 修法 | 证据 |
+|---|---|---|---|
+| **N6（P3，措辞）** | N4 的注释与用例标题写"`rows[]` 覆盖每一个未结槽"，是**说过头了**。`rows[]` 由三条各带 `LIMIT ?` 的查询拼接，上界 `3 × limit`；`dispatchWatch` **没有** `truncated` 标志（`dispatchMetrics` 有）。实测 25 read + 25 bilibili、`limit=20` ⇒ `slots_open 50` 而 `rows[] 40`。**既有行为**（`GATED_ANY_SQL` 之前也一样），不是 N4 引入 | 只改措辞：`CONTRACT.md` §15.3 新增"`rows[]` 是取样，不是全量"一行（并写明"`rows.length >= 3 × limit` 就是到上限"）；`dispatch-observability.mjs` 三处注释与 `p2-bilibili-watch-capability.test.mjs` 两条用例标题同步改口；代码与断言零改动 | 六轮复核的探针输出（上表数字）+ 本轮 `p2-bilibili-watch-capability` **6/6**、runtime **728/728** 不变；改的是措辞，所以测试计数必然不变——这本身就是"只改注释"的证据 |
+
+**没有做的事**：没给 `dispatchWatch` 补 `truncated` 标志。那是**新增字段**（会改观测契约），不是措辞问题；六轮报告也把它列在"合并后单开一条"里。要加就该连 `counts` 的语义一起定，不该混进这条只改措辞的收口。
 
 
 ### 2.9 群聊社交运行时 P5–P8（2026-11-08）：仍只有 `offline-test`，真实发送未开始

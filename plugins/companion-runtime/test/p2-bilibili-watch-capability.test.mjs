@@ -267,7 +267,7 @@ test('N2 回归：provider 就绪时遗留的 started 槽照旧算 awaiting-star
   assert.equal(watched.rows.find(entry => entry.slotId === 'slot-bili').state, 'awaiting-start');
 });
 
-test('N4：rows[] 必须覆盖每一个未结槽 —— started + 窗口尚未开启 + 能力未就绪也不能消失', async t => {
+test('N4：三条查询之间的窗口缺口不许吞行 —— started + 未开启窗口 + 能力未就绪也必须出现在 rows[]', async t => {
   // Round-5 review: after N2 applied the gate to `CLAIMED_SQL`, a `started` Bilibili slot whose
   // window had **not opened yet** vanished from `rows[]` entirely — it is not due
   // (`start_at > now`), not `will-miss` (`end_at > now`) and no longer `awaiting-start`. Three
@@ -297,8 +297,10 @@ test('N4：rows[] 必须覆盖每一个未结槽 —— started + 窗口尚未�
   assert.equal(watched.ok, true, JSON.stringify(watched));
   assert.equal(watched.metrics.slots_open, 3, 'three open slots are counted');
 
-  // The invariant: every open slot appears exactly once. A missing row is the N4 defect; a
-  // duplicated row would be the other half of the same problem.
+  // The property under test: no slot may fall through the gap between the three window-bounded
+  // queries, and `put()` must not duplicate one that more than one query found. (Only these three
+  // fixtures exist in the scope, so all three must appear — with a larger scope `rows[]` is capped
+  // at `3 × limit`, which is a bound, not a completeness promise; see CONTRACT §15.3.)
   const ids = watched.rows.map(row => row.slotId).sort();
   assert.deepEqual(ids, ['b-closed', 'b-future', 'b-open'], `rows[] must cover every open slot: ${JSON.stringify(watched.rows)}`);
   assert.equal(new Set(ids).size, ids.length, 'and exactly once');
@@ -328,7 +330,7 @@ test('N4：rows[] 必须覆盖每一个未结槽 —— started + 窗口尚未�
   assert.equal(watched.metrics.slots_capability_blocked, 1, 'due-now only, not 3');
 });
 
-test('N4 回归：provider 就绪时同样三个槽位全部以 awaiting-start 出现（行覆盖不依赖闸门）', async t => {
+test('N4 回归：provider 就绪时同样三个槽位全部出现（行覆盖不依赖闸门）', async t => {
   const clock = { value: T0 };
   const root = makeRoot(t);
   const runtime = mount(t, root, { clock, providerReady: true });
