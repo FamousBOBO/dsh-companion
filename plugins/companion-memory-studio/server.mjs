@@ -13,6 +13,9 @@ import * as write from './lib/write.mjs';
 import * as health from './lib/health.mjs';
 import { collectorTerminals } from './lib/collector-terminals.mjs';
 import { companionDashboard } from './lib/companion-dashboard.mjs';
+import { settingsCatalog } from './lib/settings-catalog-route.mjs';
+import { memoryTraceEvents, traceEvents, traceStream } from './lib/trace-route.mjs';
+import { worksIndex, workDetail } from './lib/works-route.mjs';
 // The health service is owned by a sibling plugin row; `resolveHealthService` is the one place that
 // knows how to reach it (ctx → process registry → service bridge).
 import { resolveHealthService } from '../companion-foundation/health-service-ref.mjs';
@@ -39,6 +42,14 @@ export const ROUTES = Object.freeze([
   {name:'persona',method:'GET',path:`${API_PREFIX}/persona`,handler:personaSettings},
   {name:'persona-save',method:'POST',path:`${API_PREFIX}/persona`,handler:personaSettings},
   {name:'runtime-logs-stream',method:'GET',path:`${API_PREFIX}/runtime-logs/stream`,handler:operator.runtimeLogsStream},
+  // W2：结构化诊断事件（只读）。trace-stream 是 SSE，trace-events 是同一份数据的一次性快照。
+  {name:'trace-events',method:'GET',path:`${API_PREFIX}/trace-events`,handler:traceEvents},
+  {name:'trace-stream',method:'GET',path:`${API_PREFIX}/trace/stream`,handler:traceStream},
+  // 记忆侧事件是从既有 memory-recall.jsonl 投影出来的，不新增落盘。
+  {name:'trace-memory',method:'GET',path:`${API_PREFIX}/trace-memory`,handler:memoryTraceEvents},
+  // W3：作品中心（只读浏览 + 预览）。list 与 detail 都只读，路径在服务端校验。
+  {name:'works',method:'GET',path:`${API_PREFIX}/works`,handler:worksIndex},
+  {name:'work-detail',method:'GET',path:`${API_PREFIX}/work-detail`,handler:workDetail},
   {name:'web-panel-control',method:'POST',path:`${API_PREFIX}/web-panel-control`,handler:operator.webPanelControl},
   {name:'runtime-settings',method:'GET',path:`${API_PREFIX}/runtime-settings`,handler:operator.runtimeSettings},
   {name:'runtime-settings-write',method:'POST',path:`${API_PREFIX}/runtime-settings`,handler:operator.runtimeSettings},
@@ -59,6 +70,8 @@ export const ROUTES = Object.freeze([
   { name: 'settings', method: 'GET', path: `${API_PREFIX}/settings`, handler: read.settings },
   { name: 'settings-write', method: 'POST', path: `${API_PREFIX}/settings`, handler: write.settingsWrite },
   { name: 'settings-test', method: 'POST', path: `${API_PREFIX}/settings/test`, handler: write.settingsProbe },
+  // W1：唯一字段注册目录 + 跨设置项搜索。只读投影（QQ schema + Studio spec），不写配置、不回明文。
+  { name: 'settings-catalog', method: 'GET', path: `${API_PREFIX}/settings-catalog`, handler: settingsCatalog },
   { name: 'timeline', method: 'GET', path: `${API_PREFIX}/timeline`, handler: read.timeline },
   { name: 'maintenance', method: 'POST', path: `${API_PREFIX}/maintenance`, handler: write.maintenance },
   { name: 'plan-slot', method: 'POST', path: `${API_PREFIX}/plan-slot`, handler: write.planSlotAction },

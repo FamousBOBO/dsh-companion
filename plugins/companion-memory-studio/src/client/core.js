@@ -54,21 +54,22 @@ P.registerPage = (definition) => {
   else P.pages.push(entry);
 };
 
-// The seven first-level entries of the product. A group entry owns tabs, each tab
-// is a registered page; `chat` is not a page of this plugin at all.
+// The first-level entries of the product (13 as of the UI unification). A group entry
+// owns tabs, each tab is a registered page; every entry here is a page of this plugin.
 const NAV = [
   { id: 'home', label: '陪伴首页', icon: 'home', hint: '她现在的生活与最近一起经历的事' },
   { id: 'chat', label: '聊天', icon: 'chat', hint: '回复、延时、免打扰与群聊行为' },
   { id: 'persona', label: '人格', icon: 'heart', hint: '性格、语气与相处方式' },
   { id: 'qq-web', label: 'QQ 连接', icon: 'chat', hint: 'NapCat / SnowLuma 网页面板' },
-  { id: 'life', label: '生活与日程', icon: 'calendar', hint: '今天、接下来，以及她的计划' },
+  { id: 'life', label: '生活与日程', icon: 'calendar', hint: '今天、接下来，以及她的计划', tabs: ['life', 'health'] },
   { id: 'health', label: '运动健康', icon: 'heart', hint: '活动、睡眠与实时心率' },
   { id: 'memory', label: '记忆与档案', icon: 'book', hint: '记忆库、Wiki、时间线与待核对', tabs: ['vault', 'wiki', 'timeline', 'review', 'microscope'] },
   { id: 'connections', label: '连接与工具', icon: 'plug', hint: '管理连接与工具' },
   { id: 'media', label: '媒体能力', icon: 'image', hint: '图片生成与语音合成' },
   { id: 'expressions', label: '表情包', icon: 'sticker', hint: '图库、收集规则、自然度实验室与表达习惯', tabs: ['exp-library', 'exp-rules', 'exp-lab', 'exp-habits'] },
   { id: 'workspace', label: '工作区', icon: 'folder', hint: '回到文件、会话与开发现场' },
-  { id: 'settings', label: '设置', icon: 'sliders', hint: '外观、角色、模型与记忆', tabs: ['settings', 'overview'] },
+  { id: 'settings', label: '设置', icon: 'sliders', hint: '外观、角色、模型与记忆', tabs: ['settings', 'overview', 'diagnostics-trace'] },
+  { id: 'works', label: '作品', icon: 'folder', hint: '工作区里的产出（只读）' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -357,6 +358,8 @@ P.api = {
     return result;
   },
   raw: request,
+  // SSE/事件流要拿完整 URL（request 只做 JSON 信封解码）。
+  url: (path) => apiBase() + String(path).replace(/^\/+/, ''),
 };
 
 // Generic data hook: the loader runs on every dependency change and can be
@@ -637,10 +640,20 @@ function Table({ columns, rows, onRowClick, emptyText }) {
         key: column.key,
         style: { width: column.width, textAlign: column.align || 'left' },
       }, column.label)))),
+      // 可点的行必须同时支持键盘：Enter/Space 与鼠标点击等价，并且告诉屏幕阅读器这一行能按。
+      // （只有 onClick 的 <tr> 在键盘上完全按不动——2026-11-16 W5 静态检查报出来的唯一一条。）
       h('tbody', null, list.map((row, index) => h('tr', {
         key: row.id || row.key || index,
         className: onRowClick ? 'cmx-row-clickable' : undefined,
+        tabIndex: onRowClick ? 0 : undefined,
+        role: onRowClick ? 'button' : undefined,
+        'aria-label': onRowClick && row.id ? `打开 ${row.id}` : undefined,
         onClick: onRowClick ? () => onRowClick(row) : undefined,
+        onKeyDown: onRowClick ? (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          onRowClick(row);
+        } : undefined,
       }, columns.map((column) => h('td', {
         key: column.key,
         style: { textAlign: column.align || 'left' },
@@ -1916,7 +1929,7 @@ function Rail({ currentPage, collapsed, onToggle, compact, onCompact, compactAva
   const groups = [
     { label: '陪伴', ids: ['home', 'chat', 'persona', 'qq-web', 'life', 'health'] },
     { label: '记录', ids: ['memory'] },
-    { label: '工具', ids: ['connections', 'media', 'expressions', 'workspace'] },
+    { label: '工具', ids: ['connections', 'media', 'expressions', 'workspace', 'works'] },
     { label: '系统', ids: ['settings'] },
   ];
 
@@ -2191,7 +2204,7 @@ P.css(`
 .cpx-field { min-width:0; }
 .cpx-segmented { display:flex; flex-wrap:wrap; gap:4px; padding:4px; border:1px solid var(--dsw-alias-border-l1); border-radius:11px; background:var(--dsw-alias-bg-layer-1); width:fit-content; max-width:100%; }
 .cpx-segment { border:0; border-radius:8px; padding:9px 18px; color:var(--dsw-alias-label-secondary); font:inherit; font-size:13px; cursor:pointer; background:transparent; }
-.cpx-segment-active { color:var(--dsw-alias-label-primary); background:var(--dsw-alias-bg-layer-3,var(--dsw-alias-bg-layer-2)); box-shadow:0 1px 5px #0002; }
+.cpx-segment-active { color:var(--dsw-alias-label-primary); background:var(--dsw-alias-bg-layer-3,var(--dsw-alias-bg-layer-2)); box-shadow:0 1px 5px var(--cpx-shadow-soft, #0002); }
 .cpx-health { padding:22px; border:1px solid var(--dsw-alias-border-l1); border-radius:16px; background:var(--dsw-alias-bg-layer-1); }
 .cpx-health-grid { grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
 .cpx-health-item { width:100%; min-height:105px; padding:16px; border-radius:12px; }

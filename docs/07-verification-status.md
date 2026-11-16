@@ -647,3 +647,81 @@ git clone https://github.com/FamousBOBO/dsh-companion.git
 按用户要求恢复所选官方正向质量预设的生效逻辑（Light），继续禁止追加身份、衣物与旧手填正向预设。最终正文为画师串 + 完整主提示词，随后应用所选质量词。媒体离线测试 162/162 通过。
 
 已通过生产管理脚本重启现有受管理应用，认证首页和记忆接口均为 HTTP 200、核心插件激活检查通过；媒体 status/config 接口 HTTP 200，读回模型 nai-diffusion-5-full、qualityPreset=light。未触发真实计费生成，图片质量及真实模型读取行为仍未验收。启动中宿主另报告部分旧插件版本不兼容，核心健康检查通过不代表所有可选插件均已加载。
+
+### 2026-11-16 补充：陪伴空间 W1（单一字段目录 + 跨设置项搜索）
+
+计划 [ui-observability-unification-plan-20261116.md](ui-observability-unification-plan-20261116.md) 的 W1 步子，实施记录见 [26-w1-settings-catalog-20261116.md](26-w1-settings-catalog-20261116.md)，前置基线见 [25-g0-ui-observability-baseline-20261116.md](25-g0-ui-observability-baseline-20261116.md)。
+
+| 范围 | 证据级别与结果 | 限制 |
+|---|---|---|
+| 字段目录投影（288 QQ 字段 + 23 Studio 字段）、搜索排序、状态推导（configured/default/secret-set/unknown/unavailable） | `offline-test`：陪伴空间 193/193 用例通过（本轮新增 19 个，含真 SQLite 引擎的 API 用例） | 只证明目录与搜索的纯逻辑；不代表宿主面板真的渲染 |
+| 三份手工设置目录收编为一条断言（`npm run check:catalog`：21/21/21/2 四组计数一致、0 漂移、客户端 path == 服务端 section.key） | `offline-test`：独立进程按源码文本核对 | 解析基于源码正则；若客户端 `FIELDS` 换成非常规写法，核对会报 fatal 而不是静默放过 |
+| 客户端搜索面板（`Ctrl/⌘+K`、↑↓/Enter/Esc、`role=listbox/option`、池深链聚焦 `data-field-path`） | `offline-test`（沙箱内 React 渲染）：客户端冒烟新增 4 条断言全绿；拼装 19 片段 / 752,120 字节 / `node --check` 通过 | **未做浏览器实机与屏幕阅读器实测**；沙箱渲染不等于真实可访问性验收 |
+| 静态卫生 | `node scripts/verify.mjs --only=static`：38 ok / 1 failed | 唯一失败是 `tools/lib/host-temp.test.mjs:5` 的 Windows 用户目录测试夹具，HEAD 上即存在，本轮未触碰 |
+
+**本轮没有新增的级别：** `host-load`（未重载宿主）、`real-api`、`real-send`、`hardware` 一律未执行。搜索面板在真实宿主里的渲染、真实屏幕阅读器读数、QQ 原生后台字段的实际可写入行为都仍是**未验证**。
+
+**明确未做：** W1-6（旧 URL/hash 兼容映射）——本插件没有 hash 路由（`location.hash`/`pushState` 命中数为 0），实际要做的是 localStorage id 映射，留到导航去重时一起做；W4 的 8790 覆盖率矩阵与 listener 关停；任何真实模型调用或外发。
+### 2026-11-16 补充：陪伴空间 W2（结构化 trace 与可解释日志）
+
+实施记录见 [27-w2-trace-observability-20261116.md](27-w2-trace-observability-20261116.md)。
+
+| 范围 | 证据级别与结果 | 限制 |
+|---|---|---|
+| 事件 schema（10 字段白名单 + 5 枚举 + 28 个理由码 + 内容判据） | `offline-test`：陪伴空间 236/236 通过（W2 新增 43 个） | 理由码表沿用既有记忆侧实现，未在真实模型调用下验证覆盖率 |
+| 落盘环（2000 行 / 3 代轮转 / 丢弃记账）与只读过滤读取 | `offline-test`：写失败只记账不抛、轮转代数上限、坏行与不安全行跳过 | 未在真实宿主上长时间运行以验证真实轮转频率 |
+| SSE（服务端过滤 / eventId 去重 / 轮转续读 / 半行等待 / 丢事件计数） | `offline-test`：轮转跨代、半行拼接、坏行计数各有用例 | **未经真实网络**；未接真实浏览器 EventSource |
+| 记忆侧投影（`memory-recall.jsonl` → 事件，不新增写入口） | `offline-test`：真 SQLite 引擎的 API 用例 + 生产同形记录 | 只在读取时投影；不代表记忆引擎的写入路径被改动 |
+| 诊断事件页（实时/快照、chip 过滤、按 traceId 折叠、状态图例） | `offline-test`（沙箱内 React 渲染 + SSE 替身） | **未做浏览器实机与屏幕阅读器实测** |
+| 静态卫生 | `verify.mjs --only=static`：38 ok / 1 failed | 唯一失败是 HEAD 上已存在的测试夹具路径，本轮未触碰 |
+
+**没有新增的级别：** `host-load`、`real-api`、`real-send`、`hardware` 一律未执行。
+
+**明确未做：** `prompt router / compose / snapshot / 最终输出` 阶段的事件埋点（需要先把 Studio 的 trace 写入接口收窄成窄接口，与 W4 的 bridge 收窄同批处理）；W4 的 8790 覆盖率矩阵与 listener 关停；任何真实模型调用或外发。
+### 2026-11-16 补充：陪伴空间 W3（作品中心）
+
+实施记录见 [28-w3-works-center-20261116.md](28-w3-works-center-20261116.md)。
+
+| 范围 | 证据级别与结果 | 限制 |
+|---|---|---|
+| 作品列表（从 `p2_activities` + `p2_activity_receipts` 现场派生，不落盘索引） | `offline-test`：陪伴空间 252/252 通过（W3 新增 16） | 列表索引每次读都重建，未在真实大数据量下测性能 |
+| 状态判据（`done` 只认 `finish+ok` 收据；有 `ok=false` 收据即 `failed`） | `offline-test`：状态由证据决定，文件存在不算完成 | 判据来自既有收据语义，未在真实活动流上逐状态核对 |
+| 路径 fail-closed 三层（runtime `resolveInsideWorkspace` + realpath + 文件形态） | `offline-test`：绝对路径/`..`/UNC/缺失/二进制/超大/符号链接外跳各有用例 | Windows 无符号链接权限时该条**跳过**而非通过 |
+| 预览（≤256 KiB、8 种文本类型、纯文本容器） | `offline-test`（沙箱内 React 渲染断言容器是 `pre`） | **未做浏览器实机**；未测真实大文件的读取耗时 |
+| 作品页（列表/过滤/预览/证据徽标/版本折叠） | `offline-test` | 未做屏幕阅读器实测 |
+| 对生产只读结构探针 | 只查表名/列名/计数/引用形状 | 未读任何作品正文，未把文件名或内容写进仓库 |
+
+**没有新增的级别：** `host-load`、`real-api`、`real-send`、`hardware` 一律未执行。
+
+**明确未做：** 编辑/覆盖/删除/分享入口；用宿主打开原文件的入口；作品正文全文检索（首版只按标题与相对路径搜）；W4、W5 全部内容。
+### 2026-11-16 补充：陪伴空间 W4 前置（QQ 字段覆盖率矩阵）
+
+报告见 [29-w4-qq-coverage-matrix-20261116.md](29-w4-qq-coverage-matrix-20261116.md)，矩阵见 [29-w4-qq-coverage-matrix-20261116.tsv](29-w4-qq-coverage-matrix-20261116.tsv)（288 行 × 16 列）。
+
+| 范围 | 证据级别与结果 | 限制 |
+|---|---|---|
+| 288 个 QQ 字段的处置分类（8 类）与关闭 Gate 状态 | `static-audit`：程序化派生，0 行列错位；`covered 116 / needs-form 118 / needs-host-link 35 / needs-mask 7 / blocking 6` | 分类是审计结论，不代表表单已实现 |
+| 111 条已投影字段的复算 | `offline-test`：真实 `fieldRefs()` 288 条经 `chat-settings` allowlist 得 111 条（groups 31 + messages 42 + proactive 38） | 与 G0 口径不同（G0 数"可写表单"，矩阵数"Gate 覆盖"） |
+| 8790 注释与生效值相反 | `live-observation`：端口探测（`GET /` 200 + 后台标题）、profile 原文、yaml 解析复核 `admin={"enabled":true,"port":8790}` | 只改了注释，生效值未动；**未关停** |
+| 口令来源 | `live-observation`：`env` 变量未设、`admin-password.json` 存在 → 来源是 `panel` 档 | 未解密口令内容、未打印任何值 |
+
+**关闭 Gate 现状：`covered 116 / 288`，且有 6 条硬阻塞**（`primaryTalkValue`/`rooms`/`agentPreset`/`permissionPreset`/`groupAgentPreset`/`groupPermissionPreset` 这六个 Studio 已移除且当前无任何 UI 的 root 级字段）。按计划「未达 Gate 不关闭生产后台」，**8790 现在不具备关停条件**。
+
+**没有新增的级别：** `host-load`（未重载宿主）、`host-real`（未切换隔离 Profile）、`real-api`、`real-send` 一律未执行。
+
+**明确未做：** 选原生设置面板 API 与窄 service；秘密字段掩码改造；每页读写/冲突/拒绝/重启集成测试；隔离 Profile 全覆盖 + listener off 的验收；生产迁移与备份；监听器关停或回滚。
+### 2026-11-16 补充：陪伴空间 W5（统一视觉与可访问性）
+
+实施记录见 [30-w5-visual-a11y-20261116.md](30-w5-visual-a11y-20261116.md)。
+
+| 范围 | 证据级别与结果 | 限制 |
+|---|---|---|
+| 媒体页 13 项既有冒烟失败收敛（含 1 项真实 a11y 缺陷：协议选择器 label 关联不到控件） | `offline-test`：客户端冒烟从 13 失败 → **0**；单测 260/260 | 沙箱内 React 渲染，**不是真实浏览器** |
+| 五条视觉/a11y 静态规则（写死颜色 / 纯鼠标处理 / 裸 outline:none / 无 max 的固定宽度 / 缺 :focus-visible） | `static-audit`：首轮 43 项真问题全部修完（26 处写死颜色 token 化 + 1 处表格行键盘缺陷）；`npm run check:a11y` `✓ 五条规则全部通过`，`--strict` 退出 0 | 静态判据，不代表真实可访问性验收 |
+| 规则本身的正反对照 | `offline-test`：8 个用例用合成片段验每条判据 | — |
+| 顺带修掉的三个真实缺陷（卡片类名前缀碰撞、dirty 漏 generationFields、生成编辑器只给选中项） | `offline-test`（冒烟断言钉住） | 只覆盖媒体页 |
+| 窄窗口不横向溢出 | `static-audit`（规则 + 760px 断点 + `min-width:0`） | **没有真实浏览器三档宽度实测**；没有截图 |
+
+**没有新增的级别：** `host-load`、`real-api`、`real-send`、`hardware` 一律未执行。
+
+**明确未做：** 真实浏览器视觉检查与截图、真实屏幕阅读器（NVDA/JAWS/VoiceOver）读数、真实宿主重载这一版 `client.js`、其它页面逐页的"外部 revision 冲突提示"。

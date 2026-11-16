@@ -727,7 +727,7 @@ export async function maintenance(request, kernel) {
 // ---------------------------------------------------------------------------
 
 /** 裁决证据的固定格式由 `api-kernel.mjs` 统一提供（读/写两侧必须是同一句话）。 */
-export { correctionEvidence }
+export { correctionEvidence, SETTINGS_SPEC, SECRET_SPEC }
 
 export async function correctionResolve(request, kernel, options = {}) {
   const internal = await kernel.internal();

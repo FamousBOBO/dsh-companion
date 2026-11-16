@@ -64,21 +64,22 @@ P.registerPage = (definition) => {
   else P.pages.push(entry);
 };
 
-// The seven first-level entries of the product. A group entry owns tabs, each tab
-// is a registered page; `chat` is not a page of this plugin at all.
+// The first-level entries of the product (13 as of the UI unification). A group entry
+// owns tabs, each tab is a registered page; every entry here is a page of this plugin.
 const NAV = [
   { id: 'home', label: '陪伴首页', icon: 'home', hint: '她现在的生活与最近一起经历的事' },
   { id: 'chat', label: '聊天', icon: 'chat', hint: '回复、延时、免打扰与群聊行为' },
   { id: 'persona', label: '人格', icon: 'heart', hint: '性格、语气与相处方式' },
   { id: 'qq-web', label: 'QQ 连接', icon: 'chat', hint: 'NapCat / SnowLuma 网页面板' },
-  { id: 'life', label: '生活与日程', icon: 'calendar', hint: '今天、接下来，以及她的计划' },
+  { id: 'life', label: '生活与日程', icon: 'calendar', hint: '今天、接下来，以及她的计划', tabs: ['life', 'health'] },
   { id: 'health', label: '运动健康', icon: 'heart', hint: '活动、睡眠与实时心率' },
   { id: 'memory', label: '记忆与档案', icon: 'book', hint: '记忆库、Wiki、时间线与待核对', tabs: ['vault', 'wiki', 'timeline', 'review', 'microscope'] },
   { id: 'connections', label: '连接与工具', icon: 'plug', hint: '管理连接与工具' },
   { id: 'media', label: '媒体能力', icon: 'image', hint: '图片生成与语音合成' },
   { id: 'expressions', label: '表情包', icon: 'sticker', hint: '图库、收集规则、自然度实验室与表达习惯', tabs: ['exp-library', 'exp-rules', 'exp-lab', 'exp-habits'] },
   { id: 'workspace', label: '工作区', icon: 'folder', hint: '回到文件、会话与开发现场' },
-  { id: 'settings', label: '设置', icon: 'sliders', hint: '外观、角色、模型与记忆', tabs: ['settings', 'overview'] },
+  { id: 'settings', label: '设置', icon: 'sliders', hint: '外观、角色、模型与记忆', tabs: ['settings', 'overview', 'diagnostics-trace'] },
+  { id: 'works', label: '作品', icon: 'folder', hint: '工作区里的产出（只读）' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -367,6 +368,8 @@ P.api = {
     return result;
   },
   raw: request,
+  // SSE/事件流要拿完整 URL（request 只做 JSON 信封解码）。
+  url: (path) => apiBase() + String(path).replace(/^\/+/, ''),
 };
 
 // Generic data hook: the loader runs on every dependency change and can be
@@ -647,10 +650,20 @@ function Table({ columns, rows, onRowClick, emptyText }) {
         key: column.key,
         style: { width: column.width, textAlign: column.align || 'left' },
       }, column.label)))),
+      // 可点的行必须同时支持键盘：Enter/Space 与鼠标点击等价，并且告诉屏幕阅读器这一行能按。
+      // （只有 onClick 的 <tr> 在键盘上完全按不动——2026-11-16 W5 静态检查报出来的唯一一条。）
       h('tbody', null, list.map((row, index) => h('tr', {
         key: row.id || row.key || index,
         className: onRowClick ? 'cmx-row-clickable' : undefined,
+        tabIndex: onRowClick ? 0 : undefined,
+        role: onRowClick ? 'button' : undefined,
+        'aria-label': onRowClick && row.id ? `打开 ${row.id}` : undefined,
         onClick: onRowClick ? () => onRowClick(row) : undefined,
+        onKeyDown: onRowClick ? (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          onRowClick(row);
+        } : undefined,
       }, columns.map((column) => h('td', {
         key: column.key,
         style: { textAlign: column.align || 'left' },
@@ -1926,7 +1939,7 @@ function Rail({ currentPage, collapsed, onToggle, compact, onCompact, compactAva
   const groups = [
     { label: '陪伴', ids: ['home', 'chat', 'persona', 'qq-web', 'life', 'health'] },
     { label: '记录', ids: ['memory'] },
-    { label: '工具', ids: ['connections', 'media', 'expressions', 'workspace'] },
+    { label: '工具', ids: ['connections', 'media', 'expressions', 'workspace', 'works'] },
     { label: '系统', ids: ['settings'] },
   ];
 
@@ -2201,7 +2214,7 @@ P.css(`
 .cpx-field { min-width:0; }
 .cpx-segmented { display:flex; flex-wrap:wrap; gap:4px; padding:4px; border:1px solid var(--dsw-alias-border-l1); border-radius:11px; background:var(--dsw-alias-bg-layer-1); width:fit-content; max-width:100%; }
 .cpx-segment { border:0; border-radius:8px; padding:9px 18px; color:var(--dsw-alias-label-secondary); font:inherit; font-size:13px; cursor:pointer; background:transparent; }
-.cpx-segment-active { color:var(--dsw-alias-label-primary); background:var(--dsw-alias-bg-layer-3,var(--dsw-alias-bg-layer-2)); box-shadow:0 1px 5px #0002; }
+.cpx-segment-active { color:var(--dsw-alias-label-primary); background:var(--dsw-alias-bg-layer-3,var(--dsw-alias-bg-layer-2)); box-shadow:0 1px 5px var(--cpx-shadow-soft, #0002); }
 .cpx-health { padding:22px; border:1px solid var(--dsw-alias-border-l1); border-radius:16px; background:var(--dsw-alias-bg-layer-1); }
 .cpx-health-grid { grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
 .cpx-health-item { width:100%; min-height:105px; padding:16px; border-radius:12px; }
@@ -2458,13 +2471,13 @@ P.THEME_LABEL = THEME_LABEL;
         h('button',{type:'button',className:'cpxp-enable cpx-stable-switch',role:'switch','aria-label':label,'aria-checked':!!state.data?.values?.[key],disabled:!!busy||!state.data,onClick:()=>toggle(key)},h('span',{className:'cpxp-switch-track'}),'启用')))));
   }
   P.css(`
-    .cpx-log-console{border:1px solid var(--dsw-alias-border-l2);border-radius:14px;overflow:hidden;background:#101319;color:#dae0eb;}
-    .cpx-log-console-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 18px;background:#191e27;border-bottom:1px solid #2b313c;font-size:12px;}
-    .cpx-log-connection{display:flex;align-items:center;gap:8px;color:#9ca8bb;}.cpx-log-dot{width:7px;height:7px;border-radius:50%;background:#e5b868;}.cpx-log-dot[data-live=true]{background:#62c99b;box-shadow:0 0 9px #62c99b55;}
-    .cpx-log-source{font-family:var(--cpx-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#929eb0;}
+    .cpx-log-console{border:1px solid var(--dsw-alias-border-l2);border-radius:14px;overflow:hidden;background:var(--cpx-console-bg, #101319);color:var(--cpx-console-fg, #dae0eb);}
+    .cpx-log-console-head{display:flex;align-items:center;justify-content:space-between;gap:16px;padding:14px 18px;background:var(--cpx-console-head, #191e27);border-bottom:1px solid var(--cpx-console-border, #2b313c);font-size:12px;}
+    .cpx-log-connection{display:flex;align-items:center;gap:8px;color:var(--cpx-console-muted, #9ca8bb);}.cpx-log-dot{width:7px;height:7px;border-radius:50%;background:var(--cpx-console-warn, #e5b868);}.cpx-log-dot[data-live=true]{background:var(--cpx-console-ok, #62c99b);box-shadow:0 0 9px var(--cpx-console-ok-soft, var(--cpx-console-ok, #62c99b)55);}
+    .cpx-log-source{font-family:var(--cpx-mono);overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:var(--cpx-console-dim, #929eb0);}
     .cpx-log-output{height:420px;min-height:260px;max-height:65vh;overflow:auto;overscroll-behavior:contain;padding:12px 0;font:13px/1.8 var(--cpx-mono);tab-size:2;}
-    .cpx-log-row{display:flex;gap:14px;padding:1px 18px 1px 12px;}.cpx-log-row:hover{background:#ffffff06;}.cpx-log-number{flex:none;width:36px;color:#69758a;text-align:right;user-select:none;}.cpx-log-message{white-space:pre-wrap;overflow-wrap:anywhere;min-width:0;}.cpx-log-row[data-level=error]{color:#f49b9b;}.cpx-log-row[data-level=warn]{color:#e4c183;}
-    .cpx-log-empty{padding:32px 24px;color:#909aab;}.cpx-log-count{margin-left:auto;color:var(--dsw-alias-label-secondary);font-size:12px;}.cpx-log-toolbar{margin-bottom:14px;}.cpx-log-toolbar .cmx-input{max-width:280px;}
+    .cpx-log-row{display:flex;gap:14px;padding:1px 18px 1px 12px;}.cpx-log-row:hover{background:var(--cpx-console-hover, #ffffff06);}.cpx-log-number{flex:none;width:36px;color:var(--cpx-console-faint, #69758a);text-align:right;user-select:none;}.cpx-log-message{white-space:pre-wrap;overflow-wrap:anywhere;min-width:0;}.cpx-log-row[data-level=error]{color:var(--cpx-console-error, #f49b9b);}.cpx-log-row[data-level=warn]{color:var(--cpx-console-amber, #e4c183);}
+    .cpx-log-empty{padding:32px 24px;color:var(--cpx-console-empty, #909aab);}.cpx-log-count{margin-left:auto;color:var(--dsw-alias-label-secondary);font-size:12px;}.cpx-log-toolbar{margin-bottom:14px;}.cpx-log-toolbar .cmx-input{max-width:280px;}
     .cpx-persona-editor .cmx-textarea{height:320px;min-height:200px;max-height:320px;font-size:14px;line-height:1.8;}.cpx-persona-footer{display:flex;justify-content:space-between;align-items:center;gap:16px;margin-top:18px;color:var(--dsw-alias-label-secondary);font-size:13px;}
   `);
   function RuntimeLog(){
@@ -2528,10 +2541,10 @@ P.THEME_LABEL = THEME_LABEL;
   const {h,ui}=P;
   P.css(`
     .cpx-keymap{position:relative;min-width:0;}.cpx-keymap-help{font-size:12px;color:var(--dsw-alias-label-secondary);line-height:1.6;margin:0 0 16px;}.cpx-keymap-head{display:grid;grid-template-columns:1fr 48px 1fr;font-size:12px;margin-bottom:10px;color:var(--dsw-alias-label-secondary);}.cpx-keymap-head span:last-child{grid-column:3;}
-    .cpx-keymap-group{display:grid;grid-template-columns:minmax(0,1fr) 48px minmax(0,1fr);align-items:center;padding:16px 12px;margin-bottom:12px;border:1px solid var(--dsw-alias-border-primary,#73737a55);border-radius:12px;background:var(--dsw-alias-bg-layer-2);min-width:0;}
+    .cpx-keymap-group{display:grid;grid-template-columns:minmax(0,1fr) 48px minmax(0,1fr);align-items:center;padding:16px 12px;margin-bottom:12px;border:1px solid var(--dsw-alias-border-primary,var(--cpx-keymap-line, #73737a55));border-radius:12px;background:var(--dsw-alias-bg-layer-2);min-width:0;}
     .cpx-keymap-words{min-width:0;}.cpx-keymap-word{height:44px;margin-bottom:12px;display:flex;align-items:center;gap:6px;position:relative;}.cpx-keymap-word:last-child{margin-bottom:0;}.cpx-keymap-word input{width:100%;min-width:0;padding-right:4px;}.cpx-keymap-remove{flex:none;background:none;color:var(--dsw-alias-label-secondary);border:0;cursor:pointer;padding:4px;}
-    .cpx-keymap-port{position:absolute;width:14px;height:14px;border-radius:50%;padding:0;border:2px solid var(--dsw-alias-bg-layer-1,#191c23);background:#b48da7;cursor:crosshair;z-index:2;}.cpx-keymap-word .cpx-keymap-port{right:-7px;}.cpx-keymap-port[aria-pressed=true]{outline:3px solid #dca2c5;}.cpx-keymap-port:focus-visible{outline:3px solid #64a9ed;}.cpx-keymap-lines{width:48px;overflow:visible;pointer-events:none;}.cpx-keymap-lines path{fill:none;stroke:#b48da7;stroke-width:2;opacity:.8;}
-    .cpx-keymap-reaction{position:relative;min-width:0;}.cpx-keymap-reaction>.cpx-keymap-port{left:-7px;top:50%;transform:translateY(-50%);}.cpx-keymap-reaction textarea{width:100%;min-height:76px;max-height:180px;resize:vertical;box-sizing:border-box;}.cpx-keymap-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap;}.cpx-keymap-actions .cmx-btn{font-size:12px;}.cpx-keymap-preview{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:200;}.cpx-keymap-preview line{stroke:#dca2c5;stroke-width:3;stroke-dasharray:6 4;}
+    .cpx-keymap-port{position:absolute;width:14px;height:14px;border-radius:50%;padding:0;border:2px solid var(--dsw-alias-bg-layer-1,var(--cpx-keymap-ring, #191c23));background:var(--cpx-keymap-port, #b48da7);cursor:crosshair;z-index:2;}.cpx-keymap-word .cpx-keymap-port{right:-7px;}.cpx-keymap-port[aria-pressed=true]{outline:3px solid var(--cpx-keymap-port-active, #dca2c5);}.cpx-keymap-port:focus-visible{outline:3px solid var(--cpx-keymap-link, #64a9ed);}.cpx-keymap-lines{width:48px;overflow:visible;pointer-events:none;}.cpx-keymap-lines path{fill:none;stroke:var(--cpx-keymap-port, #b48da7);stroke-width:2;opacity:.8;}
+    .cpx-keymap-reaction{position:relative;min-width:0;}.cpx-keymap-reaction>.cpx-keymap-port{left:-7px;top:50%;transform:translateY(-50%);}.cpx-keymap-reaction textarea{width:100%;min-height:76px;max-height:180px;resize:vertical;box-sizing:border-box;}.cpx-keymap-actions{display:flex;gap:8px;justify-content:flex-end;margin-top:8px;flex-wrap:wrap;}.cpx-keymap-actions .cmx-btn{font-size:12px;}.cpx-keymap-preview{position:fixed;inset:0;width:100vw;height:100vh;pointer-events:none;z-index:200;}.cpx-keymap-preview line{stroke:var(--cpx-keymap-port-active, #dca2c5);stroke-width:3;stroke-dasharray:6 4;}
     @media(max-width:650px){.cpx-keymap-group,.cpx-keymap-head{grid-template-columns:minmax(0,1fr) 32px minmax(0,1fr);}.cpx-keymap-lines{width:32px;}.cpx-keymap-group{padding:12px 8px;}}
   `);
   function merge(rows){
@@ -2581,7 +2594,7 @@ P.THEME_LABEL = THEME_LABEL;
 (function(P){
   const {h,ui}=P;
   P.css(`
-    .cpx-system-restart{position:sticky;top:0;z-index:90;flex:none;padding:14px 24px;background:var(--dsw-alias-bg-layer-2);border-bottom:2px solid #d8a653;box-shadow:0 4px 18px #0002;color:var(--dsw-alias-label-primary);font-size:14px;}
+    .cpx-system-restart{position:sticky;top:0;z-index:90;flex:none;padding:14px 24px;background:var(--dsw-alias-bg-layer-2);border-bottom:2px solid var(--dsw-alias-warning, #d8a653);box-shadow:0 4px 18px var(--cpx-overlay-soft, #0002);color:var(--dsw-alias-label-primary);font-size:14px;}
     .cpx-system-restart strong{display:block;margin-bottom:3px;}.cpx-system-restart p{margin:0;color:var(--dsw-alias-label-secondary);font-size:12px;}
     .cpx-chat-settings{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:20px;}.cpx-chat-settings>*{min-width:0;}.cpx-chat-wide{grid-column:1/-1;}.cpx-chat-settings .cpx-field-label{min-height:23px;}.cpx-chat-summary{display:flex;align-items:center;gap:12px;margin-bottom:24px;color:var(--dsw-alias-label-secondary);font-size:13px;}
     .cpx-quiet-row{display:flex;gap:12px;align-items:center;margin-bottom:10px;}.cpx-quiet-row input{min-width:0;flex:1;max-width:160px;}.cpx-quiet-row .cmx-btn{flex:none;}
@@ -5873,16 +5886,17 @@ P.THEME_LABEL = THEME_LABEL;
     }, h('div', { className: 'cpxp-hl-stack' }, h(CollectorTerminals, { onChange: query.reload }), body));
   }
 
-  // 二级 tab 的容器是 core.js 的 NAV 常量（'life' 原本没有 tabs）。这里只把本页挂进
-  // 「生活与日程」的 tabs 里，不动 NAV 的其它字段，也不改 core.js。
-  (function attachTab() {
-    const nav = P.NAV;
-    if (!Array.isArray(nav)) return;
+  // 「生活与日程」的 tabs 现在由 core.js 自己声明（`tabs: ['life', 'health']`）。
+  // 页面不再回头改 NAV：导航表只有一个所有者，片段只读它。这里留一条自检，
+  // 声明缺了就在控制台报出来，而不是悄悄补上（悄悄补 = 下次声明再丢掉也没人知道）。
+  (function verifyTab() {
+    const nav = Array.isArray(P.NAV) ? P.NAV : [];
     const life = nav.find((item) => item && item.id === 'life');
-    if (!life) return;
-    if (!Array.isArray(life.tabs)) life.tabs = [life.id || 'life'];
-    if (life.tabs.indexOf('life') < 0) life.tabs.unshift('life');
-    if (life.tabs.indexOf('health') < 0) life.tabs.push('health');
+    if (!life || !Array.isArray(life.tabs) || life.tabs.indexOf('health') < 0) {
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('[companion-health] core.js 的 NAV 里「生活与日程」缺少 health tab 声明');
+      }
+    }
   })();
 
   P.registerPage({ id: 'health', label: '健康与睡眠', order: 21, component: HealthPage });
@@ -9542,6 +9556,13 @@ P.THEME_LABEL = THEME_LABEL;
     .cpxp-media-field-wide textarea { min-height:100px; resize:vertical; }
     @media(max-width:760px) { .cpxp-media-sec-head,.cpxp-section-body { padding:18px; } .cpxp-media-head-actions { gap:8px; } .cpxp-media-fields { grid-template-columns:1fr; gap:18px; } .cpxp-media-sec-title { font-size:18px; } .cpxp-section-symbol { display:none; } }
     @media(prefers-reduced-motion:reduce) { .cpxp-switch-track,.cpxp-switch-track::before { transition:none; } }
+    /* 窄窗口：provider 卡片列表与预览块也要能收缩，否则 760px 以下会横向溢出。 */
+    .cpxp-media-provider-list { display:flex; flex-direction:column; gap:14px; min-width:0; }
+    .cpxp-preview { margin-top:18px; padding-top:16px; border-top:1px solid var(--dsw-alias-border-l1); min-width:0; }
+    .cpxp-preview-head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+    .cpxp-media-enable { margin-bottom:12px; }
+    .cpx-fieldset { border:0; padding:0; margin:0; min-width:0; }
+    @media(max-width:760px) { .cpxp-media-provider-list { gap:10px; } .cpxp-preview-head { flex-direction:column; align-items:stretch; } .cpxp-preview-head .cmx-btn { align-self:flex-start; } }
   `);
 
   // -------------------------------------------------------------------------
@@ -9915,7 +9936,13 @@ P.THEME_LABEL = THEME_LABEL;
     const hasSecrets = Object.keys(secrets || {}).some(path => within(path) && String(secrets[path] ?? '').trim() !== '');
     const hasClears = Object.keys(clears || {}).some(path => within(path) && clears[path]);
     if (hasSecrets || hasClears) return true;
-    const changed = (provider.fields || []).some((field) => {
+  // 生成字段（步数/种子/采样器…）不在 provider.fields 里，但同样属于这个 provider 的草稿；
+  // 漏掉它们会让"改了步数却按不动保存"（实测踩过）。
+  const dirtyFields = [
+    ...(provider.fields || []),
+    ...(provider.generationFields ? provider.generationFields.map((key) => ({ path: `${provider.prefix}.${key}`, type: null })) : []),
+  ];
+  const changed = dirtyFields.some((field) => {
       if (field.secret || field.locked) return false;
       const value = draft ? draft[field.path] : undefined;
       if (value === undefined) return false;
@@ -10160,7 +10187,7 @@ P.THEME_LABEL = THEME_LABEL;
       error ? h('p', { className: 'cpxp-media-error' }, error) : null);
   }
 
-  function ProviderCard({ provider, selected, states, draft, secrets, clears, errors, testing, busy, onDraft, onSecret, onClear, onSave, onTest }) {
+  function ProviderCard({ provider, selected, presets, states, draft, secrets, clears, errors, testing, busy, onDraft, onSecret, onClear, onSave, onTest }) {
     const [open, setOpen] = P.useState(selected);
     // Follow protocol changes while retaining manual expand/collapse between selections.
     P.useEffect(() => setOpen(selected), [selected]);
@@ -10187,7 +10214,20 @@ P.THEME_LABEL = THEME_LABEL;
         null,
         !dirty && status ? testResultLine(status) : null);
     }
-    const fieldNodes = provider.fields.filter(field => {
+    // tts provider 的「启用」不是普通字段（下面会把它从 fieldNodes 里滤掉），
+// 但 descriptor 明确给了 canEnable，所以这里必须渲染一个真开关并遵守该裁决。
+  const enableToggle = provider.kind === 'tts' && provider.enablePath
+    ? h('div', { className: 'cpxp-media-enable' },
+      h(ui.Toggle, {
+        id: `media-${provider.enablePath}`,
+        checked: draft[provider.enablePath] === true,
+        disabled: !provider.canEnable || Boolean(busy),
+        label: `${provider.label}：启用`,
+        hint: provider.canEnable ? '' : '这个 provider 尚未接入，启用位不可操作',
+        onChange: (next) => onDraft(provider.enablePath, next),
+      }))
+    : null;
+  const fieldNodes = provider.fields.filter(field => {
       const key = lastSegment(field.path);
       if(provider.kind==='tts' && ['enabled','mediaType'].includes(key))return false;
       if (provider.generationFields && (provider.generationFields.includes(key) || ['activePresetId','generationPresets'].includes(key))) return false;
@@ -10244,7 +10284,7 @@ P.THEME_LABEL = THEME_LABEL;
         disabled: !dirty || Boolean(busy),
         onClick: () => onSave(provider.kind),
         title: '只保存这个 provider 的改动（留空的密钥不会被写回）',
-      }, '保存'),
+      }, '保存这个 provider'),
       h(ui.Button, {
         variant: 'ghost',
         size: 'sm',
@@ -10263,7 +10303,9 @@ P.THEME_LABEL = THEME_LABEL;
       header,
       null,
       provider.description ? h('p',{className:'cpxp-media-description'},provider.description) : null,
+      enableToggle,
       h('div', { className: 'cpxp-media-fields' }, fieldNodes),
+      provider.generationFields ? h(GenerationEditor, { provider, presets, draft, busy, errors, onDraft }) : null,
       actions,
       dirtyNote,
       status && !dirty && status.detail ? h('p', { className: 'cpxp-media-note' }, status.detail) : null,
@@ -10369,35 +10411,38 @@ P.THEME_LABEL = THEME_LABEL;
         h('div',null,h('h4',null,'生成预设'),h('p',{className:'cpx-muted'},active ? active.name : '默认预设')),
         h(ui.Button,{onClick:create,disabled:!!busy||library.length>=32},'新建预设')),
       h('div',{className:'cpxp-media-fields'},
-        h('div',{className:'cpxp-preset-picker'},h(ui.Field,{label:'生成方案'},h(ui.Select,{ariaLabel:'生成方案',value:active?.id||'',disabled:!!busy,options:[{value:'',label:'默认预设'},...library.map(i=>({value:i.id,label:i.name}))],onChange:select}))),
-        active ? h(ui.Field,{label:'预设名称'},h(ui.Input,{ariaLabel:'预设名称',value:active.name,disabled:!!busy,onChange:name=>onDraft(libraryPath,JSON.stringify(library.map(i=>i.id===active.id?{...i,name}:i)))})) : null),
+        h('div',{className:'cpxp-preset-picker'},h(ui.Field,{label:'生成方案',id:'media-preset-scheme'},h(ui.Select,{id:'media-preset-scheme',ariaLabel:'生成方案',value:active?.id||'',disabled:!!busy,options:[{value:'',label:'默认预设'},...library.map(i=>({value:i.id,label:i.name}))],onChange:select}))),
+        active ? h(ui.Field,{label:'预设名称',id:'media-preset-name'},h(ui.Input,{id:'media-preset-name',ariaLabel:'预设名称',value:active.name,disabled:!!busy,onChange:name=>onDraft(libraryPath,JSON.stringify(library.map(i=>i.id===active.id?{...i,name}:i)))})) : null),
       errors[libraryPath] ? h('p',{className:'cpxp-media-error'},errors[libraryPath]) : null,
       h('div',{className:'cpxp-media-fields'},fields.filter(f=>!advancedKeys.includes(lastSegment(f.path))&&!['qualityPreset','negativePreset','artistString','negativePrompt'].includes(lastSegment(f.path))).map(renderField)),
       h('details',{className:'cpxp-advanced'},h('summary',null,'更多生成参数'),h('div',{className:'cpxp-media-fields'},fields.filter(f=>advancedKeys.includes(lastSegment(f.path))&&!(lastSegment(f.path)==='qualityToggle'&&draft[prefix+'.qualityPreset']!=='legacy')&&!(lastSegment(f.path)==='ucPreset'&&draft[prefix+'.negativePreset']!=='legacy')).map(renderField))),
       h('div',{className:'cpxp-resolution'},
-        h(ui.Field,{label:'画面比例'},h(ui.Segmented,{label:'画面比例',value:aspect,disabled:!!busy,options:[{id:'portrait',label:'竖图 2:3'},{id:'landscape',label:'横图 3:2'},{id:'square',label:'方图 1:1'}],onChange:setAspect})),
+        h('fieldset',{className:'cpx-field cpx-fieldset',key:'aspect-group'},h('legend',{className:'cpx-field-label'},'画面比例'),h(ui.Segmented,{label:'画面比例',value:aspect,disabled:!!busy,options:[{id:'portrait',label:'竖图 2:3'},{id:'landscape',label:'横图 3:2'},{id:'square',label:'方图 1:1'}],onChange:setAspect})),
         h('div',{className:'cpxp-auto-resolution'},h('button',{type:'button',className:'cpxp-resolution-button',role:'switch','aria-label':'自动分辨率','aria-checked':draft[prefix+'.autoResolution']===true,disabled:!!busy,onClick:()=>change(prefix+'.autoResolution',draft[prefix+'.autoResolution']!==true)},h(ui.Icon,{name:'image',size:18}),'自动分辨率',h('span',{className:'cpxp-resolution-state'},draft[prefix+'.autoResolution']===true?'已开启':'已关闭')),h(ui.Info,{text:draft[prefix+'.autoResolution']===true?'约 100 万像素，按画面比例自动计算分辨率。':`固定分辨率：${draft[prefix+'.width']} × ${draft[prefix+'.height']}`}))),
       h('div',{className:'cpxp-media-fields'},['qualityPreset','negativePreset','artistString','negativePrompt'].map(key=>fields.find(f=>lastSegment(f.path)===key)).filter(Boolean).map(renderField)));
   }
 
-  function SectionCard({ section, states, testing, draft, secrets, clears, errors, busy, onDraft, onSecret, onClear, onSave, onTest }) {
-    const [open,setOpen] = P.useState(!section.locked);
+  function SectionCard({ section, states, testing, draft, secrets, clears, errors, busy, previewState, onDraft, onSecret, onClear, onSave, onTest, onPreview }) {
+    // locked 的分区（例如识图）仍然要能展开：它的问题是「字段不可改」，不是「内容不可见」。
+    const [open,setOpen] = P.useState(section.id === 'image' || section.id === 'tts' || !section.locked);
     const dirty=sectionDirty(section,draft,secrets,clears);
     const selected=section.selector?(draft[section.selector.path]??section.selector.value):null;
     const provider=section.providers.find(p=>p.id===selected&&!p.notConnected);
     const options=section.selector?.options.filter(o=>o.value==='none'||section.providers.some(p=>p.id===o.value&&!p.notConnected))||[];
     return h('section',{className:'cpxp-media-sec','data-section':section.id},
       h('div',{className:'cpxp-media-sec-head'},
-        h('div',{className:'cpxp-section-name'},h('span',{className:'cpxp-section-symbol','aria-hidden':true},h(ui.Icon,{name:section.id==='image'?'image':section.id==='tts'?'audio':'eye',size:20})),h('h3',{className:'cpxp-media-sec-title'},section.title)),
+        h('div',{className:'cpxp-section-name'},h('span',{className:'cpxp-section-symbol','aria-hidden':true},h(ui.Icon,{name:section.id==='image'?'image':section.id==='tts'?'audio':'eye',size:20})),h('h3',{className:'cpxp-media-sec-title'},section.title),section.note?h('p',{className:'cpxp-media-note'},section.note):null),
         h('div',{className:'cpxp-media-head-actions'},
-          section.toggle&&!section.locked?h('button',{type:'button',className:'cpxp-enable',role:'switch','aria-label':section.toggle.label,'aria-checked':!!draft[section.toggle.path],disabled:!!busy,onClick:()=>onDraft(section.toggle.path,!draft[section.toggle.path])},h('span',{className:'cpxp-switch-track'}),section.toggle.label):h(ui.Badge,{tone:'neutral'},'未启用'),
+          section.toggle?h('label',{className:'cmx-toggle'},h('input',{type:'checkbox','aria-label':section.toggle.label,checked:section.id==='vision'?false:!!(draft[section.toggle.path]??section.toggle.value),disabled:!!busy||section.toggle.disabled===true||section.locked,onChange:()=>onDraft(section.toggle.path,!draft[section.toggle.path])}),h('span',null,h('span',{className:'cmx-toggle-label'},section.toggle.label),section.toggle.why?h('span',{className:'cmx-hint'},section.toggle.why):null)):h(ui.Badge,{tone:'neutral'},'未启用'),
           h(ui.Button,{size:'sm',onClick:()=>setOpen(!open),ariaLabel:(open?'收起':'展开')+section.title},open?'收起':'展开'))),
       open?h('div',{className:'cpxp-section-body'},
-        section.selector?h(ui.Segmented,{label:section.id==='image'?'生图服务':'语音服务',value:selected,disabled:!!busy,options:options.map(o=>({id:o.value,label:o.value==='none'?'未选择':o.label.replace(' 生图','').replace('（官方直连 / 中转站）','')})),onChange:value=>{onDraft(section.selector.path,value);if(section.id==='tts')section.providers.filter(p=>p.canEnable).forEach(p=>onDraft(p.enablePath,p.id===value));}}):null,
+        section.selector?h(ui.Field,{label:section.id==='image'?'协议':'语音服务',id:'media-'+section.selector.path,hint:section.id==='tts'?'切换后只会勾选对应 provider 的启用位，不需要再手工开':'切换协议会先把你选中的那一项单独保存'},h(ui.Select,{id:'media-'+section.selector.path,ariaLabel:section.id==='image'?'协议':'语音服务',value:selected,disabled:!!busy,options:options.map(o=>({value:o.value,label:o.value==='none'?'未选择':o.label})),onChange:value=>{onDraft(section.selector.path,value);if(section.id==='tts')section.providers.filter(p=>p.canEnable).forEach(p=>onDraft(p.enablePath,p.id===value));}})):null,
         section.fields.length?h('div',{className:'cpxp-media-fields'},section.fields.map(field=>h(FieldControl,{key:field.path,entry:field,value:draft[field.path],disabled:field.locked||!!busy,error:errors[field.path],onChange:value=>onDraft(field.path,value)}))):null,
-        provider?h(ProviderCard,{provider,selected:true,states,draft,secrets,clears,errors,testing,busy,onDraft,onSecret,onClear,onSave,onTest}):null,
+        section.providers.length?h('div',{className:'cpxp-media-provider-list'},
+          section.providers.map(item=>h(ProviderCard,{key:'pc-'+item.id,provider:item,selected:item.id===selected,presets:section.presets,states,draft,secrets,clears,errors,testing,busy,onDraft,onSecret,onClear,onSave,onTest}))):null,
         provider?.generationFields?h(GenerationEditor,{provider,presets:section.presets,draft,busy,errors,onDraft}):null,
-        !section.locked?h('div',{className:'cpxp-media-footer'},h('span',{className:'cpx-muted'},dirty?'有未保存的修改':'已保存'),h(ui.Button,{variant:'primary',disabled:!dirty||!!busy,loading:busy===`save:${section.id}`,onClick:()=>onSave(section.id)},'保存')):null):null);
+        section.preview?h('div',{className:'cpxp-preview'},h('div',{className:'cpxp-preview-head'},h('p',{className:'cpxp-media-note'},section.preview.note||''),h(ui.Button,{size:'sm',disabled:!!busy,title:'只算尺寸，不生成图片',onClick:()=>onPreview(section)} ,'预览')),previewState&&previewState.section===section.id?h('p',{className:'cpxp-media-note'},previewState.text):null):null,
+        !section.locked?h('div',{className:'cpxp-media-footer'},h('span',{className:'cpx-muted'},dirty?'有未保存的修改':'已保存'),h(ui.Button,{variant:'primary',disabled:!dirty||!!busy,loading:busy===`save:${section.id}`,onClick:()=>onSave(section.id),title:'只保存这一块里改动过的字段'},'保存这一块')):null):null);
   }
 
   function MediaBand({ media }) {
@@ -10409,6 +10454,7 @@ P.THEME_LABEL = THEME_LABEL;
     const [busy, setBusy] = P.useState('');
     const [flash, setFlash] = P.useState(null);
     const [testing, setTesting] = P.useState({});
+  const [previewState, setPreviewState] = P.useState(null);
 
     const bundle = state.data || null;
     const descriptor = bundle && bundle.page ? bundle.page.page : null;
@@ -10654,8 +10700,39 @@ P.THEME_LABEL = THEME_LABEL;
       });
     };
 
-    const header = {
-      key: 'media-settings',
+    /** 只算尺寸，不生成图片：按钮触发，一次只发一个 GET（预览不得自动发起）。 */
+  const doPreview = (section) => {
+    const spec = section.preview || null;
+    const endpoint = apiPath(spec && spec.endpoint, 'preview');
+    const values = (spec && spec.values) || {};
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(values)) {
+      if (value === undefined || value === null) continue;
+      query.set(key, String(value));
+    }
+    // 画幅跟随表单里尚未保存的选择：预览算的就是"你正要提交的那一组"。
+    const aspectPath = Object.keys(draft).find((path) => /\.aspect$/.test(path));
+    if (aspectPath && draft[aspectPath]) query.set('aspect', String(draft[aspectPath]));
+    setPreviewState({ section: section.id, running: true, text: '' });
+    mediaFetch(`${endpoint}?${query.toString()}`).then((result) => {
+      const payload = result.payload || {};
+      if (payload.ok !== true) {
+        const reason = (payload.error && payload.error.message) || '预览失败：后端拒绝了这次计算。';
+        setPreviewState({ section: section.id, running: false, text: reason });
+        return;
+      }
+      const resolution = payload.resolution || {};
+      setPreviewState({
+        section: section.id,
+        running: false,
+        text: resolution.ok === true
+          ? `结果：${resolution.width}x${resolution.height}（${resolution.pixels} 像素，取整到 ${resolution.rules ? resolution.rules.multipleOf : 64} 的倍数）`
+          : `未能计算：${payload.reason || (resolution && resolution.reason) || '超出声明范围'}`,
+      });
+    }, () => setPreviewState({ section: section.id, running: false, text: '网络请求没有完成。' }));
+  };
+
+  const header = {      key: 'media-settings',
       title: '媒体能力',
       hint: '',
       actions: [
@@ -10666,7 +10743,7 @@ P.THEME_LABEL = THEME_LABEL;
             size: 'sm',
             onClick: discardDraft,
             title: '丢掉未保存的改动，回到已保存的那一份配置',
-          }, '放弃修改')
+          }, '放弃未保存的改动')
           : null,
         state.data ? h(ui.Button, {
           key: 'reload',
@@ -10708,11 +10785,13 @@ P.THEME_LABEL = THEME_LABEL;
         clears,
         errors,
         busy,
+        previewState,
         onDraft: setField,
         onSecret: setSecret,
         onClear: setClear,
         onSave: doSave,
         onTest: doTest,
+        onPreview: doPreview,
       })));
 
     return h(ui.Band, header, [
@@ -13705,7 +13784,8 @@ P.THEME_LABEL = THEME_LABEL;
     const fieldRow = key => {
       const spec = FIELDS[key];
       const changed = dirty.indexOf(key) >= 0;
-      return h('div', { key, className: 'cpxp-set-field', 'data-dirty': changed ? 'true' : 'false' },
+      // data-field-path 是搜索深链的聚焦锚点（见 src/client/settings-search.js 的 focusSetting）。
+      return h('div', { key, className: 'cpxp-set-field', 'data-dirty': changed ? 'true' : 'false', 'data-field-path': spec.path },
         h(ui.Field, {
           label: spec.label,
           hint: changed ? (spec.hint ? `${spec.hint} · 未保存` : '未保存') : spec.hint,
@@ -13720,7 +13800,7 @@ P.THEME_LABEL = THEME_LABEL;
       const active = probe && probe.target === target ? probe : null;
       const draftValue = secretDraft[field] || '';
       const busyHere = Boolean(locked || secretBusy);
-      return h('div', { key: `secret-${target}`, className: 'cpxp-set-field', 'data-dirty': 'false' },
+      return h('div', { key: `secret-${target}`, className: 'cpxp-set-field', 'data-dirty': 'false', 'data-field-path': `secrets.${field}` },
         h(ui.Field, {
           label: `${label}（只写不读）`,
           hint: '密钥只存本机，接口只回「是否已配置」，界面不回显、不预填。',
@@ -14188,6 +14268,9 @@ P.THEME_LABEL = THEME_LABEL;
       title: '设置',
       lead: '管理陪伴、记忆与服务偏好。',
       actions: [
+        // 搜索入口由 settings-search.js 提供：它是唯一字段目录（QQ schema + Studio spec）
+        // 的前端，深链回来时按 data-field-path 聚焦到具体控件。
+        P.ui.SettingsSearch ? h(P.ui.SettingsSearch, { key: 'search', compact: false }) : null,
         h(ui.Button, {
           key: 'save',
           variant: 'primary',
@@ -14250,6 +14333,796 @@ P.THEME_LABEL = THEME_LABEL;
   }
 
   P.registerPage({ id: 'settings', label: '设置', order: 70, component: SettingsPage });
+})(P);
+
+// ==== src/client/settings-search.js ====
+(function (P) {
+  // 计划 W1-3 / W1-4：跨设置项搜索面板。
+  //
+  // 只有一条数据来源：服务端 `GET /settings-catalog`。它把 QQ schema 与 Studio spec 投影成
+  // 一份目录（见 lib/settings-catalog.mjs），因此这里**不再维护字段清单**——前端只负责
+  // 键盘交互、结果渲染与深链聚焦。
+  //
+  // 深链约定：
+  //   `studio:settings` → 本包设置页，按结果里的 `path` 聚焦并高亮对应行
+  //   `qq:<page>`       → 该字段属于 QQ 原生后台；这里只索引，不代改
+  // 聚焦用 `data-field-path` 定位，因为输入控件的 aria-label 是中文标签而不是键路径。
+
+  const { h, ui } = P;
+  const api = P.api;
+  const useState = P.useState;
+  const useEffect = P.useEffect;
+  const useRef = P.useRef;
+
+  P.css(`
+    .cpx-cat { position: relative; }
+    .cpx-cat-trigger { display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; height: 32px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-secondary); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-secondary); font: inherit; font-size: 13px; cursor: pointer; }
+    .cpx-cat-trigger:hover { color: var(--dsw-alias-label-primary); border-color: var(--dsw-alias-border-primary); }
+    .cpx-cat-trigger kbd { font: 11px/1 var(--cpx-mono); padding: 3px 5px; border-radius: 4px; border: 1px solid var(--dsw-alias-border-secondary); color: var(--dsw-alias-label-tertiary); }
+    .cpx-cat-overlay { position: fixed; inset: 0; z-index: 120; background: color-mix(in srgb, var(--dsw-alias-bg-inverse, #000) 38%, transparent); display: flex; align-items: flex-start; justify-content: center; padding: 12vh 16px 16px; }
+    .cpx-cat-panel { width: min(760px, 100%); max-height: 70vh; display: flex; flex-direction: column; background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-secondary); border-radius: 14px; box-shadow: 0 24px 64px color-mix(in srgb, var(--dsw-alias-bg-inverse, #000) 45%, transparent); overflow: hidden; }
+    .cpx-cat-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--dsw-alias-border-secondary); }
+    .cpx-cat-input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 15px; outline: none; }
+    .cpx-cat-list { overflow: auto; overscroll-behavior: contain; padding: 6px; }
+    .cpx-cat-group { padding: 10px 10px 4px; color: var(--dsw-alias-label-tertiary); font-size: 12px; letter-spacing: .04em; }
+    .cpx-cat-item { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 4px 12px; width: 100%; text-align: left; padding: 10px 12px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+    .cpx-cat-item[data-active="true"] { background: var(--dsw-alias-bg-layer-2); }
+    .cpx-cat-item:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
+    .cpx-cat-name { color: var(--dsw-alias-label-primary); font-size: 13.5px; overflow-wrap: anywhere; }
+    .cpx-cat-path { color: var(--dsw-alias-label-tertiary); font: 11.5px/1.6 var(--cpx-mono); overflow-wrap: anywhere; }
+    .cpx-cat-side { display: flex; align-items: center; gap: 6px; grid-row: 1 / span 2; }
+    .cpx-cat-empty { padding: 28px 18px; color: var(--dsw-alias-label-secondary); font-size: 13px; }
+    .cpx-cat-foot { display: flex; gap: 14px; padding: 8px 16px; border-top: 1px solid var(--dsw-alias-border-secondary); color: var(--dsw-alias-label-tertiary); font-size: 11.5px; }
+    .cpx-cat-focus { animation: cpx-cat-pulse 1.6s ease-out 1; }
+    @keyframes cpx-cat-pulse { 0%,40% { box-shadow: 0 0 0 2px var(--dsw-alias-warning, #d8a653); } 100% { box-shadow: 0 0 0 2px transparent; } }
+    @media (prefers-reduced-motion: reduce) { .cpx-cat-focus { animation: none; outline: 2px solid var(--dsw-alias-warning, #d8a653); outline-offset: 2px; } }
+    @media (max-width: 760px) { .cpx-cat-overlay { padding-top: 4vh; } .cpx-cat-panel { max-height: 84vh; } }
+  `);
+
+  // 状态词的中文与色调：只表达目录能证明的事，不猜运行态。
+  const STATUS_LABEL = {
+    default: '默认值',
+    configured: '已配置',
+    'secret-set': '已设置',
+    'secret-unset': '未设置',
+    unknown: '未知',
+    unavailable: '未装载',
+  };
+  const STATUS_TONE = {
+    configured: 'ok', 'secret-set': 'ok', default: 'neutral',
+    unknown: 'warn', 'secret-unset': 'neutral', unavailable: 'danger',
+  };
+  const HOT_LABEL = { live: '立即生效', reload: '重连生效', restart: '需重启' };
+
+  /** 深链：按 `path` 在设置页里聚焦对应控件。 */
+  function focusSetting(path) {
+    if (!path) return false;
+    const escaped = String(path).replace(/["\\]/g, '\\$&');
+    const node = document.querySelector(`[data-field-path="${escaped}"]`);
+    if (!node) return false;
+    node.scrollIntoView({ block: 'center', behavior: 'smooth' });
+    node.classList.add('cpx-cat-focus');
+    const input = node.querySelector('input, select, textarea, button');
+    if (input) input.focus({ preventScroll: true });
+    setTimeout(() => node.classList.remove('cpx-cat-focus'), 2000);
+    return true;
+  }
+
+  function CatalogPanel({ onClose }) {
+    const [query, setQuery] = useState('');
+    const [active, setActive] = useState(0);
+    const [debounced, setDebounced] = useState('');
+    const inputRef = useRef(null);
+    const listRef = useRef(null);
+
+    // 输入抖动：200ms 足够挡住连打，又不至于让搜索看起来卡。
+    useEffect(() => {
+      const timer = setTimeout(() => setDebounced(query), 200);
+      return () => clearTimeout(timer);
+    }, [query]);
+
+    const state = P.useApi(
+      () => api.get('settings-catalog', { q: debounced, limit: 60 }),
+      [debounced],
+    );
+
+    useEffect(() => { if (inputRef.current) inputRef.current.focus(); }, []);
+    useEffect(() => { setActive(0); }, [debounced]);
+
+    const matches = (state.data && state.data.matches) || [];
+    const catalog = (state.data && state.data.catalog) || null;
+
+    // 键盘上下移动时把当前项滚进可视区（长列表里否则看不见选中项）。
+    useEffect(() => {
+      const list = listRef.current;
+      if (!list) return;
+      const node = list.querySelector('[data-active="true"]');
+      if (node && typeof node.scrollIntoView === 'function') node.scrollIntoView({ block: 'nearest' });
+    }, [active]);
+
+    const choose = (match) => {
+      if (!match) return;
+      onClose();
+      if (match.deepLink === 'studio:settings') {
+        if (typeof P.nav === 'object' && P.nav && typeof P.nav.go === 'function') P.nav.go('settings');
+        // 切页是同步的（nav.go 直接改 state），下一帧再聚焦。
+        setTimeout(() => {
+          if (!focusSetting(match.path) && typeof P.toastOnce === 'function') {
+            P.toastOnce(`「${match.label}」在本页没有可聚焦的控件（可能尚未装载）。`);
+          }
+        }, 60);
+        return;
+      }
+      if (typeof match.deepLink === 'string' && match.deepLink.indexOf('qq:') === 0) {
+        if (typeof P.toastOnce === 'function') {
+          P.toastOnce(`「${match.label}」属于 QQ 原生后台（${match.deepLink.slice(3)}），这里只索引不代改。`);
+        }
+        return;
+      }
+      if (typeof P.toastOnce === 'function') P.toastOnce(`「${match.label}」没有可跳转的入口。`);
+    };
+
+    const onKeyDown = (event) => {
+      if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
+      if (event.key === 'ArrowDown') { event.preventDefault(); setActive((value) => Math.min(value + 1, matches.length - 1)); return; }
+      if (event.key === 'ArrowUp') { event.preventDefault(); setActive((value) => Math.max(value - 1, 0)); return; }
+      if (event.key === 'Enter') { event.preventDefault(); choose(matches[active]); }
+    };
+
+    const grouped = [];
+    for (const match of matches) {
+      const label = match.category || '其他';
+      const last = grouped[grouped.length - 1];
+      if (last && last.label === label) last.items.push(match);
+      else grouped.push({ label, items: [match] });
+    }
+    let indexCursor = 0;
+
+    return h('div', {
+      className: 'cpx-cat-overlay',
+      role: 'presentation',
+      'aria-hidden': 'true',
+      onClick: (event) => { if (event.target === event.currentTarget) onClose(); },
+    },
+      h('div', {
+        className: 'cpx-cat-panel',
+        role: 'dialog',
+        'aria-modal': 'true',
+        'aria-label': '搜索设置项',
+        onKeyDown,
+      },
+        h('div', { className: 'cpx-cat-head' },
+          h(ui.Icon, { name: 'search', size: 16 }),
+          h('input', {
+            ref: inputRef,
+            className: 'cpx-cat-input',
+            type: 'search',
+            value: query,
+            placeholder: '搜索设置：中文名、配置键、模块名（如 回复概率 / flood / 语音）',
+            'aria-label': '搜索设置项',
+            'aria-controls': 'cpx-cat-list',
+            'aria-activedescendant': matches[active] ? `cpx-cat-item-${active}` : undefined,
+            onChange: (event) => setQuery(event.target.value),
+          }),
+          h(ui.Button, { key: 'close', variant: 'ghost', size: 'sm', onClick: onClose }, '关闭'),
+        ),
+        state.error
+          ? h('div', { className: 'cpx-cat-empty' }, h(ui.ErrorBox, { error: state.error, onRetry: state.reload }))
+          : null,
+        !state.error && state.loading && !state.data
+          ? h('div', { className: 'cpx-cat-empty' }, '正在读取字段目录…')
+          : null,
+        !state.error && state.data && !matches.length
+          ? h('div', { className: 'cpx-cat-empty' },
+            h('div', null, query ? `没有匹配「${query}」的设置项。` : '当前没有任何可用的设置项。'),
+            catalog && catalog.sources
+              ? h('div', { style: { marginTop: '10px' } },
+                catalog.sources.map((source) => h('div', { key: source.source, className: 'cpx-cat-path' },
+                  `${source.source}：${source.status}${source.reason ? `（${source.reason}）` : ''}`)))
+              : null)
+          : null,
+        matches.length
+          ? h('div', {
+            className: 'cpx-cat-list',
+            id: 'cpx-cat-list',
+            ref: listRef,
+            role: 'listbox',
+            'aria-label': '设置项结果',
+          },
+            grouped.map((group) => h('div', { key: group.label },
+              h('div', { className: 'cpx-cat-group' }, group.label),
+              group.items.map((match) => {
+                const index = indexCursor++;
+                return h('button', {
+                  key: match.id,
+                  id: `cpx-cat-item-${index}`,
+                  type: 'button',
+                  role: 'option',
+                  'aria-selected': index === active,
+                  className: 'cpx-cat-item',
+                  'data-active': index === active ? 'true' : 'false',
+                  'data-field-path': match.path,
+                  onClick: () => choose(match),
+                  onMouseEnter: () => setActive(index),
+                },
+                  h('span', { className: 'cpx-cat-name' }, match.label),
+                  h('span', { className: 'cpx-cat-path' }, match.path),
+                  h('span', { className: 'cpx-cat-side' },
+                    match.hotLevel !== 'live'
+                      ? h(ui.Badge, { tone: match.hotLevel === 'restart' ? 'warn' : 'neutral' }, HOT_LABEL[match.hotLevel] || match.hotLevel)
+                      : null,
+                    h(ui.Badge, { tone: STATUS_TONE[match.status] || 'neutral' }, STATUS_LABEL[match.status] || match.status),
+                    match.permission === 'host' ? h(ui.Badge, { tone: 'neutral' }, '宿主权限') : null),
+                );
+              }))))
+          : null,
+        h('div', { className: 'cpx-cat-foot' },
+          h('span', null, '↑↓ 选择 · Enter 打开 · Esc 关闭'),
+          state.data ? h('span', null, `${state.data.returned}/${state.data.total} 条`) : null,
+          catalog ? h('span', null, `字段 ${catalog.totalFields}`) : null),
+      ));
+  }
+
+  /**
+   * 触发器：设置页头部一个按钮 + 全局 `Ctrl/⌘+K`。
+   *
+   * 快捷键只在没有别的输入焦点时生效（输入框里的 `Ctrl+K` 仍然是浏览器/宿主的行为）。
+   */
+  function SettingsSearch({ compact }) {
+    const [open, setOpen] = useState(false);
+
+    useEffect(() => {
+      const listener = (event) => {
+        const isAccel = (event.ctrlKey || event.metaKey) && !event.altKey && String(event.key).toLowerCase() === 'k';
+        if (!isAccel) return;
+        const target = event.target;
+        const typing = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+        if (typing) return;
+        event.preventDefault();
+        setOpen(true);
+      };
+      window.addEventListener('keydown', listener);
+      return () => window.removeEventListener('keydown', listener);
+    }, []);
+
+    return h('div', { className: 'cpx-cat' },
+      h('button', {
+        type: 'button',
+        className: 'cpx-cat-trigger',
+        onClick: () => setOpen(true),
+        'aria-haspopup': 'dialog',
+        'aria-expanded': open,
+        title: '搜索所有设置项（含 QQ 字段）',
+      },
+        h(ui.Icon, { name: 'search', size: 14 }),
+        compact ? null : h('span', null, '搜索设置'),
+        compact ? null : h('kbd', null, 'Ctrl K')),
+      open ? h(CatalogPanel, { onClose: () => setOpen(false) }) : null);
+  }
+
+  P.ui.SettingsSearch = SettingsSearch;
+  P.focusSetting = focusSetting;
+})(P);
+
+// ==== src/client/pages-trace.js ====
+(function (P) {
+  // 计划 W2：结构化诊断视图（trace 时间线）。
+  //
+  // 数据全从服务端来：`GET /trace-events`（快照）、`GET /trace/stream`（SSE）、
+  // `GET /trace-memory`（记忆侧投影）。前端不解析 `memory-recall.jsonl`，也不算理由码——
+  // 那两件事各只有一个权威来源。
+  //
+  // 这个视图存在的前提是**能解释**：每条事件都能看到 module / stage / status / reasonCode /
+  // counts / durationMs，并且丢掉的事件数（drops）永远显示在页面上，而不是被悄悄扔掉。
+
+  const { h, ui } = P;
+  const api = P.api;
+  const useState = P.useState;
+  const useEffect = P.useEffect;
+  const useMemo = P.useMemo;
+  const useRef = P.useRef;
+
+  P.css(`
+    .cpx-tr-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 12px; }
+    .cpx-tr-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--dsw-alias-border-secondary); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-secondary); font-size: 12px; cursor: pointer; }
+    .cpx-tr-chip[data-on="true"] { border-color: var(--dsw-alias-brand-primary); color: var(--dsw-alias-label-primary); }
+    .cpx-tr-list { display: flex; flex-direction: column; gap: 2px; max-height: 52vh; overflow: auto; overscroll-behavior: contain; }
+    .cpx-tr-row { display: grid; grid-template-columns: 76px 62px 88px minmax(0,1fr) auto; gap: 10px; align-items: baseline; padding: 7px 10px; border-radius: 6px; font-size: 12.5px; }
+    .cpx-tr-row:nth-child(odd) { background: color-mix(in srgb, var(--dsw-alias-bg-layer-2) 55%, transparent); }
+    .cpx-tr-row[data-status="failed"] { box-shadow: inset 3px 0 0 var(--dsw-alias-danger, #d9534f); }
+    .cpx-tr-row[data-status="degraded"] { box-shadow: inset 3px 0 0 var(--dsw-alias-warning, #d8a653); }
+    .cpx-tr-row[data-status="empty"] { box-shadow: inset 3px 0 0 var(--dsw-alias-label-tertiary); }
+    .cpx-tr-time { color: var(--dsw-alias-label-tertiary); font: 11px/1.5 var(--cpx-mono); }
+    .cpx-tr-stage { color: var(--dsw-alias-label-secondary); font: 11.5px/1.5 var(--cpx-mono); }
+    .cpx-tr-main { min-width: 0; overflow-wrap: anywhere; color: var(--dsw-alias-label-primary); }
+    .cpx-tr-meta { color: var(--dsw-alias-label-tertiary); font: 11px/1.6 var(--cpx-mono); }
+    .cpx-tr-side { display: flex; gap: 6px; align-items: center; }
+    .cpx-tr-empty { padding: 26px 14px; color: var(--dsw-alias-label-secondary); font-size: 13px; }
+    .cpx-tr-drops { margin-top: 10px; color: var(--dsw-alias-label-tertiary); font: 11.5px/1.7 var(--cpx-mono); }
+    /* 窄窗口：五列栅格（76+62+88+auto+gaps ≈ 266px）在手机宽度会把正文挤成一列字，
+       这里改成两行堆叠——时间与阶段并排，正文独占一行。 */
+    @media(max-width:760px) {
+      .cpx-tr-row { grid-template-columns: auto minmax(0,1fr); gap: 4px 8px; }
+      .cpx-tr-main { grid-column: 1 / -1; }
+      .cpx-tr-side { grid-column: 1 / -1; justify-content: flex-start; }
+      .cpx-tr-list { max-height: 60vh; }
+    }
+    @media(prefers-reduced-motion:reduce) { .cpx-tr-row { transition: none; } }
+  `);
+
+  const STATUS_TONE = { ok: 'ok', empty: 'neutral', filtered: 'neutral', degraded: 'warn', failed: 'danger' };
+  const STATUS_LABEL = { ok: '成功', empty: '无结果', filtered: '被过滤', degraded: '降级', failed: '失败' };
+
+  /** 把一条事件压成一行可读文本：不藏信息，但也不展开成段落。 */
+  function describe(event) {
+    const counts = event.counts && typeof event.counts === 'object' ? event.counts : null;
+    const parts = [];
+    if (counts) {
+      for (const key of ['candidates', 'filtered', 'injected', 'characters', 'toolsCalled', 'toolsFailed', 'dropped']) {
+        if (typeof counts[key] === 'number') parts.push(`${key}=${counts[key]}`);
+      }
+    }
+    if (typeof event.durationMs === 'number') parts.push(`${event.durationMs}ms`);
+    return parts.join(' · ');
+  }
+
+  function timeOf(at) {
+    const text = String(at ?? '');
+    const match = text.match(/T(\d{2}:\d{2}:\d{2})/);
+    return match ? match[1] : (text.slice(11, 19) || '—');
+  }
+
+  /**
+   * 事件列表。
+   *
+   * `mode` 两档：`live` 走 SSE（持续追加），`snapshot` 走一次性快照（可回看某一轮）。
+   * 两档共用同一个渲染，避免"实时看到的和快照看到的不是一回事"。
+   */
+  function TraceTimeline() {
+    const [events, setEvents] = useState([]);
+    const [drops, setDrops] = useState(null);
+    const [live, setLive] = useState(true);
+    const [source, setSource] = useState(null);
+    const [note, setNote] = useState(null);
+    const [filters, setFilters] = useState({ module: '', status: '', reasonCode: '', traceId: '' });
+    const [autoScroll, setAutoScroll] = useState(true);
+    const listRef = useRef(null);
+    const esRef = useRef(null);
+
+    // 快照模式（也是一次"回读"：把服务端已经落盘的都取回来）。
+    const snapshot = P.useApi(
+      () => (live ? Promise.resolve(null) : api.get('trace-events', { limit: 300, ...filterRows(filters) })),
+      [live, filters.module, filters.status, filters.reasonCode, filters.traceId],
+    );
+
+    useEffect(() => {
+      if (!live) return undefined;
+      const query = toQuery(filters);
+      let closed = false;
+      let source = null;
+      try {
+        source = new EventSource(api.url(`trace/stream${query ? `?${query}` : ''}`));
+      } catch (error) {
+        setNote('这个浏览器不支持事件流，已退回快照模式。');
+        setLive(false);
+        return undefined;
+      }
+      esRef.current = source;
+      source.addEventListener('ready', (message) => {
+        try {
+          const data = JSON.parse(message.data);
+          setDrops(data.drops ?? null);
+        } catch { /* 忽略坏帧 */ }
+      });
+      source.addEventListener('trace', (message) => {
+        try {
+          const data = JSON.parse(message.data);
+          if (data.source) setSource(data.source);
+          if (data.drops) setDrops(data.drops);
+          if (data.reset) { setEvents([]); return; }
+          const incoming = Array.isArray(data.events) ? data.events : [];
+          if (incoming.length) setEvents((previous) => mergeEvents(previous, incoming));
+        } catch { /* 忽略坏帧 */ }
+      });
+      source.addEventListener('trace-error', (message) => {
+        try { setNote(JSON.parse(message.data).message || '事件流出错'); } catch { setNote('事件流出错'); }
+      });
+      source.onerror = () => {
+        if (closed) return;
+        // 不自动无限重连：告诉用户发生了什么，让他们自己决定。
+        setNote('事件流断开（宿主可能在重启）。切到快照模式可读已落盘的事件。');
+      };
+      return () => {
+        closed = true;
+        try { source.close(); } catch { /* 已关 */ }
+      };
+    }, [live, filters.module, filters.status, filters.reasonCode, filters.traceId]);
+
+    // 自动滚到底：只在用户没往上翻的时候生效，否则会抢走阅读位置。
+    useEffect(() => {
+      const node = listRef.current;
+      if (!node || !autoScroll) return;
+      node.scrollTop = node.scrollHeight;
+    }, [events, autoScroll]);
+
+    const shown = live ? events : ((snapshot.data && snapshot.data.events) || []);
+    const dropInfo = live ? drops : (snapshot.data ? { total: snapshot.data.total, skipped: snapshot.data.skipped } : null);
+
+    const toggle = (key, value) => setFilters((previous) => ({
+      ...previous,
+      [key]: previous[key] === value ? '' : value,
+    }));
+
+    return h('div', null,
+      h('div', { className: 'cpx-tr-bar' },
+        h(ui.Button, { key: 'mode', variant: live ? 'primary' : 'ghost', size: 'sm', onClick: () => setLive((value) => !value) },
+          live ? '实时（正在推送）' : '快照（已落盘）'),
+        h(ui.Button, { key: 'refresh', variant: 'ghost', size: 'sm', onClick: () => (live ? null : snapshot.reload()) }, '重新读取'),
+        h('span', { className: 'cpx-tr-meta' }, source ? `来源 ${source}` : ''),
+      ),
+      h('div', { className: 'cpx-tr-bar' },
+        ['memory', 'prompt', 'tool', 'host'].map((module) => h('button', {
+          key: `m-${module}`,
+          type: 'button',
+          className: 'cpx-tr-chip',
+          'data-on': filters.module === module ? 'true' : 'false',
+          onClick: () => toggle('module', module),
+        }, module)),
+        ['failed', 'degraded', 'empty'].map((status) => h('button', {
+          key: `s-${status}`,
+          type: 'button',
+          className: 'cpx-tr-chip',
+          'data-on': filters.status === status ? 'true' : 'false',
+          onClick: () => toggle('status', status),
+        }, STATUS_LABEL[status] || status)),
+        filters.status || filters.module || filters.reasonCode || filters.traceId
+          ? h(ui.Button, {
+            key: 'clear',
+            variant: 'ghost',
+            size: 'sm',
+            onClick: () => setFilters({ module: '', status: '', reasonCode: '', traceId: '' }),
+          }, '清除过滤')
+          : null,
+      ),
+      note ? h(ui.Callout, { tone: 'warn', title: '诊断流状态变化' }, note) : null,
+      shown.length
+        ? h('div', {
+          className: 'cpx-tr-list',
+          ref: listRef,
+          onScroll: (event) => {
+            const node = event.target;
+            const atBottom = node.scrollHeight - node.scrollTop - node.clientHeight < 24;
+            setAutoScroll(atBottom);
+          },
+        },
+          shown.map((event) => h('div', {
+            key: event.eventId,
+            className: 'cpx-tr-row',
+            'data-status': event.status,
+          },
+            h('span', { className: 'cpx-tr-time' }, timeOf(event.at)),
+            h('span', { className: 'cpx-tr-stage' }, event.stage),
+            h('span', { className: 'cpx-tr-main' },
+              h('span', { className: 'cpx-tr-stage' }, `${event.module} `),
+              event.reasonCode ? String(event.reasonCode) : '—'),
+            h('span', { className: 'cpx-tr-meta' }, describe(event)),
+            h('span', { className: 'cpx-tr-side' },
+              h(ui.Badge, { tone: STATUS_TONE[event.status] || 'neutral' }, STATUS_LABEL[event.status] || event.status)),
+          )))
+        : h('div', { className: 'cpx-tr-empty' },
+          live
+            ? '还没有事件。做一次对话或一次检索后再看；也可以切到快照模式读已经落盘的事件。'
+            : '这个过滤条件下没有事件。'),
+      dropInfo
+        ? h('div', { className: 'cpx-tr-drops' },
+          `读到的：${dropInfo.parsed ?? dropInfo.total ?? 0}`,
+          dropInfo.filtered ? ` · 被过滤：${dropInfo.filtered}` : '',
+          dropInfo.duplicate ? ` · 去重：${dropInfo.duplicate}` : '',
+          dropInfo.corrupt ? ` · 坏行：${dropInfo.corrupt}` : '',
+          dropInfo.unsafe ? ` · 不安全行：${dropInfo.unsafe}` : '',
+          dropInfo.readError ? ` · 读失败：${dropInfo.readError}` : '',
+          dropInfo.skipped ? ` · 跳过：${dropInfo.skipped}` : '',
+          dropInfo.droppedReasons ? ` · 丢弃原因：${Object.keys(dropInfo.droppedReasons).join('/')}` : '')
+        : null,
+    );
+  }
+
+  /** 事件合并：按 eventId 去重，保持到达顺序（SSE 可能因为轮转续读重发）。 */
+  function mergeEvents(previous, incoming) {
+    const seen = new Set(previous.map((event) => event.eventId));
+    const appended = [];
+    for (const event of incoming) {
+      if (seen.has(event.eventId)) continue;
+      seen.add(event.eventId);
+      appended.push(event);
+    }
+    if (!appended.length) return previous;
+    // 客户端缓冲上限 2000 条：与落盘环一致，避免长时间开着把内存吃掉。
+    return [...previous, ...appended].slice(-2000);
+  }
+
+  function filterRows(filters) {
+    const out = {};
+    for (const [key, value] of Object.entries(filters)) if (value) out[key] = value;
+    return out;
+  }
+
+  function toQuery(filters) {
+    return Object.entries(filterRows(filters))
+      .map(([key, value]) => `${encodeURIComponent(key)}=${encodeURIComponent(value)}`)
+      .join('&');
+  }
+
+  /** 记忆侧：把既有 recall 日志的投影拉出来，并按 traceId 折叠成"一轮"。 */
+  function MemoryTraces() {
+    const state = P.useApi(() => api.get('trace-memory', { limit: 200 }), []);
+    const data = state.data || null;
+    const rounds = useMemo(() => {
+      const events = (data && data.events) || [];
+      const groups = new Map();
+      for (const event of events) {
+        const key = event.traceId || '(no-trace)';
+        if (!groups.has(key)) groups.set(key, { traceId: key, at: event.at, events: [] });
+        groups.get(key).events.push(event);
+      }
+      return [...groups.values()].sort((left, right) => String(right.at).localeCompare(String(left.at)));
+    }, [data]);
+
+    if (state.error) return h(ui.ErrorBox, { error: state.error, onRetry: state.reload });
+    if (!data) return h(ui.Skeleton, { rows: 4 });
+    if (data.readable === false) {
+      return h(ui.Callout, { tone: 'warn', title: '读不到记忆召回日志' },
+        `原因：${data.reason || '未知'}。这条日志由 companion-memory 写，Studio 只读；它读不到时不要当成"没有召回"。`);
+    }
+    if (!rounds.length) {
+      return h(ui.Empty, { title: '还没有召回记录', hint: '记忆引擎还没写过 logs/memory-recall.jsonl。' });
+    }
+    return h(ui.List, { label: `最近 ${rounds.length} 轮召回` },
+      rounds.slice(0, 20).map((round) => {
+        const retrieve = round.events.find((event) => event.stage === 'retrieve');
+        const inject = round.events.find((event) => event.stage === 'inject');
+        return h(ui.Row, {
+          key: round.traceId,
+          title: round.traceId,
+          meta: retrieve
+            ? `候选 ${retrieve.counts?.candidates ?? 0} → 过滤后 ${retrieve.counts?.filtered ?? 0}；注入 ${inject?.counts?.characters ?? 0} 字`
+            : '',
+          side: h('span', { className: 'cpx-tr-side' },
+            inject && inject.status === 'empty' ? h(ui.Badge, { tone: 'warn' }, '无结果') : null,
+            retrieve ? h(ui.Badge, { tone: STATUS_TONE[retrieve.status] || 'neutral' }, STATUS_LABEL[retrieve.status] || retrieve.status) : null,
+            h(ui.Badge, { tone: 'neutral' }, retrieve?.reasonCode || '—')),
+        });
+      }));
+  }
+
+  /** 页面本体：三块（时间线 / 记忆侧 / 说明）。 */
+  function TracePage() {
+    return h(ui.Page, {
+      title: '诊断事件',
+      lead: '按 traceId 看一轮从检索到注入、从路由到工具到底发生了什么；只有计数与理由码，没有正文。',
+    },
+      h(ui.Band, { key: 'live', title: '时间线', hint: '实时推送可切到已落盘快照；被丢弃的事件数始终显示在下方' },
+        h(TraceTimeline)),
+      h(ui.Band, { key: 'memory', title: '记忆召回（同一份日志的投影）', hint: '数据来自 companion-memory 的 memory-recall.jsonl，Studio 只读不写' },
+        h(MemoryTraces)),
+      h(ui.Band, { key: 'legend', title: '怎么看这些状态', hint: '状态词与 reasonCode 都来自既有实现，不自创' },
+        h(ui.List, { label: '状态图例' }, [
+          h(ui.Row, { key: 'ok', title: '成功', meta: '这一阶段正常完成', side: h(ui.Badge, { tone: 'ok' }, 'ok') }),
+          h(ui.Row, { key: 'empty', title: '无结果', meta: '跑通了但没有东西可注入（不是错误）', side: h(ui.Badge, { tone: 'neutral' }, 'empty') }),
+          h(ui.Row, { key: 'filtered', title: '被过滤', meta: '候选进了门但没过阈值/作用域', side: h(ui.Badge, { tone: 'neutral' }, 'filtered') }),
+          h(ui.Row, { key: 'degraded', title: '降级', meta: '跑通了但违背了契约（例如事件字段不合规），原因码会写清楚', side: h(ui.Badge, { tone: 'warn' }, 'degraded') }),
+          h(ui.Row, { key: 'failed', title: '失败', meta: '这一阶段抛错或后端不可用', side: h(ui.Badge, { tone: 'danger' }, 'failed') }),
+        ])),
+    );
+  }
+
+  P.registerPage({ id: 'diagnostics-trace', label: '诊断事件', order: 41, component: TracePage });
+  P.ui.TraceTimeline = TraceTimeline;
+})(P);
+
+// ==== src/client/pages-works.js ====
+(function (P) {
+  // 计划 W3：作品中心（只读浏览 + 预览）。
+  //
+  // 数据只有两个来源：`GET /works`（现场派生的列表）与 `GET /work-detail`（受限预览）。
+  // 前端**不做**路径拼接、不读绝对路径、不做 HTML 渲染——这三件事都在服务端守住了。
+  // 首版只读：没有覆盖编辑、删除、分享入口（计划 W3 第 5 条）。
+
+  const { h, ui } = P;
+  const api = P.api;
+  const useState = P.useState;
+  const useEffect = P.useEffect;
+
+  P.css(`
+    .cpx-wk-bar { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; margin-bottom: 10px; }
+    .cpx-wk-item { display: grid; grid-template-columns: minmax(0,1fr) auto; gap: 3px 12px; width: 100%; text-align: left; padding: 9px 12px; border: 0; border-radius: 8px; background: transparent; color: inherit; font: inherit; cursor: pointer; }
+    .cpx-wk-item[data-active="true"] { background: var(--dsw-alias-bg-layer-2); }
+    .cpx-wk-item:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 1px; }
+    .cpx-wk-title { color: var(--dsw-alias-label-primary); font-size: 13.5px; overflow-wrap: anywhere; }
+    .cpx-wk-meta { color: var(--dsw-alias-label-tertiary); font: 11.5px/1.6 var(--cpx-mono); overflow-wrap: anywhere; }
+    .cpx-wk-side { display: flex; align-items: center; gap: 6px; grid-row: 1 / span 2; }
+    .cpx-wk-preview { max-height: 46vh; overflow: auto; padding: 12px 14px; border-radius: 8px; background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-primary); font: 12.5px/1.75 var(--cpx-mono); white-space: pre-wrap; overflow-wrap: anywhere; }
+    .cpx-wk-chip { display: inline-flex; align-items: center; gap: 6px; padding: 4px 10px; border-radius: 999px; border: 1px solid var(--dsw-alias-border-secondary); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-secondary); font-size: 12px; cursor: pointer; }
+    .cpx-wk-chip[data-on="true"] { border-color: var(--dsw-alias-brand-primary); color: var(--dsw-alias-label-primary); }
+    .cpx-wk-empty { padding: 22px 14px; color: var(--dsw-alias-label-secondary); font-size: 13px; }
+    /* 窄窗口：列表项从"标题+侧栏"并排改成上下堆叠，预览区不占满整屏。 */
+    @media(max-width:760px) {
+      .cpx-wk-item { grid-template-columns: minmax(0,1fr); }
+      .cpx-wk-side { grid-row: auto; justify-content: flex-start; }
+      .cpx-wk-preview { max-height: 38vh; }
+    }
+    @media(prefers-reduced-motion:reduce) { .cpx-wk-item { transition: none; } }
+  `);
+
+  const STATUS_TONE = { done: 'ok', review: 'warn', running: 'neutral', failed: 'danger', draft: 'neutral' };
+  const STATUS_LABEL = { done: '已完成', review: '待核对', running: '进行中', failed: '失败', draft: '草稿' };
+  const TYPE_FILTERS = ['md', 'txt', 'json', 'csv'];
+  const STATUS_FILTERS = ['done', 'review', 'running', 'failed', 'draft'];
+
+  function fmtTime(at) {
+    try {
+      const date = new Date(at);
+      const pad = (value) => String(value).padStart(2, '0');
+      return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())} ${pad(date.getHours())}:${pad(date.getMinutes())}`;
+    } catch { return String(at ?? '—'); }
+  }
+
+  function fmtSize(bytes) {
+    const value = Number(bytes ?? 0);
+    if (!Number.isFinite(value) || value <= 0) return '—';
+    if (value < 1024) return `${value} B`;
+    if (value < 1024 * 1024) return `${(value / 1024).toFixed(1)} KB`;
+    return `${(value / 1024 / 1024).toFixed(1)} MB`;
+  }
+
+  function WorksPage() {
+    const [query, setQuery] = useState('');
+    const [debounced, setDebounced] = useState('');
+    const [type, setType] = useState('');
+    const [status, setStatus] = useState('');
+    const [openPath, setOpenPath] = useState('');
+
+    useEffect(() => {
+      const timer = setTimeout(() => setDebounced(query), 220);
+      return () => clearTimeout(timer);
+    }, [query]);
+
+    const list = P.useApi(
+      () => api.get('works', { q: debounced, type, status }),
+      [debounced, type, status],
+    );
+    const detail = P.useApi(
+      () => (openPath ? api.get('work-detail', { path: openPath }) : Promise.resolve(null)),
+      [openPath],
+    );
+
+    const data = list.data || null;
+    const items = (data && data.items) || [];
+    const selected = (detail.data && detail.data.ok) ? detail.data : null;
+    const selectedProblem = (detail.data && !detail.data.ok) ? detail.data : null;
+
+    // 目录不存在与"没有作品"必须分开说：前者是环境问题，后者是空结果。
+    if (list.error) {
+      return h(ui.Page, { title: '作品', lead: '只读浏览工作区里的产出。' },
+        h(ui.ErrorBox, { error: list.error, onRetry: list.reload }));
+    }
+    if (!data) {
+      return h(ui.Page, { title: '作品', lead: '只读浏览工作区里的产出。' },
+        h(ui.Skeleton, { rows: 6 }));
+    }
+    if (!data.available) {
+      return h(ui.Page, { title: '作品', lead: '只读浏览工作区里的产出。' },
+        h(ui.Empty, {
+          title: '作品目录还没建起来',
+          hint: `配置的作品根是「${data.root && data.root.configured ? data.root.configured : '未设置'}」，但这个目录当前不存在。这不是"没有作品"，是环境还没就绪。`,
+        }));
+    }
+
+    return h(ui.Page, {
+      title: '作品',
+      lead: '工作区里的产出：按标题/类型/日期过滤，只读预览；没有编辑、删除或分享入口。',
+      status: data.total ? `${data.total} 份` : '空',
+    },
+      h(ui.Band, {
+        key: 'list',
+        title: '作品列表',
+        hint: data.evidence && !data.evidence.available
+          ? `运行时证据不可用（${data.evidence.reason}），所以状态一律按"未完成"处理`
+          : '状态来自 activity 与 receipt；没有 finish 收据的不会标「已完成」',
+        actions: [
+          h(ui.Input, {
+            key: 'q',
+            value: query,
+            placeholder: '搜标题或路径',
+            width: '200px',
+            ariaLabel: '搜索作品',
+            onChange: (next) => setQuery(next),
+          }),
+        ],
+      },
+        h('div', { className: 'cpx-wk-bar', key: 'filters' },
+          TYPE_FILTERS.map((item) => h('button', {
+            key: `t-${item}`,
+            type: 'button',
+            className: 'cpx-wk-chip',
+            'data-on': type === item ? 'true' : 'false',
+            onClick: () => setType((previous) => (previous === item ? '' : item)),
+          }, item)),
+          STATUS_FILTERS.map((item) => h('button', {
+            key: `s-${item}`,
+            type: 'button',
+            className: 'cpx-wk-chip',
+            'data-on': status === item ? 'true' : 'false',
+            onClick: () => setStatus((previous) => (previous === item ? '' : item)),
+          }, STATUS_LABEL[item] || item)),
+          (type || status || query)
+            ? h(ui.Button, { key: 'clear', variant: 'ghost', size: 'sm', onClick: () => { setType(''); setStatus(''); setQuery(''); } }, '清除')
+            : null,
+        ),
+        items.length
+          ? h(ui.List, { label: `作品 ${data.total} 份` },
+            items.map((item) => h('button', {
+              key: item.relative,
+              type: 'button',
+              className: 'cpx-wk-item',
+              'data-active': openPath === item.relative ? 'true' : 'false',
+              'data-work-path': item.relative,
+              onClick: () => setOpenPath(item.relative),
+            },
+              h('span', { className: 'cpx-wk-title' }, item.title),
+              h('span', { className: 'cpx-wk-meta' },
+                `${item.type} · ${fmtSize(item.size)} · v${item.version} · ${fmtTime(item.modifiedAt)}`,
+                item.otherVersions ? ` · 另有 ${item.otherVersions} 个旧版本` : ''),
+              h('span', { className: 'cpx-wk-side' },
+                h(ui.Badge, { tone: STATUS_TONE[item.status] || 'neutral' }, item.statusLabel || item.status),
+                item.preview && item.preview.ok === false
+                  ? h(ui.Badge, { tone: 'neutral' }, '不可预览')
+                  : null),
+            )))
+          : h('div', { className: 'cpx-wk-empty' },
+            data.total
+              ? `搜索/过滤条件下没有结果（全量 ${data.total} 份）。`
+              : (data.evidence && !data.evidence.available
+                ? '运行时还没有写作品的记录（证据库不可用）。'
+                : '作品目录里还没有被活动引用过的文件。')),
+        data.skipped
+          ? h('div', { className: 'cpx-wk-meta', style: { marginTop: '10px' } },
+            `有 ${data.skipped} 条引用走不到文件：${Object.keys(data.skippedReasons || {}).join('/')}（越界引用由服务端 fail-closed 拒绝）`)
+          : null,
+      ),
+      h(ui.Band, {
+        key: 'preview',
+        title: selected ? selected.title : '预览',
+        hint: selected
+          ? `${selected.relative} · ${fmtSize(selected.size)} · 修改于 ${fmtTime(selected.modifiedAt)}`
+          : '选一份作品来看内容；文本以外一律不在浏览器里渲染',
+      },
+        selectedProblem
+          ? h(ui.Callout, { tone: 'warn', title: `这份作品读不了（${selectedProblem.reason}）` },
+            selectedProblem.meta
+              ? `类型 ${selectedProblem.meta.type} · ${fmtSize(selectedProblem.meta.size)}。这里不执行 HTML、脚本或未知附件；需要看原文件请用宿主的打开能力。`
+              : '路径被拒绝或文件已不存在。')
+          : null,
+        selected
+          ? h('div', null,
+            h('div', { className: 'cpx-wk-bar' },
+              h(ui.Badge, { tone: STATUS_TONE[selected.status] || 'neutral' }, STATUS_LABEL[selected.status] || selected.status),
+              h(ui.Badge, { tone: 'neutral' }, `v${selected.version}`),
+              selected.hashPrefix ? h(ui.Badge, { tone: 'neutral' }, `sha256 ${selected.hashPrefix}…`) : null,
+              selected.evidence && selected.evidence.finishReceipted
+                ? h(ui.Badge, { tone: 'ok' }, 'finish 收据')
+                : h(ui.Badge, { tone: 'neutral' }, '无 finish 收据')),
+            h('pre', { className: 'cpx-wk-preview' }, selected.text),
+            selected.evidence && selected.evidence.receiptCodes && selected.evidence.receiptCodes.length
+              ? h('div', { className: 'cpx-wk-meta', style: { marginTop: '8px' } },
+                `最近收据：${selected.evidence.receiptCodes.join(' · ')}`)
+              : null)
+          : h('div', { className: 'cpx-wk-empty' }, '还没选作品。'),
+      ),
+    );
+  }
+
+  P.registerPage({ id: 'works', label: '作品', order: 42, component: WorksPage });
 })(P);
 
 // ==== src/client/pages-overview.js ====

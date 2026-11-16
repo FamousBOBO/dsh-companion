@@ -27,6 +27,8 @@
     "scripts/build-client.mjs",
     "scripts/smoke-client.mjs",
     "scripts/run-tests.mjs",
+    "scripts/check-settings-catalog.mjs",
+    "scripts/check-visual-a11y.mjs",
     "cordis.patch.yml",
     "locale/",
     "icon.svg",
@@ -37,7 +39,10 @@
     "build": "node scripts/build-client.mjs",
     "build:client": "node scripts/build-client.mjs",
     "check:client": "node scripts/build-client.mjs --check",
-    "test": "node scripts/run-tests.mjs"
+    "test": "node scripts/run-tests.mjs",
+    "check:catalog": "node scripts/check-settings-catalog.mjs",
+    "check:a11y": "node scripts/check-visual-a11y.mjs --strict",
+    "smoke": "node scripts/build-client.mjs && node scripts/smoke-client.mjs"
   },
   "dsh": {
     "bundle": {

@@ -1769,16 +1769,17 @@
     }, h('div', { className: 'cpxp-hl-stack' }, h(CollectorTerminals, { onChange: query.reload }), body));
   }
 
-  // 二级 tab 的容器是 core.js 的 NAV 常量（'life' 原本没有 tabs）。这里只把本页挂进
-  // 「生活与日程」的 tabs 里，不动 NAV 的其它字段，也不改 core.js。
-  (function attachTab() {
-    const nav = P.NAV;
-    if (!Array.isArray(nav)) return;
+  // 「生活与日程」的 tabs 现在由 core.js 自己声明（`tabs: ['life', 'health']`）。
+  // 页面不再回头改 NAV：导航表只有一个所有者，片段只读它。这里留一条自检，
+  // 声明缺了就在控制台报出来，而不是悄悄补上（悄悄补 = 下次声明再丢掉也没人知道）。
+  (function verifyTab() {
+    const nav = Array.isArray(P.NAV) ? P.NAV : [];
     const life = nav.find((item) => item && item.id === 'life');
-    if (!life) return;
-    if (!Array.isArray(life.tabs)) life.tabs = [life.id || 'life'];
-    if (life.tabs.indexOf('life') < 0) life.tabs.unshift('life');
-    if (life.tabs.indexOf('health') < 0) life.tabs.push('health');
+    if (!life || !Array.isArray(life.tabs) || life.tabs.indexOf('health') < 0) {
+      if (typeof console !== 'undefined' && console.warn) {
+        console.warn('[companion-health] core.js 的 NAV 里「生活与日程」缺少 health tab 声明');
+      }
+    }
   })();
 
   P.registerPage({ id: 'health', label: '健康与睡眠', order: 21, component: HealthPage });

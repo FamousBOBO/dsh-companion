@@ -1,0 +1,289 @@
+section	path	page	label	kind	secret	hot	dormant	adminPage	studioProjection	studioExcludeReason	sourceRef
+connection	connection.mode	connection	连接方向	enum		reload		connection	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/chat.ts
+connection	connection.url	connection	地址	string		reload		connection	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/chat.ts
+(root)	selfId	connection	机器人 QQ 号	number		live		connection	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/root.ts
+(root)	admins	connection	管理员 QQ 号	list		live		connection	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/root.ts
+(root)	primaryGroup	groups	主群号	number		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/root.ts
+(root)	groupEnabled	groups	处理群消息	boolean		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/root.ts
+(root)	affectionPort	security	好感度面板端口	number		reload		security	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/root.ts
+(root)	requireMention	groups	群里必须 @ 才理	boolean		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/root.ts
+(root)	talkValue	groups	群聊回复概率	number		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/root.ts
+(root)	primaryTalkValue	groups	主群回复概率	number		live		groups	no	studio-removed-list	plugins/dsh-channel-qq/src/config/sections/root.ts
+(root)	rooms	groups	按群覆盖	json		live		groups	no	studio-removed-list	plugins/dsh-channel-qq/src/config/sections/root.ts
+(root)	rateLimitMs	messages	发送间隔	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/root.ts
+(root)	maxMessageLength	messages	单条消息上限	number		live	dormant	messages	no	dormant	plugins/dsh-channel-qq/src/config/sections/root.ts
+channelHealth	channelHealth.enabled	connection	启用	boolean		live		connection	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/chat.ts
+channelHealth	channelHealth.thresholdMs	connection	失联阈值（毫秒）	number		live		connection	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/chat.ts
+channelHealth	channelHealth.realertMs	connection	重复告警间隔（毫秒）	number		live		connection	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/chat.ts
+segmentation	segmentation.enabled	messages	启用	boolean		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+segmentation	segmentation.style	messages	风格	enum		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+segmentation	segmentation.minLength	messages	合并阈值（字数）	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+segmentation	segmentation.maxSegments	messages	最多几条	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+segmentation	segmentation.removeTrailingPeriod	messages	去掉句末的句号	boolean		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+segmentation	segmentation.delayPerCharMs	messages	分段间隔（毫秒/字）	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+segmentation	segmentation.delayMinMs	messages	分段间隔下限	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+segmentation	segmentation.delayMaxMs	messages	分段间隔上限	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+segmentation	segmentation.groupMaxChars	messages	群聊每轮正文上限	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+batching	batching.windowMs	messages	安静窗口（毫秒）	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+batching	batching.maxMessages	messages	条数上限	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+batching	batching.maxChars	messages	字数上限	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+batching	batching.dmEnabled	messages	私聊接话缓冲	boolean		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+batching	batching.dmShortMs	messages	私聊短句等待（毫秒）	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+batching	batching.dmLongMs	messages	私聊长句等待（毫秒）	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+batching	batching.dmLongChars	messages	私聊长句字数	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+batching	batching.dmMaxWaitMs	messages	私聊最长合并等待（毫秒）	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+injectMode	injectMode.enabled	messages	启用	boolean		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+injectMode	injectMode.duringTurn	messages	回合中插话作为引导	boolean		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+injectMode	injectMode.wakeIdle	messages	空闲时直接唤醒	boolean		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+imageRecognition	imageRecognition.enabled	media	启用	boolean		live		media	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/image.ts
+imageRecognition	imageRecognition.serverOcr	media	注册图片 OCR 工具	boolean		reload		media	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/image.ts
+imageRecognition	imageRecognition.maxPerMessage	media	每条消息最多几张	number		live		media	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/image.ts
+poke	poke.enabled	events	启用	boolean		live		events	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/poke.ts
+poke	poke.windowSec	events	合并窗口（秒）	number		live		events	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/poke.ts
+interaction	interaction.typingIndicator	messages	私聊显示「正在输入」	boolean		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/interaction.ts
+interaction	interaction.ackReaction	messages	收到时贴表情回应	boolean		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/interaction.ts
+interaction	interaction.ackEmojiId	messages	回应表情 id	string		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/interaction.ts
+forward	forward.longReplyThreshold	messages	超过几条改合并转发	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/forward.ts
+forward	forward.maxNodes	messages	单次最多几条	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/forward.ts
+metrics	metrics.enabled	metrics	启用	boolean		live		metrics	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/metrics.ts
+history	history.serverBackfill	messages	本地没有时回源服务端	boolean		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/history.ts
+history	history.maxMessages	messages	每次最多拉几条	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/history.ts
+reliability	reliability.slowNotice	messages	慢回合发一句「还在处理」	boolean		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/reliability.ts
+reliability	reliability.slowAfterMs	messages	多久算慢（毫秒）	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/reliability.ts
+reliability	reliability.failureNotice	messages	永久失败说一声	boolean		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/reliability.ts
+dailyReport	dailyReport.enabled	proactive	启用	boolean		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/daily-report.ts
+dailyReport	dailyReport.time	proactive	发送时间	string		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/daily-report.ts
+dailyReport	dailyReport.target	proactive	发送到	string		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/daily-report.ts
+access	access.friendRequests	security	处理好友申请与群邀请	boolean		live		security	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/access.ts
+access	access.mode	security	模式	enum		live		security	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/access.ts
+access	access.groupPolicy	security	群策略	enum		live		security	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/access.ts
+access	access.allowUsers	security	额外允许的 QQ 号	list		live		security	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/access.ts
+access	access.allowGroups	security	额外允许的群号	list		live		security	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/access.ts
+access	access.notifyOwner	security	新请求通知主人	boolean		live		security	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/access.ts
+access	access.replyPendingInGroups	security	未批准的群里也回「待批准」	boolean		live		security	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/access.ts
+access	access.replyCooldownMin	security	待批准回复间隔（分钟）	number		live		security	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/access.ts
+stt	stt.enabled	media	启用	boolean		live		media	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/chat.ts
+stt	stt.backend	media	后端	enum		live		media	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/chat.ts
+stt	stt.serverFallback	media	本地失败时用协议端转写	boolean		live		media	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/chat.ts
+stt	stt.baseUrl	media	接口地址	string		live		media	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/chat.ts
+stt	stt.apiKey	media	接口密钥	string	secret	live		media	no	secret	plugins/dsh-channel-qq/src/config/sections/chat.ts
+stt	stt.model	media	模型名	string		live		media	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/chat.ts
+stt	stt.timeoutMs	media	超时（毫秒）	number		live		media	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/chat.ts
+groupModel	groupModel.provider	groups	供应商	string		live		groups	no	studio-section-excluded	plugins/dsh-channel-qq/src/config/sections/chat.ts
+groupModel	groupModel.model	groups	模型	string		live		groups	no	studio-section-excluded	plugins/dsh-channel-qq/src/config/sections/chat.ts
+(root)	keywordTriggers	groups	唤醒关键词	list		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/root.ts
+morningReport	morningReport.enabled	proactive	启用	boolean		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/system.ts
+morningReport	morningReport.weatherLocation	proactive	天气地点	string		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/system.ts
+morningReport	morningReport.scheduleFile	proactive	课表文件	string		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/system.ts
+(root)	cruises	proactive	巡航任务	json		restart		proactive	no	studio-removed-list	plugins/dsh-channel-qq/src/config/sections/root.ts
+(root)	keywordReactions	groups	关键词反应	json		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/root.ts
+(root)	workspacePath	connection	工作区路径	string		restart		connection	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/root.ts
+(root)	agentPreset	persona	人格预设	string		live		persona	no	studio-removed-list	plugins/dsh-channel-qq/src/config/sections/root.ts
+(root)	permissionPreset	persona	权限预设	string		live		persona	no	studio-removed-list	plugins/dsh-channel-qq/src/config/sections/root.ts
+(root)	accessToken	connection	访问令牌	string	secret	reload		connection	no	secret	plugins/dsh-channel-qq/src/config/sections/root.ts
+emoji	emoji.steal	stickers	偷主群的表情	boolean		live		stickers	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/media.ts
+emoji	emoji.stealPrivate	stickers	私聊也偷（仅管理员）	boolean		live		stickers	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/media.ts
+emoji	emoji.dir	stickers	原图目录	string		reload		stickers	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/media.ts
+emoji	emoji.registeredDir	stickers	已收录目录	string		reload		stickers	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/media.ts
+admin	admin.enabled	security	启用	boolean		reload		security	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/system.ts
+admin	admin.port	security	端口	number		reload		security	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/system.ts
+admin	admin.password	security	密码	string	secret	live		security	no	secret	plugins/dsh-channel-qq/src/config/sections/system.ts
+admin	admin.host	security	监听地址	string		restart		security	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/system.ts
+linkResolve	linkResolve.enabled	links	启用	boolean		live		links	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/network.ts
+linkResolve	linkResolve.autoGroups	links	自动出卡的群	list		live		links	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/network.ts
+linkResolve	linkResolve.maxPerMessage	links	每条消息最多几张	number		live		links	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/network.ts
+linkResolve	linkResolve.bilibiliCookie	links	B站 SESSDATA	string	secret	live		links	no	secret	plugins/dsh-channel-qq/src/config/sections/network.ts
+meme	meme.enabled	stickers	启用	boolean		live		stickers	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/media.ts
+meme	meme.fontFile	stickers	字体文件	string		live		stickers	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/media.ts
+meme	meme.dir	stickers	输出目录	string		live		stickers	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/media.ts
+quotes	quotes.enabled	quotes	启用	boolean		live		quotes	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/content.ts
+quotes	quotes.dir	quotes	存储目录	string		restart		quotes	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/content.ts
+quotes	quotes.autoCapture	quotes	自动收录	boolean		live		quotes	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/content.ts
+chatlog	chatlog.enabled	quotes	启用	boolean		live		quotes	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/content.ts
+chatlog	chatlog.dir	quotes	存储目录	string		live		quotes	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/content.ts
+chatlog	chatlog.maxChars	quotes	单条上限字数	number		live		quotes	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/content.ts
+chatlog	chatlog.keepDays	quotes	保留天数	number		live		quotes	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/content.ts
+tts	tts.enabled	media	启用	boolean		live		media	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/media.ts
+tts	tts.voice	media	音色	string		live		media	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/media.ts
+tts	tts.provider	media	后端	enum		restart		media	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/media.ts
+tts	tts.rate	media	语速	string		live		media	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/media.ts
+tts	tts.pitch	media	音调	string		live		media	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/media.ts
+tts	tts.volume	media	音量	string		live		media	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/media.ts
+tts	tts.dir	media	输出目录	string		live		media	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/media.ts
+reminders	reminders.enabled	reminders	启用	boolean		live		reminders	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/content.ts
+reminders	reminders.file	reminders	存储文件	string		restart		reminders	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/content.ts
+reminders	reminders.dryRun	reminders	演练模式（不真发）	boolean		live		reminders	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/content.ts
+rss	rss.enabled	rss	启用	boolean		live		rss	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/content.ts
+rss	rss.pollIntervalMin	rss	轮询间隔（分钟）	number		live		rss	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/content.ts
+rss	rss.maxPerPoll	rss	每轮每条最多推几条	number		live		rss	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/content.ts
+rss	rss.feeds	rss	订阅列表	json		live		rss	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/content.ts
+flood	flood.enabled	flood	启用	boolean		live		flood	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/safety.ts
+flood	flood.windowSec	flood	统计窗口（秒）	number		live		flood	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/safety.ts
+flood	flood.maxMessages	flood	窗口内条数上限	number		live		flood	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/safety.ts
+flood	flood.action	flood	动作	enum		live		flood	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/safety.ts
+flood	flood.muteSeconds	flood	禁言时长（秒）	number		live		flood	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/safety.ts
+flood	flood.exempt	flood	豁免 QQ 号	list		live		flood	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/safety.ts
+imageGen	imageGen.enabled	links	启用	boolean		live		links	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/network.ts
+imageGen	imageGen.provider	links	后端	enum		live		links	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/network.ts
+imageGen	imageGen.baseUrl	links	接口地址	string		live		links	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/network.ts
+imageGen	imageGen.apiKey	links	接口密钥	string	secret	live		links	no	secret	plugins/dsh-channel-qq/src/config/sections/network.ts
+imageGen	imageGen.model	links	模型	string		live		links	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/network.ts
+imageGen	imageGen.width	links	宽	number		live		links	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/network.ts
+imageGen	imageGen.height	links	高	number		live		links	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/network.ts
+learn	learn.enabled	learn	启用	boolean		live		learn	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/content.ts
+learn	learn.file	learn	存储文件	string		restart		learn	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/content.ts
+learn	learn.autoCapture	learn	被动收集	boolean		live		learn	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/content.ts
+learn	learn.slang	learn	黑话词典工具	boolean		reload		learn	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/content.ts
+learn	learn.minOccurrences	learn	出现几次才推荐给模型	number		live		learn	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/content.ts
+memory	memory.v2	memory	启用新记忆系统（memory.v2）	boolean		live		memory	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/memory.ts
+memory	memory.threshold	memory	检索分数阈值	number		live		memory	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/memory.ts
+memory	memory.maxRecords	memory	每回合最多注入几条	number		live		memory	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/memory.ts
+memory	memory.maxChars	memory	每回合最多注入多少字	number		live		memory	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/memory.ts
+memory	memory.pinnedEnabled	memory	启用常驻记忆层	boolean		live		memory	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/memory.ts
+memory	memory.wanderPercent	memory	走神概率 %	number		live		memory	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/memory.ts
+memory	memory.occasionsEnabled	memory	注入今天的日子	boolean		live		memory	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/memory.ts
+memory	memory.captureEnabled	memory	启用回合结束即时抽取	boolean		live		memory	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/memory.ts
+memory	memory.captureDailyCap	memory	即时抽取每日上限	number		live		memory	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/memory.ts
+memory	memory.profiles	memory	注入当前发言人侧写	boolean		live		memory	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/memory.ts
+memory	memory.extractorUrl	memory	抽取器地址	string		reload		memory	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/memory.ts
+memory	memory.extractorModel	memory	抽取器模型	string		reload		memory	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/memory.ts
+memory	memory.extractorApiKey	memory	抽取器 API Key	string	secret	reload		memory	no	secret	plugins/dsh-channel-qq/src/config/sections/memory.ts
+memory	memory.vectorEnabled	memory	启用向量检索	boolean		reload		memory	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/memory.ts
+memory	memory.vectorUrl	memory	embed 服务地址	string		reload		memory	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/memory.ts
+memory	memory.vectorDim	memory	向量维度	number		reload		memory	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/memory.ts
+memory	memory.vectorTimeoutMs	memory	embed 超时	number		reload		memory	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/memory.ts
+memory	memory.vectorWeight	memory	余弦权重	number		reload		memory	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/memory.ts
+people	people.enabled	memory	启用	boolean		live		memory	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/memory.ts
+people	people.dir	memory	存储目录	string		restart		memory	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/memory.ts
+music	music.kugouApiBase	music	酷狗 API 地址	string		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/music.ts
+music	music.lxSources	music	落雪音源（JSON）	string		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/music.ts
+music	music.quality	music	点歌音质	string		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/music.ts
+music	music.sendFile	music	点歌发文件	boolean		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/music.ts
+skills	skills.enabled	skills	启用技能	boolean		reload		skills	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/skills.ts
+skills	skills.dir	skills	技能目录	string		reload		skills	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/skills.ts
+skills	skills.allowScripts	skills	允许技能脚本	boolean		live		skills	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/skills.ts
+skills	skills.allowImport	skills	允许导入	boolean		live		skills	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/skills.ts
+skills	skills.maxImportBytes	skills	导入包上限	number		live		skills	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/skills.ts
+kb	kb.enabled	kb	启用知识库	boolean		reload		kb	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/kb.ts
+kb	kb.dirs	kb	扫描目录	string		reload		kb	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/kb.ts
+kb	kb.maxFileBytes	kb	单文件上限	number		live		kb	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/kb.ts
+kb	kb.doclingUrl	kb	Docling 地址	string		live		kb	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/kb.ts
+kb	kb.pollMinutes	kb	扫描间隔	number		live		kb	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/kb.ts
+kb	kb.injectTop	kb	自动注入块数	number		live		kb	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/kb.ts
+kb	kb.injectChars	kb	注入字符上限	number		live		kb	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/kb.ts
+kb	kb.vectorWeight	kb	向量权重	number		live		kb	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/kb.ts
+kb	kb.rerankWeight	kb	二阶重排权重	number		live		kb	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/kb.ts
+kb	kb.ingestUrls	kb	允许 URL 入库	boolean		live		kb	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/kb.ts
+kb	kb.scopes	kb	集合可见范围	string		live		kb	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/kb.ts
+eventMonitor	eventMonitor.enabled	events	启用	boolean		live		events	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/safety.ts
+eventMonitor	eventMonitor.kinds	events	事件类型	list		live		events	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/safety.ts
+eventMonitor	eventMonitor.windowSec	events	合并窗口（秒）	number		live		events	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/safety.ts
+context	context.v2	messages	上下文 v2	boolean		live		messages	no	studio-section-excluded	plugins/dsh-channel-qq/src/config/sections/chat.ts
+context	context.agentInstructions	messages	由智能体提供通道指令	boolean		reload		messages	no	studio-section-excluded	plugins/dsh-channel-qq/src/config/sections/chat.ts
+turn	turn.maxSteps	messages	每轮步数上限（按会话类型）	json		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/chat.ts
+sessionReset	sessionReset.enabled	messages	自动换血	boolean		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/session-reset.ts
+sessionReset	sessionReset.thresholdRatio	messages	触发比例	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/session-reset.ts
+sessionReset	sessionReset.checkIntervalMin	messages	检查间隔	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/session-reset.ts
+sessionReset	sessionReset.maxAgeDays	messages	定期换血	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/session-reset.ts
+sessionReset	sessionReset.maxTurnMinutes	messages	回合超时	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/session-reset.ts
+sessionReset	sessionReset.strictRooms	messages	激进房间	string		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/session-reset.ts
+sessionReset	sessionReset.strictThresholdRatio	messages	激进比例	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/session-reset.ts
+sessionReset	sessionReset.seed	messages	续接种子	string		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/session-reset.ts
+planner	planner.enabled	groups	群聊准入判定	boolean		live		groups	no	studio-section-excluded	plugins/dsh-channel-qq/src/config/sections/chat.ts
+contextBudget	contextBudget.maxSteps	messages	每轮最多几步	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/safety.ts
+contextBudget	contextBudget.compactChars	messages	注入包压缩阈值（字）	number		live		messages	yes		plugins/dsh-channel-qq/src/config/sections/safety.ts
+groupAdmin	groupAdmin.dangerous	tools	允许执行	boolean		live		tools	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/safety.ts
+policy	policy.v2	tools	启用策略 v2（policy.v2）	boolean		live		tools	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/safety.ts
+tools	tools.v2	tools	启用工具合并 v2（tools.v2）	boolean		restart		tools	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/tools.ts
+proactive	proactive.scheduler	proactive	旧定时行为（巡逻 / 做梦 / 自省 / 主动私聊 / 早报）	boolean		reload		proactive	yes		plugins/dsh-channel-qq/src/config/sections/proactive.ts
+proactive	proactive.v2	proactive	事件书 v2	boolean		reload		proactive	yes		plugins/dsh-channel-qq/src/config/sections/proactive.ts
+proactive	proactive.book	proactive	事件书	json		reload		proactive	yes		plugins/dsh-channel-qq/src/config/sections/proactive.ts
+contact	contact.enabled	proactive	启用主动消息	boolean		reload		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.dryRun	proactive	演练模式	boolean		reload		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.allowExternalSend	proactive	允许真实外发	boolean		reload		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.sendMode	proactive	发送方式	enum		reload		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.timezone	proactive	时区	string		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.allowedRooms	proactive	出站房间白名单	json		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.quietHours	proactive	免打扰时段	json		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.settleWindowMs	proactive	用户在场窗口	number		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.maxCandidates	proactive	候选上限	number		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.shareTtlMs	proactive	分享候选有效期	number		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.globalCooldownMs	proactive	全局冷却	number		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.perRoomCooldownMs	proactive	会话冷却	number		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.dailyQuotaGlobal	proactive	每日总额度	number		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.dailyQuotaPerRoom	proactive	每会话日额度	number		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.maxUnansweredStreak	proactive	未回复上限	number		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.pollIntervalMs	proactive	调度间隔	number		reload		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.followUpIdleMs	proactive	空闲跟进阈值	number		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.followUpIntervalMs	proactive	空闲候选周期	number		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.maxCatchupHours	proactive	补算视界	number		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.maxPerTick	proactive	每轮领取条数	number		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.adaptiveFollowUp	proactive	自主跟进复核	boolean		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.sleepSummaryRecipient	proactive	授权接收睡眠摘要的主人 QQ 号	string		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.draftModel	proactive	允许模型起草	boolean		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.draftDailyBudget	proactive	草稿日预算	number		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.draftHourlyBudget	proactive	草稿时预算	number		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.draftTimeoutMs	proactive	草稿超时	number		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.draftMaxChars	proactive	草稿字数上限	number		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.draftFailureBackoffMs	proactive	失败退避基数	number		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+contact	contact.draftMaxFailures	proactive	连续失败上限	number		live		proactive	yes		plugins/dsh-channel-qq/src/config/sections/contact.ts
+(root)	debug	logs	调试日志	boolean		live		logs	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/root.ts
+(root)	groupAgentPreset	persona	群聊人格预设	string		restart		persona	no	studio-removed-list	plugins/dsh-channel-qq/src/config/sections/root.ts
+(root)	groupPermissionPreset	persona	群聊权限预设	string		restart		persona	no	studio-removed-list	plugins/dsh-channel-qq/src/config/sections/root.ts
+(root)	groupWorkspacePath	connection	群聊工作区	string		restart		connection	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/root.ts
+song	song.enabled	music	启用点歌翻唱	boolean		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.autoPick	music	自主选歌（主动联系）	boolean		reload		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.groupEnabled	music	群聊里允许点歌	boolean		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.dryRun	music	演练模式	boolean		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.allowExternalSend	music	允许真实外发	boolean		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.seconds	music	语音条长度上限（秒）	number		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.minConfidence	music	副歌定位置信度门槛	number		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.prefixSeconds	music	前置余量（秒）	number		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.preferFemale	music	优先女声源（找不到就男声升八度）	boolean		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.maleKeyUp	music	男声升高（半音）	number		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.pythonPath	music	RVC 的 Python	string		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.rvcRoot	music	RVC 仓库目录	string		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.makeCover	music	make_cover.py 路径	string		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.chorusPython	music	副歌定位的 Python	string		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.biliCredentialFile	music	B站凭据文件	string	secret	live		music	no	secret	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.workRoot	music	任务工作目录	string		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.ffmpegPath	music	ffmpeg 路径	string		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.downloadTimeoutMs	music	下载超时（毫秒）	number		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.chorusTimeoutMs	music	副歌定位超时（毫秒）	number		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.coverTimeoutMs	music	分离与推理超时（毫秒）	number		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.sendTimeoutMs	music	等回执超时（毫秒）	number		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.maxQueue	music	队列上限（个）	number		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.cacheEnabled	music	同歌缓存（同一首歌再点时直接复用）	boolean		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.cacheMaxEntries	music	缓存条数上限（每层）	number		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.dailyAutoCap	music	自主选歌每日上限（首，0 = 不限）	number		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.autoSongs	music	自主选歌曲目	list		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.dailyUserCap	music	每人每日上限（首，0 = 不限）	number		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.separatorChunk	music	分离分块（采样点，-1 = 默认）	number		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.separatorOverlap	music	分离重叠（采样点，-1 = 默认）	number		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.separatorDtype	music	分离模型精度	string		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+song	song.separatorDevice	music	分离设备	string		live		music	no	studio-page-not-projected	plugins/dsh-channel-qq/src/config/sections/song.ts
+presence	presence.mode	groups	运行模式	enum		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.enabled	groups	启用旁听与自主接话	boolean		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.groups	groups	白名单群号	list		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.ambientMaxEntries	groups	旁听缓冲条数上限	number		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.ambientTtlMs	groups	旁听条目存活	number		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.ambientMaxChars	groups	旁听缓冲字数上限	number		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.socialGuard	groups	语义复核	enum		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.batchQuietMs	groups	合批静默窗口	number		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.starvationWarnMs	groups	一批消息的最长等待	number		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.judgeIntervalMs	groups	两次判断的最小间隔	number		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.judgeMaxEntries	groups	送进判断的条数上限	number		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.judgeMaxChars	groups	送进判断的字数上限	number		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.judgeTimeoutMs	groups	单次判断超时	number		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.judgeMaxTokens	groups	判断输出 token 上限	number		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.speakMinIntervalMs	groups	两次自主发言的最小间隔	number		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.speakMaxPerHour	groups	每群每小时自主发言上限	number		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.replyWindowMs	groups	允许引用的时间窗	number		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.memoryBudgetChars	groups	群记忆注入预算	number		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.stickers	groups	允许自主发言配表情包	boolean		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.stickerMinIntervalMs	groups	两张图的最小间隔	number		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.stickerMaxPerHour	groups	每小时最多几张图	number		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+presence	presence.replyMaxChars	groups	自主发言字数上限	number		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/presence.ts
+participants	participants.enabled	groups	启用参与者注册表	boolean		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/participants.ts
+participants	participants.file	groups	注册表文件	string		reload		groups	yes		plugins/dsh-channel-qq/src/config/sections/participants.ts
+participants	participants.allowUnknownAsBot	groups	把未登记成员当机器人（不可开启）	boolean		live		groups	yes		plugins/dsh-channel-qq/src/config/sections/participants.ts
