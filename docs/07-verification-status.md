@@ -315,6 +315,24 @@ QQ 发送**。下面每一行都写着"改了什么 + 用什么命令证明的"�
 （"能力未就绪"），**不是**把 B 站跑通；`slots_capability_blocked` 也只在 provider 未就绪时有值
 （`capabilityGate:'not-reported'` 时不做排除，也不假装排除过）。
 
+### 2.13 PR #4 四轮审查的收口（2026-11-17）：观测层两条（N1 / N2）
+
+> 四轮复核的结论是**可以合并**，并确认三轮三条全部落地。四轮同时指出：闸门修完之后，
+> 还有两处**只读观测**仍在说反话。本节只处理这两条，不动任何写路径、不新增状态名。
+
+| 编号 | 缺陷（一句话） | 修法 | 证据 |
+|---|---|---|---|
+| **N1（P2）** | `WILL_MISS_SQL` 没有接能力闸门。两个窗口都已关闭时，watch 把能力未就绪的 B 站槽报成 `will-miss`，`blockDetail` 写着"the pump files it as missed"，而泵对它是按 `capability-unavailable` 退役、**不写收据**。于是 `counts.willMiss` 大于泵真的会写的 `missed` 条数——承诺了一条不会发生的事实 | 新增 `GATED_CLOSED_SQL` + `capabilityGatedClosedSlotRows()`，把"窗口已关闭 + 能力未就绪"的槽从 `will-miss` 收进 `blocked-capability`，`blockDetail` 明写"按 capability-unavailable 退役、不记 missed"。只在 `bilibiliReady === false` 时查询，避免就绪时把行吞掉 | `plugins/companion-runtime/test/p2-bilibili-watch-capability.test.mjs` **4/4** 的前两条：未就绪时 `willMiss 1 / capabilityBlocked 1`（真 miss 仍走 `will-miss`，B 站槽 `blocked-capability` 且 detail 不含"files it as missed"）；随后泵真的只写 **1** 条 `missed` 收据，B 站槽 `detail='capability-unavailable'`；就绪时两条都回到 `will-miss` |
+| **N2（P3）** | `CLAIMED_SQL` / `CLAIMED_COUNT_SQL` 也没有闸门。就绪时被 claim、随后 provider 消失的 `started` 槽，同时被 `rows[]` 标成 `blocked-capability`、又被 `metrics.claimed_awaiting_start` 数成"等泵"——**一个 payload 里两个数字互相矛盾**。可达性正是修复落地那一瞬间的生产库 | 两个查询都接同一闸门参数；这类槽不再计入 `claimed_awaiting_start`／`claim_age_ms`（它不属于"等泵"，泵永远不会开始它），但仍计入 `slots_open`。`CONTRACT.md` §15.1 那一行同步改了口径 | 同上文件后两条：provider 变未就绪后 `counts.awaitingStart=0` 与 `metrics.claimed_awaiting_start=0` **一致**、`claim_age_ms=null`／`claim_age_source:'none'`、`slots_capability_blocked=1`，而 `slots_open` 仍是 1（认领本身是真的）；就绪时 `awaitingStart=1`、`claim_age_ms=5 分钟`、`claim_age_source:'recorded_at'`——闸门没有把认领吞掉 |
+
+总账（本轮本机实测）：`node scripts/verify.mjs` → `unit` 10 通过 / 0 失败 / 1 无测试，`static` 39/0，
+`compose` SKIPPED，exit 0；`plugins/companion-runtime` **726/726**（三轮时 722，本轮 +4）；
+`plugins/companion-runtime/test/*bilibili*` 全部 **18/18**（三轮时为 14/14）。
+
+**这些仍然不算证据**：同 §2.12——没有真宿主装载、没有真模型、没有真 B 站账号、没有真 QQ 发送。
+N1/N2 都只改**只读观测**：没有写路径变化，没有新状态名（`blocked-capability` 是三轮时进
+CONTRACT §15.3 的那个），也没有让 watch 从"零写入"变成会写。
+
 
 ### 2.9 群聊社交运行时 P5–P8（2026-11-08）：仍只有 `offline-test`，真实发送未开始
 
