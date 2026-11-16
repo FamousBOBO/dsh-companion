@@ -323,6 +323,28 @@ function coveragePasses(stats, coverage, matchedTerms) {
 }
 
 /**
+ * Floor relief for an **explicit** query (`companion_recall`, i.e. the user typed the question).
+ *
+ * `purpose:'explicit'` used to change only how an already-admitted row is *rendered*, so the
+ * parameter looked like a knob the caller could turn while every admission decision ignored it.
+ * It now really affects the lexical **coverage floor** — but only downwards, only by a fixed
+ * factor, and never below a hard minimum:
+ *
+ *   * automatic injection (agent pre-step) keeps the strict floor, because nobody asked;
+ *   * an explicit question may admit a row that covers a smaller part of the query, because the
+ *     user is asking on purpose and an empty answer is the worse outcome.
+ *
+ * The relief is bounded (half the configured floor, never under `EXPLICIT_COVERAGE_FLOOR_MIN`) so
+ * "the user asked" can never turn recall into "return whatever is in the library". Every turn
+ * that applies it records `explicit-floor-relief` in `explain.filteredReasons` — the decision
+ * stays auditable instead of silently loosening.
+ */
+const EXPLICIT_COVERAGE_RELIEF = 0.5;
+const EXPLICIT_COVERAGE_FLOOR_MIN = 0.06;
+/** Three decimals: the floor is reported as a number, and 0.075 must not print as 0.07|0.08. */
+const roundFloor = value => Math.round(value * 1000) / 1000;
+
+/**
  * Does the record share at least one indexed token with the query?
  *
  * Only used to gate the hash channel: its vector is a signed projection of exactly
@@ -651,6 +673,8 @@ export async function recall(input = {}) {
       sessionId = '', purpose: purposeIn = null, mode: modeIn = null,
     } = input ?? {};
     const settings = resolveSettings(config);
+    // The **configured** floor, kept as the baseline; `explain.coverage.floor` is rewritten to the
+    // floor actually applied once the purpose is known (see `effectiveCoverageFloor()`).
     explain.coverage.floor = settings.coverageFloor;
     const clock = asClock(now);
     const identity = normalizeViewer(viewer);
@@ -725,9 +749,22 @@ export async function recall(input = {}) {
     };
 
     // -- lexical channel ----------------------------------------------------
+    /**
+     * The coverage floor actually in force this turn. An explicit query may lower it once
+     * (`explicit-floor-relief`), bounded by `EXPLICIT_COVERAGE_FLOOR_MIN`; automatic injection
+     * always keeps the configured floor. This is the consumer `purpose:'explicit'` never had —
+     * before it, the flag only changed rendering of rows that had already passed the strict gate.
+     */
+    const effectiveCoverageFloor = () => {
+      const configured = settings.coverageFloor;
+      if (purposeOut !== 'explicit') return configured;
+      return Math.max(EXPLICIT_COVERAGE_FLOOR_MIN, roundFloor(configured * EXPLICIT_COVERAGE_RELIEF));
+    };
     const ensureCoverageStats = () => {
       if (!coverageStats) {
-        coverageStats = buildCoverageStats(db, identity, queryTerms, settings.coverageFloor);
+        const floor = effectiveCoverageFloor();
+        if (floor !== settings.coverageFloor) noteReason('explicit-floor-relief');
+        coverageStats = buildCoverageStats(db, identity, queryTerms, floor);
       }
       return coverageStats;
     };
@@ -795,7 +832,7 @@ export async function recall(input = {}) {
     // 用锚点词元再查一次，命中同一段上下文，权重略低于用户原句。
     if (text && contextText) {
       const contextStats = buildCoverageStats(
-        db, identity, new Set(terms(contextText)), settings.coverageFloor,
+        db, identity, new Set(terms(contextText)), effectiveCoverageFloor(),
       );
       await lexicalPass(contextText, contextStats, CONTINUATION_WEIGHT);
     }
@@ -863,6 +900,18 @@ export async function recall(input = {}) {
     }
 
     if (!text) {
+      // Pure meta-memory question ("上次我说过什么") has no topic of its own; the only thing that
+      // can answer it is the bounded recent/important pool. `historyFallbackEnabled=false` is
+      // exactly the switch that turns that fallback **off** — and before this branch read it,
+      // the switch existed in `query-plan.mjs` and in `config.mjs` with no consumer at all,
+      // so flipping it changed nothing. Turning it off now yields an empty answer with a named
+      // reason, which is the honest outcome for "this deployment does not answer that way".
+      if (queryPlanOut.explicitHistory && queryPlanOut.historyFallback !== true) {
+        noteReason('history-fallback-disabled');
+        explain.backend = 'none';
+        explain.candidates = considered.size;
+        return finish([]);
+      }
       const usable = [];
       for (const record of recent) {
         if (classify(record)) continue;

@@ -43,9 +43,10 @@ const wait = (ms = 80) => new Promise((resolve) => setTimeout(resolve, ms))
  * 跑到 push 的回复，于是"冷却期内不重复通知"这条判据被环境判红。这里不放松判据：稳定之后
  * 仍然要求**恰好**两条。
  */
-async function settleCount(read: () => number, { quietMs = 300, pollMs = 10 } = {}): Promise<number> {
+async function settleCount(read: () => number, { quietMs = 300, pollMs = 10, maxMs = 3000 } = {}): Promise<number> {
+  const startedAt = Date.now()
   let last = read()
-  let quietSince = Date.now()
+  let quietSince = startedAt
   for (;;) {
     await new Promise((resolve) => setTimeout(resolve, pollMs))
     const now = read()
@@ -55,6 +56,14 @@ async function settleCount(read: () => number, { quietMs = 300, pollMs = 10 } = 
       continue
     }
     if (Date.now() - quietSince >= quietMs) return now
+    // Hard wall-clock cap. Without it, a *quiet* extra message that arrives later than
+    // `quietMs` was silently outside the criterion: the helper returned "exactly 2" while a
+    // third `push` was still in flight, so "只有两条" quietly meant "只有两条在前 300ms 内".
+    // Reaching the cap without a quiet window is itself a failure signal — say so instead of
+    // returning a count that never settled.
+    if (Date.now() - startedAt >= maxMs) {
+      throw new Error(`settleCount: ${now} 在 ${maxMs}ms 内没有静下来（这不是"恰好 ${now} 条"的证据）`)
+    }
   }
 }
 

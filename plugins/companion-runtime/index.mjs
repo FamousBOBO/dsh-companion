@@ -2799,6 +2799,11 @@ export function mountRuntime(ctx, root, options = {}) {
           paused: watched.paused,
           deferred: watched.deferred,
           maxPerBeat: watched.maxPerBeat,
+          // The one capability that is gated *inside* the dispatch query: while this is false, a
+          // due Bilibili slot is excluded from the beat instead of consuming the two-row window
+          // (see `startDueActivities`). Reported here so "why did no duty slot start" has a named
+          // answer instead of looking like an empty plan.
+          bilibiliProviderReady: watched.bilibiliProviderReady === true,
         },
         heartbeat: heartbeatGates,
         note: 'read-only projection; a claim only happens when a heartbeat beat actually runs',

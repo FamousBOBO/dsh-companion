@@ -134,3 +134,51 @@ $ node scripts/doctor.mjs
 
 改动清单（相对基线 `60fb670`）：10 个文件修改、3 个新增（`tools/lib/host.test.mjs`、
 `tools/bilibili-provider-integration.test.mjs`、本文）。没有提交、没有推送——是否发布由操作者决定。
+
+---
+
+## 8. 二轮审查的修复（2026-11-17 追加）
+
+PR #4 的二轮审查结论是「不建议按现状合并」：P0 = 0、P1 = 2（+1 表述性）、P2 = 5、P3 = 3。
+`648e1d8` 那一轮的 CI 确定性修复是干净的，但它没有碰任何一个 P1。本轮把 11 项全部落地。
+
+逐条缺陷、修法、证据见 `docs/07-verification-status.md` §2.11。这里只记**改了哪些文件、怎么跑**：
+
+| 文件 | 改了什么 |
+|---|---|
+| `plugins/companion-foundation/share-decision.mjs` | `resolveHistory()` 把 `scopeKey` 拆回 bound 一起传给 runtime（P1-1） |
+| `plugins/companion-runtime/lib/p2.mjs` | `listShareCandidates()` 认 `status:'all'`；B 站判据前移到取 due 的同一句 SQL、跳过理由每拍一条、删掉死变量 `bilibiliSkipped`（P1-1 / P1-2） |
+| `plugins/companion-runtime/lib/planner.mjs` | B 站不可用只丢那一个槽：`SLOT_DROP_CODES` + `normalizeSlot()` 返回 `{dropped}` + `parseDayPlan().dropped` + 逐条 `report()`（P1-3） |
+| `plugins/companion-runtime/index.mjs` | `p2DispatchWatch()` 把 `bilibiliProviderReady` 投影到 `result.p2`（P1-3 的活消费者） |
+| `plugins/companion-memory/lib/retrieve.mjs` | `purpose:'explicit'` 真的下调词法覆盖率门槛（0.5 倍、硬下限 0.06、留 `explicit-floor-relief`）；`historyFallbackEnabled` 有了消费者（P2-3 / P2-4） |
+| `scripts/verify.mjs` | `tools` 段匹配 0 个测试文件判失败；计数兼容 `ℹ`/`#` 两种尾巴（P2-1） |
+| `tools/group-mirror/src/{config,local-ws}.mjs`、`test/e2e.test.mjs` | 假 WS 端口允许 `0` 由系统分配并回读；重连用例只断连接不关监听（P2-2） |
+| `tools/verify-external-modules.mjs` | `sameSha256()` 两侧小写归一（P2-5） |
+| `plugins/dsh-channel-qq/test/access.test.ts` | `settleCount()` 加 3s 墙钟上限，超时抛错而不是返回未稳定计数（P3-2） |
+| `plugins/dsh-channel-qq/test/reminders-dispatch-timing.test.ts` | `} finally {` 换行（P3-3） |
+| `docs/07-verification-status.md` | 新增 §2.11；B 站闸门一行改成 9/9 并显式与 `tools/` 的 5/5 区分（P3-1） |
+| `docs/24-deployment-unification-20261114.md` | §4.2 的「拒绝整份计划」改写为「只丢那一个槽」，并保留原实现的问题记录 |
+
+新增测试（4 个文件、13 条用例）：`plugins/companion-foundation/share-history-scope.test.mjs`（4）、
+`plugins/companion-memory/test/explicit-floor-relief.test.mjs`（4）、
+`plugins/companion-memory/test/history-fallback-switch.test.mjs`（3）、
+`plugins/companion-runtime/test/p2-bilibili-dispatch-order.test.mjs`（2）。
+
+```text
+$ node scripts/verify.mjs
+unit     ok  10  failed  0  skipped/no-tests  1     ← tools 段如实报「72 个测试通过」
+static   ok  39  failed  0  skipped/no-tests  0
+compose  ok   0  failed  0  skipped/no-tests  1
+验证通过（2 项跳过/无测试，跳过不等于通过）。                                    exit 0
+
+$ node --test plugins/companion-runtime/test/*.test.mjs        → 717 / 717
+$ node --test plugins/companion-memory/test/*.test.mjs         → 308 tests / 301 pass / 0 fail / 7 skip
+$ node --test plugins/companion-foundation/*.test.mjs          → 480 / 480
+$ node --test "tools/**/*.test.mjs"                            → 72 / 72
+$ npm test --workspace=@dsh-companion/channel-qq               → 1907 / 1906 pass / 0 fail / 1 skip
+$ npm run check:layers / check:size (channel-qq)               → 通过
+```
+
+**仍然不算证据**：本轮没有真宿主装载、没有真模型、没有真 B 站账号、没有真 QQ 发送。
+「B 站只丢一个槽」证明的是计划与派发语义，不是账号可用；`purpose:'explicit'` 的门槛下调
+只落在词法覆盖率上，向量通道的门限没动也没测。

@@ -386,7 +386,8 @@ test('T8 发送抛错 / 回执未知 / 明确跳过：只有"跳过"允许下一
     await advance(rig, 60_000)
     assert.equal(rig.sends.filter((s) => s.id === 'r-boom').length, 1, 'unknown 不许自动重试（抛错那条）')
     assert.equal(rig.sends.filter((s) => s.id === 'r-unknown').length, 1, 'unknown 不许自动重试（回执未知那条）')
-    assert.ok(rig.sends.filter((s) => s.id === 'r-skip').length >= 2, 'skipped 之后下一拍还要再试')  } finally {
+    assert.ok(rig.sends.filter((s) => s.id === 'r-skip').length >= 2, 'skipped 之后下一拍还要再试')
+  } finally {
     await rig.close()
     rmSync(dir, { recursive: true, force: true })
   }

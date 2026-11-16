@@ -74,6 +74,18 @@ function sha256OfFile(file) {
 }
 
 /**
+ * SHA-256 comparison that ignores hex case.
+ *
+ * The computed digest is lower-case (`digest('hex')`) but a pin may be written upper-case — the
+ * documented pin in `docs/03-modules-support-matrix.md` is `127D04BE…`. Comparing raw strings
+ * would then reject the *correct* bytes, and the operator would "fix" it by replacing the module
+ * with the one actually on disk. Hex is case-insensitive by definition, so compare it that way.
+ */
+function sameSha256(left, right) {
+  return textOf(left).trim().toLowerCase() === textOf(right).trim().toLowerCase();
+}
+
+/**
  * @param {{moduleRoot: string, name?: string, pins?: object}} options
  *   `pins` exists so the two gates can be tested independently: gate 1 (hash) and gate 2
  *   (provider publish markers) must each be provable, and forging a sha256 for the real pin is
@@ -108,7 +120,7 @@ export function verifyModule({ moduleRoot, name = 'dsh-bili-scroll', pins = PINS
     version: (() => { try { return JSON.parse(fs.readFileSync(path.join(directory, 'package.json'), 'utf8')).version ?? ''; } catch { return ''; } })(),
     bytesMatch: bytes === pin.expectedBytes,
   };
-  if (sha256 !== pin.indexSha256) {
+  if (!sameSha256(sha256, pin.indexSha256)) {
     return {
       ok: false, code: 'hash-mismatch', ...base,
       note: '安装副本与验收过的 tarball 不是同一份字节：同版本号不等于同一份代码',

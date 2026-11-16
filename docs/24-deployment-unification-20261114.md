@@ -176,15 +176,25 @@ C 盘路径的模块。因为 `plugins` 是 Junction，磁盘上是同一份文�
 
 ### 4.2 修法（两处，都只用既有判据）
 
-1. **planner 侧**：`planner.mjs:560` 的 `biliAvailable` 判据本来就只看 `capabilities.bilibili.available === true`。
-   runtime 把真实的 `false` 传进去之后，planner 会以 `invalid-plan: slot-target-not-in-materials:
-   Bilibili duty is unavailable` 拒绝整份计划——而不是写一条执行不了的 slot。
-2. **派发侧**：`startDueActivities` 在 `start()` 之前再验一次 `ports.runBilibili.available?.()`，
-   未就绪就 `continue` 并记录 `lastStart.code='bilibili-provider-not-ready'` +
-   `noteError('p2-activity-start-bilibili-provider-not-ready')`。
+1. **planner 侧**：`planner.mjs` 的 `biliAvailable` 判据本来就只看 `capabilities.bilibili.available === true`。
+   runtime 把真实的 `false` 传进去之后，planner **只丢那一个 B 站槽**，并在结果的
+   `plan.dropped` 里留下具名记录 `slot-dropped:bilibili-provider-unavailable`
+   （`report()` 同时记一笔）—— 不是写一条执行不了的 slot。
+   > 修正（2026-11-17 复核）：最初实现是 `throw invalidPlan('slot-target-not-in-materials:
+   > Bilibili duty is unavailable')`，也就是**整份计划被拒**。那样 model 只要在一天里顺手排了
+   > 一次刷 B 站，read/explore/write 也一起作废，重试两次仍然一样，这一天就没有计划了；
+   > 而且和派发侧"只跳过自己"的语义矛盾。现在两边一致：**不可用的能力只丢它自己**。
+2. **派发侧**：`startDueActivities` 在取 due 集合的**同一句 SQL** 里排除未就绪的 B 站 slot
+   （`AND (s.activity <> 'bilibili' OR ? = 1)`），并另外查一次被跳过的条数，
+   记录 `lastStart.code='bilibili-provider-not-ready'` +
+   `noteError('p2-activity-start-bilibili-provider-not-ready')`（**每拍一条**，不是每槽一条）。
+   > 修正（2026-11-17 复核）：最初是"先 `ORDER BY start_at ASC LIMIT 2` 取两行、再在循环里跳过"，
+   > 于是两行都是 B 站时这一拍一条都不 start —— read/explore/write 被两条注定失败的 slot 饿死。
+   > 现在 `LIMIT` 数的是**真的能派**的槽位。
 
 **没有**把 provider 未就绪做成整拍 defer：那会把 read/explore/write 一起停掉。
-`dispatchWatch` 另外如实报一个 `bilibiliProviderReady` 字段，供诊断看。
+`dispatchWatch` 另外如实报一个 `bilibiliProviderReady` 字段，供诊断看
+（该字段由 `index.mjs` 的 `p2DispatchWatch()` 投影到 `result.p2.bilibiliProviderReady`，是活的消费者）。
 
 ### 4.3 证据（`test/p2-bilibili-provider-gate.test.mjs`，3 条）
 

@@ -61,8 +61,28 @@ function planJson() {
   });
 }
 
-function mountWith(t, { providerReady }) {
+/** The same duty slot **plus** a read slot: one unusable capability must not cost the other. */
+function mixedPlanJson() {
+  return JSON.stringify({
+    summary: '刷一会儿B站，再读点东西',
+    slots: [
+      {
+        kind: 'activity', activity: 'bilibili', title: '刷B站', detail: '',
+        startAt: T0, endAt: T0 + 3600_000, flexibility: 'soft', targetRef: 'bilibili:duty',
+      },
+      {
+        kind: 'activity', activity: 'read', title: '读笔记', detail: '',
+        startAt: T0 + 3600_000, endAt: T0 + 5 * 3600_000, flexibility: 'soft', targetRef: 'works/sources/notes.md',
+      },
+    ],
+  });
+}
+
+function mountWith(t, { providerReady, plan }) {
   const root = makeRoot(t);
+  // The material only offers targets that really exist under the fixture root, so the read slot
+  // has a legitimate source and `slot-target-not-in-materials` cannot be what drops it.
+  fs.writeFileSync(path.join(root, 'home/companion/works/sources/notes.md'), '# notes\n');
   const calls = [];
   let providerRuns = 0;
   const runBilibili = async () => { providerRuns += 1; return { status: 'completed', evidence: [] }; };
@@ -73,7 +93,7 @@ function mountWith(t, { providerReady }) {
     callModel: async args => {
       calls.push(args.purpose);
       if (args.purpose === 'p2-planning') {
-        return { text: planJson(), provider: 'test-provider', model: 'test-model', inputTokens: 40, outputTokens: 30 };
+        return { text: plan ?? planJson(), provider: 'test-provider', model: 'test-model', inputTokens: 40, outputTokens: 30 };
       }
       return { text: '模型答案', provider: 'test-provider', model: 'test-model', inputTokens: 12, outputTokens: 6 };
     },
@@ -90,7 +110,7 @@ function mountWith(t, { providerReady }) {
 
 const activitiesOf = runtime => runtime.listActivities({ bound: BOUND }).activities ?? [];
 
-test('provider 未就绪：capability 目录如实报 provider-not-ready，planner 拒绝排 B 站', async t => {
+test('provider 未就绪：capability 目录如实报 provider-not-ready，planner 只丢 B 站那个槽', async t => {
   const { runtime } = mountWith(t, { providerReady: false });
   const capabilities = runtime.capabilitiesOf({ bound: BOUND }).capabilities;
   assert.equal(capabilities.bilibili.available, false, JSON.stringify(capabilities.bilibili));
@@ -98,17 +118,32 @@ test('provider 未就绪：capability 目录如实报 provider-not-ready，plann
   // read/write stay available: the refusal is scoped to one capability.
   assert.equal(capabilities.write.available, true, JSON.stringify(capabilities.write));
 
-  // The plan asks for a duty the runtime cannot execute. The planner validates against the *materials*
-  // (which carry the real capability catalogue), so it refuses the whole plan rather than writing a
-  // slot that would fail at execution. That refusal is the behaviour under test — it must be named,
-  // and it must not be a silent "plan wrote it anyway".
+  // The plan asks for a duty the runtime cannot execute. **One slot** is dropped, not the day:
+  // a whole-plan `invalid-plan` here used to cost every other slot too, and the model retried
+  // twice against the same refusal — the day ended with no plan at all, while the dispatch
+  // side had already decided that an unavailable capability only skips itself.
   const planned = await runtime.planToday({ bound: BOUND, force: true });
-  assert.equal(planned?.ok, false, JSON.stringify(planned));
-  assert.equal(planned.code, 'invalid-plan');
-  assert.match(String(planned.error ?? ''), /Bilibili duty is unavailable/);
+  assert.equal(planned?.ok, true, JSON.stringify(planned));
+  assert.equal(planned.code, 'empty', 'the only requested slot was dropped, so the day is empty');
+  const drops = planned.plan?.dropped ?? [];
+  assert.equal(drops.length, 1, JSON.stringify(planned.plan));
+  assert.equal(drops[0].activity, 'bilibili');
+  assert.equal(drops[0].code, 'slot-dropped:bilibili-provider-unavailable',
+    'the drop is named, not a silent rewrite');
   const slots = (runtime.listPlan({ bound: BOUND }).slots ?? []).filter(slot => slot.kind === 'activity');
   assert.equal(slots.some(slot => slot.activity === 'bilibili'), false,
     'no duty slot may be persisted for a capability that is not available');
+});
+
+test('provider 未就绪：同一份计划里的 read 槽照常入册（丢的不是整天）', async t => {
+  const { runtime } = mountWith(t, { providerReady: false, plan: mixedPlanJson() });
+  const planned = await runtime.planToday({ bound: BOUND, force: true });
+  assert.equal(planned?.ok, true, JSON.stringify(planned));
+  assert.equal(planned.code, 'committed', 'one usable slot still commits the day');
+  const slots = (runtime.listPlan({ bound: BOUND }).slots ?? []).filter(slot => slot.kind === 'activity');
+  assert.deepEqual(slots.map(slot => slot.activity).sort(), ['read'],
+    'the read slot survives, the duty slot is the only thing dropped');
+  assert.equal((planned.plan?.dropped ?? []).length, 1);
 });
 
 test('provider 未就绪：即使有残留在册的 bilibili slot，也不 start、不留活动行', async t => {

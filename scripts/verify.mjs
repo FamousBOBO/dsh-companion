@@ -169,9 +169,26 @@ function runToolTests() {
   });
   const out = `${res.stdout || ''}\n${res.stderr || ''}`;
   const label = 'tools（宿主探测 / 外部模块指纹 / 迁移）';
+  // A glob that matches nothing exits 0 in Node's runner, so "no tests" used to be recorded as
+  // **ok** — a renamed directory (or a rename of every file) silently turned this section green
+  // while it ran zero assertions. Zero matches is therefore a failure with its own name.
+  //
+  // The counter has to accept both footer shapes Node prints: the spec reporter uses
+  // `ℹ tests N` and the TAP reporter uses `# tests N`. Matching only one of them read a real
+  // run as "zero tests" and turned the guard into a false red.
+  const countOf = name => {
+    const match = out.match(new RegExp(`(?:ℹ|#)\\s*${name} (\\d+)`)) ?? out.match(new RegExp(`# ${name} (\\d+)`));
+    return Number(match?.[1] ?? 0);
+  };
+  const counts = { pass: countOf('pass'), fail: countOf('fail'), tests: countOf('tests') };
+  if (counts.tests === 0) {
+    const tail = out.trim().split('\n').slice(-8).join('\n      ');
+    record('unit', label, 'failed',
+      `0 个测试文件匹配 tools/**/*.test.mjs —— 不是"通过"，是这一段什么都没检查\n      ${tail}`);
+    return;
+  }
   if (res.status === 0) {
-    const passMatch = out.match(/# pass (\d+)/);
-    record('unit', label, 'ok', passMatch ? `${passMatch[1]} 个测试通过` : '通过');
+    record('unit', label, 'ok', `${counts.tests} 个测试通过`);
     return;
   }
   const named = out

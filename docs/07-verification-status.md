@@ -250,11 +250,44 @@ QQ 发送**。下面每一行都写着"改了什么 + 用什么命令证明的"�
 | `tools/` 纳入发布闸门 | **`offline-test`** | `verify` 的 `unit` 段新增一行 `tools（宿主探测 / 外部模块指纹 / 迁移）`：`node --test tools/**/*.test.mjs` 一并跑。之前这些测试只能手动跑，`verify` 全绿并不覆盖它们——上面两条缺陷就是这么漏出来的 |
 | 外部 B 站模块指纹 | **`offline-test` + 本机只读指纹** | `node tools/verify-external-modules.mjs`：生产 profile → `code=hash-mismatch`（`bytes=211655`，pin `127D04BE…`）；`data/backups/pnpm-store-repair-20261113` 的副本 → `code=ok`（`bytes=213810`）。两者 `package.json` 的 `version` 都是 `2.4.0` ⇒ 版本号不能当判据 |
 | B 站 provider 注册生命周期 | **`offline-test`** | `tools/bilibili-provider-integration.test.mjs` → **5/5 通过**：指纹通过的合成副本 import 后真的把 provider 写进 `Symbol.for('dsh.companion.bilibili.providers.v1')` 注册表；`ready()` 转身 → 端口立刻 `available()===false`；删条目（卸载）→ 不可用；重新挂载 → 恢复；未就绪时 `run` 返回 `failed` 且 0 条证据 |
-| B 站派发闸门 | **`offline-test`** | `plugins/companion-runtime/test/{bilibili-provider,p2-bilibili-provider-gate}.test.mjs` → **4/4 通过**（未就绪不排 B 站、残留 slot 不 start、就绪时真的 start） |
+| B 站派发闸门 | **`offline-test`** | `plugins/companion-runtime/test/{bilibili-provider,bilibili-rounds,p2-bilibili-provider-gate,p2-bilibili-dispatch-order}.test.mjs` → **9/9 通过**（未就绪只丢那一个槽、残留 slot 不 start、就绪时真的 start、两个到点的 duty 不挤掉同窗口的 read）。⚠️ 注意别和上一行的 `tools/bilibili-provider-integration.test.mjs 5/5` 混为一谈：那是**两个不同的文件集合**，5/5 是 `tools/` 下的注册生命周期，9/9 是 `plugins/companion-runtime/test/` 下的派发闸门 |
 | 真实 B 站观看/评论/发送 | **未验证** | 本轮**没有**登录、没有触发真实观看或发送。`provider-not-ready` 与派发 fail-closed 保持原样，没有用文案把它写成可用 |
-| 模块离线测试 | **`offline-test`** | `npm ci` → `npm run build` → `node scripts/verify.mjs` → `unit` **10 模块通过 / 0 失败 / 1 无测试**（`paste-search` 如实记 `no-tests`）；`static` 39/0；`compose` SKIPPED（干净检出） |
+| 模块离线测试 | **`offline-test`** | `npm ci` → `npm run build` → `node scripts/verify.mjs` → `unit` **10 模块通过 / 0 失败 / 1 无测试**（`paste-search` 如实记 `no-tests`）；`static` 39/0；`compose` SKIPPED（干净检出）。`tools/` 那一段如实报 **72 个测试通过**；匹配到 0 个测试文件时它**判失败**而不是记 ok（详见 §2.11） |
 
 **这几条明确不算证据**：Windows 上 `memory-studio` 与 `channel-qq` 在**未构建**状态会红（构建产物缺失），`npm run build` 后转绿——既不是缺陷，也不能说成"模块本来就好"；「合成 198 行」不等于「运行实例里 198 个都活着」；指纹通过只说明字节对，不说明 B 站账号能用。
+
+### 2.11 PR #4 二轮审查的修复（2026-11-17）：两个 P1 + 五个 P2 + 三个 P3
+
+> 本轮是**只读审查**的后续修复。仍然**没有**启动陪伴宿主、没有调真实模型 / B 站 / QQ、
+> 没有改本机 `config/suite.json` 或 `data/`。下面每条都只到 `offline-test`。
+
+审查结论是「不建议按现状合并」：P0 = 0，P1 = 2（+1 表述性），P2 = 5，P3 = 3。
+`648e1d8` 那一轮的 CI 确定性修复本身是干净的，但它没有碰任何一个 P1。
+
+| 编号 | 缺陷（一句话） | 修法 | 证据 |
+|---|---|---|---|
+| **P1-1** | 分享决策永远读不到历史：钩子工厂不传 `scopeKey` → runtime 答 `unbound` → 就算作用域对了，`status:'all'` 也被当成一个状态值塞进 `WHERE status = ?`，匹配零行。于是 `duplicate` 永不触发、`maxSharesPerDay` 永远数到 0 | ① `resolveHistory()` 把 `scopeKey` 拆回 bound 一起传下去；② `listShareCandidates()` 认得 `'all'` 是"不筛状态"；③ 钩子链上每一段都真的把 scope 送到 | `plugins/companion-foundation/share-history-scope.test.mjs` **4/4**：`'all'` 读到已离开 `pending` 的行；**同一活动第二次完成命中 `duplicate` 且行数不变**；窗口内第 3 条按 `budget-exhausted` 拒绝；scope 真缺失时 `scope-required` + 零写入 |
+| **P1-2** | B 站闸门放错位置：`ORDER BY start_at ASC LIMIT 2` 先取两行、再在循环里跳过，两行都是 duty 时**这一拍一条都不 start**，read/explore/write 被饿死；`bilibiliSkipped` 计数器是死变量 | 判据前移，duty 未就绪就在**同一句 SQL** 里排除（`AND (s.activity <> 'bilibili' OR ? = 1)`）；`LIMIT` 数的是真能派的槽位；跳过另查一次并**每拍一条** `noteError`（不再每槽一条）；删掉死变量 | `plugins/companion-runtime/test/p2-bilibili-dispatch-order.test.mjs` **2/2**（真 P2 + 真 reducer + 临时 SQLite）：2 个到点 duty + 1 个 read ⇒ **read 照常 start**，duty 仍是 `planned`（跳过不是认领），且跳过理由只记一条；同一组槽位在 provider 就绪时 duty 重新拿到先手 |
+| **P1-3** | planner 把"一个能力不可用"升级成"整份计划作废"：模型只要顺手排了一次刷 B 站，read/explore/write 一起失效，重试两次仍一样，这一天没有计划；与派发侧"只跳过自己"的语义矛盾。`bilibiliProviderReady` 字段写进 `dispatchWatch` 后无人读 | 改为**只丢那一个槽**：`normalizeSlot()` 返回 `{dropped}`，`parseDayPlan()` 汇总进 `plan.dropped`，planner 逐个 `report()`；`dispatchWatch` 的 `bilibiliProviderReady` 由 `p2DispatchWatch()` 投影到 `result.p2.bilibiliProviderReady`（活的消费者） | `p2-bilibili-provider-gate.test.mjs` **4/4**（新增"同一份计划里的 read 槽照常入册，丢的不是整天"）：reason 码 `slot-dropped:bilibili-provider-unavailable`，`plan.dropped` 恰一条，read 照常 `committed` |
+| **P2-1** | `verify` 的 `tools` 段匹配到 **0 个**测试文件时 `# tests 0` / exit 0 ⇒ 记为 ok（假绿） | 先数 `tests`，为 0 直接判失败并写明"这一段什么都没检查"；计数同时认 `ℹ tests N`（spec）与 `# tests N`（TAP）两种尾巴 | `node scripts/verify.mjs` → `tools（宿主探测 / 外部模块指纹 / 迁移） — 72 个测试通过`；临时改名目录后该行变 ✗ |
+| **P2-2** | group-mirror e2e 占死端口 31492/31493：同机任何进程占着它都会把整组打红，而它已经被并进发布闸门 | 假 SSE 源 `listen(0)` 由系统分配并回读端口；`fakeOneBotPort` 允许 `0` 表示"系统分配"，`FakeOneBotServer.listen()` 把真实端口写回并新增 `address()`；重连用例改成"只断已建立的连接、源仍在原端口监听" | `tools/group-mirror/test/e2e.test.mjs` **6/6** |
+| **P2-3** | `purpose:'explicit'` 只影响渲染，`minScore`/`coverageFloor`/语义门限一处都没读它 —— 参数看着像旋钮，实际没有消费者 | 显式查询把**词法覆盖率**门槛下调一次（固定 0.5 倍、硬下限 0.06），自动注入不变；每次下调在 `explain.filteredReasons` 留 `explicit-floor-relief` | `plugins/companion-memory/test/explicit-floor-relief.test.mjs` **4/4**：显式 floor = 0.075 vs 自动 0.15；无关查询在两条路径下都仍被拒（下调有界）；`coverageFloor:0.1` 时被硬下限抬回 0.06 |
+| **P2-4** | `historyFallbackEnabled` 从 `config.mjs` 一路传到 `buildQueryPlan()` 写进 `plan.historyFallback`，然后**没有任何消费者**：关掉开关行为不变 | 无话题时的兜底分支先读它：关掉 ⇒ 空结果 + `history-fallback-disabled`；打开（默认）⇒ 与改动前逐字相同 | `plugins/companion-memory/test/history-fallback-switch.test.mjs` **3/3** |
+| **P2-5** | 指纹比较一边 `digest('hex')` 小写、一边 pin 原样比：pin 写成大写（文档里就是 `127D04BE…`）会把**正确**的字节判成 mismatch，运维"修"的时候就会把模块换成磁盘上那份，把闸门反过来 | `sameSha256()` 两侧先 `trim().toLowerCase()` 再比 | `tools/verify-external-modules.test.mjs` **9/9**：新增大写 pin 通过、以及"大小写不敏感不放宽字节判据"（换字节仍 `hash-mismatch`） |
+| **P3-1** | 文档里两个 "N/N" 指的不是同一批文件，容易被混读 | `docs/07` 的 B 站派发闸门一行改成 **9/9**（`plugins/companion-runtime/test/` 四个文件），并显式标注"别和上一行 `tools/` 的 5/5 混为一谈" | 见本表前一节 |
+| **P3-2** | `settleCount` 没有墙钟上限，"恰好 2 条"实际是"前 300ms 内恰好 2 条" | 加 `maxMs=3000`：到顶仍没有静默窗口就**抛错**，而不是返回一个从没稳定过的计数 | `plugins/dsh-channel-qq` 全量 **1907/1906 pass / 0 fail** |
+| **P3-3** | `reminders-dispatch-timing.test.ts` 一处 `} finally {` 与上一条断言挤在同一行 | 换行 | 同上 |
+
+总账（本机实测）：`node scripts/verify.mjs` → `unit` 10 通过 / 0 失败 / 1 无测试，`static` 39/0，
+`compose` SKIPPED（干净检出）；`plugins/companion-runtime` **717/717**；`plugins/companion-memory`
+**308 tests / 301 pass / 0 fail / 7 skip**；`plugins/companion-foundation` **480/480**；
+`tools/**` **72/72**；`@dsh-companion/channel-qq` **1907 tests / 1906 pass / 0 fail / 1 skip**，
+`check:layers` 与 `check:size` 均通过。
+
+**这些仍然不算证据**：本轮没有真宿主装载、没有真模型、没有真 B 站账号、没有真 QQ 发送；
+`purpose:'explicit'` 的门槛下调只在词法覆盖率上生效（向量通道的门限没动，也没测）；
+「B 站只丢一个槽」证明的是**计划与派发语义**，不是"账号能用"。
+
 
 ### 2.9 群聊社交运行时 P5–P8（2026-11-08）：仍只有 `offline-test`，真实发送未开始
 

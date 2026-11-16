@@ -431,8 +431,9 @@ export function createP2({
       // B 站 provider 的**实际**就绪状态，与 capability 目录同一判据（`ports.runBilibili.available()`）。
       //
       // 为什么要单独报：派发闸门（本函数下面的 `deferred`）在 provider 未就绪时不该把整拍 defer 掉
-      // ——那会把 read/explore/write 也一起停掉——但 planner 不该再排一条注定失败的 B 站活动。
-      // 所以这里如实报 `providerReady`，让 plan 阶段自己排除 bilibili，而心跳仍可派发其它三类。
+      // ——那会把 read/explore/write 也一起停掉——但 `startDueActivities()` 会把到点的 B 站 slot
+      // 从 due 集合里排除（同一句 SQL），于是"这一拍为什么没派 B 站"必须有一个具名答案。
+      // 该字段现在真的被消费：`index.mjs` 的 `p2DispatchWatch()` 把它放进 `p2.*` 投影。
       bilibiliProviderReady: (() => {
         try {
           if (typeof ports.runBilibili !== 'function') return false;
@@ -507,31 +508,17 @@ export function createP2({
       }
     } catch { /* expiry is best effort; a failed attempt is retried next tick */ }
     let due;
-    try {
-      // P2.5-1: `started` is a *claim* the heartbeat (or a previous pump tick) already made, and
-      // it is only executable while no activity row exists for the slot. The plan join and the
-      // `NOT EXISTS` are what make "claimed by the heartbeat" and "started by the pump" one
-      // logical job: a superseded plan's slots and an already-created activity are both excluded.
-      due = db.all(`SELECT s.slot_id, s.plan_id, s.day, s.start_at, s.end_at, s.status, s.activity, s.title, s.target_ref, s.intent, s.reality
-                    FROM p2_plan_slots s
-                    JOIN p2_plans p ON p.plan_id = s.plan_id AND p.scope = s.scope
-                    WHERE s.scope = ? AND s.status IN ('planned','started') AND s.kind = 'activity'
-                      AND s.start_at <= ? AND s.end_at > ?
-                      AND p.status = 'committed'
-                      AND NOT EXISTS (SELECT 1 FROM p2_activities a WHERE a.scope = s.scope AND a.plan_slot_id = s.slot_id)
-                    ORDER BY s.start_at ASC LIMIT 2`, scopeKey, now, now);
-    } catch { return started; }
-    // R4: same block as `dueSlotsForHeartbeat` — a job whose external effect is unresolved must not
-    // be handed to `start()` a second time from the pump path either.
-    const blocked = blockedJobKeys(scopeKey, now);
     /**
      * B 站 slot 的派发前置：provider 真的就绪。
      *
      * 事实（F 包审计 + 首席裁决 2026-11-14）：装在本机 profile 的 `dsh-bili-scroll@2.4.0` 副本
      * **不含** provider publish 代码（同版本号、不同字节）。`runBilibili.available()` 因此是
      * false，而派发路径此前不查它 —— planner 照常排 B 站、pump 照常 start、执行阶段必然失败。
-     * 现在 start 之前在**这里**再验一次（planner 侧也排除，见 planner 的 biliAvailable 判据），
-     * 于是"派了一条注定失败的活"变成"这一拍跳过它、留下具名 code"。
+     *
+     * 判据必须在**取 due 之前**算出来：原来的写法是先 `ORDER BY start_at ASC LIMIT 2` 取两行，
+     * 再在循环里跳过 B 站，于是两行全是 B 站时这一拍一条都不 start —— read/explore/write 被
+     * 两条注定失败的 slot 饿死。现在 B 站不可用就从候选集里直接排除（同一句 SQL），
+     * `LIMIT` 数的是**真的能派**的槽位。
      *
      * 只用既有端口，不新增探针、不联网；不可用不等于崩溃 —— 跳过并记录，其它三类照常派发。
      */
@@ -541,15 +528,48 @@ export function createP2({
         return ports.runBilibili.available?.() !== false;
       } catch { return false; }
     })();
-    let bilibiliSkipped = 0;
+    try {
+      // P2.5-1: `started` is a *claim* the heartbeat (or a previous pump tick) already made, and
+      // it is only executable while no activity row exists for the slot. The plan join and the
+      // `NOT EXISTS` are what make "claimed by the heartbeat" and "started by the pump" one
+      // logical job: a superseded plan's slots and an already-created activity are both excluded.
+      //
+      // The last clause is the Bilibili gate: a slot whose provider is not ready is not due, so
+      // it neither consumes the two-row window nor the loop's attention.
+      due = db.all(`SELECT s.slot_id, s.plan_id, s.day, s.start_at, s.end_at, s.status, s.activity, s.title, s.target_ref, s.intent, s.reality
+                    FROM p2_plan_slots s
+                    JOIN p2_plans p ON p.plan_id = s.plan_id AND p.scope = s.scope
+                    WHERE s.scope = ? AND s.status IN ('planned','started') AND s.kind = 'activity'
+                      AND s.start_at <= ? AND s.end_at > ?
+                      AND p.status = 'committed'
+                      AND (s.activity <> 'bilibili' OR ? = 1)
+                      AND NOT EXISTS (SELECT 1 FROM p2_activities a WHERE a.scope = s.scope AND a.plan_slot_id = s.slot_id)
+                    ORDER BY s.start_at ASC LIMIT 2`, scopeKey, now, now, bilibiliReady ? 1 : 0);
+    } catch { return started; }
+    // One named reason per beat (not per slot): the loop no longer sees these rows, so the
+    // skip has to be reported here or the fact "a B站 slot was due and was not started" is lost.
+    if (!bilibiliReady) {
+      try {
+        const skippedDuty = db.all(`SELECT s.slot_id FROM p2_plan_slots s
+                                     JOIN p2_plans p ON p.plan_id = s.plan_id AND p.scope = s.scope
+                                     WHERE s.scope = ? AND s.status IN ('planned','started') AND s.kind = 'activity'
+                                       AND s.activity = 'bilibili'
+                                       AND s.start_at <= ? AND s.end_at > ?
+                                       AND p.status = 'committed'
+                                       AND NOT EXISTS (SELECT 1 FROM p2_activities a WHERE a.scope = s.scope AND a.plan_slot_id = s.slot_id)
+                                     ORDER BY s.start_at ASC LIMIT 8`, scopeKey, now, now) ?? [];
+        if (skippedDuty.length > 0) {
+          lastStart = { at: now, slotId: skippedDuty[0].slot_id, activityId: '', code: 'bilibili-provider-not-ready' };
+          noteError('p2-activity-start-bilibili-provider-not-ready', `${skippedDuty.length} due Bilibili slot(s) skipped in this beat: the provider is not ready`);
+        }
+      } catch { /* the report is best effort; dispatch of the other kinds already happened */ }
+    }
+    // R4: same block as `dueSlotsForHeartbeat` — a job whose external effect is unresolved must not
+    // be handed to `start()` a second time from the pump path either.
+    const blocked = blockedJobKeys(scopeKey, now);
     for (const slot of due) {
       if (!slot.activity) continue;
-      if (String(slot.activity) === 'bilibili' && !bilibiliReady) {
-        bilibiliSkipped += 1;
-        lastStart = { at: now, slotId: slot.slot_id, activityId: '', code: 'bilibili-provider-not-ready' };
-        noteError('p2-activity-start-bilibili-provider-not-ready', `slot ${slot.slot_id} skipped: the Bilibili provider is not ready`);
-        continue;
-      }      if (blocked.has(jobKeyFor({ scopeKey, startAt: Number(slot.start_at) || 0, endAt: Number(slot.end_at) || 0, kind: String(slot.activity) }))) {
+      if (blocked.has(jobKeyFor({ scopeKey, startAt: Number(slot.start_at) || 0, endAt: Number(slot.end_at) || 0, kind: String(slot.activity) }))) {
         lastStart = { at: now, slotId: slot.slot_id, activityId: '', code: 'effect-unresolved' };
         noteError('p2-activity-start-effect-unresolved', `slot ${slot.slot_id} is blocked by an unresolved external effect`);
         continue;
@@ -1532,9 +1552,22 @@ export function createP2({
     return { ok: true, candidateId };
   }
 
+  /**
+   * One scope's candidate rows.
+   *
+   * `status: 'all'` means **no status filter** — it is the read the share decision needs
+   * (`resolveHistory()` asks for every row so duplicate/budget can see rows that already left
+   * `pending`). Before this, `'all'` went into `WHERE status = ?` and matched nothing, so the
+   * caller got an *available but empty* history: the decision then reported "no history",
+   * `duplicate` never fired and the daily budget always counted zero.
+   */
   function listShareCandidates({ scopeKey, status = 'pending', limit = 20 } = {}) {
     if (!scopeKey) return [];
-    return db.all('SELECT candidate_id, activity_id, kind, title, body, source_ref, status, created_at FROM p2_share_candidates WHERE scope = ? AND status = ? ORDER BY created_at DESC LIMIT ?', scopeKey, status, Math.min(50, Number(limit) || 20));
+    const capped = Math.min(50, Number(limit) || 20);
+    if (String(status) === 'all') {
+      return db.all('SELECT candidate_id, activity_id, kind, title, body, source_ref, status, created_at FROM p2_share_candidates WHERE scope = ? ORDER BY created_at DESC LIMIT ?', scopeKey, capped);
+    }
+    return db.all('SELECT candidate_id, activity_id, kind, title, body, source_ref, status, created_at FROM p2_share_candidates WHERE scope = ? AND status = ? ORDER BY created_at DESC LIMIT ?', scopeKey, status, capped);
   }
 
   /** Submit one candidate to the injected contact/share owner. P2 never sends anything. */

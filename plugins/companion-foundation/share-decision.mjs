@@ -600,13 +600,22 @@ function boundOfScopeKey(scopeKey) {
 /**
  * 历史回读（可选）：给了 `history` 就用；否则问 runtime 的候选列表（同一库、同一作用域）。
  * 读不到就返回 `null`（**不**把“读不到”说成“没有历史”）。
+ *
+ * 作用域必须**随 `scopeKey` 一起传下去**：runtime 的 `shareCandidates()` 只认
+ * `bound`/`binding`/`scope`，或退一步用 `sessionId` 找 identity；活动完成事件里通常
+ * 没有 sessionId，于是只传 `{sessionId, status}` 会拿到 `{ok:false, code:'unbound'}`
+ * —— 空数组看起来和“没有历史”一模一样，重复判定与每日预算就永远不生效。
+ * 这里把 `u:x|p:y|w:z` 拆回 runtime 认的 bound 形状（拆不出就只传 sessionId，
+ * 由 runtime 自己拒绝，绝不在这里猜作用域）。
  */
 function resolveHistory({ cognitive, sessionId, scopeKey, history }) {
     if (history !== undefined && history !== null) return history;
     const lister = cognitive && typeof cognitive.shareCandidates === 'function' ? cognitive.shareCandidates : null;
     if (!lister) return null;
+    const bound = boundOfScopeKey(scopeKey);
+    if (!sessionId && bound === null) return null;
     try {
-        const listed = lister({ sessionId, status: 'all' });
+        const listed = lister({ sessionId, ...(bound === null ? {} : { bound }), status: 'all' });
         if (Array.isArray(listed)) return listed;
         if (Array.isArray(listed?.candidates)) return listed.candidates;
         return null;

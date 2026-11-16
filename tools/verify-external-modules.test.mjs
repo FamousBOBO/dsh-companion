@@ -89,3 +89,28 @@ test('固定指纹本身是 64 位小写 hex（防止写错的 pin 静默放行�
   assert.equal(pin.requiresProviderPublish, true);
   assert.equal(crypto.createHash('sha256').update('').digest('hex').length, 64);
 });
+
+test('pin 写成大写 hex 也算同一份字节（hex 大小写不敏感）', async t => {
+  // The digest is computed lower-case (`digest('hex')`) while the documented pin in
+  // `docs/03-modules-support-matrix.md` is written `127D04BE…`. A raw string compare would reject
+  // the *correct* module, and the obvious "fix" would be to swap the module for whatever is on
+  // disk — inverting the whole point of the gate. Hex is case-insensitive by definition.
+  const bytes = goodSource;
+  const lower = crypto.createHash('sha256').update(bytes).digest('hex');
+  const controlled = { 'dsh-bili-scroll': { version: '2.4.0', indexSha256: lower.toUpperCase(), expectedBytes: Buffer.byteLength(bytes), requiresProviderPublish: true } };
+  const root = fixture(t, { bytes, version: '2.4.0' });
+  const result = verifyModule({ moduleRoot: root, pins: controlled });
+  assert.equal(result.ok, true, JSON.stringify(result));
+  assert.equal(result.code, 'ok');
+  assert.equal(result.pinnedSha256, lower.toUpperCase(), 'the pin is reported verbatim');
+});
+
+test('pin 大小写不敏感不放宽字节判据：换个字节仍然 hash-mismatch', async t => {
+  const bytes = goodSource;
+  const other = `${goodSource}\n// one byte more\n`;
+  const controlled = { 'dsh-bili-scroll': { version: '2.4.0', indexSha256: crypto.createHash('sha256').update(bytes).digest('hex').toUpperCase(), expectedBytes: Buffer.byteLength(bytes), requiresProviderPublish: true } };
+  const root = fixture(t, { bytes: other, version: '2.4.0' });
+  const result = verifyModule({ moduleRoot: root, pins: controlled });
+  assert.equal(result.ok, false);
+  assert.equal(result.code, 'hash-mismatch');
+});
