@@ -225,6 +225,9 @@
           dropInfo.corrupt ? ` · 坏行：${dropInfo.corrupt}` : '',
           dropInfo.unsafe ? ` · 不安全行：${dropInfo.unsafe}` : '',
           dropInfo.readError ? ` · 读失败：${dropInfo.readError}` : '',
+          // 还有多少字节在路上（N8）：服务端早就在下发 `backlog`，UI 一直没显示。
+          // 它不是丢弃 —— 下一 tick 会继续读 —— 所以措辞是"待读"而不是"丢了"。
+          dropInfo.backlog ? ` · 待读 ${dropInfo.backlog} 字节` : '',
           dropInfo.skipped ? ` · 跳过：${dropInfo.skipped}` : '',
           dropInfo.droppedReasons ? ` · 丢弃原因：${Object.keys(dropInfo.droppedReasons).join('/')}` : '')
         : null,

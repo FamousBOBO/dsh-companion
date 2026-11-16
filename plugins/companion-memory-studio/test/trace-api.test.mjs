@@ -223,6 +223,8 @@ test('trace-memory projects the existing recall log without a second write path'
   const body = await (await call(`${API_PREFIX}/trace-memory`)).json();
   assert.equal(body.ok, true);
   assert.equal(body.data.source, 'logs/memory-recall.jsonl');
+  // 成功面必须与错误面同一个布尔（N12）：否则客户端只能靠 reason 猜是"空"还是"读失败"。
+  assert.equal(body.data.readable, true, '成功面必须带 readable:true');
   assert.equal(body.data.records, 2);
   // 每条记录投影成 retrieve + inject，共 4 条事件。
   assert.equal(body.data.events.length, 4);

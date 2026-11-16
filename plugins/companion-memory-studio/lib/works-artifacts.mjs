@@ -132,6 +132,57 @@ function realpathInside(rootAbsolute, candidateAbsolute) {
 }
 
 /**
+ * 精确授权：这个 scope 里有没有一条 activity 引用了**这个文件**。
+ *
+ * 与 `readWorkEvidence` 分开是必须的：那个函数是**列表**用的窗口（最近 400 条），
+ * 把归属判定建在它上面就等于"第 401 条之后的作品不算你的"（N5）。这里按
+ * `artifact_ref` 等值查、只取一行，不受窗口大小影响。
+ *
+ * `available:false` 表示证据层本身读不到 —— 那是 `evidence-unavailable`，不是
+ * "不是你的作品"（N4）。
+ */
+export function lookupWorkActivity({ root, scope, relative }) {
+  const file = databaseFile(root);
+  if (!fs.existsSync(file)) return { available: false, reason: 'runtime-db-missing', found: false };
+  if (!scope) return { available: false, reason: 'no-scope', found: false };
+  const wanted = normaliseRelative(relative);
+  // 库里可能存成正斜杠或反斜杠两种写法，两种都试一次（都是等值查询，不扫表）。
+  const candidates = [wanted, wanted.replace(/\//g, '\\'), relative];
+  const columns = [
+    'activity_id, kind, adapter, status, target, artifact_ref, artifact_version, artifact_hash,',
+    'total_units, consumed_prefix, reality, started_at, ended_at, updated_at',
+  ].join(' ');
+  const receiptsSql = 'SELECT activity_id, operation, ok, code, artifact_ref, at '
+    + 'FROM p2_activity_receipts WHERE scope = ? AND activity_id = ? ORDER BY at DESC LIMIT 200';
+  const sql = `SELECT ${columns} FROM p2_activities WHERE scope = ? AND artifact_ref = ? `
+    + 'ORDER BY updated_at DESC LIMIT 1';
+  let db = null;
+  try {
+    db = new DatabaseSync(file, { readOnly: true });
+    db.exec('PRAGMA busy_timeout=1000; BEGIN');
+    for (const candidate of candidates) {
+      const row = db.prepare(sql).get(scope, candidate);
+      if (row) {
+        const receipts = db.prepare(receiptsSql).all(scope, row.activity_id);
+        db.exec('COMMIT');
+        return { available: true, reason: '', found: true, activity: row, receipts };
+      }
+    }
+    db.exec('COMMIT');
+    return { available: true, reason: '', found: false, receipts: [] };
+  } catch (error) {
+    return {
+      available: false,
+      reason: 'runtime-db-unreadable',
+      detail: String(error?.message ?? '').slice(0, 120),
+      found: false,
+    };
+  } finally {
+    try { db?.close(); } catch { /* 已关 */ }
+  }
+}
+
+/**
  * 读运行时证据（只读连接，不拿写租约）。
  *
  * 任何读失败都收敛成 `{ available:false, reason }`，不抛给路由层——否则整个作品页会 500，
@@ -317,10 +368,22 @@ export function readWorkPreview({ root, scope, relative }) {
   }
 
   // ── 第一道闸：归属。跨 scope 的路径在这里就回去，正文一个字节都不读。
-  const evidence = readWorkEvidence({ root, scope });
-  const wanted = normaliseRelative(resolved.relative);
-  const activity = (evidence.activities ?? []).find((row) => normaliseRelative(row.artifact_ref) === wanted);
-  if (!activity) {
+  //
+  // 用精确查询（`lookupWorkActivity`），不复用列表那个 LIMIT 400 的窗口 —— 否则同一 scope
+  // 里活动数超过 400 之后，老作品会从"能预览"变成"不是你的作品"（N5）。
+  const ownership = lookupWorkActivity({ root, scope, relative: resolved.relative });
+  if (!ownership.available) {
+    // 证据层读不到 ≠ 不是你的作品。这里必须与列表口径一致（列表同时会说
+    // `evidence.available === false`），否则排障会被引到错误方向（N4）。
+    return {
+      ok: false,
+      reason: 'evidence-unavailable',
+      detail: '运行时证据层不可用，无法确认这份作品的归属；这不是"不在你的作品记录里"。',
+      evidence: { available: false, reason: ownership.reason },
+      meta: { relative: resolved.relative, size: null, type: typeOf(resolved.relative) },
+    };
+  }
+  if (!ownership.found) {
     return {
       ok: false,
       reason: 'not-in-scope',
@@ -367,7 +430,9 @@ export function readWorkPreview({ root, scope, relative }) {
   }
 
   // 证据同样要回：预览页不能只显示内容而丢掉"这一版有没有收据"。
-  const receipts = (evidence.receipts ?? []).filter((receipt) => receipt.activity_id === activity.activity_id);
+  // 收据同样来自精确查询（`lookupWorkActivity` 顺带取回），不依赖列表的 2000 条窗口。
+  const activity = ownership.activity;
+  const receipts = ownership.receipts ?? [];
 
   return {
     ok: true,
@@ -379,7 +444,7 @@ export function readWorkPreview({ root, scope, relative }) {
     modifiedAt: new Date(stat.mtimeMs).toISOString(),
     text,
     truncated: false,
-    status: workStatusOf(activity, evidence.receipts ?? []),
+    status: workStatusOf(activity, receipts),
     version: Number(activity?.artifact_version ?? 0),
     hashPrefix: String(activity?.artifact_hash ?? '').slice(0, 16),
     evidence: {

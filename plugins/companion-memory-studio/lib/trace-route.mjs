@@ -118,6 +118,8 @@ export async function memoryTraceEvents(request, kernel) {
   const events = projected.events.filter((event) => matchesFilters(event, filters));
   return kernel.ok({
     source: 'logs/memory-recall.jsonl',
+    // 与错误面同一个布尔：客户端据此区分「读到空」和「读失败」（N12）。
+    readable: true,
     records: tail.length,
     skipped: projected.skipped + skippedLines,
     // `truncated` 明说"只读了文件尾部"，UI 才能解释"更早的记录为什么不在"。

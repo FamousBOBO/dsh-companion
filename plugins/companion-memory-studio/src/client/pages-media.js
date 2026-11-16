@@ -491,21 +491,40 @@
     return parts.join('|');
   }
 
+  /** section 级 presets 里的全部字段（画师串 + 各族的字段），拍平成一个列表。 */
+  function presetFieldsOf(presets) {
+    if (!presets) return [];
+    const list = [];
+    if (presets.artist) list.push(presets.artist);
+    for (const family of presets.families || []) {
+      for (const field of (family && family.fields) || []) list.push(field);
+    }
+    return list;
+  }
+
   /** 这个 provider 有没有未保存的改动（含它的启用开关、密钥、清除动作）。 */
-  function providerDirty(provider, draft, secrets, clears) {
+  function providerDirty(provider, draft, secrets, clears, extraFields) {
     if (!provider) return false;
     const within = path => String(path) === provider.prefix || String(path).startsWith(`${provider.prefix}.`);
     const hasSecrets = Object.keys(secrets || {}).some(path => within(path) && String(secrets[path] ?? '').trim() !== '');
     const hasClears = Object.keys(clears || {}).some(path => within(path) && clears[path]);
     if (hasSecrets || hasClears) return true;
-  // 只比 provider.fields。生成字段（步数/种子/采样器…）在真 descriptor 里**本来就在**
-  // provider.fields 里（实测 nai 的 fields 有 steps/scale/sampler 等 26 项）。
+  // 判据只来自**带 original 的真实字段**。
   //
-  // 曾经这里额外把 generationFields 合成 `{path, type:null}` 追加进来，结果是踩出一个回归：
+  // 曾经这里额外把 `generationFields` 合成 `{path, type:null}` 追加进来，结果是踩出一个回归：
   // 合成项没有 `original`，`sameValue(coerce('text', value), undefined)` 恒 false →
   // **未做任何修改也 dirty=true**，NAI 卡片永远挂"有未保存的修改"、「测试连接」永久禁用。
-  // 所以：别再合成。dirty 的判据必须只来自带 original 的真实字段。
-  const changed = (provider.fields || []).some((field) => {
+  // 所以：别再合成。
+  //
+  // 但也不能只看 `provider.fields`：画师串挂在 section 级的 `presets.artist` 上
+  // （`image.nai.artistString`，不在 `provider.fields` 里），只改它时旧实现算不脏，
+  // 「保存这个 provider」永远点不动（N6-A）。调用方把该 provider 名下的 presets 字段
+  // 作为 `extraFields` 传进来即可 —— 仍然是真实字段、仍然带 original。
+  const extra = Array.isArray(extraFields) ? extraFields : [];
+  const candidates = [...extra, ...(provider.fields || [])].filter((field, index, list) => (
+    field && list.findIndex((item) => item && item.path === field.path) === index
+  ));
+  const changed = candidates.some((field) => {
       if (field.secret || field.locked) return false;
       const value = draft ? draft[field.path] : undefined;
       if (value === undefined) return false;
@@ -757,7 +776,13 @@
     const status = testing[provider.id] || null;
     // 未保存的改动 = 表单和"已保存配置"不一致：这时测试按钮必须禁用，
     // 因为 /test 读的永远是已保存配置（2026-11-06 UI 审核 P1）。
-    const dirty = providerDirty(provider, draft, secrets, clears);
+    // section 级 presets 里**属于这个 provider** 的字段（当前就是画师串）也参与 dirty 判定。
+    // 不按 `generationFields` 过滤：那份列表是"渲染哪些生成字段"的清单，不保证包含画师串
+    // （真 descriptor 里 `provider.generationFields` 甚至可能是 null）。判据只按路径归属。
+    const providerExtraFields = presetFieldsOf(presets).filter(
+      (field) => field && !field.locked && String(field.path).startsWith(`${provider.prefix}.`),
+    );
+    const dirty = providerDirty(provider, draft, secrets, clears, providerExtraFields);
     const badge = h('div', { className: 'cpxp-media-badge-row' },
       h(ui.Badge, { tone: stateTone(provider.state) }, stateLabel(states, provider.state)),
       provider.notConnected ? h(ui.Badge, { tone: 'neutral' }, '尚未接入') : null,
@@ -843,7 +868,9 @@
     const actions = h('div', { className: 'cpxp-media-actions' },
       h(ui.Button, {
         variant: 'primary',
-        loading: busy === `save:${provider.kind}`,
+        // 与 `doSave` 设的 key 必须同一个：`save:${prefix}`（provider 的 prefix 是 `image.nai`）。
+        // 两处不一致时，保存期间的 loading 态永远不显示（N6-B）。
+        loading: busy === `save:${provider.prefix}`,
         disabled: !dirty || Boolean(busy),
         // 传 provider.prefix（如 image.nai），不是 section 的 kind（image）：
         // 后者会把同一 section 下**所有**脏 provider 一起提交（审查报告低项，base 既存）。

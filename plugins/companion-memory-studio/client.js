@@ -2211,9 +2211,11 @@ function Shell() {
         }))
       : null,
     h('div', { className: 'cpx-scroll' }, body),
-    // 全局设置搜索：监听器与面板挂在页面壳上，因此任何页面按 Ctrl/⌘+K 都能打开
-    // （旧版只在设置页挂载，离开设置页就失效 —— M9）。
-    P.ui.SettingsSearch ? h(P.ui.SettingsSearch, { key: 'catalog-global', standalone: true }) : null),
+    // 全局设置搜索：**面板只由这里渲染一份**（外加注册全局快捷键）。
+    //
+    // 页面里的 `P.ui.SettingsSearch` 只渲染触发按钮、不渲染面板，所以 DOM 里永远
+    // 最多一个 role="dialog"（N1 的回归点：之前设置页会同时出现两块面板）。
+    P.ui.SettingsSearchHost ? h(P.ui.SettingsSearchHost, { key: 'catalog-global' }) : null),
   h(ToastHost, { toasts: notices })));
 }
 
@@ -9968,21 +9970,40 @@ P.THEME_LABEL = THEME_LABEL;
     return parts.join('|');
   }
 
+  /** section 级 presets 里的全部字段（画师串 + 各族的字段），拍平成一个列表。 */
+  function presetFieldsOf(presets) {
+    if (!presets) return [];
+    const list = [];
+    if (presets.artist) list.push(presets.artist);
+    for (const family of presets.families || []) {
+      for (const field of (family && family.fields) || []) list.push(field);
+    }
+    return list;
+  }
+
   /** 这个 provider 有没有未保存的改动（含它的启用开关、密钥、清除动作）。 */
-  function providerDirty(provider, draft, secrets, clears) {
+  function providerDirty(provider, draft, secrets, clears, extraFields) {
     if (!provider) return false;
     const within = path => String(path) === provider.prefix || String(path).startsWith(`${provider.prefix}.`);
     const hasSecrets = Object.keys(secrets || {}).some(path => within(path) && String(secrets[path] ?? '').trim() !== '');
     const hasClears = Object.keys(clears || {}).some(path => within(path) && clears[path]);
     if (hasSecrets || hasClears) return true;
-  // 只比 provider.fields。生成字段（步数/种子/采样器…）在真 descriptor 里**本来就在**
-  // provider.fields 里（实测 nai 的 fields 有 steps/scale/sampler 等 26 项）。
+  // 判据只来自**带 original 的真实字段**。
   //
-  // 曾经这里额外把 generationFields 合成 `{path, type:null}` 追加进来，结果是踩出一个回归：
+  // 曾经这里额外把 `generationFields` 合成 `{path, type:null}` 追加进来，结果是踩出一个回归：
   // 合成项没有 `original`，`sameValue(coerce('text', value), undefined)` 恒 false →
   // **未做任何修改也 dirty=true**，NAI 卡片永远挂"有未保存的修改"、「测试连接」永久禁用。
-  // 所以：别再合成。dirty 的判据必须只来自带 original 的真实字段。
-  const changed = (provider.fields || []).some((field) => {
+  // 所以：别再合成。
+  //
+  // 但也不能只看 `provider.fields`：画师串挂在 section 级的 `presets.artist` 上
+  // （`image.nai.artistString`，不在 `provider.fields` 里），只改它时旧实现算不脏，
+  // 「保存这个 provider」永远点不动（N6-A）。调用方把该 provider 名下的 presets 字段
+  // 作为 `extraFields` 传进来即可 —— 仍然是真实字段、仍然带 original。
+  const extra = Array.isArray(extraFields) ? extraFields : [];
+  const candidates = [...extra, ...(provider.fields || [])].filter((field, index, list) => (
+    field && list.findIndex((item) => item && item.path === field.path) === index
+  ));
+  const changed = candidates.some((field) => {
       if (field.secret || field.locked) return false;
       const value = draft ? draft[field.path] : undefined;
       if (value === undefined) return false;
@@ -10234,7 +10255,13 @@ P.THEME_LABEL = THEME_LABEL;
     const status = testing[provider.id] || null;
     // 未保存的改动 = 表单和"已保存配置"不一致：这时测试按钮必须禁用，
     // 因为 /test 读的永远是已保存配置（2026-11-06 UI 审核 P1）。
-    const dirty = providerDirty(provider, draft, secrets, clears);
+    // section 级 presets 里**属于这个 provider** 的字段（当前就是画师串）也参与 dirty 判定。
+    // 不按 `generationFields` 过滤：那份列表是"渲染哪些生成字段"的清单，不保证包含画师串
+    // （真 descriptor 里 `provider.generationFields` 甚至可能是 null）。判据只按路径归属。
+    const providerExtraFields = presetFieldsOf(presets).filter(
+      (field) => field && !field.locked && String(field.path).startsWith(`${provider.prefix}.`),
+    );
+    const dirty = providerDirty(provider, draft, secrets, clears, providerExtraFields);
     const badge = h('div', { className: 'cpxp-media-badge-row' },
       h(ui.Badge, { tone: stateTone(provider.state) }, stateLabel(states, provider.state)),
       provider.notConnected ? h(ui.Badge, { tone: 'neutral' }, '尚未接入') : null,
@@ -10320,7 +10347,9 @@ P.THEME_LABEL = THEME_LABEL;
     const actions = h('div', { className: 'cpxp-media-actions' },
       h(ui.Button, {
         variant: 'primary',
-        loading: busy === `save:${provider.kind}`,
+        // 与 `doSave` 设的 key 必须同一个：`save:${prefix}`（provider 的 prefix 是 `image.nai`）。
+        // 两处不一致时，保存期间的 loading 态永远不显示（N6-B）。
+        loading: busy === `save:${provider.prefix}`,
         disabled: !dirty || Boolean(busy),
         // 传 provider.prefix（如 image.nai），不是 section 的 kind（image）：
         // 后者会把同一 section 下**所有**脏 provider 一起提交（审查报告低项，base 既存）。
@@ -14403,8 +14432,11 @@ P.THEME_LABEL = THEME_LABEL;
     .cpx-cat-trigger { display: inline-flex; align-items: center; gap: 8px; padding: 0 12px; height: 32px; border-radius: 8px; border: 1px solid var(--dsw-alias-border-secondary); background: var(--dsw-alias-bg-layer-2); color: var(--dsw-alias-label-secondary); font: inherit; font-size: 13px; cursor: pointer; }
     .cpx-cat-trigger:hover { color: var(--dsw-alias-label-primary); border-color: var(--dsw-alias-border-primary); }
     .cpx-cat-trigger kbd { font: 11px/1 var(--cpx-mono); padding: 3px 5px; border-radius: 4px; border: 1px solid var(--dsw-alias-border-secondary); color: var(--dsw-alias-label-tertiary); }
-    .cpx-cat-overlay { position: fixed; inset: 0; z-index: 120; background: color-mix(in srgb, var(--dsw-alias-bg-inverse, #000) 38%, transparent); display: flex; align-items: flex-start; justify-content: center; padding: 12vh 16px 16px; }
-    .cpx-cat-panel { width: min(760px, 100%); max-height: 70vh; display: flex; flex-direction: column; background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-secondary); border-radius: 14px; box-shadow: 0 24px 64px color-mix(in srgb, var(--dsw-alias-bg-inverse, #000) 45%, transparent); overflow: hidden; }
+    .cpx-cat-overlay { position: fixed; inset: 0; z-index: 120; display: flex; align-items: flex-start; justify-content: center; padding: 12vh 16px 16px; }
+    /* 暗色背景与"点外面关闭"都在这一层：绝对定位铺满视口，所以它真的能被点到。
+       之前它是个没有 CSS 规则的零宽度 div，onClick 挂在它身上等于点不到（N9）。 */
+    .cpx-cat-backdrop { position: absolute; inset: 0; background: color-mix(in srgb, var(--dsw-alias-bg-inverse, #000) 38%, transparent); }
+    .cpx-cat-panel { position: relative; width: min(760px, 100%); max-height: 70vh; display: flex; flex-direction: column; background: var(--dsw-alias-bg-layer-1); border: 1px solid var(--dsw-alias-border-secondary); border-radius: 14px; box-shadow: 0 24px 64px color-mix(in srgb, var(--dsw-alias-bg-inverse, #000) 45%, transparent); overflow: hidden; }
     .cpx-cat-head { display: flex; align-items: center; gap: 10px; padding: 14px 16px; border-bottom: 1px solid var(--dsw-alias-border-secondary); }
     .cpx-cat-input { flex: 1; min-width: 0; border: 0; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 15px; border-radius: 6px; }
     .cpx-cat-input:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; }
@@ -14473,7 +14505,22 @@ P.THEME_LABEL = THEME_LABEL;
       [debounced],
     );
 
-    useEffect(() => { if (inputRef.current) inputRef.current.focus(); }, []);
+    useEffect(() => {
+      if (inputRef.current) inputRef.current.focus();
+      // 卸载时把焦点还给打开它的那个控件（Esc / 「关闭」/ 点外面三条路径都会走到这里）。
+      // 不这么做，键盘用户关掉面板后焦点掉回文档开头 —— H4 承诺的就是这一条（N2）。
+      return () => {
+        const opener = openerRef.current;
+        if (!opener || typeof opener.focus !== 'function') return;
+        // `document.contains` 在真实 DOM 里判"控件还在"；宿主/测试环境可能没有这个 API，
+        // 那就直接尝试聚焦（focus() 自己会对已脱离文档的元素安全地不生效）。
+        const stillThere = typeof document === 'undefined' || typeof document.contains !== 'function'
+          ? true
+          : document.contains(opener);
+        if (!stillThere) return;
+        try { opener.focus(); } catch { /* 控件已不在 */ }
+      };
+    }, []);
     useEffect(() => { setActive(0); }, [debounced]);
 
     const matches = (state.data && state.data.matches) || [];
@@ -14529,7 +14576,14 @@ P.THEME_LABEL = THEME_LABEL;
       return false;
     };
 
+    // **只挂一处**（dialog 上），并且用 `defaultPrevented` 挡住重复执行。
+    //
+    // 之前同一个函数同时挂在 dialog 与 overlay 上：input 里按一次键会冒泡经过两层，
+    // 于是 ArrowDown 一次走两格、Enter 调两次 choose()、Tab 陷阱一次跳两个控件（N3）。
+    // 现在 overlay 不再挂 onKeyDown（见下），这里再加一道 defaultPrevented 守卫，
+    // 覆盖"将来有人又挂第二处"的情况。
     const onKeyDown = (event) => {
+      if (event.defaultPrevented) return;
       if (event.key === 'Escape') { event.preventDefault(); onClose(); return; }
       if (trapTab(event)) return;
       if (event.key === 'ArrowDown') { event.preventDefault(); setActive((value) => Math.min(value + 1, matches.length - 1)); return; }
@@ -14630,7 +14684,14 @@ P.THEME_LABEL = THEME_LABEL;
           state.data ? h('span', null, `${state.data.returned}/${state.data.total} 条`) : null,
           catalog ? h('span', null, `字段 ${catalog.totalFields}`) : null),
     );
-    return h('div', { className: 'cpx-cat-overlay', onKeyDown },
+    // 三层分工，各自只有一件事：
+    //   overlay  —— 纯布局容器（fixed 全屏 + flex 居中），不挂任何处理器；
+    //   backdrop —— 铺满视口的装饰层，承载暗色背景与"点外面关闭"（键盘等价是 Esc）；
+    //   panel    —— 模态面板，键盘交互只在这里处理（onKeyDown 全树仅此一处）。
+    //
+    // 之前 onClick 挂在一个没有 CSS 规则的零宽度 div 上，于是点暗色区关不掉（N9）；
+    // 而 onKeyDown 同时挂在 overlay 与 panel 上，一次按键执行两遍（N3）。
+    return h('div', { className: 'cpx-cat-overlay' },
       h('div', {
         key: 'backdrop',
         className: 'cpx-cat-backdrop',
@@ -14641,17 +14702,9 @@ P.THEME_LABEL = THEME_LABEL;
   }
 
   /**
-   * 触发器：设置页头部一个按钮 + **全局** `Ctrl/⌘+K`。
-   *
-   * 快捷键必须全局：挂在窗口上、且只在「当前页面确实有这个触发器」时才抬手。
-   * 旧版把 listener 写在组件 `useEffect` 里，唯一挂载点是设置页 —— 离开设置页组件
-   * 卸载、listener 随之移除，"全局"名不副实（M9）。
-   *
-   * 面板常驻在 `P` 级状态里（`mountCatalog`），由 `core.js` 的页面壳在所有页面渲染，
-   * 所以从任何页面按 `Ctrl/⌘+K` 都能打开。
+   * 面板开关是**模块级可订阅状态**：全局挂载点与各页触发器共享同一个开关，
+   * 因此从任何页面按 Ctrl/⌘+K 打开的都是同一块面板（不是每页各自一份）。
    */
-  // 面板开关是**模块级可订阅状态**：全局挂载点与各页触发器共享同一个开关，
-  // 因此从任何页面按 Ctrl/⌘+K 打开的都是同一块面板（不是每页各自一份）。
   const catalogState = {
     open: false,
     listeners: new Set(),
@@ -14666,62 +14719,91 @@ P.THEME_LABEL = THEME_LABEL;
     subscribe(listener) {
       catalogState.listeners.add(listener);
       return () => {
-        catalogState.listeners.forEach((item) => { if (item === listener) catalogState.listeners.delete(item); });
+        catalogState.listeners.forEach((item) => {
+          if (item === listener) catalogState.listeners.delete(item);
+        });
       };
     },
   };
 
-  function SettingsSearch({ compact, standalone }) {
-    const [open, setOpenState] = useState(catalogState.open);
-    const setOpen = (next) => catalogState.set(next);
+  /** 打开面板的那个控件：关闭时要把焦点还回去（键盘用户不该掉到文档开头）。 */
+  const openerRef = { current: null };
 
-    useEffect(() => catalogState.subscribe((next) => setOpenState(next)), []);
+  const closeCatalog = () => catalogState.set(false);
 
+  /**
+   * 全局快捷键。
+   *
+   * 只有**全局挂载点**注册监听：它随页面壳一直活着，所以"任何页面都能按"成立。
+   * 页面内的触发器不再各自注册 —— 两个实例各注册一次虽然被 `set` 的幂等守卫挡住，
+   * 但那是"碰巧不重复"，不是"只有一处"。
+   */
+  function useGlobalShortcut(enabled) {
     useEffect(() => {
+      if (!enabled) return undefined;
       const listener = (event) => {
-        const isAccel = (event.ctrlKey || event.metaKey) && !event.altKey && String(event.key).toLowerCase() === 'k';
+        const isAccel = (event.ctrlKey || event.metaKey) && !event.altKey
+          && String(event.key).toLowerCase() === 'k';
         if (!isAccel) return;
         const target = event.target;
-        const typing = target && (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable);
+        const typing = target && (target.tagName === 'INPUT'
+          || target.tagName === 'TEXTAREA' || target.isContentEditable);
         if (typing) return;
         event.preventDefault();
         openerRef.current = target && typeof target.focus === 'function' ? target : null;
-        setOpen(true);
+        catalogState.set(true);
       };
       window.addEventListener('keydown', listener);
       return () => window.removeEventListener('keydown', listener);
-    }, []);
+    }, [enabled]);
+  }
+
+  /**
+   * 触发器按钮（各页可放一份）。
+   *
+   * **只渲染按钮，不渲染面板**：面板由页面壳上的全局挂载点渲染唯一一份。
+   * 否则设置页会同时出现两块 role=dialog（N1）。
+   */
+  function SettingsSearchTrigger({ compact }) {
+    const [open, setOpenState] = useState(catalogState.open);
+
+    useEffect(() => catalogState.subscribe((next) => setOpenState(next)), []);
 
     return h('div', { className: 'cpx-cat' },
-      standalone ? null : h('button', {
+      h('button', {
         type: 'button',
         className: 'cpx-cat-trigger',
-        onClick: () => setOpen(true),
+        onClick: (event) => {
+          openerRef.current = event && event.currentTarget ? event.currentTarget : null;
+          catalogState.set(true);
+        },
         'aria-haspopup': 'dialog',
         'aria-expanded': open,
         title: '搜索所有设置项（含 QQ 字段）',
       },
         h(ui.Icon, { name: 'search', size: 14 }),
         compact ? null : h('span', null, '搜索设置'),
-        compact ? null : h('kbd', null, 'Ctrl K')),
-      // 全局那一份只负责"看不见的监听 + 面板"，不重复渲染按钮。
-      // 全局那一份只负责「监听 + 面板」，不重复渲染按钮；页面内的那一份两者都有，
-      // 但两处共享同一个开关，绝不会出现两块面板。
-      open ? h(CatalogPanel, { onClose: () => setOpen(false) }) : null);
+        compact ? null : h('kbd', null, 'Ctrl K')));
   }
 
-  /** 关闭时把焦点还给打开它的那个控件（键盘用户不会掉到文档开头）。 */
-  const openerRef = { current: null };
-
   /**
-   * 全局挂载点：`core.js` 的页面壳渲染 `<P.ui.SettingsSearch standalone />` 一次，
-   * 面板因此对所有页面可用；各页仍可放自己的触发按钮。
+   * 全局挂载点：**只渲染面板**（外加注册全局快捷键），不渲染按钮。
+   *
+   * 由 `core.js:2206` 的页面壳渲染一次，因此：
+   *   - 任何页面按 Ctrl/⌘+K 都能打开同一块面板；
+   *   - DOM 里永远最多只有一个 `role="dialog"`（N1 的回归点）。
    */
-  P.mountCatalog = function mountCatalog() {
-    return h(SettingsSearch, { standalone: true });
-  };
+  function SettingsSearchHost() {
+    const [open, setOpenState] = useState(catalogState.open);
 
-  P.ui.SettingsSearch = SettingsSearch;
+    useEffect(() => catalogState.subscribe((next) => setOpenState(next)), []);
+    useGlobalShortcut(true);
+
+    return open ? h(CatalogPanel, { onClose: closeCatalog }) : null;
+  }
+
+  P.ui.SettingsSearch = SettingsSearchTrigger;
+  P.ui.SettingsSearchHost = SettingsSearchHost;
   P.focusSetting = focusSetting;
 })(P);
 
@@ -14953,6 +15035,9 @@ P.THEME_LABEL = THEME_LABEL;
           dropInfo.corrupt ? ` · 坏行：${dropInfo.corrupt}` : '',
           dropInfo.unsafe ? ` · 不安全行：${dropInfo.unsafe}` : '',
           dropInfo.readError ? ` · 读失败：${dropInfo.readError}` : '',
+          // 还有多少字节在路上（N8）：服务端早就在下发 `backlog`，UI 一直没显示。
+          // 它不是丢弃 —— 下一 tick 会继续读 —— 所以措辞是"待读"而不是"丢了"。
+          dropInfo.backlog ? ` · 待读 ${dropInfo.backlog} 字节` : '',
           dropInfo.skipped ? ` · 跳过：${dropInfo.skipped}` : '',
           dropInfo.droppedReasons ? ` · 丢弃原因：${Object.keys(dropInfo.droppedReasons).join('/')}` : '')
         : null,
@@ -15153,7 +15238,11 @@ P.THEME_LABEL = THEME_LABEL;
     return h(ui.Page, {
       title: '作品',
       lead: '工作区里的产出：按标题/类型/日期过滤，只读预览；没有编辑、删除或分享入口。',
-      status: data.total ? `${data.items.length}/${data.total} 份` : '空',
+      // `totalAll` 是目录全量，`total` 是过滤后的命中数；两者都秀出来，
+      // 用户才分得清"过滤没命中"和"目录里确实没有作品"。
+      status: data.totalAll
+        ? `${data.items.length}/${data.total} 份（全量 ${data.totalAll}）`
+        : '空',
     },
       h(ui.Band, {
         key: 'list',
@@ -15192,7 +15281,7 @@ P.THEME_LABEL = THEME_LABEL;
             : null,
         ),
         items.length
-          ? h(ui.List, { label: `作品 ${data.total} 份` },
+          ? h(ui.List, { label: `作品 ${data.total} / ${data.totalAll} 份` },
             items.map((item) => h('button', {
               key: item.relative,
               type: 'button',
@@ -15213,10 +15302,12 @@ P.THEME_LABEL = THEME_LABEL;
             )))
           : h('div', { className: 'cpx-wk-empty' },
             data.total
-              ? `搜索/过滤条件下没有结果（这一页展示 ${data.items.length} 条，total ${data.total} 是过滤后的命中数）。`
+              ? `当前过滤条件没有命中（目录里共有 ${data.totalAll} 份作品）。`
               : (data.evidence && !data.evidence.available
                 ? '运行时还没有写作品的记录（证据库不可用）。'
-                : '作品目录里还没有被活动引用过的文件。')),
+                : (data.totalAll
+                  ? '当前过滤条件没有命中。'
+                  : '作品目录里还没有被活动引用过的文件。'))),
         data.skipped
           ? h('div', { className: 'cpx-wk-meta', style: { marginTop: '10px' } },
             `有 ${data.skipped} 条引用走不到文件：${Object.keys(data.skippedReasons || {}).join('/')}（越界引用由服务端 fail-closed 拒绝）`)

@@ -323,3 +323,55 @@ test('resolveArtifactRoot honors an absolute configured root', () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('the 400-row list window is not an authorization cap (N5)', () => {
+  const root = tmpRoot();
+  try {
+    seedWorkspace(root, { 'bot/c1/old.md': '# 老作品\n' });
+    // 同 scope 造 401 条带 artifact_ref 的活动：**最早**的那条引用 old.md，
+    // 其余 400 条引用别的文件并把 updated_at 推得更新。
+    // 列表窗口（ORDER BY updated_at DESC LIMIT 400）会把最早那条挤出去 ——
+    // 如果把归属判定建在那个窗口上，老作品就会从"能预览"变成"不是你的作品"。
+    const rows = [];
+    for (let i = 0; i < 400; i += 1) {
+      const file = `bot/c1/f${i}.md`;
+      seedWorkspace(root, { [file]: `# ${i}\n` });
+      rows.push({ activityId: `a${i}`, ref: file, updatedAt: 1_700_000_000_000 + i });
+    }
+    rows.push({ activityId: 'old', ref: 'bot/c1/old.md', updatedAt: 1_600_000_000_000 });
+    seedRuntime(root, rows);
+
+    const result = readWorkPreview({ root, scope: SCOPE, relative: 'bot/c1/old.md' });
+    assert.equal(result.ok, true, `老作品应仍可预览，实际 ${result.reason}`);
+    assert.equal(result.text, '# 老作品\n');
+
+    // 反向：不在任何活动里的同 scope 文件仍然拒绝。
+    seedWorkspace(root, { 'bot/c1/never.md': 'x\n' });
+    const loose = readWorkPreview({ root, scope: SCOPE, relative: 'bot/c1/never.md' });
+    assert.equal(loose.ok, false);
+    assert.equal(loose.reason, 'not-in-scope');
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a missing runtime DB is reported as evidence-unavailable, not as "not your work" (N4)', () => {
+  const root = tmpRoot();
+  try {
+    seedWorkspace(root, { 'bot/c1/a.md': '# 正文\n' });
+    // 不写 runtime DB：证据层不可用。
+    const result = readWorkPreview({ root, scope: SCOPE, relative: 'bot/c1/a.md' });
+    assert.equal(result.ok, false);
+    assert.equal(result.reason, 'evidence-unavailable', `应报证据层不可用，实际 ${result.reason}`);
+    assert.equal(result.evidence.available, false);
+    assert.equal(result.evidence.reason, 'runtime-db-missing');
+    // 与列表口径一致：列表这时也说 available=false / runtime-db-missing。
+    const index = buildWorksIndex({ root, scope: SCOPE });
+    assert.equal(index.evidence.available, false);
+    assert.equal(index.evidence.reason, 'runtime-db-missing');
+    // 而且不能说成"不是你的作品"。
+    assert.equal(String(result.detail).includes('不在当前身份的作品记录里'), false);
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

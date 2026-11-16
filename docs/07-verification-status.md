@@ -752,3 +752,28 @@ git clone https://github.com/FamousBOBO/dsh-companion.git
 **本轮措辞纠偏**：`docs/30` §5 原写「13 项失败 → 0」，base 实测是 **15 项**（13 媒体 + 设置 tab 数 + 聊天提示），"13"只是子集；`verify --only=static` 原写「38 ok / 1 failed」，修掉 `host-temp` 夹具后是 **39 / 0**。两处已改。
 
 **没有新增的级别**：`host-load`、`real-api`、`real-send`、`hardware`、真实浏览器、真实屏幕阅读器一律未执行。
+### 2026-11-17 补充：第二轮复核（5a11d7f）后的修正
+
+第二轮复核确认 1 阻断 + 4 高修到位，同时指出**修复自身带进 7 个新问题**。逐条修完，每条都配了一条
+"能在旧实现上失败"的用例（不是改完就绿）。
+
+| 项 | 修法 | 证据级别与结果 | 限制 |
+|---|---|---|---|
+| **N1** 设置页同屏两块面板 | 拆成 `SettingsSearchTrigger`（只渲按钮）与 `SettingsSearchHost`（只渲面板，挂在页面壳唯一一份）；全局快捷键只由 host 注册 | `offline-test`：结构用例断言同屏 `role=dialog`/遮罩/input 各 1（旧实现 2/2/2）；冒烟新增同屏计数断言 | **无真实浏览器**：双面板的视觉叠层没实测 |
+| **N9** 点遮罩关不掉 | `.cpx-cat-backdrop` 加 `position:absolute; inset:0` + 暗色背景，`onClick` 挂在它身上；overlay 退成纯布局容器 | `offline-test`：断言遮罩有定位规则且点击后 `role=dialog` 归 0；冒烟新增"点遮罩会关闭" | 同上 |
+| **N3** 一次按键执行两遍 | `onKeyDown` 只挂 dialog 一处 + `defaultPrevented` 守卫 | `offline-test`：全树只有 1 处 `onKeyDown`；一次 ArrowDown 停在索引 1 | Tab 陷阱的实际跳格数只有结构断言 |
+| **N10** 轮转丢整段 | 偏移改记 `{ offset, identity }`（`ino + birthtimeMs`）：rename 保留身份、新建文件身份变了就从头读 | `offline-test`：轮转后新 `base` 只含新事件且更大 → 8/8 全部送达（旧实现漏 r4/r5/r6） | `createTraceWriter` 零生产调用方，线上仍是潜伏 |
+| **N2** 焦点归还未实现 | `CatalogPanel` 卸载时把焦点还给 `openerRef.current` | `offline-test`：关闭后 `opener.focus` 被调用 1 次 | 无真实浏览器，键盘用户体感未实测 |
+| **N5** `LIMIT 400` 成了授权上限 | 授权独立成 `lookupWorkActivity`（`artifact_ref` 等值 + `LIMIT 1`），收据按 `activity_id` 精确查 | `offline-test`：401 条活动后最早那条引用仍可预览（旧实现 `not-in-scope`） | 沙箱内真 SQLite |
+| **N4** 证据层不可用被报成"不是你的作品" | 新增 `evidence-unavailable` + `evidence.reason`，与列表口径一致 | `offline-test`：无 runtime DB → `evidence-unavailable`，detail 不含"不在当前身份的作品记录里" | — |
+| **N6** 画师串不算脏 / loading 键不一致 | dirty 判据并入 section 级 presets 里属于该 provider 的字段（按 `prefix` 归属，不靠 `generationFields`）；`loading` 统一按 `provider.prefix` | `offline-test`：只改画师串算脏、loading key 是 `provider.prefix`（旧实现 false / `provider.kind`） | — |
+| **N8** backlog 无 UI / corrupt-only 不出帧 | tick 开头记计数器快照，结束只要有变化就发空帧；UI 补"待读 N 字节" | `offline-test`：非法 JSON 一行（backlog 恰好 0）→ 出帧且 `corrupt>=1`（旧实现零帧） | SSE 无真实浏览器环境 |
+| **N11** 超长行计两次 | 超长起点标记 + 尾巴整行吞掉不计数 | `offline-test`：70 KB 单行 + 好事件 → `corrupt === 1` 且好事件送达（旧实现 2） | — |
+| **N12** 成功面缺 `readable:true` | 成功面补 `readable: true` | `offline-test`：成功响应 `readable === true` | — |
+| **N7** `@media` 与跨组件盲区 | `cssRules` 递归进条件性 at-rule；跨文件限制写进规则注释，改由结构断言兜底 | `offline-test`：`@media` 内的固定宽度被报出（旧实现 0 条）+ 文档断言 | 跨组件情形确实抓不到，已写明 |
+| **works.total** 只改措辞 | 新增 `totalAll`；页面用"命中/全量（全量 N）"，空态区分"过滤没命中"与"目录为空" | `offline-test`：过滤命中 0 时 `totalAll` 仍等于全量 | — |
+
+**本轮读数**：单测 277 → **295**；`check:catalog` ✓；`check:a11y` 7 条规则 / 42 token / 未定义 0；`build-client` 21 片段 / **798680 B** / `node --check` 通过；冒烟通过；`verify --only=static` **39 ok / 0 failed**。
+
+**没有新增证据级别**：`host-load`、`real-api`、`real-send`、`hardware`、真实浏览器三档宽度、真实屏幕阅读器一律未执行。
+`createTraceWriter()` 仍**零生产调用方**，N8/N10/N11 的修正在线上是潜伏的。

@@ -45,8 +45,14 @@ export async function worksIndex(request, kernel) {
     reason: '',
     root: index.root,
     evidence: index.evidence,
+    // 三个数字必须分开，别用一个字段兼两种含义：
+    //   `totalAll` —— 目录里一共有多少被引用的作品（过滤前的全量）；
+    //   `total`    —— 当前过滤条件下的命中数；
+    //   `items`    —— 这一页（最多 100 条）。
+    // 之前只有 `total`（= 过滤后命中数），过滤命中 0 时前端只能显示"空"，
+    // 于是把"目录里还没有作品"当成事实说出来。
+    totalAll: index.items.length,
     total: matched.length,
-    // `total` 是全量命中数，`items` 是这一页；前端要显示"还有多少没显示"。
     items: matched.slice(0, 100),
     filters,
     skipped: index.skipped,

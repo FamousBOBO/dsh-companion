@@ -397,3 +397,219 @@ test('non-ASCII lines do not make the byte offset drift', async () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('a rotation where the new file is larger does not skip a whole segment (N10)', async () => {
+  const root = tmpRoot();
+  try {
+    const base = traceFilePath(root, NOW);
+    fs.mkdirSync(path.dirname(base), { recursive: true });
+    const line = (id) => JSON.stringify({
+      eventId: id, traceId: 'tr_1', at: new Date(NOW).toISOString(), module: 'memory',
+      stage: 'retrieve', status: 'ok', reasonCode: 'low-coverage', durationMs: 1,
+      counts: {}, configRevision: null,
+    });
+
+    // 第一步：当日文件里先有三条，让流把偏移追平到文件末尾。
+    fs.writeFileSync(base, ['r1', 'r2', 'r3'].map(line).join('\n') + '\n', 'utf8');
+
+    const stream = createTraceStream(root, { filters: parseTraceFilters(''), now: () => NOW, pollMs: 20 });
+    const reader = stream.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    const ids = new Set();
+    const frames = [];
+
+    let pending = null;
+    const readOrIdle = async (ms) => {
+      if (!pending) pending = reader.read();
+      let timer = null;
+      const raced = await Promise.race([
+        pending,
+        new Promise((resolve) => { timer = setTimeout(() => resolve({ timeout: true }), ms); }),
+      ]);
+      if (timer) clearTimeout(timer);
+      if (raced.timeout) return { timeout: true };
+      pending = null;
+      return raced;
+    };
+    const collect = async (untilMs) => {
+      while (Date.now() < untilMs) {
+        const raced = await readOrIdle(Math.max(20, untilMs - Date.now()));
+        if (raced.timeout) return;
+        if (raced.done) return;
+        buffer += decoder.decode(raced.value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+        for (const part of parts) {
+          const name = part.match(/^event: (.+)$/m)?.[1];
+          const data = part.match(/^data: (.+)$/m)?.[1];
+          if (!name || !data) continue;
+          const payload = JSON.parse(data);
+          frames.push({ event: name, data: payload });
+          if (Array.isArray(payload.events)) {
+            for (const item of payload.events) if (item && item.eventId) ids.add(item.eventId);
+          }
+        }
+      }
+    };
+
+    try {
+      await collect(Date.now() + 700);
+      assert.equal(ids.size, 3, `第一阶段应送达 3 条，实际 ${ids.size}`);
+
+      // 第二步：轮转（base → base.1），随后写入端在**新建的** base 上追加 5 条新事件。
+      //
+      // 这是 N10 的精确形状：新 base **只含新事件**，而它的字节数比旧 base 的旧偏移大，
+      // 于是"偏移只按路径记"的实现会从新 base 的**中间**开始读 —— 开头那几条新事件
+      // 既不送达也不计数（复核实测 r4/r5/r6 静默消失）。
+      //
+      // 我第一版把新 base 写成 r1..r8（含老事件），偏移正好落在行边界，旧实现也能过 ——
+      // 那是个假阳性用例，已按真实形状重写。
+      fs.renameSync(base, `${base}.1`);
+      fs.writeFileSync(base, ['r4', 'r5', 'r6', 'r7', 'r8'].map(line).join('\n') + '\n', 'utf8');
+
+      await collect(Date.now() + 2500);
+
+      // 一条都不许丢。
+      for (const id of ['r1', 'r2', 'r3', 'r4', 'r5', 'r6', 'r7', 'r8']) {
+        assert.equal(ids.has(id), true, `漏了 ${id}（送达：${[...ids].join(',')}）`);
+      }
+
+      // 而且"少了什么"必须可解释：这一轮不该再出现任何未记账的缺口。
+      const last = frames.filter((frame) => frame.data && frame.data.drops).at(-1);
+      assert.ok(last, '必须至少有一帧带 drops');
+      assert.equal(last.data.drops.backlog, 0, '追平后 backlog 应为 0');
+    } finally {
+      try { await reader.cancel(); } catch { /* 已关 */ }
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('a tick that only increments corrupt still emits a frame (N8)', async () => {
+  const root = tmpRoot();
+  try {
+    const base = traceFilePath(root, NOW);
+    fs.mkdirSync(path.dirname(base), { recursive: true });
+    const reader = createTraceStream(root, { filters: parseTraceFilters(''), now: () => NOW, pollMs: 20 });
+    const streamReader = reader.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    const frames = [];
+    let pending = null;
+    const readOrIdle = async (ms) => {
+      if (!pending) pending = streamReader.read();
+      let timer = null;
+      const raced = await Promise.race([pending, new Promise((resolve) => { timer = setTimeout(() => resolve({ timeout: true }), ms); })]);
+      if (timer) clearTimeout(timer);
+      if (raced.timeout) return { timeout: true };
+      pending = null;
+      return raced;
+    };
+    const pump = async (untilMs) => {
+      while (Date.now() < untilMs) {
+        const raced = await readOrIdle(Math.max(20, untilMs - Date.now()));
+        if (raced.timeout || raced.done) return;
+        buffer += decoder.decode(raced.value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+        for (const part of parts) {
+          const name = part.match(/^event: (.+)$/m)?.[1];
+          const data = part.match(/^data: (.+)$/m)?.[1];
+          if (name && data) frames.push({ event: name, data: JSON.parse(data) });
+        }
+      }
+    };
+    try {
+      await pump(Date.now() + 400);
+      frames.length = 0;
+      // 只有一行非法 JSON：backlog 恰好是 0（文件末尾就是这行本身）。
+      fs.appendFileSync(base, 'not-json-at-all\n', 'utf8');
+      await pump(Date.now() + 1200);
+      const drops = frames.filter((frame) => frame.event === 'trace' && frame.data && frame.data.drops).map((frame) => frame.data.drops);
+      assert.ok(drops.length, '只涨 corrupt 的 tick 也必须出帧（N8）');
+      const last = drops.at(-1);
+      assert.equal(last.corrupt >= 1, true, `corrupt 应当涨到 1，实际 ${last.corrupt}`);
+      assert.equal(last.backlog, 0, '这里 backlog 恰好是 0 —— 旧实现据此不出帧' );
+    } finally {
+      try { await streamReader.cancel(); } catch { /* 已关 */ }
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});
+
+test('one over-long line is counted as corrupt exactly once (N11)', async () => {
+  const root = tmpRoot();
+  try {
+    const base = traceFilePath(root, NOW);
+    fs.mkdirSync(path.dirname(base), { recursive: true });
+    // 单行 > REACH_CHUNK（65536）：永远解析不了。
+    const longLine = `{"eventId":"big","pad":"${'x'.repeat(70_000)}"}`;
+    fs.writeFileSync(base, longLine + '\n', 'utf8');
+    const reader = createTraceStream(root, { filters: parseTraceFilters(''), now: () => NOW, pollMs: 20 });
+    const streamReader = reader.getReader();
+    const decoder = new TextDecoder();
+    let buffer = '';
+    const frames = [];
+    let pending = null;
+    const readOrIdle = async (ms) => {
+      if (!pending) pending = streamReader.read();
+      let timer = null;
+      const raced = await Promise.race([pending, new Promise((resolve) => { timer = setTimeout(() => resolve({ timeout: true }), ms); })]);
+      if (timer) clearTimeout(timer);
+      if (raced.timeout) return { timeout: true };
+      pending = null;
+      return raced;
+    };
+    try {
+      const until = Date.now() + 3000;
+      while (Date.now() < until) {
+        const raced = await readOrIdle(Math.max(20, until - Date.now()));
+        if (raced.timeout || raced.done) break;
+        buffer += decoder.decode(raced.value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+        for (const part of parts) {
+          const name = part.match(/^event: (.+)$/m)?.[1];
+          const data = part.match(/^data: (.+)$/m)?.[1];
+          if (name && data) frames.push({ event: name, data: JSON.parse(data) });
+        }
+      }
+      // 追加一条**好**事件：它的帧会把累计计数一起带出来。
+      // 只靠"超长行自己那一帧"是不够的 —— 旧实现里那一帧恰好写的是 corrupt=1，
+      // 后面再把尾巴算一次的那一 tick 因为不满足出帧条件而被藏起来（N8），于是假绿。
+      const good = JSON.stringify({
+        eventId: 'good-1', traceId: 'tr_1', at: new Date(NOW).toISOString(), module: 'memory',
+        stage: 'retrieve', status: 'ok', reasonCode: 'low-coverage', durationMs: 1,
+        counts: {}, configRevision: null,
+      });
+      fs.appendFileSync(base, good + '\n', 'utf8');
+      const until2 = Date.now() + 2000;
+      while (Date.now() < until2) {
+        const raced = await readOrIdle(Math.max(20, until2 - Date.now()));
+        if (raced.timeout || raced.done) break;
+        buffer += decoder.decode(raced.value, { stream: true });
+        const parts = buffer.split('\n\n');
+        buffer = parts.pop() ?? '';
+        for (const part of parts) {
+          const name = part.match(/^event: (.+)$/m)?.[1];
+          const data = part.match(/^data: (.+)$/m)?.[1];
+          if (name && data) frames.push({ event: name, data: JSON.parse(data) });
+        }
+      }
+      const delivered = frames.some((frame) => Array.isArray(frame.data && frame.data.events)
+        && frame.data.events.some((item) => item.eventId === 'good-1'));
+      assert.ok(delivered, '追加的好事件必须送达（否则读指针死在超长行上）');
+
+      const last = frames.filter((frame) => frame.data && frame.data.drops).map((frame) => frame.data.drops).at(-1);
+      assert.ok(last, '必须至少有一帧带 drops');
+      assert.equal(last.corrupt, 1, `一条超长行只该记一次 corrupt，实际 ${last.corrupt}`);
+    } finally {
+      try { await streamReader.cancel(); } catch { /* 已关 */ }
+    }
+  } finally {
+    fs.rmSync(root, { recursive: true, force: true });
+  }
+});

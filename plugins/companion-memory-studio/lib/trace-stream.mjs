@@ -77,9 +77,17 @@ export function createTraceStream(root, { signal, filters, pollMs = 400, now = (
       let closed = false;
       let timer = null;
       let keepalive = null;
-      // 每个文件各自的读取偏移：轮转会把 base 挪成 base.1，如果只记"当前文件 + 偏移"，
-      // 越过一代之后就再也追不到新文件里的事件（实测踩过：永远只读最老那一份）。
+      // 每个文件各自的读取进度：`{ offset, identity }`。
+      //
+      // 两件事都必须记对，否则都会静默丢事件：
+      //   1. **按文件**（不是"当前文件 + 一个偏移"）：轮转把 base 挪成 base.1 后，
+      //      只记一个全局偏移就再也追不到新一代（实测踩过：永远只读最老那一份）。
+      //   2. **带身份**（inode + 创建时间）：只按路径记的话，轮转后新的 base 会沿用旧
+      //      base 的偏移；新文件通常比旧那一刻更大，于是从中间读起，开头那几条既不送达
+      //      也不计数（N10，实测 r4/r5/r6 静默消失）。
       const offsets = new Map();
+      // 超长行（一行就超过 READ_CHUNK，永远解析不了）的起点标记：同一段只记一次 corrupt（N11）。
+      const oversizeFrom = new Map();
       // 偏移本身就是半行起点：不需要额外的 partials 缓冲（旧实现有，正是 H2 的来源）。
       const seen = createSeenRing();
       // `backlog` = 已落盘但这一 tick 还没消费的字节数（批次上限或末尾半行），
@@ -143,13 +151,42 @@ export function createTraceStream(root, { signal, filters, pollMs = 400, now = (
        * 唯一例外：单行本身超过 64 KiB 读窗口时永远解析不了，按坏行计一次并跳过，
        * 否则读指针会原地打转。
        */
+      /**
+       * 文件身份：rename 不变、新建必变。
+       *
+       * `ino` 在部分文件系统上是 0（Windows 的某些网络盘），所以再带上 `birthtimeMs`
+       * 兜底；两者都拿不到时才退回"只比 size"的保守判据。
+       */
+      function identityOf(stat) {
+        const ino = Number(stat.ino || 0);
+        const born = Number(stat.birthtimeMs || 0);
+        if (!ino && !born) return '';
+        return `${ino}|${born}`;
+      }
+
       function readNew(file, events) {
         let stat = null;
         try { stat = fs.statSync(file); } catch { return false; }
+        const identity = identityOf(stat);
         const recorded = offsets.get(file);
-        // 首次见到 → 从头读；文件变短（轮转/截断）→ 从头读。两种都由 eventId 去重兜住。
-        const cursor = recorded === undefined || stat.size < recorded ? 0 : recorded;
-        if (stat.size <= cursor) return false;
+        // 从头读的三种情形：
+        //   - 没见过这个路径；
+        //   - 文件变短（截断重建）；
+        //   - **身份变了**（这个路径上是另一个文件，例如轮转后新建的 base）。
+        // 三种都由 eventId 去重兜住，不会重放。
+        let cursor = 0;
+        if (recorded && identity && recorded.identity && identity === recorded.identity && stat.size >= recorded.offset) {
+          cursor = recorded.offset;
+        } else if (recorded && !identity && stat.size >= recorded.offset) {
+          // 拿不到身份：只能按 size 判断（保守，可能少读但不会跳过整段）。
+          cursor = recorded.offset;
+        }
+        if (stat.size <= cursor) {
+          // 路径上换了文件（或文件变短到已读位置）：超长行记录随之失效。
+          oversizeFrom.delete(file);
+          offsets.set(file, { offset: cursor, identity });
+          return false;
+        }
 
         const want = Math.min(stat.size - cursor, READ_CHUNK);
         const bytes = Buffer.alloc(want);
@@ -170,23 +207,36 @@ export function createTraceStream(root, { signal, filters, pollMs = 400, now = (
         const lastBreak = chunk.lastIndexOf(0x0a);
         if (lastBreak < 0) {
           if (read >= READ_CHUNK) {
-            // 一整行就超过读窗口：永远解析不了。计一次坏行并跳过，别让读指针原地打转。
-            counters.corrupt += 1;
-            offsets.set(file, cursor + read);
-            counters.backlog = Math.max(0, stat.size - offsets.get(file));
+            // 一整行就超过读窗口：永远解析不了。跳过它，别让读指针原地打转。
+            //
+            // 计数只做一次：第一次因超长跳过时记 corrupt 并记住这段的起点；后续 tick 继续
+            // 吃同一段残余时不再重复计数（否则一条坏行会被记成两条，N11）。
+            if (!oversizeFrom.has(file)) {
+              oversizeFrom.set(file, cursor);
+              counters.corrupt += 1;
+            }
+            offsets.set(file, { offset: cursor + read, identity });
+            counters.backlog = Math.max(0, stat.size - offsets.get(file).offset);
             return false;
           }
           // 还没凑够一行：偏移原地不动，留给下一次 tick 重读。
-          offsets.set(file, cursor);
+          offsets.set(file, { offset: cursor, identity });
           counters.backlog = Math.max(0, stat.size - cursor);
           return false;
         }
 
+        // 这一 chunk 里出现了换行。如果它前面还有一段"未结束的超长行"（上一 tick 因超长
+        // 跳过并记过一次 corrupt），那么 chunk 的第一行就是那条坏行的**尾巴**：
+        // 整行吞掉、不再计数（N11）。
+        const oversizeTail = oversizeFrom.has(file);
+        oversizeFrom.delete(file);
         const lines = chunk.subarray(0, lastBreak).toString('utf8').split('\n');
         let consumedBytes = 0;
         let stopped = false;
-        for (const line of lines) {
+        for (const [lineIndex, line] of lines.entries()) {
           consumedBytes += Buffer.byteLength(line, 'utf8') + 1; // 行 + 换行
+          // 超长行的尾巴：它已经在跳过时记过一次 corrupt 了，这里只推进字节。
+          if (oversizeTail && lineIndex === 0) continue;
           if (!line.trim()) continue;
           let parsed = null;
           try { parsed = JSON.parse(line); } catch { counters.corrupt += 1; continue; }
@@ -200,9 +250,9 @@ export function createTraceStream(root, { signal, filters, pollMs = 400, now = (
           if (events.length >= BATCH_CAP) { stopped = true; break; }
         }
 
-        offsets.set(file, Math.min(cursor + consumedBytes, stat.size));
+        offsets.set(file, { offset: Math.min(cursor + consumedBytes, stat.size), identity });
         // 还没消费的字节：批次上限挡住的完整行，或末尾那半行。都不是丢弃。
-        counters.backlog = Math.max(0, stat.size - offsets.get(file));
+        counters.backlog = Math.max(0, stat.size - offsets.get(file).offset);
         return stopped;
       }
 
@@ -213,11 +263,14 @@ export function createTraceStream(root, { signal, filters, pollMs = 400, now = (
           if (!files.length) {
             if (offsets.size) {
               offsets.clear();
+              oversizeFrom.clear();
               counters.backlog = 0;
               send('trace', { reset: true, source: null, events: [], drops: drops() });
             }
             return;
           }
+          // 记下这一 tick 开始时的计数器：结束时只要有变化就必须让客户端看见（N8）。
+          const before = { ...counters };
           const events = [];
           let full = false;
           for (const file of files) {
@@ -231,9 +284,11 @@ export function createTraceStream(root, { signal, filters, pollMs = 400, now = (
               events: events.slice(-LINE_CAP),
               drops: drops(),
             });
-          } else if (counters.backlog > 0 && (counters.corrupt || counters.unsafe || counters.duplicate || counters.filtered)) {
-            // 本 tick 一条都没送出去，但计数器涨了（或被 backlog 挡住）：必须让客户端看见，
-            // 否则"某 tick 只涨 corrupt/unsafe/filtered"这件事永远不显示。
+          } else if (Object.keys(counters).some((key) => counters[key] !== before[key])) {
+            // 本 tick 一条都没送出去，但计数器动了：必须让客户端看见。
+            //
+            // 旧条件里的 `counters.backlog > 0` 是死门槛：追加一行非法 JSON 时 backlog 恰好是 0，
+            // 于是"corrupt 涨了 +1"这件事永远不出帧，前端 corrupt 停在 0（N8）。
             send('trace', { reset: false, source: path.basename(files.at(-1)), events: [], drops: drops() });
           }
         } catch {

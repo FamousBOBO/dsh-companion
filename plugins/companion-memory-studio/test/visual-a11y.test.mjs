@@ -125,3 +125,31 @@ test('the audit reads every fragment, including the ones added in W1–W3', () =
     assert.equal(source.includes('P.css('), true, `${name} 没有声明样式`);
   }
 });
+
+// ── 复核报告 N7：新规则没有宣称的那么严 ─────────────────────────────────────
+
+test('cssRules recurses into at-rules so media-query widths are still checked (N7)', () => {
+  // 整个 @media 当一条规则时，body 里既然有 max-width:100%，就会把 width:1200px 豁免掉。
+  const text = '@media (min-width: 900px) { .a { width: 1200px; } .b { max-width: 100%; } }';
+  const rules = cssRules(text, 1);
+  assert.ok(rules.length >= 2, `@media 内部应按单条规则展开，实际 ${rules.length} 条`);
+  const a = rules.find((rule) => rule.selector.includes('.a'));
+  const b = rules.find((rule) => rule.selector.includes('.b'));
+  assert.ok(a && b, '应分别拿到 .a 与 .b 两条规则');
+  assert.match(a.body, /width\s*:\s*1200px/, '固定宽度必须被单独看见');
+  assert.doesNotMatch(a.body, /max-width/, '同块内的 max-width 不得并进 .a');
+});
+
+test('a fixed width inside @media is reported (N7)', () => {
+  const source = 'P.css(`' + '\n' + '  @media (min-width: 900px) { .cpx-wide { width: 1200px; } .cpx-flex { max-width: 100%; } }' + '\n' + '`);';
+  const problems = findFixedWidths('fragment.js', source);
+  assert.equal(problems.length, 1, `@media 里的固定宽度应被报出，实际 ${problems.length} 条`);
+  assert.match(problems[0].detail, /1200px/);
+});
+
+test('aria-hidden-subtree states its cross-component limit in the rule docs', () => {
+  const script = fs.readFileSync(path.join(here, '..', 'scripts/check-visual-a11y.mjs'), 'utf8');
+  // 跨文件的组件（`h(CatalogPanel)` 里的 role 在另一个文件）静态看不见 ——
+  // 与其假装覆盖，不如把限制写在规则注释里（N7）。
+  assert.match(script, /跨文件|跨组件/, '规则文档必须写明不跨组件');
+});

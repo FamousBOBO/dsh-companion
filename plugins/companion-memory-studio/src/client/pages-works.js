@@ -98,7 +98,11 @@
     return h(ui.Page, {
       title: '作品',
       lead: '工作区里的产出：按标题/类型/日期过滤，只读预览；没有编辑、删除或分享入口。',
-      status: data.total ? `${data.items.length}/${data.total} 份` : '空',
+      // `totalAll` 是目录全量，`total` 是过滤后的命中数；两者都秀出来，
+      // 用户才分得清"过滤没命中"和"目录里确实没有作品"。
+      status: data.totalAll
+        ? `${data.items.length}/${data.total} 份（全量 ${data.totalAll}）`
+        : '空',
     },
       h(ui.Band, {
         key: 'list',
@@ -137,7 +141,7 @@
             : null,
         ),
         items.length
-          ? h(ui.List, { label: `作品 ${data.total} 份` },
+          ? h(ui.List, { label: `作品 ${data.total} / ${data.totalAll} 份` },
             items.map((item) => h('button', {
               key: item.relative,
               type: 'button',
@@ -158,10 +162,12 @@
             )))
           : h('div', { className: 'cpx-wk-empty' },
             data.total
-              ? `搜索/过滤条件下没有结果（这一页展示 ${data.items.length} 条，total ${data.total} 是过滤后的命中数）。`
+              ? `当前过滤条件没有命中（目录里共有 ${data.totalAll} 份作品）。`
               : (data.evidence && !data.evidence.available
                 ? '运行时还没有写作品的记录（证据库不可用）。'
-                : '作品目录里还没有被活动引用过的文件。')),
+                : (data.totalAll
+                  ? '当前过滤条件没有命中。'
+                  : '作品目录里还没有被活动引用过的文件。'))),
         data.skipped
           ? h('div', { className: 'cpx-wk-meta', style: { marginTop: '10px' } },
             `有 ${data.skipped} 条引用走不到文件：${Object.keys(data.skippedReasons || {}).join('/')}（越界引用由服务端 fail-closed 拒绝）`)

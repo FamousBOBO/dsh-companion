@@ -1848,6 +1848,22 @@ for (const groupLabel of ['记忆与档案', '设置']) {
       triggers[0].props.onClick();
       tree = await renderUntilStable(createElement(main.component, {}));
       const rendered = text(tree);
+      // **同屏只能有一块面板**（复核报告 N1）：设置页自己那份现在是纯触发器，
+      // 面板只由页面壳的全局挂载点渲染。旧实现这里会同时出现 2 个 role=dialog、
+      // 2 个遮罩、2 个输入框、4 个 aria-label —— 屏幕阅读器会报两个模态。
+      const allDialogs = findAll(tree, (node) => node.props && node.props.role === 'dialog');
+      if (allDialogs.length !== 1) {
+        failures.push(`搜索面板：同屏应只有 1 个 role=dialog，实际 ${allDialogs.length} 个`);
+      }
+      const allOverlays = findAll(tree, (node) => classOf(node).includes('cpx-cat-overlay'));
+      if (allOverlays.length !== 1) {
+        failures.push(`搜索面板：同屏应只有 1 个遮罩，实际 ${allOverlays.length} 个`);
+      }
+      const searchInputs = findAll(tree, (node) => node.tag === 'input'
+        && String(node.props && node.props.type || '') === 'search');
+      if (searchInputs.length !== 1) {
+        failures.push(`搜索面板：同屏应只有 1 个搜索输入框，实际 ${searchInputs.length} 个`);
+      }
       const dialogs = findAll(tree, (node) => node.props && classOf(node).includes('cpx-cat-panel'));
       if (!dialogs.length) failures.push('搜索面板：没有渲染对话框');
       else if (dialogs[0].props.role !== 'dialog' || dialogs[0].props['aria-modal'] !== 'true') failures.push('搜索面板：对话框缺少 dialog/aria-modal');
@@ -1857,6 +1873,24 @@ for (const groupLabel of ['记忆与档案', '设置']) {
       // 状态与热等级必须如实显示，不能笼统写「已保存」。
       if (!rendered.includes('需重启')) failures.push('搜索面板：没有显示热生效等级');
       if (!rendered.includes('已配置')) failures.push('搜索面板：没有显示字段状态');
+      // N9：点"面板外面"必须真的关得掉。
+      // 先关掉、再重开，避免影响后面的深链断言。
+      {
+        const backdrop = findAll(tree, (node) => classOf(node).includes('cpx-cat-backdrop'))[0];
+        if (!backdrop || typeof backdrop.props.onClick !== 'function') {
+          failures.push('搜索面板：遮罩没有点击关闭（点外面关不掉）');
+        } else {
+          backdrop.props.onClick({ target: backdrop, currentTarget: backdrop });
+          const afterClose = await renderUntilStable(createElement(main.component, {}));
+          const stillThere = findAll(afterClose, (node) => node.props && node.props.role === 'dialog');
+          if (stillThere.length) failures.push(`点遮罩后面板没有关闭（仍有 ${stillThere.length} 个 role=dialog）`);
+          tree = afterClose;
+        }
+        // 重新打开，供后面的深链断言使用。
+        const again = findAll(tree, (node) => node.tag === 'button' && classOf(node).includes('cpx-cat-trigger'));
+        if (again.length) again[0].props.onClick();
+        tree = await renderUntilStable(createElement(main.component, {}));
+      }
       // 深链：studio 侧结果点下去应聚焦到 data-field-path 对应的控件。
       const items = findAll(tree, (node) => node.tag === 'button' && classOf(node).includes('cpx-cat-item'));
       if (!items.length) failures.push('搜索面板：结果项不是可点的按钮');

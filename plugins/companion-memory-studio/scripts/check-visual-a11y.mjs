@@ -94,7 +94,20 @@ export function cssRules(blockText, startLine) {
     if (depth === 0) selector += ch;
     else body += ch;
   }
-  return rules;
+  // 递归进条件性 at-rule（`@media` / `@supports` / `@container` / `@layer`）。
+  //
+  // 否则整个 `@media` 会被当成**一条**规则：`@media{ .a{width:1200px} .b{max-width:100%} }`
+  // 的 body 里既有 width 又有 max-width，后者会把前者豁免掉 —— 媒体查询里的固定宽度
+  // 于是永远查不出来（N7）。
+  const expanded = [];
+  for (const rule of rules) {
+    if (/^@(media|supports|container|layer|scope|starting-style)\b/.test(rule.selector)) {
+      expanded.push(...cssRules(rule.body, rule.startLine));
+      continue;
+    }
+    expanded.push(rule);
+  }
+  return expanded;
 }
 
 /** 摘掉 token 声明与 `var(--x, #fallback)` 的兜底值，剩下的十六进制才算"写死"。 */
@@ -218,6 +231,12 @@ export function findMouseOnlyHandlers(file, source) {
  * 这是 H4 的回归点：面板（`role="dialog"`）曾经整个挂在 `aria-hidden` 的遮罩下面，
  * 按 ARIA 它被移出无障碍树，屏幕阅读器看不到 —— 而"遮罩可以 aria-hidden"这条
  * 白名单恰好把它放行了。所以白名单必须由**这条新规则**兜底。
+ *
+ * **已知限制（N7）：这是**跨文件盲区** —— 只看同一个文件里的子树文本。** 若子树里挂的是另一个文件里的组件
+ * （例如 `h('div', {'aria-hidden':'true'}, h(CatalogPanel, {...}))`，而 `role="dialog"`
+ * 写在 CatalogPanel 内部），静态扫描看不见那段 JSX，这一条就抓不到。
+ * 不假装覆盖这种情况 —— 组件级约束由它自己的用例负责（`test/settings-search-panel.test.mjs`
+ * 断言"同屏 role=dialog 只有一个"，那是不依赖文本扫描的结构断言）。
  */
 export function findAriaHiddenSubtree(file, source) {
   const problems = [];

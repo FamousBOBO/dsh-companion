@@ -2201,9 +2201,11 @@ function Shell() {
         }))
       : null,
     h('div', { className: 'cpx-scroll' }, body),
-    // 全局设置搜索：监听器与面板挂在页面壳上，因此任何页面按 Ctrl/⌘+K 都能打开
-    // （旧版只在设置页挂载，离开设置页就失效 —— M9）。
-    P.ui.SettingsSearch ? h(P.ui.SettingsSearch, { key: 'catalog-global', standalone: true }) : null),
+    // 全局设置搜索：**面板只由这里渲染一份**（外加注册全局快捷键）。
+    //
+    // 页面里的 `P.ui.SettingsSearch` 只渲染触发按钮、不渲染面板，所以 DOM 里永远
+    // 最多一个 role="dialog"（N1 的回归点：之前设置页会同时出现两块面板）。
+    P.ui.SettingsSearchHost ? h(P.ui.SettingsSearchHost, { key: 'catalog-global' }) : null),
   h(ToastHost, { toasts: notices })));
 }
 

@@ -243,3 +243,17 @@ test('an unbound viewer is denied on both works routes', async () => {
     fs.rmSync(root, { recursive: true, force: true });
   }
 });
+
+test('total counts filtered hits while totalAll counts the whole directory', async () => {
+  // 过滤命中 0 时，前端必须能说"过滤没命中"而不是"目录里没有作品"。
+  // 只改措辞不够 —— 服务端得先把全量给出来。
+  const all = await (await call('works')).json();
+  // `call` 的 query 要单独传（路由名不带查询串）。
+  const body = await (await call('works', '?q=' + encodeURIComponent('稳定不存在的词'))).json();
+  assert.equal(body.ok, true);
+  assert.equal(body.data.total, 0, '过滤命中有 0 条');
+  assert.equal(body.data.totalAll, all.data.totalAll, '全量不随过滤变化');
+  assert.ok(body.data.totalAll > 0, `目录里应当本来就有作品，实际 ${body.data.totalAll}`);
+  // 反过来：没有过滤条件时两者相等。
+  assert.equal(all.data.total, all.data.totalAll);
+});
