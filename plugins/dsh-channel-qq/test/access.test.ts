@@ -18,8 +18,15 @@ const OWNER = 280
 const STRANGER = 999
 const GROUP = 107
 
-/** 等一个条件成立（IO 在慢盘上可能比 15ms 慢；固定 sleep 会抖）。 */
-async function waitFor(check: () => boolean, timeoutMs = 3000): Promise<void> {
+/**
+ * 等一个条件成立（IO 在慢盘上可能比 15ms 慢；固定 sleep 会抖）。
+ *
+ * `timeoutMs` 是**墙钟预算**，不是判据：超时只是"不再等"，后面的断言照旧执行、照旧会红。
+ * 默认从 3 秒提到 10 秒，是因为 CI 上这条路径要落盘 access.json，而 windows/macos runner 上
+ * 单次写入可能到百毫秒级（Defender / 并发 1900 用例）；3 秒预算在慢机上会让"其实还在写盘"
+ * 变成"门控没回话"的假红。判据一个字都没放松。
+ */
+async function waitFor(check: () => boolean, timeoutMs = 10_000): Promise<void> {
   const start = Date.now()
   while (!check()) {
     if (Date.now() - start > timeoutMs) return
@@ -27,6 +34,29 @@ async function waitFor(check: () => boolean, timeoutMs = 3000): Promise<void> {
   }
 }
 const wait = (ms = 80) => new Promise((resolve) => setTimeout(resolve, ms))
+
+/**
+ * 等某个计数值**停止变化**（连续几次采样都不动才算"这一批回复已经推完了"）。
+ *
+ * 为什么需要它：投递走的是 `out().push()`，也就是"先入队、再异步跑"——`sent.length` 会在
+ * 几毫秒内陆续增长。用固定 `await wait(80)` 去断言"只有两条"在慢机器上会输给另一条还没
+ * 跑到 push 的回复，于是"冷却期内不重复通知"这条判据被环境判红。这里不放松判据：稳定之后
+ * 仍然要求**恰好**两条。
+ */
+async function settleCount(read: () => number, { quietMs = 300, pollMs = 10 } = {}): Promise<number> {
+  let last = read()
+  let quietSince = Date.now()
+  for (;;) {
+    await new Promise((resolve) => setTimeout(resolve, pollMs))
+    const now = read()
+    if (now !== last) {
+      last = now
+      quietSince = Date.now()
+      continue
+    }
+    if (Date.now() - quietSince >= quietMs) return now
+  }
+}
 
 function harness(mode: 'pairing' | 'allowlist' | 'open' = 'pairing', overrides: Record<string, unknown> = {}) {
   const dir = mkdtempSync(path.join(tmpdir(), 'access-'))
@@ -126,8 +156,7 @@ test('门控：陌生私聊 → 不进 agent、记请求、回一句、只通知
 
   // 冷却期内再来一条：不重复回复、不重复通知
   assert.equal(h.service.allow(dm()), false)
-  await wait()
-  assert.equal(h.sent.length, 2)
+  assert.equal(await settleCount(() => h.sent.length), 2)
 
   // 冷却过后：只补一句「待批准」，不再通知主人
   h.advance(31 * 60_000)

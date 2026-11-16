@@ -7,7 +7,7 @@
 
 import { test } from 'node:test'
 import assert from 'node:assert/strict'
-import { mkdirSync, mkdtempSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync, unlinkSync, writeFileSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import * as path from 'node:path'
 
@@ -27,7 +27,12 @@ const BOT_B = 3_000_000_002
 
 /** 一个临时"套件根"：里面有 `home`（= DSH_HOME）与 `home/companion/participants.json`。 */
 function scratchHome(): { readonly root: string; readonly dshHome: string; readonly registry: string } {
-  const root = mkdtempSync(path.join(tmpdir(), 'participants-'))
+  // `realpathSync` 不是洁癖：macOS 上 `os.tmpdir()` 给的是 `/var/folders/…`，而它是
+  // `/private/var/folders/…` 的符号链接。生产代码 `dataRootOfDshHome()` 有意做 realpath
+  // （把 junction / 8.3 短名折成同一拼法，否则"写进 A、读的是 B"会表现成静默空注册表），
+  // 于是它算出的路径必然落在 canonical 形态上。夹具若拿未折叠的 tmpdir 当期望值，
+  // 这条断言在 macOS 上就变成"测符号链接拼法"而不是"测路径规则"——两个平台都过才叫对。
+  const root = realpathSync(mkdtempSync(path.join(tmpdir(), 'participants-')))
   const dshHome = path.join(root, 'home')
   mkdirSync(path.join(dshHome, 'companion'), { recursive: true })
   return { root, dshHome, registry: path.join(dshHome, 'companion', 'participants.json') }

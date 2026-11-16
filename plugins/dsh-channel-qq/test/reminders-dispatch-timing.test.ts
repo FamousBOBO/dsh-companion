@@ -152,6 +152,26 @@ async function advance(rig: Rig, ms: number, stepMs = 1_000): Promise<void> {
   }
 }
 
+/**
+ * 推进假时间**直到条件成立**（有墙钟预算），而不是"推进固定毫秒数然后祈祷它够"。
+ *
+ * 为什么需要它：`advance()` 推的是**假时间**，但每一拍都要落盘两次（认领 + 记账），
+ * 那是**真实** I/O。固定的 `advance(rig, 8_000)` 在快机器上富余很多，在 CI 的 Windows
+ * 上（Defender 扫描 + 并发跑 1900 个用例）可能只够跑两拍——于是"十条同时到点"那条
+ * 会以"只发出 6 条"的形式变红，而代码是对的（单独跑该文件 3/3 全绿，整包跑才偶发）。
+ *
+ * 折中：预算内反复"推一步 → 等它落地"，条件成立就停。**判据不放松**——预算用完仍未成立
+ * 就是真失败，断言照旧。
+ */
+async function advanceUntil(rig: Rig, done: () => boolean, { wallBudgetMs = 10_000, stepMs = 1_000 } = {}): Promise<void> {
+  const started = Date.now()
+  await pump()
+  while (!done() && Date.now() - started < wallBudgetMs) {
+    rig.clock.advance(stepMs)
+    await pump(6)
+  }
+}
+
 // ── 1. 唤醒精度：迟到 ≤ 5 秒 ────────────────────────────────────────────────
 
 test('T1 15 秒后到点的提醒：到点 5 秒内就发出（旧实现的下界是 30 秒轮询）', async () => {
@@ -349,7 +369,14 @@ test('T8 发送抛错 / 回执未知 / 明确跳过：只有"跳过"允许下一
   })
   try {
     rig.runner.start(30_000)
-    await advance(rig, 2_000)
+    // 判据：三条都已被处理（r-boom 记 unknown、r-unknown 记 unknown、r-skip 放出认领）。
+    // 等条件而不是等固定毫秒：每拍两笔真实写盘，固定步数在慢盘上会数不够。
+    await advanceUntil(rig, () => {
+      const disk = new Map(diskOf(dir).map((r) => [r.id, r]))
+      return disk.get('r-boom')?.unknownReason !== undefined
+        && disk.get('r-unknown')?.unknownReason !== undefined
+        && disk.get('r-skip')?.claim === undefined
+    })
     const byId = new Map(diskOf(dir).map((r) => [r.id, r]))
     assert.equal(byId.get('r-boom')!.unknownReason, 'onebot: 连接已断开', '抛错 = 无法证明没发出去 ⇒ unknown，带原因')
     assert.equal(byId.get('r-unknown')!.unknownReason, 'unclassified', '认不出的回执 ⇒ unknown')
@@ -359,8 +386,7 @@ test('T8 发送抛错 / 回执未知 / 明确跳过：只有"跳过"允许下一
     await advance(rig, 60_000)
     assert.equal(rig.sends.filter((s) => s.id === 'r-boom').length, 1, 'unknown 不许自动重试（抛错那条）')
     assert.equal(rig.sends.filter((s) => s.id === 'r-unknown').length, 1, 'unknown 不许自动重试（回执未知那条）')
-    assert.ok(rig.sends.filter((s) => s.id === 'r-skip').length >= 2, 'skipped 之后下一拍还要再试')
-  } finally {
+    assert.ok(rig.sends.filter((s) => s.id === 'r-skip').length >= 2, 'skipped 之后下一拍还要再试')  } finally {
     await rig.close()
     rmSync(dir, { recursive: true, force: true })
   }
@@ -392,7 +418,9 @@ test('T10 十条同时到点：每一拍有上限，但一条都不许被饿死�
   const rig = await makeRig({ dir, now: T0 })
   try {
     rig.runner.start(30_000)
-    await advance(rig, 8_000)
+    // 10 条过了每拍上限 3 ⇒ 至少要跑 4 拍；每拍两笔真实写盘。等"全部发完"而不是推进固定毫秒，
+    // 否则慢机器上步数不够会以"只发出 N 条"变红（这不是代码缺陷）。
+    await advanceUntil(rig, () => new Set(rig.sends.map((s) => s.id)).size >= 10, { wallBudgetMs: 20_000 })
     const counts = new Map<string, number>()
     for (const send of rig.sends) counts.set(send.id, (counts.get(send.id) ?? 0) + 1)
     assert.equal(counts.size, 10, `10 条都要发出去（实际 ${String(counts.size)} 条：${[...counts.keys()].join(',')}）`)

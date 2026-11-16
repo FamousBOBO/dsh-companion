@@ -706,7 +706,14 @@ test('取消排队中的任务：记 cancelled，一条也不发', async () => {
   try {
     await queue.load()
     const result = await queue.enqueue(request({ dedupeKey: 'msg:x', id: taskIdOf('msg:x') }))
-    await new Promise((resolve) => setTimeout(resolve, 150))
+    // 等"任务真的进了 render 阶段"（也就是那个 `render` 桩里已经挂上了一个 resolver），
+    // 而不是固定 `sleep(150)` 再祈祷它已经跑到那儿。固定 sleep 在慢 runner 上会变成
+    // "取消时任务还没开始"——那时 `cancel` 走的是另一条路，断言就成了环境断言。
+    const started = Date.now()
+    while (waiting.length === 0 && Date.now() - started < 10_000) {
+      await new Promise((resolve) => setTimeout(resolve, 10))
+    }
+    assert.ok(waiting.length > 0, 'render 阶段没开始：任务没有真的进队列（然后才能测"取消排队中的任务"）')
     assert.equal(await queue.cancel(result.taskId ?? '', '用户改主意了'), true)
     for (const release of waiting) release()
     const row = await settle(queue, result.taskId)
