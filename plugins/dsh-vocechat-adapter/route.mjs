@@ -34,6 +34,21 @@ function normalized(value) {
 }
 
 /**
+ * Is this an absolute path **in the guard's own terms**?
+ *
+ * The guard's workspace is a Windows path (`D:\DSH\…`) because the host that writes
+ * `workspace-context.json` is the Windows desktop app. `path.isAbsolute` answers for the
+ * *running* platform, so on a Linux/macOS runner that same string is "relative" and gets glued
+ * onto the data root — the mapping then silently stops applying. `normalized()` is already
+ * unconditionally `path.win32`, so the absolute test has to be win32 too; otherwise the two
+ * halves of one comparison disagree. `path.isAbsolute` stays in the OR so a POSIX root still
+ * works when someone runs the suite there.
+ */
+function isAbsoluteAny(value) {
+  return path.isAbsolute(value) || path.win32.isAbsolute(value);
+}
+
+/**
  * Read the workspace guard's mapping. Missing/unreadable/disabled → `null` (identity mapping).
  *
  * @param {string} dataRoot suite data root (`.../data`)
@@ -58,7 +73,7 @@ export function readWorkspaceGuard(dataRoot) {
     aliasProvider: alias,
     // An empty workspace means the guard falls back to the suite's own workspace; we cannot
     // resolve that here, so treat "empty" as "no mapping" rather than guessing.
-    workspace: workspace === '' ? '' : path.isAbsolute(workspace) ? workspace : path.resolve(root, workspace),
+    workspace: workspace === '' ? '' : isAbsoluteAny(workspace) ? workspace : path.resolve(root, workspace),
   };
 }
 

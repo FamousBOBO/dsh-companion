@@ -77,9 +77,19 @@ test('the bare data-root key is NOT overwritten when another service holds it', 
 test('namespaced keys survive Windows spelling differences', () => {
   const keys = registryKeysFor(ROOT);
   assert.ok(keys.length >= 2, `expected several spellings, got ${keys.length}`);
-  // Forward slash, no trailing slash and lowercase are all covered.
+  // Forward slash and no trailing separator are covered on every platform (the path is
+  // backslash-spelled in the fixture, so the slashed variant proves the rewrite ran).
   assert.ok(keys.some(k => k.includes('D:/DSH')));
-  assert.ok(keys.some(k => k.includes('d:/dsh')), 'case-insensitive variant on win32');
+  // Case folding is a **win32-only** rule, and it must stay that way: on a POSIX host `D:\x` and
+  // `d:\x` are two different directories, so publishing a lowercased alias there would let a
+  // lookup land on a root that was never meant. Asserting it unconditionally made this test fail
+  // on the Linux/macOS CI runners for a reason that has nothing to do with the code.
+  const foldedKeys = keys.filter(k => k.includes('d:/dsh'));
+  if (process.platform === 'win32') {
+    assert.ok(foldedKeys.length > 0, 'case-insensitive variant on win32');
+  } else {
+    assert.equal(foldedKeys.length, 0, 'no case folding off win32');
+  }
   for (const key of keys) assert.ok(key.startsWith(`${PORT_NAME}\u0000`));
 });
 

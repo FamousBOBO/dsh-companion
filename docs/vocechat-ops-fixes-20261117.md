@@ -58,7 +58,7 @@ DSH 的 `pwsh` 工具在执行每条命令前，会把一个 `Remove-Item` 回�
 | 时间 | 威胁 | 资源 |
 |---|---|---|
 | 2026-11-13 15:07–15:08 | `2147891541` | pnpm store 里的一个文件（3 次） |
-| 2026-05-13 / 05-16 | `311972` | `C:\Users\bobo\Downloads\STM32CubeProgrammer_104_274655.exe` |
+| 2026-05-13 / 05-16 | `311972` | `<用户目录>\Downloads\STM32CubeProgrammer_104_274655.exe` |
 
 均与本项目无关。
 
@@ -68,8 +68,11 @@ DSH 的 `pwsh` 工具在执行每条命令前，会把一个 `Remove-Item` 回�
 
 ```
 Add-MpPreference -ExclusionPath 'D:\DSH'
-Add-MpPreference -ExclusionPath 'C:\Users\bobo\AppData\Local\npm-cache\_npx'
+Add-MpPreference -ExclusionPath '<用户目录>\AppData\Local\npm-cache\_npx'
 ```
+
+（上面的 `<用户目录>` 是占位符：实际执行时换成自己的家目录。这份文档进仓库，所以不写死
+具体用户名 —— 那是这台机器的路径，不是这个项目的事实。）
 
 副作用：这些目录不再被实时扫描。是否加由操作者决定，本文档只记录选项。
 
