@@ -942,7 +942,7 @@ memory 早就有 `status='superseded'` 取值、`valid_to` 列与 `recordRevisio
   - `locked` **不阻断** claim（`dueSlotsForHeartbeat` 的 SQL 里没有 locked 判据）——锁是 H5 的"不要挪动时间"，不是"不要执行"。这里把它原样暴露，不自己发明规则。
   - `counts.capabilityBlocked`：上面这类行的条数。它与 `counts.claimable` **不重叠**，所以"这一拍为什么会动/为什么不动"不会两边都数一遍。
   - **`counts.willMiss` = 泵会写多少条 `missed` 事实的「至多」**（round-4 N1；round-7 N10；round-8 N11/N12；round-9 N13）：「泵真的会写多少条」这个等号**不成立**，三个原因叠加——① 不透支能力槽（能力未就绪的已关闭槽被 `blocked-capability` 收走，不在 `willMiss` 里承诺一个泵不会兑现的 `missed`）；② 取样窗只有 `min(50, limit)`＝20，**已关闭的 read 槽超过 20 个时它只报 20**，而此时 `metrics.slots_open` 是精确的；③ 时间上是累计口径，不是"下一拍"。
-    - **要精确的积压量，读 `metrics.slots_open`**（精确 COUNT）。`willMiss` 只回答"这一批里我看到多少条将要被记成 `missed`"。
+    - **要精确的「全部未结积压」，读 `metrics.slots_open`**（精确 COUNT）——注意它**包含窗口尚未开启的槽**，所以不等于「将记成 `missed` 的条数」：40 已关闭 + 40 未来窗口时 `slots_open` 是 80，而 `missed` 积压只有 40（round-10 N14 实测）。**要知道「有多少条将被记成 `missed`」，目前没有精确字段**：`dispatchMetrics()` 的全部字段里没有一个对应 `WILL_MISS_SQL` 谓词。可用的近似只有两条——看 `p2_activity_receipts` 的 `missed` 累计（事后事实），或等 `WILL_MISS_COUNT_SQL` 落地（单开项）。`willMiss` 本身只回答「这一批取样里我看到多少条将要被记成 `missed`」。
     - **按「这一拍」读还要再收紧一次**：至多 `min(willMiss, 8)`，且实际可能更少——泵的 missed 扫描 `LIMIT 8` 与闸门槽共用名额，那些槽退役但不写收据（round-8 N12 实测：10 个已关闭 B 站槽排在 20 个 read 槽前面时，一拍写 **0** 条）。
     - **按「累计」读成立，按「下一拍」读不成立**：20 个已关闭的 read 槽给出 `willMiss 20`，而泵下一拍只写 8 条；连跑到 **5 拍** 才是 `8 → 16 → 20`。所以「累计」才是 `willMiss` 的真正含义，「这一拍」永远只是它的（更小的）上界。
 - **拍级** `blockedBy[]`：按 `heartbeat.cycle()` 自己的拒绝顺序给出**具名**原因：`heartbeat-unmounted` / `heartbeat-disabled` / `agenda-disabled` / `heartbeat-paused` / `dispatch-cap-zero` / `runtime-<mode>` / `p2-unmounted`，再加上 P2 侧的 `dispatch-disabled` / `activities-paused` / `chat-priority` / `foreground-signal-unavailable` / `invalid-scope`。
