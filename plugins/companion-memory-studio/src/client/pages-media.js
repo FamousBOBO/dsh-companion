@@ -118,6 +118,13 @@
     .cpxp-media-field-wide textarea { min-height:100px; resize:vertical; }
     @media(max-width:760px) { .cpxp-media-sec-head,.cpxp-section-body { padding:18px; } .cpxp-media-head-actions { gap:8px; } .cpxp-media-fields { grid-template-columns:1fr; gap:18px; } .cpxp-media-sec-title { font-size:18px; } .cpxp-section-symbol { display:none; } }
     @media(prefers-reduced-motion:reduce) { .cpxp-switch-track,.cpxp-switch-track::before { transition:none; } }
+    /* 窄窗口：provider 卡片列表与预览块也要能收缩，否则 760px 以下会横向溢出。 */
+    .cpxp-media-provider-list { display:flex; flex-direction:column; gap:14px; min-width:0; }
+    .cpxp-preview { margin-top:18px; padding-top:16px; border-top:1px solid var(--dsw-alias-border-l1); min-width:0; }
+    .cpxp-preview-head { display:flex; align-items:flex-start; justify-content:space-between; gap:14px; flex-wrap:wrap; }
+    .cpxp-media-enable { margin-bottom:12px; }
+    .cpx-fieldset { border:0; padding:0; margin:0; min-width:0; }
+    @media(max-width:760px) { .cpxp-media-provider-list { gap:10px; } .cpxp-preview-head { flex-direction:column; align-items:stretch; } .cpxp-preview-head .cmx-btn { align-self:flex-start; } }
   `);
 
   // -------------------------------------------------------------------------
@@ -484,14 +491,40 @@
     return parts.join('|');
   }
 
+  /** section 级 presets 里的全部字段（画师串 + 各族的字段），拍平成一个列表。 */
+  function presetFieldsOf(presets) {
+    if (!presets) return [];
+    const list = [];
+    if (presets.artist) list.push(presets.artist);
+    for (const family of presets.families || []) {
+      for (const field of (family && family.fields) || []) list.push(field);
+    }
+    return list;
+  }
+
   /** 这个 provider 有没有未保存的改动（含它的启用开关、密钥、清除动作）。 */
-  function providerDirty(provider, draft, secrets, clears) {
+  function providerDirty(provider, draft, secrets, clears, extraFields) {
     if (!provider) return false;
     const within = path => String(path) === provider.prefix || String(path).startsWith(`${provider.prefix}.`);
     const hasSecrets = Object.keys(secrets || {}).some(path => within(path) && String(secrets[path] ?? '').trim() !== '');
     const hasClears = Object.keys(clears || {}).some(path => within(path) && clears[path]);
     if (hasSecrets || hasClears) return true;
-    const changed = (provider.fields || []).some((field) => {
+  // 判据只来自**带 original 的真实字段**。
+  //
+  // 曾经这里额外把 `generationFields` 合成 `{path, type:null}` 追加进来，结果是踩出一个回归：
+  // 合成项没有 `original`，`sameValue(coerce('text', value), undefined)` 恒 false →
+  // **未做任何修改也 dirty=true**，NAI 卡片永远挂"有未保存的修改"、「测试连接」永久禁用。
+  // 所以：别再合成。
+  //
+  // 但也不能只看 `provider.fields`：画师串挂在 section 级的 `presets.artist` 上
+  // （`image.nai.artistString`，不在 `provider.fields` 里），只改它时旧实现算不脏，
+  // 「保存这个 provider」永远点不动（N6-A）。调用方把该 provider 名下的 presets 字段
+  // 作为 `extraFields` 传进来即可 —— 仍然是真实字段、仍然带 original。
+  const extra = Array.isArray(extraFields) ? extraFields : [];
+  const candidates = [...extra, ...(provider.fields || [])].filter((field, index, list) => (
+    field && list.findIndex((item) => item && item.path === field.path) === index
+  ));
+  const changed = candidates.some((field) => {
       if (field.secret || field.locked) return false;
       const value = draft ? draft[field.path] : undefined;
       if (value === undefined) return false;
@@ -736,14 +769,20 @@
       error ? h('p', { className: 'cpxp-media-error' }, error) : null);
   }
 
-  function ProviderCard({ provider, selected, states, draft, secrets, clears, errors, testing, busy, onDraft, onSecret, onClear, onSave, onTest }) {
+  function ProviderCard({ provider, selected, presets, states, draft, secrets, clears, errors, testing, busy, onDraft, onSecret, onClear, onSave, onTest }) {
     const [open, setOpen] = P.useState(selected);
     // Follow protocol changes while retaining manual expand/collapse between selections.
     P.useEffect(() => setOpen(selected), [selected]);
     const status = testing[provider.id] || null;
     // 未保存的改动 = 表单和"已保存配置"不一致：这时测试按钮必须禁用，
     // 因为 /test 读的永远是已保存配置（2026-11-06 UI 审核 P1）。
-    const dirty = providerDirty(provider, draft, secrets, clears);
+    // section 级 presets 里**属于这个 provider** 的字段（当前就是画师串）也参与 dirty 判定。
+    // 不按 `generationFields` 过滤：那份列表是"渲染哪些生成字段"的清单，不保证包含画师串
+    // （真 descriptor 里 `provider.generationFields` 甚至可能是 null）。判据只按路径归属。
+    const providerExtraFields = presetFieldsOf(presets).filter(
+      (field) => field && !field.locked && String(field.path).startsWith(`${provider.prefix}.`),
+    );
+    const dirty = providerDirty(provider, draft, secrets, clears, providerExtraFields);
     const badge = h('div', { className: 'cpxp-media-badge-row' },
       h(ui.Badge, { tone: stateTone(provider.state) }, stateLabel(states, provider.state)),
       provider.notConnected ? h(ui.Badge, { tone: 'neutral' }, '尚未接入') : null,
@@ -763,7 +802,20 @@
         null,
         !dirty && status ? testResultLine(status) : null);
     }
-    const fieldNodes = provider.fields.filter(field => {
+    // tts provider 的「启用」不是普通字段（下面会把它从 fieldNodes 里滤掉），
+// 但 descriptor 明确给了 canEnable，所以这里必须渲染一个真开关并遵守该裁决。
+  const enableToggle = provider.kind === 'tts' && provider.enablePath
+    ? h('div', { className: 'cpxp-media-enable' },
+      h(ui.Toggle, {
+        id: `media-${provider.enablePath}`,
+        checked: draft[provider.enablePath] === true,
+        disabled: !provider.canEnable || Boolean(busy),
+        label: `${provider.label}：启用`,
+        hint: provider.canEnable ? '' : '这个 provider 尚未接入，启用位不可操作',
+        onChange: (next) => onDraft(provider.enablePath, next),
+      }))
+    : null;
+  const fieldNodes = provider.fields.filter(field => {
       const key = lastSegment(field.path);
       if(provider.kind==='tts' && ['enabled','mediaType'].includes(key))return false;
       if (provider.generationFields && (provider.generationFields.includes(key) || ['activePresetId','generationPresets'].includes(key))) return false;
@@ -816,11 +868,15 @@
     const actions = h('div', { className: 'cpxp-media-actions' },
       h(ui.Button, {
         variant: 'primary',
-        loading: busy === `save:${provider.kind}`,
+        // 与 `doSave` 设的 key 必须同一个：`save:${prefix}`（provider 的 prefix 是 `image.nai`）。
+        // 两处不一致时，保存期间的 loading 态永远不显示（N6-B）。
+        loading: busy === `save:${provider.prefix}`,
         disabled: !dirty || Boolean(busy),
-        onClick: () => onSave(provider.kind),
+        // 传 provider.prefix（如 image.nai），不是 section 的 kind（image）：
+        // 后者会把同一 section 下**所有**脏 provider 一起提交（审查报告低项，base 既存）。
+        onClick: () => onSave(provider.prefix),
         title: '只保存这个 provider 的改动（留空的密钥不会被写回）',
-      }, '保存'),
+      }, '保存这个 provider'),
       h(ui.Button, {
         variant: 'ghost',
         size: 'sm',
@@ -839,7 +895,9 @@
       header,
       null,
       provider.description ? h('p',{className:'cpxp-media-description'},provider.description) : null,
+      enableToggle,
       h('div', { className: 'cpxp-media-fields' }, fieldNodes),
+      provider.generationFields ? h(GenerationEditor, { provider, presets, draft, busy, errors, onDraft }) : null,
       actions,
       dirtyNote,
       status && !dirty && status.detail ? h('p', { className: 'cpxp-media-note' }, status.detail) : null,
@@ -945,35 +1003,40 @@
         h('div',null,h('h4',null,'生成预设'),h('p',{className:'cpx-muted'},active ? active.name : '默认预设')),
         h(ui.Button,{onClick:create,disabled:!!busy||library.length>=32},'新建预设')),
       h('div',{className:'cpxp-media-fields'},
-        h('div',{className:'cpxp-preset-picker'},h(ui.Field,{label:'生成方案'},h(ui.Select,{ariaLabel:'生成方案',value:active?.id||'',disabled:!!busy,options:[{value:'',label:'默认预设'},...library.map(i=>({value:i.id,label:i.name}))],onChange:select}))),
-        active ? h(ui.Field,{label:'预设名称'},h(ui.Input,{ariaLabel:'预设名称',value:active.name,disabled:!!busy,onChange:name=>onDraft(libraryPath,JSON.stringify(library.map(i=>i.id===active.id?{...i,name}:i)))})) : null),
+        h('div',{className:'cpxp-preset-picker'},h(ui.Field,{label:'生成方案',id:'media-preset-scheme'},h(ui.Select,{id:'media-preset-scheme',ariaLabel:'生成方案',value:active?.id||'',disabled:!!busy,options:[{value:'',label:'默认预设'},...library.map(i=>({value:i.id,label:i.name}))],onChange:select}))),
+        active ? h(ui.Field,{label:'预设名称',id:'media-preset-name'},h(ui.Input,{id:'media-preset-name',ariaLabel:'预设名称',value:active.name,disabled:!!busy,onChange:name=>onDraft(libraryPath,JSON.stringify(library.map(i=>i.id===active.id?{...i,name}:i)))})) : null),
       errors[libraryPath] ? h('p',{className:'cpxp-media-error'},errors[libraryPath]) : null,
       h('div',{className:'cpxp-media-fields'},fields.filter(f=>!advancedKeys.includes(lastSegment(f.path))&&!['qualityPreset','negativePreset','artistString','negativePrompt'].includes(lastSegment(f.path))).map(renderField)),
       h('details',{className:'cpxp-advanced'},h('summary',null,'更多生成参数'),h('div',{className:'cpxp-media-fields'},fields.filter(f=>advancedKeys.includes(lastSegment(f.path))&&!(lastSegment(f.path)==='qualityToggle'&&draft[prefix+'.qualityPreset']!=='legacy')&&!(lastSegment(f.path)==='ucPreset'&&draft[prefix+'.negativePreset']!=='legacy')).map(renderField))),
       h('div',{className:'cpxp-resolution'},
-        h(ui.Field,{label:'画面比例'},h(ui.Segmented,{label:'画面比例',value:aspect,disabled:!!busy,options:[{id:'portrait',label:'竖图 2:3'},{id:'landscape',label:'横图 3:2'},{id:'square',label:'方图 1:1'}],onChange:setAspect})),
+        h('fieldset',{className:'cpx-field cpx-fieldset',key:'aspect-group'},h('legend',{className:'cpx-field-label'},'画面比例'),h(ui.Segmented,{label:'画面比例',value:aspect,disabled:!!busy,options:[{id:'portrait',label:'竖图 2:3'},{id:'landscape',label:'横图 3:2'},{id:'square',label:'方图 1:1'}],onChange:setAspect})),
         h('div',{className:'cpxp-auto-resolution'},h('button',{type:'button',className:'cpxp-resolution-button',role:'switch','aria-label':'自动分辨率','aria-checked':draft[prefix+'.autoResolution']===true,disabled:!!busy,onClick:()=>change(prefix+'.autoResolution',draft[prefix+'.autoResolution']!==true)},h(ui.Icon,{name:'image',size:18}),'自动分辨率',h('span',{className:'cpxp-resolution-state'},draft[prefix+'.autoResolution']===true?'已开启':'已关闭')),h(ui.Info,{text:draft[prefix+'.autoResolution']===true?'约 100 万像素，按画面比例自动计算分辨率。':`固定分辨率：${draft[prefix+'.width']} × ${draft[prefix+'.height']}`}))),
       h('div',{className:'cpxp-media-fields'},['qualityPreset','negativePreset','artistString','negativePrompt'].map(key=>fields.find(f=>lastSegment(f.path)===key)).filter(Boolean).map(renderField)));
   }
 
-  function SectionCard({ section, states, testing, draft, secrets, clears, errors, busy, onDraft, onSecret, onClear, onSave, onTest }) {
-    const [open,setOpen] = P.useState(!section.locked);
+  function SectionCard({ section, states, testing, draft, secrets, clears, errors, busy, previewState, onDraft, onSecret, onClear, onSave, onTest, onPreview }) {
+    // locked 的分区（例如识图）仍然要能展开：它的问题是「字段不可改」，不是「内容不可见」。
+    const [open,setOpen] = P.useState(section.id === 'image' || section.id === 'tts' || !section.locked);
     const dirty=sectionDirty(section,draft,secrets,clears);
     const selected=section.selector?(draft[section.selector.path]??section.selector.value):null;
     const provider=section.providers.find(p=>p.id===selected&&!p.notConnected);
     const options=section.selector?.options.filter(o=>o.value==='none'||section.providers.some(p=>p.id===o.value&&!p.notConnected))||[];
     return h('section',{className:'cpxp-media-sec','data-section':section.id},
       h('div',{className:'cpxp-media-sec-head'},
-        h('div',{className:'cpxp-section-name'},h('span',{className:'cpxp-section-symbol','aria-hidden':true},h(ui.Icon,{name:section.id==='image'?'image':section.id==='tts'?'audio':'eye',size:20})),h('h3',{className:'cpxp-media-sec-title'},section.title)),
+        h('div',{className:'cpxp-section-name'},h('span',{className:'cpxp-section-symbol','aria-hidden':true},h(ui.Icon,{name:section.id==='image'?'image':section.id==='tts'?'audio':'eye',size:20})),h('h3',{className:'cpxp-media-sec-title'},section.title),section.note?h('p',{className:'cpxp-media-note'},section.note):null),
         h('div',{className:'cpxp-media-head-actions'},
-          section.toggle&&!section.locked?h('button',{type:'button',className:'cpxp-enable',role:'switch','aria-label':section.toggle.label,'aria-checked':!!draft[section.toggle.path],disabled:!!busy,onClick:()=>onDraft(section.toggle.path,!draft[section.toggle.path])},h('span',{className:'cpxp-switch-track'}),section.toggle.label):h(ui.Badge,{tone:'neutral'},'未启用'),
+          section.toggle?h('label',{className:'cmx-toggle'},h('input',{type:'checkbox','aria-label':section.toggle.label,checked:section.id==='vision'?false:!!(draft[section.toggle.path]??section.toggle.value),disabled:!!busy||section.toggle.disabled===true||section.locked,onChange:()=>onDraft(section.toggle.path,!draft[section.toggle.path])}),h('span',null,h('span',{className:'cmx-toggle-label'},section.toggle.label),section.toggle.why?h('span',{className:'cmx-hint'},section.toggle.why):null)):h(ui.Badge,{tone:'neutral'},'未启用'),
           h(ui.Button,{size:'sm',onClick:()=>setOpen(!open),ariaLabel:(open?'收起':'展开')+section.title},open?'收起':'展开'))),
       open?h('div',{className:'cpxp-section-body'},
-        section.selector?h(ui.Segmented,{label:section.id==='image'?'生图服务':'语音服务',value:selected,disabled:!!busy,options:options.map(o=>({id:o.value,label:o.value==='none'?'未选择':o.label.replace(' 生图','').replace('（官方直连 / 中转站）','')})),onChange:value=>{onDraft(section.selector.path,value);if(section.id==='tts')section.providers.filter(p=>p.canEnable).forEach(p=>onDraft(p.enablePath,p.id===value));}}):null,
+        section.selector?h(ui.Field,{label:section.id==='image'?'协议':'语音服务',id:'media-'+section.selector.path,hint:section.id==='tts'?'切换后只会勾选对应 provider 的启用位，不需要再手工开':'切换协议会先把你选中的那一项单独保存'},h(ui.Select,{id:'media-'+section.selector.path,ariaLabel:section.id==='image'?'协议':'语音服务',value:selected,disabled:!!busy,options:options.map(o=>({value:o.value,label:o.value==='none'?'未选择':o.label})),onChange:value=>{onDraft(section.selector.path,value);if(section.id==='tts')section.providers.filter(p=>p.canEnable).forEach(p=>onDraft(p.enablePath,p.id===value));}})):null,
         section.fields.length?h('div',{className:'cpxp-media-fields'},section.fields.map(field=>h(FieldControl,{key:field.path,entry:field,value:draft[field.path],disabled:field.locked||!!busy,error:errors[field.path],onChange:value=>onDraft(field.path,value)}))):null,
-        provider?h(ProviderCard,{provider,selected:true,states,draft,secrets,clears,errors,testing,busy,onDraft,onSecret,onClear,onSave,onTest}):null,
-        provider?.generationFields?h(GenerationEditor,{provider,presets:section.presets,draft,busy,errors,onDraft}):null,
-        !section.locked?h('div',{className:'cpxp-media-footer'},h('span',{className:'cpx-muted'},dirty?'有未保存的修改':'已保存'),h(ui.Button,{variant:'primary',disabled:!dirty||!!busy,loading:busy===`save:${section.id}`,onClick:()=>onSave(section.id)},'保存')):null):null);
+        section.providers.length?h('div',{className:'cpxp-media-provider-list'},
+          section.providers.map(item=>h(ProviderCard,{key:'pc-'+item.id,provider:item,selected:item.id===selected,presets:section.presets,states,draft,secrets,clears,errors,testing,busy,onDraft,onSecret,onClear,onSave,onTest}))):null,
+        // 生成编辑器**只由 ProviderCard 渲染一次**（见其内部）。这里再渲染一遍会让
+        // `media-preset-scheme`、`media-image.nai.steps` 等 id 在 DOM 里各出现两次，
+        // 而 `ui.Field` 的 htmlFor 只落到第一个 —— 正是本 PR 在修的那类缺陷（M10）。
+        section.preview?h('div',{className:'cpxp-preview'},h('div',{className:'cpxp-preview-head'},h('p',{className:'cpxp-media-note'},section.preview.note||''),h(ui.Button,{size:'sm',disabled:!!busy,title:'只算尺寸，不生成图片',onClick:()=>onPreview(section)} ,'预览')),previewState&&previewState.section===section.id?h('p',{className:'cpxp-media-note'},previewState.text):null):null,
+        !section.locked?h('div',{className:'cpxp-media-footer'},h('span',{className:'cpx-muted'},dirty?'有未保存的修改':'已保存'),h(ui.Button,{variant:'primary',disabled:!dirty||!!busy,loading:busy===`save:${section.id}`,onClick:()=>onSave(section.id),title:'只保存这一块里改动过的字段'},'保存这一块')):null):null);
   }
 
   function MediaBand({ media }) {
@@ -985,6 +1048,7 @@
     const [busy, setBusy] = P.useState('');
     const [flash, setFlash] = P.useState(null);
     const [testing, setTesting] = P.useState({});
+  const [previewState, setPreviewState] = P.useState(null);
 
     const bundle = state.data || null;
     const descriptor = bundle && bundle.page ? bundle.page.page : null;
@@ -1230,8 +1294,39 @@
       });
     };
 
-    const header = {
-      key: 'media-settings',
+    /** 只算尺寸，不生成图片：按钮触发，一次只发一个 GET（预览不得自动发起）。 */
+  const doPreview = (section) => {
+    const spec = section.preview || null;
+    const endpoint = apiPath(spec && spec.endpoint, 'preview');
+    const values = (spec && spec.values) || {};
+    const query = new URLSearchParams();
+    for (const [key, value] of Object.entries(values)) {
+      if (value === undefined || value === null) continue;
+      query.set(key, String(value));
+    }
+    // 画幅跟随表单里尚未保存的选择：预览算的就是"你正要提交的那一组"。
+    const aspectPath = Object.keys(draft).find((path) => /\.aspect$/.test(path));
+    if (aspectPath && draft[aspectPath]) query.set('aspect', String(draft[aspectPath]));
+    setPreviewState({ section: section.id, running: true, text: '' });
+    mediaFetch(`${endpoint}?${query.toString()}`).then((result) => {
+      const payload = result.payload || {};
+      if (payload.ok !== true) {
+        const reason = (payload.error && payload.error.message) || '预览失败：后端拒绝了这次计算。';
+        setPreviewState({ section: section.id, running: false, text: reason });
+        return;
+      }
+      const resolution = payload.resolution || {};
+      setPreviewState({
+        section: section.id,
+        running: false,
+        text: resolution.ok === true
+          ? `结果：${resolution.width}x${resolution.height}（${resolution.pixels} 像素，取整到 ${resolution.rules ? resolution.rules.multipleOf : 64} 的倍数）`
+          : `未能计算：${payload.reason || (resolution && resolution.reason) || '超出声明范围'}`,
+      });
+    }, () => setPreviewState({ section: section.id, running: false, text: '网络请求没有完成。' }));
+  };
+
+  const header = {      key: 'media-settings',
       title: '媒体能力',
       hint: '',
       actions: [
@@ -1242,7 +1337,7 @@
             size: 'sm',
             onClick: discardDraft,
             title: '丢掉未保存的改动，回到已保存的那一份配置',
-          }, '放弃修改')
+          }, '放弃未保存的改动')
           : null,
         state.data ? h(ui.Button, {
           key: 'reload',
@@ -1284,11 +1379,13 @@
         clears,
         errors,
         busy,
+        previewState,
         onDraft: setField,
         onSecret: setSecret,
         onClear: setClear,
         onSave: doSave,
         onTest: doTest,
+        onPreview: doPreview,
       })));
 
     return h(ui.Band, header, [

@@ -1,0 +1,289 @@
+section	path	page	label	kind	secret	hot	dormant	adminPage	g0StudioProjection	g0ExcludeReason	sourceRef	disposition	hotEffect	gateState	requirement
+connection	connection.mode	connection	连接方向	enum		reload		connection				studio-form	重连/重载生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+connection	connection.url	connection	地址	string		reload		connection				studio-form	重连/重载生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+(root)	selfId	connection	机器人 QQ 号	number		live		connection				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+(root)	admins	connection	管理员 QQ 号	list		live		connection				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+(root)	primaryGroup	groups	主群号	number		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+(root)	groupEnabled	groups	处理群消息	boolean		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+(root)	affectionPort	security	好感度面板端口	number		reload		security				studio-form	重连/重载生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+(root)	requireMention	groups	群里必须 @ 才理	boolean		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+(root)	talkValue	groups	群聊回复概率	number		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+(root)	primaryTalkValue	groups	主群回复概率	number		live		groups				decide-then-retire-or-migrate	立即生效	blocking	主群回复概率与 groups 页的 talkValue 语义重叠；要么在群聊页提供主群覆盖入口，要么在 schema 里显式标 deprecated 并从 resolve 链移除。二者都必须先做，否则关掉 8790 后这个字段无处可见、也无人能改
+(root)	rooms	groups	按群覆盖	json		live		groups				decide-then-retire-or-migrate	立即生效	blocking	按群覆盖是个结构化 map；Studio 需要"按群列表 + 增删"的控件，比单值表单复杂。可以延后到 W4 第二阶段，但必须先在文档里写明"当前不可改"
+(root)	rateLimitMs	messages	发送间隔	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+(root)	maxMessageLength	messages	单条消息上限	number		live	dormant	messages				documented-dormant	立即生效	covered-by-disclosure	schema 标了 dormant（当前不生效）；关 listener 前在 UI 上标明"字段存在但当前不生效"，避免用户以为改了有用
+channelHealth	channelHealth.enabled	connection	启用	boolean		live		connection				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+channelHealth	channelHealth.thresholdMs	connection	失联阈值（毫秒）	number		live		connection				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+channelHealth	channelHealth.realertMs	connection	重复告警间隔（毫秒）	number		live		connection				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+segmentation	segmentation.enabled	messages	启用	boolean		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+segmentation	segmentation.style	messages	风格	enum		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+segmentation	segmentation.minLength	messages	合并阈值（字数）	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+segmentation	segmentation.maxSegments	messages	最多几条	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+segmentation	segmentation.removeTrailingPeriod	messages	去掉句末的句号	boolean		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+segmentation	segmentation.delayPerCharMs	messages	分段间隔（毫秒/字）	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+segmentation	segmentation.delayMinMs	messages	分段间隔下限	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+segmentation	segmentation.delayMaxMs	messages	分段间隔上限	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+segmentation	segmentation.groupMaxChars	messages	群聊每轮正文上限	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+batching	batching.windowMs	messages	安静窗口（毫秒）	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+batching	batching.maxMessages	messages	条数上限	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+batching	batching.maxChars	messages	字数上限	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+batching	batching.dmEnabled	messages	私聊接话缓冲	boolean		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+batching	batching.dmShortMs	messages	私聊短句等待（毫秒）	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+batching	batching.dmLongMs	messages	私聊长句等待（毫秒）	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+batching	batching.dmLongChars	messages	私聊长句字数	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+batching	batching.dmMaxWaitMs	messages	私聊最长合并等待（毫秒）	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+injectMode	injectMode.enabled	messages	启用	boolean		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+injectMode	injectMode.duringTurn	messages	回合中插话作为引导	boolean		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+injectMode	injectMode.wakeIdle	messages	空闲时直接唤醒	boolean		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+imageRecognition	imageRecognition.enabled	media	启用	boolean		live		media				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+imageRecognition	imageRecognition.serverOcr	media	注册图片 OCR 工具	boolean		reload		media				studio-form	重连/重载生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+imageRecognition	imageRecognition.maxPerMessage	media	每条消息最多几张	number		live		media				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+poke	poke.enabled	events	启用	boolean		live		events				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+poke	poke.windowSec	events	合并窗口（秒）	number		live		events				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+interaction	interaction.typingIndicator	messages	私聊显示「正在输入」	boolean		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+interaction	interaction.ackReaction	messages	收到时贴表情回应	boolean		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+interaction	interaction.ackEmojiId	messages	回应表情 id	string		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+forward	forward.longReplyThreshold	messages	超过几条改合并转发	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+forward	forward.maxNodes	messages	单次最多几条	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+metrics	metrics.enabled	metrics	启用	boolean		live		metrics				read-only	立即生效	covered-by-readonly	只读展示，不提供写入
+history	history.serverBackfill	messages	本地没有时回源服务端	boolean		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+history	history.maxMessages	messages	每次最多拉几条	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+reliability	reliability.slowNotice	messages	慢回合发一句「还在处理」	boolean		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+reliability	reliability.slowAfterMs	messages	多久算慢（毫秒）	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+reliability	reliability.failureNotice	messages	永久失败说一声	boolean		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+dailyReport	dailyReport.enabled	proactive	启用	boolean		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+dailyReport	dailyReport.time	proactive	发送时间	string		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+dailyReport	dailyReport.target	proactive	发送到	string		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+access	access.friendRequests	security	处理好友申请与群邀请	boolean		live		security				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+access	access.mode	security	模式	enum		live		security				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+access	access.groupPolicy	security	群策略	enum		live		security				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+access	access.allowUsers	security	额外允许的 QQ 号	list		live		security				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+access	access.allowGroups	security	额外允许的群号	list		live		security				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+access	access.notifyOwner	security	新请求通知主人	boolean		live		security				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+access	access.replyPendingInGroups	security	未批准的群里也回「待批准」	boolean		live		security				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+access	access.replyCooldownMin	security	待批准回复间隔（分钟）	number		live		security				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+stt	stt.enabled	media	启用	boolean		live		media				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+stt	stt.backend	media	后端	enum		live		media				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+stt	stt.serverFallback	media	本地失败时用协议端转写	boolean		live		media				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+stt	stt.baseUrl	media	接口地址	string		live		media				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+stt	stt.apiKey	media	接口密钥	string	secret	live		media				secret-write-only	写入即生效（只写字段）	needs-mask-check	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+stt	stt.model	media	模型名	string		live		media				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+stt	stt.timeoutMs	media	超时（毫秒）	number		live		media				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+groupModel	groupModel.provider	groups	供应商	string		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+groupModel	groupModel.model	groups	模型	string		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+(root)	keywordTriggers	groups	唤醒关键词	list		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+morningReport	morningReport.enabled	proactive	启用	boolean		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+morningReport	morningReport.weatherLocation	proactive	天气地点	string		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+morningReport	morningReport.scheduleFile	proactive	课表文件	string		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+(root)	cruises	proactive	巡航任务	json		restart		proactive				host-link	需重启	needs-host-link	巡航任务是进程级后台作业（cruise-run.js 自带 worker）；Studio 只能做"查看/启停请求"，真正的执行要走宿主既有作业能力
+(root)	keywordReactions	groups	关键词反应	json		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+(root)	workspacePath	connection	工作区路径	string		restart		connection				studio-form	需重启	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+(root)	agentPreset	persona	人格预设	string		live		persona				decide-then-retire-or-migrate	立即生效	blocking	人格预设决定整条对话的 prompt 组合，改动会立刻影响行为；需要"改前预演 + 改后可回滚"，不能作为普通文本字段暴露
+(root)	permissionPreset	persona	权限预设	string		live		persona				decide-then-retire-or-migrate	立即生效	blocking	权限预设决定工具可见性；关掉 listener 后必须有等价入口，否则等于把工具策略锁死
+(root)	accessToken	connection	访问令牌	string	secret	reload		connection				secret-write-only	写入即生效（只写字段）	needs-mask-check	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+emoji	emoji.steal	stickers	偷主群的表情	boolean		live		stickers				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+emoji	emoji.stealPrivate	stickers	私聊也偷（仅管理员）	boolean		live		stickers				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+emoji	emoji.dir	stickers	原图目录	string		reload		stickers				studio-form	重连/重载生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+emoji	emoji.registeredDir	stickers	已收录目录	string		reload		stickers				studio-form	重连/重载生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+admin	admin.enabled	security	启用	boolean		reload		security				listener-control	重连/重载生效	covered-by-readonly	这正是 W4 要关的那个开关本身；UI 上不能提供"打开管理后台"的按钮，只能读状态
+admin	admin.port	security	端口	number		reload		security				listener-control	重连/重载生效	covered-by-readonly	端口；关停后只读展示
+admin	admin.password	security	密码	string	secret	live		security				secret-write-only	写入即生效（只写字段）	needs-mask-check	口令只写、掩码；来源链是 env/panel/config/generated 四档，UI 必须显示"当前来源"而不只是"有没有设置"
+admin	admin.host	security	监听地址	string		restart		security				listener-control	需重启	covered-by-readonly	监听地址；关停后只读展示，不可改（改了等于重开 listener）
+linkResolve	linkResolve.enabled	links	启用	boolean		live		links				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+linkResolve	linkResolve.autoGroups	links	自动出卡的群	list		live		links				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+linkResolve	linkResolve.maxPerMessage	links	每条消息最多几张	number		live		links				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+linkResolve	linkResolve.bilibiliCookie	links	B站 SESSDATA	string	secret	live		links				secret-write-only	写入即生效（只写字段）	needs-mask-check	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+meme	meme.enabled	stickers	启用	boolean		live		stickers				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+meme	meme.fontFile	stickers	字体文件	string		live		stickers				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+meme	meme.dir	stickers	输出目录	string		live		stickers				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+quotes	quotes.enabled	quotes	启用	boolean		live		quotes				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+quotes	quotes.dir	quotes	存储目录	string		restart		quotes				studio-form	需重启	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+quotes	quotes.autoCapture	quotes	自动收录	boolean		live		quotes				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+chatlog	chatlog.enabled	quotes	启用	boolean		live		quotes				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+chatlog	chatlog.dir	quotes	存储目录	string		live		quotes				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+chatlog	chatlog.maxChars	quotes	单条上限字数	number		live		quotes				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+chatlog	chatlog.keepDays	quotes	保留天数	number		live		quotes				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+tts	tts.enabled	media	启用	boolean		live		media				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+tts	tts.voice	media	音色	string		live		media				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+tts	tts.provider	media	后端	enum		restart		media				studio-form	需重启	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+tts	tts.rate	media	语速	string		live		media				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+tts	tts.pitch	media	音调	string		live		media				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+tts	tts.volume	media	音量	string		live		media				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+tts	tts.dir	media	输出目录	string		live		media				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+reminders	reminders.enabled	reminders	启用	boolean		live		reminders				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+reminders	reminders.file	reminders	存储文件	string		restart		reminders				studio-form	需重启	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+reminders	reminders.dryRun	reminders	演练模式（不真发）	boolean		live		reminders				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+rss	rss.enabled	rss	启用	boolean		live		rss				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+rss	rss.pollIntervalMin	rss	轮询间隔（分钟）	number		live		rss				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+rss	rss.maxPerPoll	rss	每轮每条最多推几条	number		live		rss				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+rss	rss.feeds	rss	订阅列表	json		live		rss				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+flood	flood.enabled	flood	启用	boolean		live		flood				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+flood	flood.windowSec	flood	统计窗口（秒）	number		live		flood				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+flood	flood.maxMessages	flood	窗口内条数上限	number		live		flood				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+flood	flood.action	flood	动作	enum		live		flood				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+flood	flood.muteSeconds	flood	禁言时长（秒）	number		live		flood				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+flood	flood.exempt	flood	豁免 QQ 号	list		live		flood				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+imageGen	imageGen.enabled	links	启用	boolean		live		links				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+imageGen	imageGen.provider	links	后端	enum		live		links				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+imageGen	imageGen.baseUrl	links	接口地址	string		live		links				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+imageGen	imageGen.apiKey	links	接口密钥	string	secret	live		links				secret-write-only	写入即生效（只写字段）	needs-mask-check	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+imageGen	imageGen.model	links	模型	string		live		links				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+imageGen	imageGen.width	links	宽	number		live		links				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+imageGen	imageGen.height	links	高	number		live		links				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+learn	learn.enabled	learn	启用	boolean		live		learn				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+learn	learn.file	learn	存储文件	string		restart		learn				studio-form	需重启	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+learn	learn.autoCapture	learn	被动收集	boolean		live		learn				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+learn	learn.slang	learn	黑话词典工具	boolean		reload		learn				studio-form	重连/重载生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+learn	learn.minOccurrences	learn	出现几次才推荐给模型	number		live		learn				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+memory	memory.v2	memory	启用新记忆系统（memory.v2）	boolean		live		memory				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+memory	memory.threshold	memory	检索分数阈值	number		live		memory				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+memory	memory.maxRecords	memory	每回合最多注入几条	number		live		memory				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+memory	memory.maxChars	memory	每回合最多注入多少字	number		live		memory				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+memory	memory.pinnedEnabled	memory	启用常驻记忆层	boolean		live		memory				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+memory	memory.wanderPercent	memory	走神概率 %	number		live		memory				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+memory	memory.occasionsEnabled	memory	注入今天的日子	boolean		live		memory				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+memory	memory.captureEnabled	memory	启用回合结束即时抽取	boolean		live		memory				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+memory	memory.captureDailyCap	memory	即时抽取每日上限	number		live		memory				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+memory	memory.profiles	memory	注入当前发言人侧写	boolean		live		memory				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+memory	memory.extractorUrl	memory	抽取器地址	string		reload		memory				studio-form	重连/重载生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+memory	memory.extractorModel	memory	抽取器模型	string		reload		memory				studio-form	重连/重载生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+memory	memory.extractorApiKey	memory	抽取器 API Key	string	secret	reload		memory				secret-write-only	写入即生效（只写字段）	needs-mask-check	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+memory	memory.vectorEnabled	memory	启用向量检索	boolean		reload		memory				studio-form	重连/重载生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+memory	memory.vectorUrl	memory	embed 服务地址	string		reload		memory				studio-form	重连/重载生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+memory	memory.vectorDim	memory	向量维度	number		reload		memory				studio-form	重连/重载生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+memory	memory.vectorTimeoutMs	memory	embed 超时	number		reload		memory				studio-form	重连/重载生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+memory	memory.vectorWeight	memory	余弦权重	number		reload		memory				studio-form	重连/重载生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+people	people.enabled	memory	启用	boolean		live		memory				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+people	people.dir	memory	存储目录	string		restart		memory				studio-form	需重启	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+music	music.kugouApiBase	music	酷狗 API 地址	string		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+music	music.lxSources	music	落雪音源（JSON）	string		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+music	music.quality	music	点歌音质	string		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+music	music.sendFile	music	点歌发文件	boolean		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+skills	skills.enabled	skills	启用技能	boolean		reload		skills				studio-form	重连/重载生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+skills	skills.dir	skills	技能目录	string		reload		skills				studio-form	重连/重载生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+skills	skills.allowScripts	skills	允许技能脚本	boolean		live		skills				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+skills	skills.allowImport	skills	允许导入	boolean		live		skills				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+skills	skills.maxImportBytes	skills	导入包上限	number		live		skills				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+kb	kb.enabled	kb	启用知识库	boolean		reload		kb				studio-form	重连/重载生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+kb	kb.dirs	kb	扫描目录	string		reload		kb				studio-form	重连/重载生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+kb	kb.maxFileBytes	kb	单文件上限	number		live		kb				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+kb	kb.doclingUrl	kb	Docling 地址	string		live		kb				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+kb	kb.pollMinutes	kb	扫描间隔	number		live		kb				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+kb	kb.injectTop	kb	自动注入块数	number		live		kb				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+kb	kb.injectChars	kb	注入字符上限	number		live		kb				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+kb	kb.vectorWeight	kb	向量权重	number		live		kb				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+kb	kb.rerankWeight	kb	二阶重排权重	number		live		kb				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+kb	kb.ingestUrls	kb	允许 URL 入库	boolean		live		kb				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+kb	kb.scopes	kb	集合可见范围	string		live		kb				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+eventMonitor	eventMonitor.enabled	events	启用	boolean		live		events				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+eventMonitor	eventMonitor.kinds	events	事件类型	list		live		events				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+eventMonitor	eventMonitor.windowSec	events	合并窗口（秒）	number		live		events				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+context	context.v2	messages	上下文 v2	boolean		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+context	context.agentInstructions	messages	由智能体提供通道指令	boolean		reload		messages				studio-form-existing	重连/重载生效	covered	已在聊天页表单（W1 目录统一索引）
+turn	turn.maxSteps	messages	每轮步数上限（按会话类型）	json		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+sessionReset	sessionReset.enabled	messages	自动换血	boolean		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+sessionReset	sessionReset.thresholdRatio	messages	触发比例	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+sessionReset	sessionReset.checkIntervalMin	messages	检查间隔	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+sessionReset	sessionReset.maxAgeDays	messages	定期换血	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+sessionReset	sessionReset.maxTurnMinutes	messages	回合超时	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+sessionReset	sessionReset.strictRooms	messages	激进房间	string		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+sessionReset	sessionReset.strictThresholdRatio	messages	激进比例	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+sessionReset	sessionReset.seed	messages	续接种子	string		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+planner	planner.enabled	groups	群聊准入判定	boolean		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contextBudget	contextBudget.maxSteps	messages	每轮最多几步	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contextBudget	contextBudget.compactChars	messages	注入包压缩阈值（字）	number		live		messages				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+groupAdmin	groupAdmin.dangerous	tools	允许执行	boolean		live		tools				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+policy	policy.v2	tools	启用策略 v2（policy.v2）	boolean		live		tools				studio-form	立即生效	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+tools	tools.v2	tools	启用工具合并 v2（tools.v2）	boolean		restart		tools				studio-form	需重启	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+proactive	proactive.scheduler	proactive	旧定时行为（巡逻 / 做梦 / 自省 / 主动私聊 / 早报）	boolean		reload		proactive				studio-form-existing	重连/重载生效	covered	已在聊天页表单（W1 目录统一索引）
+proactive	proactive.v2	proactive	事件书 v2	boolean		reload		proactive				studio-form-existing	重连/重载生效	covered	已在聊天页表单（W1 目录统一索引）
+proactive	proactive.book	proactive	事件书	json		reload		proactive				studio-form-existing	重连/重载生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.enabled	proactive	启用主动消息	boolean		reload		proactive				studio-form-existing	重连/重载生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.dryRun	proactive	演练模式	boolean		reload		proactive				studio-form-existing	重连/重载生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.allowExternalSend	proactive	允许真实外发	boolean		reload		proactive				studio-form-existing	重连/重载生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.sendMode	proactive	发送方式	enum		reload		proactive				studio-form-existing	重连/重载生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.timezone	proactive	时区	string		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.allowedRooms	proactive	出站房间白名单	json		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.quietHours	proactive	免打扰时段	json		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.settleWindowMs	proactive	用户在场窗口	number		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.maxCandidates	proactive	候选上限	number		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.shareTtlMs	proactive	分享候选有效期	number		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.globalCooldownMs	proactive	全局冷却	number		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.perRoomCooldownMs	proactive	会话冷却	number		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.dailyQuotaGlobal	proactive	每日总额度	number		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.dailyQuotaPerRoom	proactive	每会话日额度	number		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.maxUnansweredStreak	proactive	未回复上限	number		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.pollIntervalMs	proactive	调度间隔	number		reload		proactive				studio-form-existing	重连/重载生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.followUpIdleMs	proactive	空闲跟进阈值	number		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.followUpIntervalMs	proactive	空闲候选周期	number		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.maxCatchupHours	proactive	补算视界	number		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.maxPerTick	proactive	每轮领取条数	number		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.adaptiveFollowUp	proactive	自主跟进复核	boolean		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.sleepSummaryRecipient	proactive	授权接收睡眠摘要的主人 QQ 号	string		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.draftModel	proactive	允许模型起草	boolean		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.draftDailyBudget	proactive	草稿日预算	number		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.draftHourlyBudget	proactive	草稿时预算	number		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.draftTimeoutMs	proactive	草稿超时	number		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.draftMaxChars	proactive	草稿字数上限	number		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.draftFailureBackoffMs	proactive	失败退避基数	number		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+contact	contact.draftMaxFailures	proactive	连续失败上限	number		live		proactive				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+(root)	debug	logs	调试日志	boolean		live		logs				read-only	立即生效	covered-by-readonly	只读展示，不提供写入
+(root)	groupAgentPreset	persona	群聊人格预设	string		restart		persona				decide-then-retire-or-migrate	需重启	blocking	同上，群维度版本；需要与 agentPreset 一致的预演/回滚语义
+(root)	groupPermissionPreset	persona	群聊权限预设	string		restart		persona				decide-then-retire-or-migrate	需重启	blocking	同上，群维度版本；权限收紧比放宽更需要可审计
+(root)	groupWorkspacePath	connection	群聊工作区	string		restart		connection				studio-form	需重启	needs-form	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+song	song.enabled	music	启用点歌翻唱	boolean		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.autoPick	music	自主选歌（主动联系）	boolean		reload		music				host-link	重连/重载生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.groupEnabled	music	群聊里允许点歌	boolean		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.dryRun	music	演练模式	boolean		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.allowExternalSend	music	允许真实外发	boolean		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.seconds	music	语音条长度上限（秒）	number		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.minConfidence	music	副歌定位置信度门槛	number		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.prefixSeconds	music	前置余量（秒）	number		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.preferFemale	music	优先女声源（找不到就男声升八度）	boolean		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.maleKeyUp	music	男声升高（半音）	number		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.pythonPath	music	RVC 的 Python	string		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.rvcRoot	music	RVC 仓库目录	string		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.makeCover	music	make_cover.py 路径	string		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.chorusPython	music	副歌定位的 Python	string		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.biliCredentialFile	music	B站凭据文件	string	secret	live		music				secret-write-only	写入即生效（只写字段）	needs-mask-check	W4 需补表单（走窄 service，保留 validate/CAS/hot/audit）
+song	song.workRoot	music	任务工作目录	string		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.ffmpegPath	music	ffmpeg 路径	string		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.downloadTimeoutMs	music	下载超时（毫秒）	number		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.chorusTimeoutMs	music	副歌定位超时（毫秒）	number		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.coverTimeoutMs	music	分离与推理超时（毫秒）	number		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.sendTimeoutMs	music	等回执超时（毫秒）	number		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.maxQueue	music	队列上限（个）	number		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.cacheEnabled	music	同歌缓存（同一首歌再点时直接复用）	boolean		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.cacheMaxEntries	music	缓存条数上限（每层）	number		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.dailyAutoCap	music	自主选歌每日上限（首，0 = 不限）	number		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.autoSongs	music	自主选歌曲目	list		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.dailyUserCap	music	每人每日上限（首，0 = 不限）	number		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.separatorChunk	music	分离分块（采样点，-1 = 默认）	number		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.separatorOverlap	music	分离重叠（采样点，-1 = 默认）	number		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.separatorDtype	music	分离模型精度	string		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+song	song.separatorDevice	music	分离设备	string		live		music				host-link	立即生效	needs-host-link	链接宿主既有管理能力，不复制端点
+presence	presence.mode	groups	运行模式	enum		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.enabled	groups	启用旁听与自主接话	boolean		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.groups	groups	白名单群号	list		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.ambientMaxEntries	groups	旁听缓冲条数上限	number		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.ambientTtlMs	groups	旁听条目存活	number		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.ambientMaxChars	groups	旁听缓冲字数上限	number		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.socialGuard	groups	语义复核	enum		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.batchQuietMs	groups	合批静默窗口	number		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.starvationWarnMs	groups	一批消息的最长等待	number		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.judgeIntervalMs	groups	两次判断的最小间隔	number		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.judgeMaxEntries	groups	送进判断的条数上限	number		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.judgeMaxChars	groups	送进判断的字数上限	number		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.judgeTimeoutMs	groups	单次判断超时	number		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.judgeMaxTokens	groups	判断输出 token 上限	number		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.speakMinIntervalMs	groups	两次自主发言的最小间隔	number		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.speakMaxPerHour	groups	每群每小时自主发言上限	number		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.replyWindowMs	groups	允许引用的时间窗	number		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.memoryBudgetChars	groups	群记忆注入预算	number		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.stickers	groups	允许自主发言配表情包	boolean		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.stickerMinIntervalMs	groups	两张图的最小间隔	number		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.stickerMaxPerHour	groups	每小时最多几张图	number		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+presence	presence.replyMaxChars	groups	自主发言字数上限	number		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+participants	participants.enabled	groups	启用参与者注册表	boolean		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）
+participants	participants.file	groups	注册表文件	string		reload		groups				studio-form-existing	重连/重载生效	covered	已在聊天页表单（W1 目录统一索引）
+participants	participants.allowUnknownAsBot	groups	把未登记成员当机器人（不可开启）	boolean		live		groups				studio-form-existing	立即生效	covered	已在聊天页表单（W1 目录统一索引）

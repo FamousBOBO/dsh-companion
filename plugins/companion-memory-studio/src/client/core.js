@@ -54,21 +54,22 @@ P.registerPage = (definition) => {
   else P.pages.push(entry);
 };
 
-// The seven first-level entries of the product. A group entry owns tabs, each tab
-// is a registered page; `chat` is not a page of this plugin at all.
+// The first-level entries of the product (13 as of the UI unification). A group entry
+// owns tabs, each tab is a registered page; every entry here is a page of this plugin.
 const NAV = [
   { id: 'home', label: '陪伴首页', icon: 'home', hint: '她现在的生活与最近一起经历的事' },
   { id: 'chat', label: '聊天', icon: 'chat', hint: '回复、延时、免打扰与群聊行为' },
   { id: 'persona', label: '人格', icon: 'heart', hint: '性格、语气与相处方式' },
   { id: 'qq-web', label: 'QQ 连接', icon: 'chat', hint: 'NapCat / SnowLuma 网页面板' },
-  { id: 'life', label: '生活与日程', icon: 'calendar', hint: '今天、接下来，以及她的计划' },
+  { id: 'life', label: '生活与日程', icon: 'calendar', hint: '今天、接下来，以及她的计划', tabs: ['life', 'health'] },
   { id: 'health', label: '运动健康', icon: 'heart', hint: '活动、睡眠与实时心率' },
   { id: 'memory', label: '记忆与档案', icon: 'book', hint: '记忆库、Wiki、时间线与待核对', tabs: ['vault', 'wiki', 'timeline', 'review', 'microscope'] },
   { id: 'connections', label: '连接与工具', icon: 'plug', hint: '管理连接与工具' },
   { id: 'media', label: '媒体能力', icon: 'image', hint: '图片生成与语音合成' },
   { id: 'expressions', label: '表情包', icon: 'sticker', hint: '图库、收集规则、自然度实验室与表达习惯', tabs: ['exp-library', 'exp-rules', 'exp-lab', 'exp-habits'] },
   { id: 'workspace', label: '工作区', icon: 'folder', hint: '回到文件、会话与开发现场' },
-  { id: 'settings', label: '设置', icon: 'sliders', hint: '外观、角色、模型与记忆', tabs: ['settings', 'overview'] },
+  { id: 'settings', label: '设置', icon: 'sliders', hint: '外观、角色、模型与记忆', tabs: ['settings', 'overview', 'diagnostics-trace'] },
+  { id: 'works', label: '作品', icon: 'folder', hint: '工作区里的产出（只读）' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -225,6 +226,16 @@ P.fmt = {
     if (!date) return '—';
     return date.toLocaleTimeString('zh-CN', { timeZone: TZ, hour12: false, hour: '2-digit', minute: '2-digit' });
   },
+  /**
+   * 带秒的时间（诊断事件用）。
+   *
+   * 必须走 `TZ`：诊断时间戳是 UTC，直接截字符串会让中国用户看到早 8 小时的时间。
+   */
+  clockSeconds: (iso) => {
+    const date = safeDate(iso);
+    if (!date) return '—';
+    return date.toLocaleTimeString('zh-CN', { timeZone: TZ, hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' });
+  },
   /** `14:00–15:30`, with the date kept when the two ends are not the same day. */
   range: (start, end) => {
     const from = safeDate(start);
@@ -357,6 +368,8 @@ P.api = {
     return result;
   },
   raw: request,
+  // SSE/事件流要拿完整 URL（request 只做 JSON 信封解码）。
+  url: (path) => apiBase() + String(path).replace(/^\/+/, ''),
 };
 
 // Generic data hook: the loader runs on every dependency change and can be
@@ -637,10 +650,20 @@ function Table({ columns, rows, onRowClick, emptyText }) {
         key: column.key,
         style: { width: column.width, textAlign: column.align || 'left' },
       }, column.label)))),
+      // 可点的行必须同时支持键盘：Enter/Space 与鼠标点击等价，并且告诉屏幕阅读器这一行能按。
+      // （只有 onClick 的 <tr> 在键盘上完全按不动——2026-11-16 W5 静态检查报出来的唯一一条。）
       h('tbody', null, list.map((row, index) => h('tr', {
         key: row.id || row.key || index,
         className: onRowClick ? 'cmx-row-clickable' : undefined,
+        tabIndex: onRowClick ? 0 : undefined,
+        role: onRowClick ? 'button' : undefined,
+        'aria-label': onRowClick && row.id ? `打开 ${row.id}` : undefined,
         onClick: onRowClick ? () => onRowClick(row) : undefined,
+        onKeyDown: onRowClick ? (event) => {
+          if (event.key !== 'Enter' && event.key !== ' ') return;
+          event.preventDefault();
+          onRowClick(row);
+        } : undefined,
       }, columns.map((column) => h('td', {
         key: column.key,
         style: { textAlign: column.align || 'left' },
@@ -1418,6 +1441,32 @@ button.cpx-health-board-row:focus-visible { outline: 2px solid var(--dsw-alias-b
   --cpx-mono: ui-monospace, SFMono-Regular, Menlo, Consolas, "Liberation Mono", monospace;
   --cpx-sakura-soft: var(--dsw-alias-bg-layer-2);
   --cpx-sakura-line: var(--dsw-alias-border-l1);
+  /* 深色控制台（运行日志）的配色：终端本来就不跟随页面主题（浅色背景下黑底终端是惯例），
+     所以它有自己的几个 token。**这里必须真的定义**——只在用到处写 var(--x, #hex) 兜底，
+     等于换主题时这些颜色永远不生效，还让"已全部 token 化"这句话变成假话。 */
+  --cpx-console-bg: #101319;
+  --cpx-console-fg: #dae0eb;
+  --cpx-console-head: #191e27;
+  --cpx-console-border: #2b313c;
+  --cpx-console-muted: #9ca8bb;
+  --cpx-console-dim: #929eb0;
+  --cpx-console-faint: #69758a;
+  --cpx-console-empty: #909aab;
+  --cpx-console-warn: #e5b868;
+  --cpx-console-amber: #e4c183;
+  --cpx-console-ok: #62c99b;
+  --cpx-console-ok-soft: #62c99b55;
+  --cpx-console-error: #f49b9b;
+  --cpx-console-hover: #ffffff06;
+  /* 关键词地图的连线/端点配色。 */
+  --cpx-keymap-port: #b48da7;
+  --cpx-keymap-port-active: #dca2c5;
+  --cpx-keymap-link: #64a9ed;
+  --cpx-keymap-line: #73737a55;
+  --cpx-keymap-ring: #191c23;
+  /* 通用：柔和阴影与柔和遮罩。 */
+  --cpx-shadow-soft: #0002;
+  --cpx-overlay-soft: #0002;
   display: grid;
   grid-template-columns: var(--cpx-rail) minmax(0, 1fr);
   flex: 1 1 auto;
@@ -1642,7 +1691,7 @@ button.cpx-health-board-row:focus-visible { outline: 2px solid var(--dsw-alias-b
   background: var(--dsw-alias-bg-layer-1); color: var(--dsw-alias-label-secondary);
   min-width: 0; flex: 1 1 auto;
 }
-.cpx-search-input { border: 0; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 13.5px; padding: 7px 0; min-width: 0; flex: 1; outline: none; }
+.cpx-search-input { border: 0; background: transparent; color: var(--dsw-alias-label-primary); font: inherit; font-size: 13.5px; padding: 7px 0; min-width: 0; flex: 1; }\n.cpx-search-input:focus-visible { outline: 2px solid var(--dsw-alias-brand-primary); outline-offset: 2px; border-radius: 6px; }
 .cpx-segmented { display: inline-flex; gap: 2px; padding: 2px; border: 1px solid var(--dsw-alias-border-l1); border-radius: 999px; background: var(--dsw-alias-bg-layer-2); flex-wrap: wrap; }
 .cpx-segment {
   display: inline-flex; align-items: center; gap: 6px; padding: 5px 12px;
@@ -1916,7 +1965,7 @@ function Rail({ currentPage, collapsed, onToggle, compact, onCompact, compactAva
   const groups = [
     { label: '陪伴', ids: ['home', 'chat', 'persona', 'qq-web', 'life', 'health'] },
     { label: '记录', ids: ['memory'] },
-    { label: '工具', ids: ['connections', 'media', 'expressions', 'workspace'] },
+    { label: '工具', ids: ['connections', 'media', 'expressions', 'workspace', 'works'] },
     { label: '系统', ids: ['settings'] },
   ];
 
@@ -2151,7 +2200,12 @@ function Shell() {
           }, def.label);
         }))
       : null,
-    h('div', { className: 'cpx-scroll' }, body)),
+    h('div', { className: 'cpx-scroll' }, body),
+    // 全局设置搜索：**面板只由这里渲染一份**（外加注册全局快捷键）。
+    //
+    // 页面里的 `P.ui.SettingsSearch` 只渲染触发按钮、不渲染面板，所以 DOM 里永远
+    // 最多一个 role="dialog"（N1 的回归点：之前设置页会同时出现两块面板）。
+    P.ui.SettingsSearchHost ? h(P.ui.SettingsSearchHost, { key: 'catalog-global' }) : null),
   h(ToastHost, { toasts: notices })));
 }
 
@@ -2191,7 +2245,7 @@ P.css(`
 .cpx-field { min-width:0; }
 .cpx-segmented { display:flex; flex-wrap:wrap; gap:4px; padding:4px; border:1px solid var(--dsw-alias-border-l1); border-radius:11px; background:var(--dsw-alias-bg-layer-1); width:fit-content; max-width:100%; }
 .cpx-segment { border:0; border-radius:8px; padding:9px 18px; color:var(--dsw-alias-label-secondary); font:inherit; font-size:13px; cursor:pointer; background:transparent; }
-.cpx-segment-active { color:var(--dsw-alias-label-primary); background:var(--dsw-alias-bg-layer-3,var(--dsw-alias-bg-layer-2)); box-shadow:0 1px 5px #0002; }
+.cpx-segment-active { color:var(--dsw-alias-label-primary); background:var(--dsw-alias-bg-layer-3,var(--dsw-alias-bg-layer-2)); box-shadow:0 1px 5px var(--cpx-shadow-soft, #0002); }
 .cpx-health { padding:22px; border:1px solid var(--dsw-alias-border-l1); border-radius:16px; background:var(--dsw-alias-bg-layer-1); }
 .cpx-health-grid { grid-template-columns:repeat(auto-fit,minmax(180px,1fr)); gap:12px; }
 .cpx-health-item { width:100%; min-height:105px; padding:16px; border-radius:12px; }

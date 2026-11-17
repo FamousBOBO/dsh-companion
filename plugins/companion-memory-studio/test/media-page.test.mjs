@@ -582,3 +582,41 @@ test('真 descriptor 也能吃下（companion-media 在场时）', async (t) => 
     fs.rmSync(dir, { recursive: true, force: true });
   }
 });
+
+// ── 复核报告 N6：providerDirty 的两处残余 ────────────────────────────────────
+//
+// 钉的是**可达性**（真实 descriptor 形状下按钮能不能点、loading 显不显示），
+// 不是内部实现。旧实现（5a11d7f）在这两条上都回 false / 不显示。
+
+test('touching only the artist string marks a provider dirty (N6-A)', () => {
+  const view = page.buildView(descriptorFixture(), configFixture());
+  const section = view.sections.find((item) => item.id === 'image');
+  const nai = section.providers.find((item) => item.prefix === 'image.nai');
+  assert.ok(nai, '生图 section 里应有 nai provider');
+  // 前提：画师串**不在** provider.fields 里（它在 section.presets.artist），
+  // 这正是旧实现漏掉它的原因。
+  assert.equal(nai.fields.some((field) => field.path.endsWith('artistString')), false);
+  assert.ok(section.presets && section.presets.artist, 'section.presets.artist 应当存在');
+  // 真 descriptor 里 generationFields 可能是 null（这里就是），所以判据不能靠它。
+  assert.equal(nai.generationFields, null, '本夹具的 generationFields 是 null —— 正说明判据不能靠它');
+
+  const extra = [section.presets.artist];
+  // 什么都没改 → 不脏（否则又是 H3 那个恒 dirty 的回归）。
+  assert.equal(page.providerDirty(nai, page.draftFrom(view).draft, {}, {}, extra), false);
+  // 只改画师串 → 必须算脏，否则「保存这个 provider」永远点不动。
+  const dirty = page.providerDirty(nai, { 'image.nai.artistString': '新画师串' }, {}, {}, extra);
+  assert.equal(dirty, true, '只改画师串必须算脏（N6-A）');
+  // 反向：只改一个真在 provider.fields 里的字段，不传 extraFields 也该脏。
+  assert.equal(page.providerDirty(nai, { 'image.nai.steps': 30 }, {}, {}), true);
+});
+
+test('the save loading key matches the one doSave sets (N6-B)', () => {
+  const file = path.join(moduleRoot, 'src/client/pages-media.js');
+  const source = fs.readFileSync(file, 'utf8');
+  assert.match(source, /setBusy\(`save:\$\{prefix \|\| 'all'\}`\)/, 'doSave 应设 save:' + '${prefix}');
+  const keys = [...source.matchAll(/loading: busy === `save:\$\{([^}]+)\}`/g)].map((match) => match[1].trim());
+  assert.ok(keys.length, '应当找到 loading 判据');
+  for (const key of keys) {
+    assert.equal(key, 'provider.prefix', `loading 必须按 provider.prefix 比，实际按 ${key} 比（N6-B）`);
+  }
+});

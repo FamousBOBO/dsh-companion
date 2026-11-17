@@ -758,7 +758,8 @@
     const fieldRow = key => {
       const spec = FIELDS[key];
       const changed = dirty.indexOf(key) >= 0;
-      return h('div', { key, className: 'cpxp-set-field', 'data-dirty': changed ? 'true' : 'false' },
+      // data-field-path 是搜索深链的聚焦锚点（见 src/client/settings-search.js 的 focusSetting）。
+      return h('div', { key, className: 'cpxp-set-field', 'data-dirty': changed ? 'true' : 'false', 'data-field-path': spec.path },
         h(ui.Field, {
           label: spec.label,
           hint: changed ? (spec.hint ? `${spec.hint} · 未保存` : '未保存') : spec.hint,
@@ -773,7 +774,7 @@
       const active = probe && probe.target === target ? probe : null;
       const draftValue = secretDraft[field] || '';
       const busyHere = Boolean(locked || secretBusy);
-      return h('div', { key: `secret-${target}`, className: 'cpxp-set-field', 'data-dirty': 'false' },
+      return h('div', { key: `secret-${target}`, className: 'cpxp-set-field', 'data-dirty': 'false', 'data-field-path': `secrets.${field}` },
         h(ui.Field, {
           label: `${label}（只写不读）`,
           hint: '密钥只存本机，接口只回「是否已配置」，界面不回显、不预填。',
@@ -1241,6 +1242,9 @@
       title: '设置',
       lead: '管理陪伴、记忆与服务偏好。',
       actions: [
+        // 搜索入口由 settings-search.js 提供：它是唯一字段目录（QQ schema + Studio spec）
+        // 的前端，深链回来时按 data-field-path 聚焦到具体控件。
+        P.ui.SettingsSearch ? h(P.ui.SettingsSearch, { key: 'search', compact: false }) : null,
         h(ui.Button, {
           key: 'save',
           variant: 'primary',

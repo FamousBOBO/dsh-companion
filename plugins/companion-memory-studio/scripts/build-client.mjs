@@ -47,6 +47,9 @@ const FRAGMENTS = [
   { file: 'src/client/pages-expression.js', label: '表情包管理（图库/规则/实验室/习惯）' },
   { file: 'src/client/pages-workspace.js', label: '工作区' },
   { file: 'src/client/pages-settings.js', label: '设置' },
+  { file: 'src/client/settings-search.js', label: '跨设置项搜索（唯一字段目录的前端）' },
+  { file: 'src/client/pages-trace.js', label: '诊断事件（结构化 trace 时间线）' },
+  { file: 'src/client/pages-works.js', label: '作品（只读浏览与预览）' },
   { file: 'src/client/pages-overview.js', label: '运行状态（诊断）' },
 ];
 

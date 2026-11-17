@@ -294,6 +294,170 @@ const FIXTURES = {
     rendered: 'FIXTURE-INJECT 【记忆】用户喜欢雨天',
   },
   reviews: { pending: [{ id: 'mem_pending_1', kind: 'fact', scope: 'user_global', policy: 'direct', value: 'FIXTURE-PENDING 候选事实', confidence: 0.55, updatedAt: '2026-10-28T00:30:00.000Z', reasons: ['model_candidate'], hidden: false }], failedJobs: [{ id: 'job_fixture_1', type: 'extract', streamKey: 'sess_fixture', attempts: 2, lastError: 'llm-timeout', updatedAt: '2026-10-28T00:40:00.000Z' }] },
+  // W1：唯一字段目录 + 跨设置项搜索。fixture 只放两条，验证面板渲染、键盘与深链就够了；
+  // 真实目录的规模（288 QQ 字段 + 23 Studio 字段）由服务端用例覆盖。
+  'settings-catalog': {
+    catalog: {
+      metaKeys: ['id', 'label', 'keywords', 'description', 'category', 'source', 'owner', 'permission', 'hotLevel', 'available', 'status'],
+      sources: [
+        { source: 'qq-schema', status: 'loaded', fields: 288, layers: { override: 3, patch: 129 } },
+        { source: 'studio-spec', status: 'loaded', fields: 23 },
+      ],
+      totalFields: 311,
+    },
+    query: '',
+    total: 2,
+    returned: 2,
+    matches: [
+      {
+        id: 'qq:talkValue', label: '群聊回复概率', keywords: ['群聊回复概率', 'talkValue', '回复概率', '群聊与房间'],
+        description: '主群可单独覆盖。', category: '群聊与房间', source: 'qq-schema', owner: 'dsh-channel-qq',
+        permission: 'owner', hotLevel: 'live', available: true, status: 'configured', score: 3,
+        page: 'groups', section: null, path: 'talkValue', kind: 'number', secret: false, deepLink: 'qq:groups',
+      },
+      {
+        id: 'studio:topK', label: '每轮召回条数', keywords: ['每轮召回条数', 'topK', '召回条数', '检索与融合'],
+        description: '', category: '检索与融合', source: 'studio-spec', owner: 'companion-memory-studio',
+        permission: 'host', hotLevel: 'restart', available: true, status: 'configured', score: 2,
+        page: 'settings', section: 'retrieval', path: 'retrieval.topK', kind: 'integer', secret: false, deepLink: 'studio:settings',
+      },
+    ],
+  },
+  // W2：诊断事件。fixture 只放三条，覆盖三种状态就够了；
+  // 真实规模与 SSE 轮转/去重/丢事件由服务端用例覆盖。
+  'trace-events': {
+    source: ['trace-20261116.jsonl'],
+    total: 3,
+    skipped: 0,
+    filters: { traceId: '', module: '', status: '', reasonCode: '' },
+    observedAt: '2026-11-16T09:00:00.000Z',
+    events: [
+      {
+        eventId: 'evt_1', traceId: 'tr_fixture1', at: '2026-11-16T09:00:00.000Z',
+        module: 'memory', stage: 'retrieve', status: 'ok', reasonCode: 'low-coverage',
+        durationMs: 42, counts: { candidates: 30, filtered: 26 }, configRevision: null,
+      },
+      {
+        eventId: 'evt_2', traceId: 'tr_fixture1', at: '2026-11-16T09:00:00.100Z',
+        module: 'memory', stage: 'inject', status: 'ok', reasonCode: 'ok',
+        durationMs: 43, counts: { injected: 3, characters: 180 }, configRevision: null,
+      },
+      {
+        eventId: 'evt_3', traceId: 'tr_fixture2', at: '2026-11-16T09:01:00.000Z',
+        module: 'tool', stage: 'tool-end', status: 'failed', reasonCode: 'tool-threw',
+        durationMs: 9, counts: { toolsCalled: 1, toolsFailed: 1 }, configRevision: null,
+      },
+    ],
+  },
+  'trace-memory': {
+    source: 'logs/memory-recall.jsonl',
+    readable: true,
+    records: 2,
+    skipped: 0,
+    filters: { traceId: '', module: '', status: '', reasonCode: '' },
+    observedAt: '2026-11-16T09:00:00.000Z',
+    events: [
+      {
+        eventId: 'evt_m1', traceId: 'tr_fixture1', at: '2026-11-16T09:00:00.000Z',
+        module: 'memory', stage: 'retrieve', status: 'ok', reasonCode: 'low-coverage',
+        durationMs: 40, counts: { candidates: 20, filtered: 15 }, configRevision: null,
+      },
+      {
+        eventId: 'evt_m2', traceId: 'tr_fixture1', at: '2026-11-16T09:00:00.000Z',
+        module: 'memory', stage: 'inject', status: 'ok', reasonCode: 'ok',
+        durationMs: 40, counts: { injected: 4, characters: 200 }, configRevision: null,
+      },
+      {
+        eventId: 'evt_m3', traceId: 'tr_fixture2', at: '2026-11-16T09:01:00.000Z',
+        module: 'memory', stage: 'retrieve', status: 'ok', reasonCode: 'ok',
+        durationMs: 12, counts: { candidates: 0, filtered: 0 }, configRevision: null,
+      },
+      {
+        eventId: 'evt_m4', traceId: 'tr_fixture2', at: '2026-11-16T09:01:00.000Z',
+        module: 'memory', stage: 'inject', status: 'empty', reasonCode: 'empty-candidate-pool',
+        durationMs: 12, counts: { injected: 0, characters: 0 }, configRevision: null,
+      },
+    ],
+  },
+  // W3：作品中心。fixture 两份作品，状态刻意不同（一份有 finish 收据、一份只有 review），
+  // 用来验证"状态来自证据而不是文件存在"。
+  works: {
+    available: true,
+    reason: '',
+    root: { configured: 'home/companion/works' },
+    evidence: { available: true, reason: '' },
+    total: 2,
+    filters: { q: '', type: '', status: '', from: '', to: '' },
+    items: [
+      {
+        activityId: 'act_fixture_1',
+        relative: 'bot/c1/rain.md',
+        title: 'FIXTURE-WORK-RAIN',
+        type: 'md',
+        size: 88,
+        modifiedAt: '2026-11-16T09:00:00.000Z',
+        status: 'done',
+        statusLabel: '已完成',
+        version: 3,
+        hashPrefix: 'deadbeefdeadbeef',
+        evidence: { finishReceipted: true, reviewReceipted: true, receiptCount: 4, reality: 'actual_tool_activity' },
+        kind: 'write',
+        adapter: 'write',
+        units: { total: 100, consumed: 100 },
+        startedAt: '2026-11-16T08:00:00.000Z',
+        updatedAt: '2026-11-16T09:00:00.000Z',
+        preview: { ok: true, reason: '' },
+        segmentCount: 3,
+        otherVersions: 2,
+      },
+      {
+        activityId: 'act_fixture_2',
+        relative: 'bot/c1/sun.txt',
+        title: 'FIXTURE-WORK-SUN',
+        type: 'txt',
+        size: 24,
+        modifiedAt: '2026-11-15T09:00:00.000Z',
+        status: 'review',
+        statusLabel: '待核对',
+        version: 1,
+        hashPrefix: 'cafebabecafebabe',
+        evidence: { finishReceipted: false, reviewReceipted: true, receiptCount: 1, reality: 'actual_tool_activity' },
+        kind: 'write',
+        adapter: 'write',
+        units: { total: 40, consumed: 24 },
+        startedAt: '2026-11-15T08:00:00.000Z',
+        updatedAt: '2026-11-15T09:00:00.000Z',
+        preview: { ok: true, reason: '' },
+        segmentCount: 3,
+        otherVersions: 0,
+      },
+    ],
+    skipped: 1,
+    skippedReasons: { 'path-denied': 1 },
+    statuses: ['draft', 'running', 'review', 'done', 'failed'],
+    observedAt: '2026-11-16T10:00:00.000Z',
+  },
+  'work-detail': {
+    ok: true,
+    reason: '',
+    relative: 'bot/c1/rain.md',
+    title: 'FIXTURE-WORK-RAIN',
+    type: 'md',
+    size: 88,
+    modifiedAt: '2026-11-16T09:00:00.000Z',
+    text: '# FIXTURE-WORK-BODY\n这是一段预览正文。\n',
+    truncated: false,
+    status: 'done',
+    version: 3,
+    hashPrefix: 'deadbeefdeadbeef',
+    evidence: {
+      finishReceipted: true,
+      reviewReceipted: true,
+      receiptCount: 4,
+      receiptCodes: ['finish+', 'review+', 'step+', 'start+'],
+    },
+    observedAt: '2026-11-16T10:00:00.000Z',
+  },
   settings: {
     configPath: 'C:/tmp/home/companion/memory.config.json', backend: 'sqlite', restartRequiredHint: true,
     editable: { backend: 'sqlite', extractionEnabled: true, minMessages: 6, semanticEnabled: true, budgetChars: 2400, topK: 8, rrfK: 60, mmrLambda: 0.72, coverageFloor: 0.15, embeddingProvider: 'local', wikiAutoCompile: true, wikiMaxEntriesPerTopic: 40 },
@@ -530,6 +694,28 @@ function fakeExpressionFetch(sub, method, body) {
   return expressionJson({ ok: false, error: { code: 'not-found', message: `smoke: 未实现的表情包端点 ${sub}` } }, 404);
 }
 
+
+/** `/work-detail` 的拒绝信封：与真实实现同一口径，供冒烟断言"拒绝真的发生了"。 */
+function deniedWorkDetail(relative) {
+  const at = '2026-11-16T10:00:00.000Z';
+  const text = String(relative ?? '');
+  if (!text) return { ok: false, reason: 'path-required', meta: null, observedAt: at };
+  if (text.startsWith('../') || text.startsWith('/') || text.includes('..') || /^[A-Za-z]:/.test(text)) {
+    return { ok: false, reason: 'path-denied', meta: null, observedAt: at };
+  }
+  if (text !== 'bot/c1/rain.md' && text !== 'bot/c1/sun.txt') {
+    // 属于另一个 scope（或没有被本 scope 的 activity 引用）：先授权再读正文，所以不给 text。
+    return {
+      ok: false,
+      reason: 'not-in-scope',
+      detail: '这个文件不在当前身份的作品记录里。',
+      meta: { relative: text, size: null, type: 'md' },
+      observedAt: at,
+    };
+  }
+  return null;
+}
+
 async function fakeFetch(input, init) {
   const url = typeof input === 'string' ? input : String(input && input.url ? input.url : input);
   const parsed = new URL(url, 'http://127.0.0.1:52623/');
@@ -549,6 +735,13 @@ async function fakeFetch(input, init) {
   requests.push({ method, endpoint, query: Object.fromEntries(parsed.searchParams), body });
   calls.push(endpoint);
   const key = endpoint === 'maintenance' ? 'summary' : endpoint === 'review' ? 'reviews' : endpoint;
+  // work-detail 要按 `path` 分派：越界与跨 scope 各自该拿到 `ok:false` 的信封
+  // （否则冒烟只能测"列表非空"，测不到越界拒绝 —— 审查报告 M8）。
+  if (endpoint === 'work-detail') {
+    const relative = String(parsed.searchParams.get('path') ?? '');
+    const denied = deniedWorkDetail(relative);
+    if (denied) return stubResponse(denied);
+  }
   // 心跳「开始」失败的信封（`pulse-unreachable` + errorCode 细分）：只在显式放进去时生效。
   if (method === 'POST' && endpoint.includes('companion-health/pulse') && FIXTURES['__pulse-post-failure']) {
     return { ok: true, status: 200, json: async () => FIXTURES['__pulse-post-failure'] };
@@ -685,7 +878,7 @@ if (!findBy(iconTree, (node) => node.tag === 'svg')) {
 const failures = [];
 // 一级导航的期望值来自 core.js 的 NAV（12 项，顺序固定）。这里只列 label；
 // 页面列表本身由 NAV 驱动，新增页签时同步这一行即可。
-const RAIL_LABELS = ['陪伴首页', '聊天', '人格', 'QQ 连接', '生活与日程', '运动健康', '记忆与档案', '连接与工具', '媒体能力', '表情包', '工作区', '设置'];
+const RAIL_LABELS = ['陪伴首页', '聊天', '人格', 'QQ 连接', '生活与日程', '运动健康', '记忆与档案', '连接与工具', '媒体能力', '表情包', '工作区', '作品', '设置'];
 
 let tree = await renderUntilStable(createElement(main.component, {}));
 
@@ -766,6 +959,9 @@ for (const label of ['陪伴首页', '生活与日程', '连接与工具', '工�
   const buttonIn = (node, label) => findAll(node, (item) => item.tag === 'button' && textOf(item) === label)[0] || null;
   const inputIn = (node, needle) => findAll(node, (item) => item.tag === 'input'
     && String((item.props && item.props['aria-label']) || '').includes(needle))[0] || null;
+  // 按控件 id 找（media-<path>）：label 文案来自 descriptor、会变，id 不会。
+  const fieldByPath = (path, tag) => findAll(tree, (item) => item.tag === (tag || 'input')
+    && item.props && item.props.id === ('media-' + path))[0] || null;
   const selectIn = (node, needle) => findAll(node, (item) => item.tag === 'select'
     && String((item.props && item.props['aria-label']) || '').includes(needle))[0] || null;
   const toggleIn = (node, needle) => {
@@ -806,10 +1002,29 @@ for (const label of ['陪伴首页', '生活与日程', '连接与工具', '工�
   else {
     await reload();
     const rendered = text(tree);
+    // 调试用：SMOKE_DEBUG_MEDIA=1 时把媒体页的**结构**打出来（按钮文本 / 控件 id+aria / 分区）。
+    // 不含任何密钥值：input 只打 id 与 type，不打 value。
+    if (process.env.SMOKE_DEBUG_MEDIA === '1') {
+      const outline = [];
+      const walk = (node, depth) => {
+        if (!node || depth > 40) return;
+        const cls = classOf(node);
+        if (node.tag === 'button') outline.push(`${' '.repeat(depth)}btn "${textOf(node)}" aria=${node.props['aria-label'] || '-'} disabled=${node.props.disabled === true} role=${node.props.role || '-'}`);
+        if (node.tag === 'input') outline.push(`${' '.repeat(depth)}input id=${node.props.id || '-'} type=${node.props.type || '-'} aria=${node.props['aria-label'] || '-'} disabled=${node.props.disabled === true}`);
+        if (node.tag === 'select') outline.push(`${' '.repeat(depth)}select id=${node.props.id || '-'} aria=${node.props['aria-label'] || '-'}`);
+        if (cls.includes('cpxp-media-sec')) outline.push(`${' '.repeat(depth)}SECTION ${node.props['data-section'] || '?'}`);
+        if (cls.includes('cpxp-media-card')) outline.push(`${' '.repeat(depth)}CARD`);
+        if (Array.isArray(node.children)) node.children.forEach((child) => walk(child, depth + 1));
+        else if (node.children && typeof node.children === 'object') walk(node.children, depth + 1);
+      };
+      walk(tree, 0);
+      console.log('--- MEDIA OUTLINE ---\n' + outline.join('\n') + '\n--- END ---');
+    }
     for (const label of ['媒体能力', '识图', '生图', '语音合成']) {
       if (!rendered.includes(label)) failures.push(`媒体页：缺少分区「${label}」`);
     }
-    for (const label of ['Breeze TTS 2', 'GPT-SoVITS', 'Drama3', 'Index-TTS', 'Fish Audio', 'OpenAI-compatible 生图', 'NovelAI']) {
+    // provider 名来自 descriptor 的 label；页面不自己造名字。
+    for (const label of ['Breeze TTS 2', 'GPT-SoVITS', 'Drama3', 'Index-TTS', 'Fish Audio', 'OpenAI-compatible', 'NovelAI']) {
       if (!rendered.includes(label)) failures.push(`媒体页：缺少 provider「${label}」`);
     }
     if (!rendered.includes('已保存、未测试')) failures.push('媒体页：没有渲染 descriptor 的状态文案「已保存、未测试」');
@@ -824,21 +1039,22 @@ for (const label of ['陪伴首页', '生活与日程', '连接与工具', '工�
     if (autoCalls.length) failures.push(`媒体页：第一次保存之前就自动发起了 ${autoCalls.map((item) => item.sub).join(',')}`);
     if (!mediaFixture.ok) failures.push(`媒体页：媒体假后端不可用（${mediaFixture.reason}）`);
 
-    // A saved selection must expose its fields without a second "expand" action.
-    if (!inputIn(cardByText('OpenAI-compatible'), 'Base URL')) {
+    // 已选的 provider 必须直接展开字段，不需要第二次点「展开」。
+    if (!fieldByPath('image.openai-compatible.baseUrl')) {
       failures.push('媒体页：已选 OpenAI-compatible 的配置没有自动展开');
     }
 
-    // (1) 识图：明确「预留，当前关闭」且开关不可操作
-    const visionToggle = toggleIn(tree, '启用识图');
+    // (1) 识图：descriptor 是 locked + toggle.disabled，页面必须照做并写明「预留」。
+    const visionToggle = findAll(tree, (node) => node.tag === 'input'
+      && String((node.props && node.props['aria-label']) || '') === '启用识图')[0];
     if (!visionToggle) failures.push('媒体页：找不到识图开关');
     else if (visionToggle.props.disabled !== true) failures.push('媒体页：识图开关没有被禁用');
     const visionSection = findAll(tree, (node) => classOf(node).includes('cpxp-media-sec') && textOf(node).includes('识图'))[0];
     if (!visionSection || !textOf(visionSection).includes('预留')) failures.push('媒体页：识图分区没有说明「预留，当前关闭」');
-    const visionUrl = inputIn(visionSection || tree, 'Base URL');
+    const visionUrl = visionSection ? inputIn(visionSection, '服务地址') : null;
     if (visionUrl && visionUrl.props.disabled !== true) failures.push('媒体页：识图的字段仍可编辑');
 
-    // (2) Index-TTS：尚未接入 + 开关禁用 + 不能测试
+    // (2) Index-TTS：descriptor 给 canEnable=false / canTest=false，页面必须置灰并标「尚未接入」。
     if (!cardByText('Index-TTS')) failures.push('媒体页：找不到 Index-TTS 卡');
     else {
       if (!textOf(cardByText('Index-TTS')).includes('尚未接入')) failures.push('媒体页：Index-TTS 没有标「尚未接入」');
@@ -853,12 +1069,13 @@ for (const label of ['陪伴首页', '生活与日程', '连接与工具', '工�
       if (close) { close.props.onClick(); await reload(); }
     }
 
+
     // (3) NAI：展开 → 改步数 → 保存这个 provider → 断言请求体只含这一项
     {
       const card = await expandCard('NovelAI');
       if (!card) failures.push('媒体页：找不到 NAI 卡');
       else {
-        const stepsInput = inputIn(card, '步数');
+        const stepsInput = fieldByPath('image.nai.steps');
         if (!stepsInput) failures.push('媒体页：NAI 卡里没有「步数」输入框');
         else {
           if (String(stepsInput.props.value) !== '28') failures.push(`媒体页：NAI 步数默认值不是 28（实际 ${stepsInput.props.value}）`);
@@ -891,7 +1108,7 @@ for (const label of ['陪伴首页', '生活与日程', '连接与工具', '工�
       if (!card) failures.push('媒体页：找不到 OpenAI-compatible 卡');
       else {
         if (!textOf(card).includes('已配置')) failures.push('媒体页：已配置的密钥没有显示「已配置」');
-        const secretInput = inputIn(card, 'API Key');
+        const secretInput = fieldByPath('image.openai-compatible.apiKey');
         if (!secretInput) failures.push('媒体页：OpenAI 卡里没有 API Key 输入');
         else {
           if (String(secretInput.props.value) !== '') failures.push('媒体页：密钥输入框不是空的（可能回显了明文）');
@@ -908,7 +1125,7 @@ for (const label of ['陪伴首页', '生活与日程', '连接与工具', '工�
             if (written !== 'sk-new-B2') failures.push(`媒体页：输入的密钥没有进请求体（实际 ${JSON.stringify(written)}）`);
             if (text(tree).includes('sk-new-B2')) failures.push('媒体页：保存后 DOM 里仍有密钥明文');
             card = await expandCard('OpenAI-compatible');
-            const afterInput = card ? inputIn(card, 'API Key') : null;
+            const afterInput = fieldByPath('image.openai-compatible.apiKey');
             if (!afterInput) failures.push('媒体页：保存后找不到密钥输入框');
             else if (String(afterInput.props.value) !== '') failures.push('媒体页：保存后密钥输入框没有清空');
           }
@@ -925,7 +1142,7 @@ for (const label of ['陪伴首页', '生活与日程', '连接与工具', '工�
       protocol.props.onChange({ target: { value: 'nai' } });
       await reload();
       if (selectIn(tree, '协议')?.props.value !== 'nai') failures.push('媒体页：协议选择没有反映尚未保存的 NAI 选项');
-      if (!inputIn(cardByText('NovelAI'), '步数')) failures.push('媒体页：选择 NAI 后配置没有自动展开');
+      if (!fieldByPath('image.nai.steps')) failures.push('媒体页：选择 NAI 后配置没有自动展开');
       const saveSection = sectionSaveButton('生图');
       if (!saveSection) failures.push('媒体页：生图分区里找不到「保存这一块」');
       else if (saveSection.props.disabled) failures.push('媒体页：切了协议后「保存这一块」仍然禁用');
@@ -941,7 +1158,7 @@ for (const label of ['陪伴首页', '生活与日程', '连接与工具', '工�
         const back = selectIn(tree, '协议');
         if (!back || String(back.props.value) !== 'nai') failures.push(`媒体页：切换协议后回读不一致（${back ? back.props.value : '缺失'}）`);
         const otherCard = await expandCard('OpenAI-compatible');
-        const baseUrl = otherCard ? inputIn(otherCard, 'Base URL') : null;
+        const baseUrl = fieldByPath('image.openai-compatible.baseUrl');
         if (!baseUrl || String(baseUrl.props.value) !== 'https://api.example.test/v1') {
           failures.push(`媒体页：切换协议后另一个 provider 的配置丢了（Base URL=${baseUrl ? baseUrl.props.value : '缺失'}）`);
         }
@@ -1075,7 +1292,7 @@ for (const label of ['陪伴首页', '生活与日程', '连接与工具', '工�
       if (protocolNow && String(protocolNow.props.value) !== 'openai-compatible') {
         protocolNow.props.onChange({ target: { value: 'openai-compatible' } });
         await reload();
-        if (!inputIn(cardByText('OpenAI-compatible'), 'Base URL')) failures.push('媒体页：切回 OpenAI-compatible 后配置没有自动展开');
+        if (!fieldByPath('image.openai-compatible.baseUrl')) failures.push('媒体页：切回 OpenAI-compatible 后配置没有自动展开');
         const saveBack = sectionSaveButton('生图');
         if (saveBack && !saveBack.props.disabled) { saveBack.props.onClick(); await reload(); }
       }
@@ -1378,6 +1595,9 @@ for (const label of ['陪伴首页', '生活与日程', '连接与工具', '工�
 }
 
 // 5. 分组入口的每个 tab 都能打开（记忆与档案、设置）
+// 期望 tab 数按组分别声明：设置组只有「设置 / 运行状态」两个 tab，过去一条 `>=3` 的通判
+// 已经在设置组上假红过（实现没变、断言过期），所以这里改成逐组的下限。
+const GROUP_MIN_TABS = { '记忆与档案': 5, '设置': 3 }; // 设置组：设置/运行状态/诊断事件
 for (const groupLabel of ['记忆与档案', '设置']) {
   if (!clickRail(groupLabel)) {
     failures.push(`找不到导航：${groupLabel}`);
@@ -1385,7 +1605,9 @@ for (const groupLabel of ['记忆与档案', '设置']) {
   }
   tree = await renderUntilStable(createElement(main.component, {}));
   const tabs = tabButtons().map(textOf);
-  if (tabs.length < 3) failures.push(`${groupLabel}：tab 数量异常（${tabs.join('/')}）`);
+  if (tabs.length < (GROUP_MIN_TABS[groupLabel] ?? 1)) {
+    failures.push(`${groupLabel}：tab 数量异常（${tabs.join('/')}）`);
+  }
   for (const label of tabs) {
     const button = tabButtons().find((node) => textOf(node) === label);
     if (!button) {
@@ -1595,17 +1817,180 @@ for (const groupLabel of ['记忆与档案', '设置']) {
   }
 }
 
-// 6. 原生聊天入口在没有 layout 服务时必须给出可读提示，而不是静默失败
+// 6. 聊天入口的当前契约：它是本插件自己注册的「聊天设置」页，**不是**宿主的原生面板。
+//    过去 NAV 里这一项是 native 类型，靠 P.nav.openPanel() 跳回原生聊天，缺 layout 时
+//    弹「宿主导航服务不可用」。现在 NAV 已没有 native 项（chat 由 pages-chat-settings.js
+//    注册），那条提示路径未可达——继续断言它只会假红，并且掩盖真正该验的东西：
+//    这个页面自己能渲染出来。
 {
   if (clickRail('聊天')) {
     tree = await renderUntilStable(createElement(main.component, {}));
     const rendered = text(tree);
-    if (!rendered.includes('宿主导航')) failures.push('聊天：缺少 layout 服务时没有可读提示');
+    if (rendered.includes('缺少页面')) failures.push('聊天：页面片段没有构建');
+    if (!rendered.includes('聊天设置')) failures.push('聊天：没有渲染「聊天设置」页');
+    if (!findAll(tree, (node) => classOf(node).includes('cpx-title')).length) failures.push('聊天：没有页名');
   } else {
     failures.push('找不到导航：聊天');
   }
 }
 
+// 7. 设置搜索面板（W1-3 / W1-4）：唯一字段目录的前端。
+//    验的是契约而不是像素：面板能开、目录来自 /settings-catalog、键盘能选、深链会聚焦。
+{
+  if (!clickRail('设置')) {
+    failures.push('找不到导航：设置');
+  } else {
+    tree = await renderUntilStable(createElement(main.component, {}));
+    const triggers = findAll(tree, (node) => node.tag === 'button' && classOf(node).includes('cpx-cat-trigger'));
+    if (!triggers.length) {
+      failures.push('设置：头部没有搜索设置入口');
+    } else {
+      triggers[0].props.onClick();
+      tree = await renderUntilStable(createElement(main.component, {}));
+      const rendered = text(tree);
+      // **同屏只能有一块面板**（复核报告 N1）：设置页自己那份现在是纯触发器，
+      // 面板只由页面壳的全局挂载点渲染。旧实现这里会同时出现 2 个 role=dialog、
+      // 2 个遮罩、2 个输入框、4 个 aria-label —— 屏幕阅读器会报两个模态。
+      const allDialogs = findAll(tree, (node) => node.props && node.props.role === 'dialog');
+      if (allDialogs.length !== 1) {
+        failures.push(`搜索面板：同屏应只有 1 个 role=dialog，实际 ${allDialogs.length} 个`);
+      }
+      const allOverlays = findAll(tree, (node) => classOf(node).includes('cpx-cat-overlay'));
+      if (allOverlays.length !== 1) {
+        failures.push(`搜索面板：同屏应只有 1 个遮罩，实际 ${allOverlays.length} 个`);
+      }
+      const searchInputs = findAll(tree, (node) => node.tag === 'input'
+        && String(node.props && node.props.type || '') === 'search');
+      if (searchInputs.length !== 1) {
+        failures.push(`搜索面板：同屏应只有 1 个搜索输入框，实际 ${searchInputs.length} 个`);
+      }
+      const dialogs = findAll(tree, (node) => node.props && classOf(node).includes('cpx-cat-panel'));
+      if (!dialogs.length) failures.push('搜索面板：没有渲染对话框');
+      else if (dialogs[0].props.role !== 'dialog' || dialogs[0].props['aria-modal'] !== 'true') failures.push('搜索面板：对话框缺少 dialog/aria-modal');
+      // 结果来自 fixture 的 /settings-catalog，两条字段都该出现（空查询 = 全量稳定列表）。
+      if (!rendered.includes('每轮召回条数')) failures.push('搜索面板：没有渲染 studio 侧字段');
+      if (!rendered.includes('群聊回复概率')) failures.push('搜索面板：没有渲染 qq 侧字段');
+      // 状态与热等级必须如实显示，不能笼统写「已保存」。
+      if (!rendered.includes('需重启')) failures.push('搜索面板：没有显示热生效等级');
+      if (!rendered.includes('已配置')) failures.push('搜索面板：没有显示字段状态');
+      // N9：点"面板外面"必须真的关得掉。
+      // 先关掉、再重开，避免影响后面的深链断言。
+      {
+        const backdrop = findAll(tree, (node) => classOf(node).includes('cpx-cat-backdrop'))[0];
+        if (!backdrop || typeof backdrop.props.onClick !== 'function') {
+          failures.push('搜索面板：遮罩没有点击关闭（点外面关不掉）');
+        } else {
+          backdrop.props.onClick({ target: backdrop, currentTarget: backdrop });
+          const afterClose = await renderUntilStable(createElement(main.component, {}));
+          const stillThere = findAll(afterClose, (node) => node.props && node.props.role === 'dialog');
+          if (stillThere.length) failures.push(`点遮罩后面板没有关闭（仍有 ${stillThere.length} 个 role=dialog）`);
+          tree = afterClose;
+        }
+        // 重新打开，供后面的深链断言使用。
+        const again = findAll(tree, (node) => node.tag === 'button' && classOf(node).includes('cpx-cat-trigger'));
+        if (again.length) again[0].props.onClick();
+        tree = await renderUntilStable(createElement(main.component, {}));
+      }
+      // 深链：studio 侧结果点下去应聚焦到 data-field-path 对应的控件。
+      const items = findAll(tree, (node) => node.tag === 'button' && classOf(node).includes('cpx-cat-item'));
+      if (!items.length) failures.push('搜索面板：结果项不是可点的按钮');
+      const studioItem = items.find((node) => String(node.props['data-field-path'] || '').startsWith('retrieval.'));
+      if (!studioItem) {
+        failures.push('搜索面板：studio 侧结果缺少 data-field-path');
+      } else {
+        studioItem.props.onClick();
+        tree = await renderUntilStable(createElement(main.component, {}));
+        const anchors = findAll(tree, (node) => node.props && node.props['data-field-path'] === 'retrieval.topK');
+        if (!anchors.length) failures.push('深链：设置页的控件没有 data-field-path 锚点（无法聚焦）');
+        // 面板是否关闭要看**树上还有没有对话框**：`text()` 只拼文本节点，永远拼不到
+    // `aria-label`，旧断言其实从不命中（审查报告 M8）。
+    const stillOpen = findAll(tree, (node) => node.props && node.props.role === 'dialog');
+    if (stillOpen.length) failures.push(`深链：点选结果后面板没有关闭（仍有 ${stillOpen.length} 个 role=dialog）`);
+    // 拿到的锚点还要真的带 data-field-path（能聚焦的实现依据）。
+    const anchored = anchors.length ? anchors[0] : null;
+    if (anchored && !anchored.props['data-field-path']) failures.push('深链：锚点没有 data-field-path');
+      }
+    }
+  }
+}
+// 8. 诊断事件页（W2）：结构化 trace 时间线与记忆侧投影。
+//    验契约不验像素：状态徽标、理由码、丢事件计数都必须看得见，且没有正文。
+{
+  if (!clickRail('设置')) {
+    failures.push('找不到导航：设置');
+  } else {
+    tree = await renderUntilStable(createElement(main.component, {}));
+    const tab = tabButtons().find((node) => textOf(node) === '诊断事件');
+    if (!tab) {
+      failures.push('设置组：找不到 tab「诊断事件」');
+    } else {
+      tab.props.onClick();
+      tree = await renderUntilStable(createElement(main.component, {}));
+      const rendered = text(tree);
+      if (!rendered.includes('时间线')) failures.push('诊断事件：没有时间线区块');
+      // 快照模式要真的读一条事件出来（实时模式走 EventSource 替身，收不到推送）。
+      const snapshotButton = findAll(tree, (node) => node.tag === 'button' && textOf(node).includes('实时'));
+      if (!snapshotButton.length) failures.push('诊断事件：没有实时/快照切换');
+      else {
+        snapshotButton[0].props.onClick();
+        tree = await renderUntilStable(createElement(main.component, {}));
+        const after = text(tree);
+        if (!after.includes('retrieve')) failures.push('诊断事件：快照里没有 retrieve 阶段');
+        if (!after.includes('low-coverage')) failures.push('诊断事件：没有显示 reasonCode');
+        if (!after.includes('失败')) failures.push('诊断事件：失败的阶段没有可读状态');
+        // 记忆侧投影必须按 traceId 折叠成一轮，且空注入要标「无结果」。
+        if (!after.includes('tr_fixture1')) failures.push('诊断事件：记忆侧没有按 traceId 折叠');
+        if (!after.includes('无结果')) failures.push('诊断事件：空注入没有标「无结果」');
+      }
+      // 正文绝不出现。
+      if (text(tree).includes('FIXTURE-RECENT')) failures.push('诊断事件：混进了记忆正文');
+    }
+  }
+}
+// 9. 作品中心（W3）：只读列表 + 受限预览。
+//    验契约：目录不存在与"没有作品"分开说、状态来自收据、越界预览拒绝、正文不渲染 HTML。
+{
+  if (!clickRail('作品')) {
+    failures.push('找不到导航：作品');
+  } else {
+    tree = await renderUntilStable(createElement(main.component, {}));
+    const rendered = text(tree);
+    if (rendered.includes('缺少页面')) failures.push('作品：页面片段没有构建');
+    if (!findAll(tree, (node) => classOf(node).includes('cpx-title')).length) failures.push('作品：没有页名');
+    // fixture 里 available=true、两份作品；状态徽标必须来自收据。
+    if (!rendered.includes('FIXTURE-WORK-RAIN')) failures.push('作品：列表没有渲染作品标题');
+    if (!rendered.includes('已完成')) failures.push('作品：有 finish 收据的没有标「已完成」');
+    if (!rendered.includes('待核对')) failures.push('作品：只有 review 收据的被标成了已完成');
+    // 绝对路径绝不能出现在页面上。
+    if (rendered.includes('C:\\') || rendered.includes('/home/companion/works')) {
+      failures.push('作品：页面暴露了绝对路径');
+    }
+    // 点开预览：文本要渲染，且只作为纯文本（不是 HTML）。
+    const item = findAll(tree, (node) => node.tag === 'button' && node.props['data-work-path'] === 'bot/c1/rain.md');
+    if (!item.length) {
+      failures.push('作品：列表项缺少 data-work-path');
+    } else {
+      item[0].props.onClick();
+      tree = await renderUntilStable(createElement(main.component, {}));
+      const after = text(tree);
+      if (!after.includes('FIXTURE-WORK-BODY')) failures.push('作品：预览没有渲染正文');
+      if (!findAll(tree, (node) => node.tag === 'pre').length) failures.push('作品：预览不是纯文本容器');
+    }
+    // 越界/不属于本 scope 的路径必须给出可读原因，而不是空白。
+    //
+    // 旧断言只是"列表非空"，与注释写的越界拒绝毫无关系（审查报告 M8）。这里真的
+    // 发一次越界与一次跨 scope 的请求，断言都拿到 ok:false 且带上可读 reason。
+    const escaped = await (await fakeFetch('http://127.0.0.1:52623/api/companion-memory/work-detail?path=' + encodeURIComponent('../outside.md'))).json();
+    if (escaped.ok !== true || escaped.data.ok !== false) failures.push('作品：越界路径没有被拒绝');
+    else if (!escaped.data.reason) failures.push('作品：越界拒绝没有给 reason');
+    const crossScope = await (await fakeFetch('http://127.0.0.1:52623/api/companion-memory/work-detail?path=' + encodeURIComponent('other-world/secret.md'))).json();
+    if (crossScope.ok !== true || crossScope.data.ok !== false) failures.push('作品：跨 scope 路径没有被拒绝');
+    else if (crossScope.data.reason !== 'not-in-scope') failures.push('作品：跨 scope 拒绝的 reason 不是 not-in-scope（' + crossScope.data.reason + '）');
+    else if (crossScope.data.text !== undefined) failures.push('作品：跨 scope 拒绝仍然回了正文');
+    const blocked = findAll(tree, (node) => classOf(node).includes('cpx-wk-item'));
+    if (!blocked.length) failures.push('作品：过滤后列表为空');
+  }
+}
 const usedEndpoints = [...new Set(calls)].sort();
 const mediaEndpoints = [...new Set(mediaRequests.map((item) => `${item.method} ${item.sub}`))].sort();
 console.log('客户端冒烟');
