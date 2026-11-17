@@ -386,6 +386,19 @@ N4 的**可达性不夸大**：心跳只交窗口覆盖 `now` 的槽，自己不
 **代码**改动（一个 SQL 谓词 + 三条用例）；它让 `willMiss` 在「provider 长期未就绪 + 窗口逐个关闭」这个
 **正是本 PR 要解决的场景**下不再报 0——但那只是把观测报准，不是把 B 站跑通。
 
+### 2.17 PR #4 九轮审查的收口（2026-11-17）：N13 口径（P3，base 已有的取样上限）
+
+| 编号 | 缺陷（一句话） | 修法 | 证据 |
+|---|---|---|---|
+| **N13（P3）** | `counts.willMiss` 仍受 `min(50, limit)`＝20 的**取样窗**限制，而 CONTRACT 写着「= 泵真的会写多少条」。40 个已关闭 read 槽、**没有任何闸门槽**时 `willMiss 20` 而真值 40。**是 base 就有的**（九轮用同一探针在 head-v4 之前的提交上跑出**逐字相同**的输出），N11 只是把它从「被闸门槽挤掉」降级回「纯粹的取样上限」，触发面小得多 | 只改口径，不加字段：把「= 泵真的会写多少条」降级成「**至多**」，并写明三个叠加原因（不透支能力槽／取样窗 20／累计口径）；新增「要精确的积压量，读 `metrics.slots_open`」一句 | 九轮复核的探针：40 已关闭 read、无闸门槽 ⇒ `counts.willMiss 20` / `metrics.slots_open 40`；A/B：同一夹具在 head-v4 之前逐字相同 ⇒ 既有 |
+
+**没有做的事（与九轮建议一致）**：没有加 `WILL_MISS_COUNT_SQL`、没有给 `dispatchWatch` 补 `truncated`、没有透传 `limit`。这三件事是同一个问题——「`rows[]` 与 `counts` 是取样，`metrics` 是精确值，边界只能靠人读文档」——九轮把它们合并成一条「合并后单开」的建议。本轮只做那句措辞，避免把这条补丁继续扩成观测契约改造。
+
+总账（本轮本机实测）：`node --test "plugins/companion-runtime/test/*.test.mjs"` **731/731**、`*bilibili*` **23/23**、
+`p2.5-dispatch-observability` **12/12**（watch 仍零写入）、`node scripts/verify.mjs` exit 0；数字与 §2.16 相同——
+本轮只改文档，代码与断言零改动。
+
+**这些仍然不算证据**：没有真宿主装载、没有真模型、没有真 B 站账号、没有真 QQ 发送。
 ### 2.9 群聊社交运行时 P5–P8（2026-11-08）：仍只有 `offline-test`，真实发送未开始
 
 P5–P8 交付见 `docs/10a-group-baseline-audit.md`（P5 基线与停发控制）、`docs/10b-group-gray-release.md`

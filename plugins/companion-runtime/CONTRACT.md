@@ -941,8 +941,10 @@ memory 早就有 `status='superseded'` 取值、`valid_to` 列与 `recordRevisio
   - `expectedBeat`：按 `heartbeat.maxDispatchPerCycle` 推算"第几拍能轮到它"（`floor(第N个/每拍上限)+1`）。**是推算，不是承诺**：前提是这段时间没有聊天抢占、没有暂停、没有新计划。`blocked-capability` 行**不给** `expectedBeat`（`null`）——承诺一个永远不会到来的拍号就是把闸门藏起来。
   - `locked` **不阻断** claim（`dueSlotsForHeartbeat` 的 SQL 里没有 locked 判据）——锁是 H5 的"不要挪动时间"，不是"不要执行"。这里把它原样暴露，不自己发明规则。
   - `counts.capabilityBlocked`：上面这类行的条数。它与 `counts.claimable` **不重叠**，所以"这一拍为什么会动/为什么不动"不会两边都数一遍。
-  - **`counts.willMiss` = 泵真的会写多少条 `missed` 事实**（round-4 N1；round-7 N10 补时间口径）：它不是"所有窗口已关闭的槽"的条数。能力未就绪的已关闭槽被 `blocked-capability` 收走，而不是在 `willMiss` 里承诺一个泵不会兑现的 `missed`。
-    - **按「累计」读成立，按「下一拍」读不成立**：泵每次扫描有 `LIMIT 8`（`p2.mjs` 的 missed 扫描），所以 20 个已关闭的 read 槽会得到 `willMiss 20`，而泵下一拍只写 **8** 条；连跑到 **5 拍** 才是 `8 → 16 → 20`。要「这一拍会写几条」，请读成 **至多 `min(willMiss, 8)`**——那个 8 的名额闸门槽也占（它们退役但不写收据），所以实际可能更少（round-8 N12 实测：10 个已关闭 B 站槽排在 20 个 read 槽前面时，一拍写 **0** 条）。
+  - **`counts.willMiss` = 泵会写多少条 `missed` 事实的「至多」**（round-4 N1；round-7 N10；round-8 N11/N12；round-9 N13）：「泵真的会写多少条」这个等号**不成立**，三个原因叠加——① 不透支能力槽（能力未就绪的已关闭槽被 `blocked-capability` 收走，不在 `willMiss` 里承诺一个泵不会兑现的 `missed`）；② 取样窗只有 `min(50, limit)`＝20，**已关闭的 read 槽超过 20 个时它只报 20**，而此时 `metrics.slots_open` 是精确的；③ 时间上是累计口径，不是"下一拍"。
+    - **要精确的积压量，读 `metrics.slots_open`**（精确 COUNT）。`willMiss` 只回答"这一批里我看到多少条将要被记成 `missed`"。
+    - **按「这一拍」读还要再收紧一次**：至多 `min(willMiss, 8)`，且实际可能更少——泵的 missed 扫描 `LIMIT 8` 与闸门槽共用名额，那些槽退役但不写收据（round-8 N12 实测：10 个已关闭 B 站槽排在 20 个 read 槽前面时，一拍写 **0** 条）。
+    - **按「累计」读成立，按「下一拍」读不成立**：20 个已关闭的 read 槽给出 `willMiss 20`，而泵下一拍只写 8 条；连跑到 **5 拍** 才是 `8 → 16 → 20`。所以「累计」才是 `willMiss` 的真正含义，「这一拍」永远只是它的（更小的）上界。
 - **拍级** `blockedBy[]`：按 `heartbeat.cycle()` 自己的拒绝顺序给出**具名**原因：`heartbeat-unmounted` / `heartbeat-disabled` / `agenda-disabled` / `heartbeat-paused` / `dispatch-cap-zero` / `runtime-<mode>` / `p2-unmounted`，再加上 P2 侧的 `dispatch-disabled` / `activities-paused` / `chat-priority` / `foreground-signal-unavailable` / `invalid-scope`。
 - **`claimableNow`**：`blockedBy` 为空 **且** 有可 claim 的槽。**注意分工**：`rows[].state` 说的是"槽的判据"，`claimableNow` 说的是"这一拍真的会动"。开关关着时正确的结果是 **`state:'claimable'` + `blockedBy:['dispatch-disabled']` + `claimableNow:false`** —— 这正是"打开前先观察一轮"要看到的形状（否则看不到任何东西就没得观察）。
 - **时刻**不许编：给 `nextBeatWithinMs = pollIntervalMs + jitterMs` 与 `nextBeatNoLaterThan = 上一拍 + 上面这个和`，**不给**"它会在 T 秒后被 claim"。
