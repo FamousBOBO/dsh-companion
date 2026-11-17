@@ -1,0 +1,37 @@
+{
+  "name": "@dsh-companion/channel-vocechat",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "VoceChat transport for the DSH companion suite: Bot API client, webhook server, event normalization, persistence and one published port. No sessions, no agents, no prompt policy — adaptation lives in the companion plugins.",
+  "license": "MIT",
+  "engines": {
+    "node": ">=24.0.0"
+  },
+  "main": "./index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./config.mjs": "./config.mjs",
+    "./http-api.mjs": "./http-api.mjs",
+    "./normalize.mjs": "./normalize.mjs",
+    "./package.json": "./package.json"
+  },
+  "files": [
+    "index.mjs",
+    "config.mjs",
+    "http-api.mjs",
+    "webhook.mjs",
+    "normalize.mjs",
+    "store.mjs",
+    "port.mjs",
+    "health.mjs",
+    "publish.mjs",
+    "cordis.patch.yml",
+    "CONTRACT.md",
+    "README.md",
+    "test"
+  ],
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  }
+}

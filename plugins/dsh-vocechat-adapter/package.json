@@ -1,0 +1,25 @@
+{
+  "name": "@dsh-companion/vocechat-adapter",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "VoceChat → DSH 回合适配层：房间键、门控、会话供给、回合驱动、队列、发送账本、vc_message 工具。",
+  "license": "MIT",
+  "main": "index.mjs",
+  "exports": {
+    ".": "./index.mjs",
+    "./room": "./room.mjs",
+    "./gate": "./gate.mjs",
+    "./turns": "./turns.mjs",
+    "./queue": "./queue.mjs",
+    "./sessions": "./sessions.mjs",
+    "./sent-log": "./sent-log.mjs",
+    "./subscribe": "./subscribe.mjs"
+  },
+  "scripts": {
+    "test": "node --test test/*.test.mjs"
+  },
+  "engines": {
+    "node": ">=24.0.0"
+  }
+}
