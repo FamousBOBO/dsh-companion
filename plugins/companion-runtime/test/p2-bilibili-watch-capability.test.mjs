@@ -351,3 +351,105 @@ test('N4 回归：provider 就绪时同样三个槽位全部出现（行覆盖�
   assert.equal(watched.counts.capabilityBlocked, 0);
   assert.equal(watched.metrics.capabilityGate, 'ready');
 });
+
+// ── round-8 N11：闸门必须进谓词，不能只做事后过滤 ─────────────────────────────
+
+test('N11：能力槽不许先占满 miss 取样窗再被丢掉 —— willMiss 是少报还是准报', async t => {
+  // Round-8 review: round-4's N1 fix dropped gated rows **after** `WILL_MISS_SQL` returned them.
+  // That fixed over-reporting but created the mirror defect — gated slots still consumed the
+  // `LIMIT` window and were then thrown away, so real `missed` slots queued behind them never
+  // entered it. Their fixture gave `willMiss 0` for a backlog the pump wrote 30 `missed` facts for.
+  //
+  // Reachability: this is the **cheapest** of all the gate findings — a not-ready provider plus a
+  // plan whose windows keep closing. No host has to call a hook directly. That is why it was the
+  // one finding graded P2 rather than P3. The fix moves the gate into the predicate, so a gated
+  // slot never occupies this window at all.
+  const clock = { value: T0 };
+  const root = makeRoot(t);
+  const runtime = mount(t, root, { clock, providerReady: false });
+  const sessionId = persistScope(runtime);
+  const db = sideDb(t, root);
+  // The shape from the report: 19 closed Bilibili slots earlier than 5 closed read slots, which
+  // is more gated rows than the sampling window (`min(50, limit)` with limit 20) can hold.
+  for (let i = 0; i < 19; i += 1) {
+    seedSlot(db, { slotId: `b-gone-${i}`, activity: 'bilibili', targetRef: 'bilibili:duty', startAt: T0 - 20 * HOUR + i * 60_000, endAt: T0 - 19 * HOUR + i * 60_000 });
+  }
+  for (let i = 0; i < 5; i += 1) {
+    seedSlot(db, { slotId: `r-gone-${i}`, startAt: T0 - 6 * HOUR + i * 60_000, endAt: T0 - 3 * HOUR + i * 60_000 });
+  }
+
+  const watched = runtime.p2DispatchWatch({ sessionId, now: T0 });
+  assert.equal(watched.ok, true, JSON.stringify(watched));
+
+  // The number that must not lie: every closed read slot is a real `missed` fact the pump will
+  // write, and there are five of them. Before the fix this read 0 or 1 depending on how many
+  // gated rows happened to fill the window first.
+  assert.equal(watched.counts.willMiss, 5, JSON.stringify(watched.counts));
+  assert.equal(watched.counts.capabilityBlocked >= 19, true, JSON.stringify(watched.counts));
+
+  // And it is 5 because the five Bilibili slots are *named* as capability-blocked, not because
+  // they silently vanished from every list.
+  const gatedRows = watched.rows.filter(row => row.state === 'blocked-capability');
+  assert.ok(gatedRows.length >= 1, JSON.stringify(watched.rows.map(r => [r.slotId, r.state])));
+  for (const row of gatedRows) assert.equal(row.blockReason, 'bilibili-provider-not-ready');
+
+  // The write path then really writes five `missed` receipts — the watch number was a forecast,
+  // and the forecast holds. (The pump's own sweep has `LIMIT 8` and shares it with the gated
+  // slots it retires, so this may take several beats; the assertion is on the end state.)
+  for (let beat = 0; beat < 12; beat += 1) await runtime.pumpActivities({ now: T0 });
+  assert.equal(missedReceipts(db).length, 5, JSON.stringify(missedReceipts(db)));
+  for (let i = 0; i < 5; i += 1) {
+    assert.equal(slotStatus(db, `r-gone-${i}`), 'expired');
+    assert.equal(slotDetail(db, `r-gone-${i}`), 'missed');
+  }
+  for (let i = 0; i < 19; i += 1) {
+    assert.equal(slotStatus(db, `b-gone-${i}`), 'expired');
+    assert.equal(slotDetail(db, `b-gone-${i}`), 'capability-unavailable');
+  }
+});
+
+test('N11 回归：provider 就绪时同一批已关闭槽位都回到 will-miss（闸门没吞掉候选）', async t => {
+  const clock = { value: T0 };
+  const root = makeRoot(t);
+  const runtime = mount(t, root, { clock, providerReady: true });
+  const sessionId = persistScope(runtime);
+  const db = sideDb(t, root);
+  for (let i = 0; i < 19; i += 1) {
+    seedSlot(db, { slotId: `b-gone-${i}`, activity: 'bilibili', targetRef: 'bilibili:duty', startAt: T0 - 20 * HOUR + i * 60_000, endAt: T0 - 19 * HOUR + i * 60_000 });
+  }
+  for (let i = 0; i < 5; i += 1) {
+    seedSlot(db, { slotId: `r-gone-${i}`, startAt: T0 - 6 * HOUR + i * 60_000, endAt: T0 - 3 * HOUR + i * 60_000 });
+  }
+  const watched = runtime.p2DispatchWatch({ sessionId, now: T0 });
+  // 24 closed slots, all of them real misses now: the window samples 20 of them, and none is
+  // dropped by a gate that should not be active.
+  assert.equal(watched.counts.capabilityBlocked, 0, JSON.stringify(watched.counts));
+  assert.equal(watched.counts.willMiss, watched.rows.filter(r => r.state === 'will-miss').length);
+  assert.ok(watched.counts.willMiss > 0, JSON.stringify(watched.counts));
+  assert.equal(watched.metrics.capabilityGate, 'ready');
+});
+
+test('N12：这一拍真正写出的 missed 是 min(willMiss, 8) 的**下界**，不是等号', async t => {
+  // Round-8 N12: I wrote "per-beat the honest number is min(willMiss, 8)" as if it were exact.
+  // It is an upper bound: the pump's sweep shares its `LIMIT 8` with gated slots, which it retires
+  // without writing a receipt. With 10 closed Bilibili slots sorted before 20 closed read slots,
+  // one beat writes **0** receipts even though `min(willMiss, 8) = 8`.
+  const clock = { value: T0 };
+  const root = makeRoot(t);
+  const runtime = mount(t, root, { clock, providerReady: false });
+  const sessionId = persistScope(runtime);
+  const db = sideDb(t, root);
+  for (let i = 0; i < 10; i += 1) {
+    seedSlot(db, { slotId: `b-gone-${i}`, activity: 'bilibili', targetRef: 'bilibili:duty', startAt: T0 - 30 * HOUR + i * 60_000, endAt: T0 - 29 * HOUR + i * 60_000 });
+  }
+  for (let i = 0; i < 20; i += 1) {
+    seedSlot(db, { slotId: `r-gone-${i}`, startAt: T0 - 6 * HOUR + i * 60_000, endAt: T0 - 3 * HOUR + i * 60_000 });
+  }
+  const watched = runtime.p2DispatchWatch({ sessionId, now: T0 });
+  assert.equal(watched.counts.willMiss, 20, JSON.stringify(watched.counts));
+
+  await runtime.pumpActivities({ now: T0 });
+  const afterOneBeat = missedReceipts(db).length;
+  assert.ok(afterOneBeat <= 8, `一拍至多写 8 条（实际 ${String(afterOneBeat)}）`);
+  assert.ok(afterOneBeat < 8, `闸门槽也占 LIMIT 8 的名额，所以这一拍写不满 8 条（实际 ${String(afterOneBeat)}）`);
+});

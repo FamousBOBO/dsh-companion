@@ -942,7 +942,7 @@ memory 早就有 `status='superseded'` 取值、`valid_to` 列与 `recordRevisio
   - `locked` **不阻断** claim（`dueSlotsForHeartbeat` 的 SQL 里没有 locked 判据）——锁是 H5 的"不要挪动时间"，不是"不要执行"。这里把它原样暴露，不自己发明规则。
   - `counts.capabilityBlocked`：上面这类行的条数。它与 `counts.claimable` **不重叠**，所以"这一拍为什么会动/为什么不动"不会两边都数一遍。
   - **`counts.willMiss` = 泵真的会写多少条 `missed` 事实**（round-4 N1；round-7 N10 补时间口径）：它不是"所有窗口已关闭的槽"的条数。能力未就绪的已关闭槽被 `blocked-capability` 收走，而不是在 `willMiss` 里承诺一个泵不会兑现的 `missed`。
-    - **按"累计"读成立，按"下一拍"读不成立**：泵每次扫描有 `LIMIT 8`（`p2.mjs` 的 missed 扫描），所以 20 个已关闭的 read 槽会得到 `willMiss 20`，而泵下一拍只写 **8** 条；连跑到 **5 拍** 才是 `8 → 16 → 20`。要"这一拍会写几条"，看 `min(willMiss, 8)`——或者干脆等 `metrics` 里的 missed 收据累计。
+    - **按「累计」读成立，按「下一拍」读不成立**：泵每次扫描有 `LIMIT 8`（`p2.mjs` 的 missed 扫描），所以 20 个已关闭的 read 槽会得到 `willMiss 20`，而泵下一拍只写 **8** 条；连跑到 **5 拍** 才是 `8 → 16 → 20`。要「这一拍会写几条」，请读成 **至多 `min(willMiss, 8)`**——那个 8 的名额闸门槽也占（它们退役但不写收据），所以实际可能更少（round-8 N12 实测：10 个已关闭 B 站槽排在 20 个 read 槽前面时，一拍写 **0** 条）。
 - **拍级** `blockedBy[]`：按 `heartbeat.cycle()` 自己的拒绝顺序给出**具名**原因：`heartbeat-unmounted` / `heartbeat-disabled` / `agenda-disabled` / `heartbeat-paused` / `dispatch-cap-zero` / `runtime-<mode>` / `p2-unmounted`，再加上 P2 侧的 `dispatch-disabled` / `activities-paused` / `chat-priority` / `foreground-signal-unavailable` / `invalid-scope`。
 - **`claimableNow`**：`blockedBy` 为空 **且** 有可 claim 的槽。**注意分工**：`rows[].state` 说的是"槽的判据"，`claimableNow` 说的是"这一拍真的会动"。开关关着时正确的结果是 **`state:'claimable'` + `blockedBy:['dispatch-disabled']` + `claimableNow:false`** —— 这正是"打开前先观察一轮"要看到的形状（否则看不到任何东西就没得观察）。
 - **时刻**不许编：给 `nextBeatWithinMs = pollIntervalMs + jitterMs` 与 `nextBeatNoLaterThan = 上一拍 + 上面这个和`，**不给**"它会在 T 秒后被 claim"。
@@ -996,7 +996,9 @@ memory 早就有 `status='superseded'` 取值、`valid_to` 列与 `recordRevisio
   - **N8 截断判据会漏报**（这条最要紧，因为它是操作者打开 `dispatchEnabled` **之前**会照着做的一步）：旧文档说"用 `rows.length >= 3 × limit` 判断是否到上限"。100 个到点的 read 槽、`limit=20` 时 `rows.length` 恰好 20，永远够不到门槛，而 `slots_due` 是 100——**实际截了 80 条，判据说没截**。正确做法：拿精确计数与 `rows[]` 条数比，或者等 `truncated` 字段落地。
   - **N9 `limit` 不由公共 API 决定**：`index.mjs` 的 `p2DispatchWatch()` 只转 `scopeKey`/`now`，**不转发 `input.limit`**；`limit` 只存在于控制器层。旧文档说"由 `p2DispatchWatch({ limit })` 决定"是错的，实际固定 20。
   - 顺带一条**后果证据**（不是新缺陷）：30 个已关闭 + 30 个未来窗口、`limit=20` ⇒ `rows[] 27`、未来窗口占 **0** 条。`GATED_ANY_SQL` 是 `ORDER BY start_at ASC LIMIT`，更早的槽先占满名额——N4 修的那一类在超上限时又一次不可见。这条已写进 §15.3，不单独修。
-- **N10（P3，时间口径，round-7）**：`counts.willMiss` 的旧说法"= 泵真的会写多少条"只在**累计**意义上成立。泵的 missed 扫描有 `LIMIT 8`，所以 20 个已关闭 read 槽 ⇒ `willMiss 20` 而下一拍只写 8；连跑 5 拍才收敛到 20。§15.3 已补：**按"这一拍会写几条"读是 `min(willMiss, 8)`**。
+- **N10（P3，时间口径，round-7）**：`counts.willMiss` 的旧说法「= 泵真的会写多少条」只在**累计**意义上成立。泵的 missed 扫描有 `LIMIT 8`，所以 20 个已关闭 read 槽 ⇒ `willMiss 20` 而下一拍只写 8；连跑 5 拍才收敛到 20。§15.3 已补：**按「这一拍会写几条」读是至多 `min(willMiss, 8)`**。
+- **N11（P2，少报，round-8）**：`WILL_MISS_SQL` 的取样窗（`min(50, limit)`）**本身不带能力闸门**，而 round-4 的修法在查询返回后才把闸门行 `continue` 掉。于是能力槽**先占满窗口、再被丢弃**，排在后面的真 miss 槽根本没进窗——本机实测 19 个已关闭 B 站槽 + 5 个已关闭 read 槽 ⇒ `willMiss` **0**，而泵真的写了 **5** 条 `missed`。这是 N1 修法引入的**镜像缺陷**（N1 修的是多报，这是少报）。修法：把 `CAPABILITY_GATE` 放进 `WILL_MISS_SQL` 的谓词，闸门槽从此不占这个窗口；原来的 `continue` 保留，用于「调用方没报就绪」那条分支。`test/p2-bilibili-watch-capability.test.mjs` 新增 N11 两条用例，**并做过 A/B**：临时去掉谓词后这几条全红（`willMiss 0`），加回后全绿。
+- **N12（P3，口径，round-8）**：round-7 把「这一拍会写几条」写成了 `min(willMiss, 8)` 这个**等号**。它其实是**上界**：`LIMIT 8` 的名额中闸门槽也占（它们退役但不写收据）。本机实测 10 个已关闭 B 站槽排在 20 个 read 槽前面 ⇒ 一拍写 **0** 条。已改成「至多 `min(willMiss, 8)`」，并有 `N12` 用例钉住这个不等式。
 
 N7–N10 的修法同样**只改文档与注释**，代码与断言零改动；`p2-bilibili-watch-capability` 6/6、runtime 728/728 因此必然不变。
 

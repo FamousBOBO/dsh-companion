@@ -212,6 +212,13 @@ const CLAIMED_SQL = `
 
 // Slots whose window already closed while still `planned`: the pump files them as `missed` on its
 // next pass, so the watch must show them as "will miss", never as "claimable".
+//
+// round-8 N11: the capability gate belongs **in the predicate**, not as a post-filter. Round-4's
+// N1 fix dropped gated rows after this query returned them, which fixed over-reporting but
+// created under-reporting: gated slots still consumed the `LIMIT` window and were then thrown
+// away, so real `missed` slots behind them never entered it — measured `willMiss 0` for a
+// backlog the pump wrote 30 `missed` facts for. With the gate inside the predicate, a not-ready
+// capability never occupies this window at all, and `counts.willMiss` means what it says.
 const WILL_MISS_SQL = `
   SELECT s.slot_id, s.plan_id, s.day, s.start_at, s.end_at, s.activity, s.reality,
          s.target_ref, s.locked, s.status
@@ -220,6 +227,7 @@ const WILL_MISS_SQL = `
    WHERE s.scope = ? AND s.status IN ('planned','started') AND s.kind = 'activity'
      AND s.end_at <= ?
      AND p.status = 'committed'
+     AND ${CAPABILITY_GATE}
      AND NOT EXISTS (SELECT 1 FROM p2_activities a WHERE a.scope = s.scope AND a.plan_slot_id = s.slot_id)
    ORDER BY s.end_at ASC LIMIT ?`;
 
@@ -547,9 +555,15 @@ export function dispatchWatch(db, {
   //
   // round-7 N10: "will actually write" is a statement about the **whole backlog**, not about the
   // next beat — the pump's own missed sweep has `LIMIT 8`, so 20 closed read slots give
-  // `willMiss 20` while the next pass writes 8. Per-beat the honest number is `min(willMiss, 8)`;
-  // the counts in `dispatchMetrics()` are what converge. See CONTRACT §15.3.
-  const missResult = tryAll(db, WILL_MISS_SQL, scope, at, Math.max(1, Math.min(50, Math.trunc(Number(limit) || 20))));
+  // `willMiss 20` while the next pass writes 8. Per-beat the honest number is
+  // **at most** `min(willMiss, 8)`: the pump's sweep shares that budget with gated slots it retires
+  // without writing a receipt (round-8 N12), so it can write fewer. See CONTRACT §15.3.
+  //
+  // round-8 N11: the gate is inside `WILL_MISS_SQL` now, so the `gatedClosedIds` skip below is a
+  // belt-and-braces no-op for a positive "not ready" report — gated rows never come back from this
+  // query in the first place. It stays because a caller that cannot report the provider gets the
+  // un-gated set, and that set must still not be mistaken for `missed` facts.
+  const missResult = tryAll(db, WILL_MISS_SQL, scope, at, gateParam(bilibiliReady), Math.max(1, Math.min(50, Math.trunc(Number(limit) || 20))));
   // A slot is capability-blocked when this build positively reports the provider as not ready and
   // the slot is one of that provider's kinds. `undefined` (not reported) never blocks: the watch
   // must not invent a refusal it cannot observe.

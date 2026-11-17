@@ -368,6 +368,24 @@ N4 的**可达性不夸大**：心跳只交窗口覆盖 `now` 的槽，自己不
 **证据边界（N7–N10 一并说明）**：`rows[]` 的那些条数来自**探针**（七轮复核一份、我本机另跑四组形状），本仓库**没有**对应的回归用例——现有两条 N4 用例的 scope 只有三个槽，覆盖不到超上限行为。所以本节说的是「文档现在与探针实测一致」，不是「有回归用例守着」。另：`truncated` 仍未加（新字段，单开），所以操作者判断截断目前只能靠「精确计数 vs `rows[]` 条数」。
 
 
+### 2.16 PR #4 八轮审查的收口（2026-11-17）：N11 少报（P2）+ N12 口径（P3）
+
+> 八轮复核确认 N7–N10 都已修对（并用机检证明「只改注释」是真的），同时发现 N1 的修法引入了一个
+> **镜像缺陷**：闸门行先占满 `willMiss` 的取样窗、再被事后丢弃，于是真 miss 槽排不进去。
+
+| 编号 | 缺陷（一句话） | 修法 | 证据 |
+|---|---|---|---|
+| **N11（P2）** | `WILL_MISS_SQL` 的取样窗（`min(50, limit)`）**本身不带能力闸门**；round-4 的修法在查询返回后才 `continue` 掉闸门行。能力槽先占满窗口再被丢弃 ⇒ 排在后面的真 miss 槽根本没进窗。本机实测 19 个已关闭 B 站槽 + 5 个已关闭 read 槽 ⇒ `willMiss` **0**，而泵真写 **5** 条。**N1 修的是多报，这条是它的镜像（少报）** | 把 `CAPABILITY_GATE` 放进 `WILL_MISS_SQL` 的**谓词**，闸门槽从此不占这个窗口；原来的 `continue` 保留，用于「调用方没报就绪」那条分支（那时不能把未闸门的集合当成 `missed`） | `plugins/companion-runtime/test/p2-bilibili-watch-capability.test.mjs` 新增 **N11 主用例 + N11 回归**：19 B 站 + 5 read ⇒ `counts.willMiss === 5`、`capabilityBlocked >= 19`；连跑 12 拍后 `missed` 收据**恰 5 条**、5 个 read 槽 detail 为 `missed`、19 个 B 站槽 detail 为 `capability-unavailable`。**A/B 已做**：临时去掉谓词，N1 + N11 两条 + N12 一条全红（`willMiss 0`）；加回后 9/9 全绿 |
+| **N12（P3）** | round-7 把「这一拍会写几条」写成 `min(willMiss, 8)` 这个**等号**。它其实是**上界**：`LIMIT 8` 的名额闸门槽也占（它们退役但不写收据） | §15.3 与 lib 注释改成「**至多** `min(willMiss, 8)`」；新增 N12 用例把「这一拍写不满 8 条」钉成断言 | N12 用例：10 已关闭 B 站 + 20 已关闭 read ⇒ `counts.willMiss === 20`，一拍后 `missed` 收据 `<= 8` 且 **`< 8`**（实测 0）。这个不等式就是「上界不是等号」 |
+
+总账（本轮本机实测）：`node --test "plugins/companion-runtime/test/*.test.mjs"` → **731/731**（八轮前 728，本轮 +3）；
+`*bilibili*` **23/23**（八轮前 20）；`p2.5-dispatch-observability` **12/12**（watch 仍零写入）；
+`node scripts/verify.mjs` → `unit` 10/0/1、`static` 39/0、`compose` SKIPPED，exit 0。
+
+**这些仍然不算证据**：没有真宿主装载、没有真模型、没有真 B 站账号、没有真 QQ 发送。N11 是这一轮唯一的
+**代码**改动（一个 SQL 谓词 + 三条用例）；它让 `willMiss` 在「provider 长期未就绪 + 窗口逐个关闭」这个
+**正是本 PR 要解决的场景**下不再报 0——但那只是把观测报准，不是把 B 站跑通。
+
 ### 2.9 群聊社交运行时 P5–P8（2026-11-08）：仍只有 `offline-test`，真实发送未开始
 
 P5–P8 交付见 `docs/10a-group-baseline-audit.md`（P5 基线与停发控制）、`docs/10b-group-gray-release.md`
