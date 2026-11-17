@@ -876,9 +876,11 @@ if (!findBy(iconTree, (node) => node.tag === 'svg')) {
 
 
 const failures = [];
-// 一级导航的期望值来自 core.js 的 NAV（12 项，顺序固定）。这里只列 label；
+// 一级导航的期望值来自 core.js 的 `groups`（顺序固定）。这里只列 label；
 // 页面列表本身由 NAV 驱动，新增页签时同步这一行即可。
-const RAIL_LABELS = ['陪伴首页', '聊天', '人格', 'QQ 连接', '生活与日程', '运动健康', '记忆与档案', '连接与工具', '媒体能力', '表情包', '工作区', '作品', '设置'];
+// 注意：只列 `groups` 里真的渲染出来的 id —— 一个 NAV 条目如果没进 `groups`，
+// 它注册了也不会出现在侧栏（这是 2026-11-18 加 VoceChat 页时踩到的那一步）。
+const RAIL_LABELS = ['陪伴首页', '聊天', '人格', 'QQ 连接', '生活与日程', '运动健康', '记忆与档案', '连接与工具', '媒体能力', '表情包', '工作区', '作品', 'VoceChat', '设置'];
 
 let tree = await renderUntilStable(createElement(main.component, {}));
 

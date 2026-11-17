@@ -70,6 +70,7 @@ const NAV = [
   { id: 'workspace', label: '工作区', icon: 'folder', hint: '回到文件、会话与开发现场' },
   { id: 'settings', label: '设置', icon: 'sliders', hint: '外观、角色、模型与记忆', tabs: ['settings', 'overview', 'diagnostics-trace'] },
   { id: 'works', label: '作品', icon: 'folder', hint: '工作区里的产出（只读）' },
+  { id: 'vocechat', label: 'VoceChat', icon: 'chat', hint: '通道的入站、出站与断口（只读）' },
 ];
 
 // ---------------------------------------------------------------------------
@@ -1965,7 +1966,7 @@ function Rail({ currentPage, collapsed, onToggle, compact, onCompact, compactAva
   const groups = [
     { label: '陪伴', ids: ['home', 'chat', 'persona', 'qq-web', 'life', 'health'] },
     { label: '记录', ids: ['memory'] },
-    { label: '工具', ids: ['connections', 'media', 'expressions', 'workspace', 'works'] },
+    { label: '工具', ids: ['connections', 'media', 'expressions', 'workspace', 'works', 'vocechat'] },
     { label: '系统', ids: ['settings'] },
   ];
 

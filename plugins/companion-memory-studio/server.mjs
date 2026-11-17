@@ -16,6 +16,7 @@ import { companionDashboard } from './lib/companion-dashboard.mjs';
 import { settingsCatalog } from './lib/settings-catalog-route.mjs';
 import { memoryTraceEvents, traceEvents, traceStream } from './lib/trace-route.mjs';
 import { worksIndex, workDetail } from './lib/works-route.mjs';
+import { vocechatStatus, vocechatEvents, vocechatDeliveries } from './lib/vocechat-route.mjs';
 // The health service is owned by a sibling plugin row; `resolveHealthService` is the one place that
 // knows how to reach it (ctx → process registry → service bridge).
 import { resolveHealthService } from '../companion-foundation/health-service-ref.mjs';
@@ -50,6 +51,11 @@ export const ROUTES = Object.freeze([
   // W3：作品中心（只读浏览 + 预览）。list 与 detail 都只读，路径在服务端校验。
   {name:'works',method:'GET',path:`${API_PREFIX}/works`,handler:worksIndex},
   {name:'work-detail',method:'GET',path:`${API_PREFIX}/work-detail`,handler:workDetail},
+  // VoceChat 通道的只读观察面（三条，全部 GET）。**只有 Studio 自己的文件改动**：
+  // 两个 VoceChat 行一个字节都不用动，因为它们已经把事实写进 `home/` 了。
+  {name:'vocechat',method:'GET',path:`${API_PREFIX}/vocechat`,handler:vocechatStatus},
+  {name:'vocechat-events',method:'GET',path:`${API_PREFIX}/vocechat-events`,handler:vocechatEvents},
+  {name:'vocechat-deliveries',method:'GET',path:`${API_PREFIX}/vocechat-deliveries`,handler:vocechatDeliveries},
   {name:'web-panel-control',method:'POST',path:`${API_PREFIX}/web-panel-control`,handler:operator.webPanelControl},
   {name:'runtime-settings',method:'GET',path:`${API_PREFIX}/runtime-settings`,handler:operator.runtimeSettings},
   {name:'runtime-settings-write',method:'POST',path:`${API_PREFIX}/runtime-settings`,handler:operator.runtimeSettings},
