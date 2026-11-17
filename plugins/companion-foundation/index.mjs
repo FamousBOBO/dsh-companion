@@ -9,14 +9,16 @@ import { createMemory } from './memory.mjs?v=0.4.0';
 import { createIdentity } from './identity.mjs?v=0.4.0';
 import { mountQqConversation } from './qq-conversation.mjs?v=progress-optional3-20261031';
 import { createHostLlmAdapter } from './host-llm.mjs?v=0.4.0';
-import { createAutonomyPorts, lifeSection } from './autonomy.mjs?v=reading-20261101-v2';
+import { createAutonomyPorts } from './autonomy.mjs?v=reading-20261101-v2';
 import { renderWardrobeConstraint, wardrobeDetail, setOutfit } from './wardrobe.mjs?v=0.2.0';
 import { renderWardrobeSnapshot, resolveWardrobeState } from './wardrobe-state.mjs?v=0.2.0';
 import { collectLifeEvidence } from './wardrobe-evidence.mjs?v=0.2.0';
+import { collectLifeFacts, renderLifeFacts } from './life-facts.mjs?v=0.1.0';
 import { resolveCompanionVisualState } from './visual-identity.mjs?v=0.2.0';
 import { contactSharePort } from './contact-share-port.mjs';
 import { describeShareChain } from './share-diagnostics.mjs';
 import { SHARE_TOOL_NAME, shareCandidateForActivity } from './share-producer.mjs';
+import { createFinishedActivityShareHook } from './share-decision.mjs';
 import { registerHealthTools } from './health-tools.mjs';
 import { registerPulseTools } from './pulse-tools.mjs';
 import { createMemoryEngine, shareEngine, sharedEngineFor, VERSION as MEMORY_VERSION } from '../companion-memory/index.mjs?v=0.4.0';
@@ -201,17 +203,18 @@ export function mountCompanion(ctx, root, options = {}) {
     text: '【日程与提醒】日程（companion_schedule_*）是“打算做”的机会，可以空闲、放弃或改期，不是义务，也不授权任何外发。只有真正具备提醒投递能力且拿到成功回执，才能说“已设置提醒”；reminderDelivery 为 not-wired，或工具返回 agenda-disabled / heartbeat-not-registered / disabled 时，如实说明该能力当前未启用，不要假装它在运行。心跳只是后台按规则结算时间，不做模型推理、不产生对外动作。',
   });
 
-  // P2 life section: current activity / upcoming plan / what is left, always from real state.
+  // P2 life section. It used to call `lifeSection(cognitive)` with **no bound**, which read no
+  // world at all and then rendered that emptiness as "今天还没有正式安排 / 当前没有进行中的活动"
+  // (E package measured this: `p2Status({})` ⇒ `plan:null, running:0, counts 0`). The live
+  // per-turn facts now arrive through `agent/pre-step` (`life-facts.mjs`), computed from the
+  // bound this turn actually resolved. What stays here is only the rule that keeps the
+  // character from narrating a plan as a memory — no data, so there cannot be two versions
+  // of "what happened today" fighting each other.
   ctx.systemPrompt.section({
     name: 'companion:life',
     order: 62,
     interpolate: false,
-    text: () => {
-      try {
-        const section = lifeSection(cognitive);
-        return section || '【今天的生活】自主规划与活动当前未启用；被问到“今天准备做什么”时，直接说还没有安排，不要编造日程或经历。';
-      } catch { return ''; }
-    },
+    text: '【今天的生活】生活状态只在当轮快照的【今天的生活·事实快照】里出现；没有那一段就说明这一轮没读到，说不清楚就是说不清楚，不要用日程或旧记忆补一个。计划只是计划：没有执行证据的计划窗口结束，只能说那个时间段过去了，不能当成做过；只有执行证据（读到的字数或版本化产物）才能说做完。',
   });
 
   // Wardrobe rule (v2). This section is now a **short static truthfulness constraint** and
@@ -389,6 +392,18 @@ export function mountCompanion(ctx, root, options = {}) {
         p2RuntimeMaterials: input => autonomyPorts.materials(input),
         isForegroundBusy: autonomyPorts.isForegroundBusy,
         sharePort: contactSharePort(ctx, root),
+        // F package: the completion→candidate edge. It is deliberately a **lazy closure**: the
+        // hook needs `cognitive` itself (so the candidate is written through the one public
+        // `createShareCandidate` entry, never a second private write path), and `cognitive` is
+        // only assigned once `mountCognitiveRuntime` returns.
+        //
+        // Nothing here sends: the hook writes at most one candidate row and the existing contact
+        // gate keeps deciding delivery. `now` is injected so the decision stays clock-free.
+        onActivityFinished: info => createFinishedActivityShareHook({
+          cognitive,
+          config: configForP2(root),
+          now: () => Number(info?.at) || Date.now(),
+        })(info),
       });
     } catch (error) {
       console.log(`[companion-foundation] cognitive runtime unavailable: ${error instanceof Error ? error.message : String(error)}`);
@@ -516,6 +531,26 @@ export function mountCompanion(ctx, root, options = {}) {
       });
       wardrobeText = renderWardrobeSnapshot(state, { maxChars: 480 });
     } catch { wardrobeText = ''; }
+    // Life facts (E package, `life-facts.mjs`). Same single injection entry as everything above,
+    // computed from the **same** bound this turn already resolved — that is the whole fix: the
+    // old `companion:life` Section called `lifeSection(cognitive)` with no `bound`, so it read
+    // *no* world at all (`p2Status({})` returns an empty projection and a constant 0/64 budget)
+    // and then rendered that silence as "nothing is happening today".
+    //
+    // Read-only and bounded: it calls four existing runtime entries, caches its snapshot for
+    // `DEFAULT_CACHE_TTL_MS`, never writes, never sends, never calls a model, and never throws
+    // (`collectLifeFacts` turns every failure into a named code + `read-failed`).
+    let lifeFactsText = '';
+    try {
+      lifeFactsText = renderLifeFacts(collectLifeFacts({
+        runtime: cognitive,
+        bound,
+        sessionId,
+        now: Date.now(),
+        timeZone: configForP2(root).timeZone,
+        cacheTtlMs: 60_000,
+      }));
+    } catch { lifeFactsText = ''; }
     // Prompt Engine (P0 §9). Runs inside the **existing** first-step snapshot: it reads the
     // same user message, the same memory text and the same working memory, and returns one more
     // section. It has its own char budget, so the memory (2400) and runtime (320) budgets above
@@ -540,13 +575,17 @@ export function mountCompanion(ctx, root, options = {}) {
         }
       } catch { promptText = ''; promptSections = []; }
     }
-    const finalInjected = injectedWithCare + (wardrobeText ? '\n' + wardrobeText : '') + (promptText ? '\n' + promptText : '');
+    const finalInjected = injectedWithCare
+      + (lifeFactsText ? '\n' + lifeFactsText : '')
+      + (wardrobeText ? '\n' + wardrobeText : '')
+      + (promptText ? '\n' + promptText : '');
     return { ...decision, messages: [...decision.messages, createUserMessage({ content: [{ type: 'text', text: finalInjected }],
       source: { kind: 'companion-memory', form: 'snapshot', sections: [{ name: 'companion-identity', text: identityText },
         ...(memoryText ? [{ name: 'companion-memory', text: memoryText }] : []),
         ...(cognitiveText ? [{ name: 'companion-working-memory', text: cognitiveText }] : []),
         ...(pulseText ? [{ name: 'companion-pulse', text: pulseText }] : []),
         ...(careText ? [{ name: 'companion-care', text: careText }] : []),
+        ...(lifeFactsText ? [{ name: 'companion-life-facts', text: lifeFactsText }] : []),
         ...(wardrobeText ? [{ name: 'companion-wardrobe', text: wardrobeText }] : []),
         ...promptSections] } })],
     };
@@ -652,8 +691,18 @@ export function mountCompanion(ctx, root, options = {}) {
     (args, bound) => store.record(args.source, args.text, bound.userId), 'write');
 
   const cognitiveOr = fallback => (typeof fallback === 'function' ? fallback() : fallback);
-  register('companion_life_status', 'Read the character life view: the committed plan for today (flexible slots, not obligations), the current or paused activity with its real progress, the shared autonomy budget and which capabilities are actually available. Read-only; it never creates a plan, starts an activity or sends anything.',
-    {}, (_args, _bound, exec) => ({ ...(cognitive ? cognitive.p2Status({ sessionId: sessionIdOf(exec) }) : cognitiveOr({ planning: { enabled: false, state: 'off' }, activities: { enabled: false, state: 'off' } })), reading: autonomyPorts?.describe() ?? null }));
+  register('companion_life_status', 'Read the character life view: the committed plan for today (flexible slots, not obligations), the current or paused activity with its real progress, the shared autonomy budget and which capabilities are actually available. Read-only; it never creates a plan, starts an activity or sends anything. `lifeFacts` is the same bounded snapshot the automatic injection uses, recomputed with `force: true` so a question about progress cannot be answered from a stale cache; its `state` says explicitly whether the answer is `disabled`, `idle`, `running`, `paused`, `completed`, `unknown` or `read-failed`.',
+    {}, (_args, _bound, exec) => ({
+      ...(cognitive ? cognitive.p2Status({ sessionId: sessionIdOf(exec) }) : cognitiveOr({ planning: { enabled: false, state: 'off' }, activities: { enabled: false, state: 'off' } })),
+      lifeFacts: collectLifeFacts({
+        runtime: cognitive,
+        sessionId: sessionIdOf(exec),
+        now: Date.now(),
+        timeZone: configForP2(root).timeZone,
+        force: true,
+      }),
+      reading: autonomyPorts?.describe() ?? null,
+    }));
   register('companion_plan_today', 'Generate today’s remaining life plan once through the configured planner model. This is an explicit, bounded model call; it stores flexible plan slots and never sends a message or starts an activity by itself. Use only when the user asks to generate today’s schedule, or when the plan is missing and they want it now.',
     { force: { type: 'boolean' }, reason: { type: 'string' } },
     (args, _bound, exec) => (cognitive ? cognitive.planToday({ sessionId: sessionIdOf(exec), force: args.force === true, reason: args.reason ?? (args.force === true ? 'user-change' : 'user-request') }) : cognitiveOr({ ok: false, code: 'runtime-not-mounted' })), 'write');

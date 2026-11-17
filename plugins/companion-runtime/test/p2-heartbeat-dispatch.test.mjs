@@ -593,7 +593,9 @@ test('A slice: the p2 hooks refuse a claim on their own when the gray switch is 
   seedSlot(world.db);
 
   const due = world.p2.dueSlotsForHeartbeat({ scopeKey: KEY, now: T0, limit: 1 });
-  assert.deepEqual(due, { slots: [], deferred: 'dispatch-disabled' });
+  // `skipped` is the round-3 P1-4 addition: how many due slots the capability gate excluded. A
+  // whole-beat refusal excludes nothing (the gate never ran), so it is a measured `0`, not `null`.
+  assert.deepEqual(due, { slots: [], deferred: 'dispatch-disabled', skipped: 0 });
   const claim = world.p2.claimSlotForHeartbeat({ scopeKey: KEY, slotId: 'slot-1', planId: 'plan-1', day: '2026-11-01', scheduledAt: T0 - HOUR });
   assert.equal(claim.ok, false);
   assert.equal(claim.code, 'dispatch-disabled');

@@ -76,8 +76,11 @@ export function normalizeMirrorConfig(raw = {}, env = process.env) {
   }
 
   const port = Number(merged.fakeOneBotPort)
-  if (!Number.isSafeInteger(port) || port < 1 || port > 65535) {
-    throw new MirrorConfigError('bad-port', 'fakeOneBotPort 不是合法端口：' + JSON.stringify(merged.fakeOneBotPort))
+  // `0` = "ask the kernel for a free port". It is only meaningful for a *local* fixture (an
+  // offline test), so it stays out of the documented default and the effective port is read back
+  // from `server.address()`. Anything else must be a real 1..65535 port.
+  if (!Number.isSafeInteger(port) || (port !== 0 && (port < 1 || port > 65535))) {
+    throw new MirrorConfigError('bad-port', 'fakeOneBotPort 不是合法端口（1..65535，或 0 表示由系统分配）：' + JSON.stringify(merged.fakeOneBotPort))
   }
 
   const sourceUrl = String(merged.sourceUrl ?? '').trim()

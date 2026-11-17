@@ -104,6 +104,17 @@ export const SLOT_REALITY = Object.freeze({
   share: 'simulated_world',
 });
 export const INTEREST_KINDS = Object.freeze(['interest', 'project']);
+/**
+ * Named reasons a *single slot* is dropped from an otherwise usable plan.
+ *
+ * A dropped slot is not an invalid plan: the model's other slots still commit, and the caller
+ * gets one named record per drop (`{index, activity, code, detail}`) instead of a whole-plan
+ * rejection that would cost the day. Every code here is a fact about the slot, never about the
+ * model's obedience.
+ */
+export const SLOT_DROP_CODES = Object.freeze({
+  BILIBILI_UNAVAILABLE: 'slot-dropped:bilibili-provider-unavailable',
+});
 export const INTEREST_STATUS = Object.freeze(['active', 'paused', 'done', 'dropped']);
 export const INTEREST_CLOSE_STATUS = Object.freeze(['paused', 'done', 'dropped']);
 export const OPPORTUNITY_KINDS = Object.freeze([
@@ -410,8 +421,17 @@ function normalizeSlot(raw, index, { now, windowStart, windowEnd, limits, allowe
   const intent = textOf(raw.intent ?? '', limits.maxIntentChars);
   const targetRef = textOf(raw.targetRef ?? '', limits.maxRefChars);
   assertSlotTargetShape({ kind, activity, targetRef, index, limits, thrower: message => { throw invalidPlan(message); } });
+  // B 站 duty 不可用时**只丢这一个槽**，不是驳回整份计划。
+  //
+  // 原来的行为是 `throw invalidPlan('slot-target-not-in-materials: Bilibili duty is unavailable')`：
+  // 模型只要在一天里顺手排了一次刷 B 站，整份计划（连同 read/explore/write）全部作废，
+  // 重试两次仍然一样，于是这一整天没有计划。这与派发侧的处置也不一致 —— 那边是"跳过
+  // 这一拍、留下具名 code、其它三类照常"。两边必须同一种语义：**不可用的能力只丢它自己**。
+  //
+  // 丢弃是显式的：调用方拿到 `dropped` 里的具名记录（index/activity/code），
+  // diagnostics 也会记一笔；不会静默改写计划。
   if (activity === 'bilibili' && !allowedTargets?.has(targetKey(BILIBILI_TARGET))) {
-    throw invalidPlan('slot-target-not-in-materials: Bilibili duty is unavailable');
+    return { dropped: { index, activity, code: SLOT_DROP_CODES.BILIBILI_UNAVAILABLE, detail: 'Bilibili duty is unavailable' } };
   }
   if (activity && blockedTargets?.has(activityTargetKey(activity, targetRef))) {
     throw invalidPlan(`slot-target-blocked: slots[${index}] names a parked or missed ${activity} target; choose another source`);
@@ -480,7 +500,10 @@ export function parseDayPlan(text, options = {}) {
   if (parsed.slots === undefined || parsed.slots === null) throw invalidPlan('the day plan requires a slots array');
   if (!Array.isArray(parsed.slots)) throw invalidPlan('slots must be an array');
   if (parsed.slots.length > maxSlots) throw invalidPlan(`the day plan carries ${parsed.slots.length} slots; at most ${maxSlots} are accepted`);
-  const slots = parsed.slots.map((slot, index) => normalizeSlot(slot, index, { now, windowStart, windowEnd, limits, allowedTargets: options.allowedTargets, blockedTargets: options.blockedTargets }));
+  // A slot whose capability is unavailable is dropped, never used to reject the whole plan.
+  const normalized = parsed.slots.map((slot, index) => normalizeSlot(slot, index, { now, windowStart, windowEnd, limits, allowedTargets: options.allowedTargets, blockedTargets: options.blockedTargets }));
+  const slots = normalized.filter(entry => !entry.dropped);
+  const dropped = normalized.filter(entry => entry.dropped).map(entry => entry.dropped);
   const sorted = [...slots].sort((left, right) => left.startAt - right.startAt || left.endAt - right.endAt);
   for (let index = 1; index < sorted.length; index += 1) {
     const previous = sorted[index - 1];
@@ -507,6 +530,7 @@ export function parseDayPlan(text, options = {}) {
     summary,
     slots: Object.freeze(sorted.map(slot => Object.freeze(slot))),
     interests: Object.freeze(interests.map(interest => Object.freeze(interest))),
+    dropped: Object.freeze(dropped.map(entry => Object.freeze(entry))),
   });
 }
 
@@ -2135,6 +2159,11 @@ export function createPlanner(options = {}) {
         });
         if (requiredBilibili && !parsed.slots.some(slot => slot.activity === 'bilibili')) {
           throw invalidPlan('the requested Bilibili activity is missing');
+        }
+        // A dropped slot is a fact worth recording: it is neither a model error nor a silent
+        // rewrite of the plan, so each drop gets its own named line.
+        for (const drop of parsed.dropped ?? []) {
+          report(drop.code, `slots[${drop.index}] ${drop.activity} dropped: ${drop.detail}`);
         }
       } catch (error) {
         last = { code: error instanceof RuntimeError ? error.code : 'invalid-plan', detail: messageOf(error) };

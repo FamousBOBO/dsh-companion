@@ -88,9 +88,95 @@ function normalizeSlot(row) {
 
 // The predicate below is the **same** one `p2.mjs` `dueSlotsForHeartbeat()` uses, on purpose: a
 // dry watch that can promise a claim the real beat would refuse is worse than no watch at all.
-// The two copies are kept honest by a test (the watch must predict the very next real claim), not
-// by a shared helper — `dueSlotsForHeartbeat` sits inside the heartbeat's transaction and must stay
-// free of any extra call.
+// The two copies are kept honest by a test (the watch must predict the very next real claim).
+//
+// round-3 P2-6: the heartbeat's predicate now includes the **capability gate** (`p2.mjs`
+// `CAPABILITY_GATE_SQL`), so this copy must include it too — a not-ready Bilibili slot is no
+// longer "claimable", and the watch has to say so by name instead of promising a claim the beat
+// will skip. The gate parameter is `1` unless the caller positively reports "not ready", so a
+// caller that cannot observe the ports gets the un-gated set plus `capabilityGate:'not-reported'`
+// rather than a silent, wrong exclusion.
+const CAPABILITY_GATE = "(s.activity <> 'bilibili' OR ? = 1)";
+const gateParam = bilibiliReady => (bilibiliReady === false ? 0 : 1);
+
+// The slots the gate excluded: due by every other predicate, but their capability is not ready.
+// They are reported (never silently dropped) because "the plan has work and the capability behind
+// it is missing" is a different operator fact from "nothing is due".
+const GATED_SQL = `
+  SELECT s.slot_id, s.plan_id, s.day, s.start_at, s.end_at, s.activity, s.reality,
+         s.target_ref, s.locked, s.status
+    FROM p2_plan_slots s
+    JOIN p2_plans p ON p.plan_id = s.plan_id AND p.scope = s.scope
+   WHERE s.scope = ? AND s.status IN ('planned','started') AND s.kind = 'activity'
+     AND s.activity = 'bilibili'
+     AND s.start_at <= ? AND s.end_at > ?
+     AND p.status = 'committed'
+     AND NOT EXISTS (SELECT 1 FROM p2_activities a WHERE a.scope = s.scope AND a.plan_slot_id = s.slot_id)
+   ORDER BY s.start_at ASC, s.slot_id ASC
+   LIMIT ?`;
+
+const GATED_COUNT_SQL = `
+  SELECT COUNT(*) AS n
+    FROM p2_plan_slots s
+    JOIN p2_plans p ON p.plan_id = s.plan_id AND p.scope = s.scope
+   WHERE s.scope = ? AND s.status IN ('planned','started') AND s.kind = 'activity'
+     AND s.activity = 'bilibili'
+     AND s.start_at <= ? AND s.end_at > ?
+     AND p.status = 'committed'
+     AND NOT EXISTS (SELECT 1 FROM p2_activities a WHERE a.scope = s.scope AND a.plan_slot_id = s.slot_id)`;
+
+// P2-6c (round-5 N4): the **rows** side of the gate, with no window predicate at all.
+//
+// `GATED_SQL` above is deliberately "due now" because `slots_capability_blocked` is a due-now
+// metric. The row list needs the opposite property: **no slot may fall through a window gap**.
+// Round-4's N2 fix applied the gate to `CLAIMED_SQL`, which made a `started` Bilibili slot whose
+// window has **not opened yet** vanish from `rows[]` entirely: it is not `due` (`start_at > now`),
+// not `will-miss` (`end_at > now`), and no longer `awaiting-start` either. Three queries, three
+// window predicates, one hole between them.
+//
+// This predicate filters on **capability and nothing else**, so the gated rows cover every
+// window position and the hole closes. `GATED_SQL`/`GATED_COUNT_SQL` stay as the due-now
+// measurement; this one is only for the row list.
+//
+// **Bounded, not exhaustive** (round-6 N6, corrected in round-7 N7/N9): six queries feed
+// `rows[]`, each with its own `LIMIT` — `DUE`/`CLAIMED`/`GATED`/`GATED_ANY` at `min(200, limit)`,
+// `WILL_MISS`/`GATED_CLOSED` at `min(50, limit)` — so the row list is bounded by
+// `4 · min(200, limit) + 2 · min(50, limit)`, and the public entry point `p2DispatchWatch()` does
+// not forward `limit` at all, so in practice `limit = 20` and the bound is 120. Read the counts in
+// `dispatchMetrics()` for "how many"; read these rows for "which ones, up to their cap". Do **not**
+// test truncation with `rows.length >= bound` — each individual query only yields `limit` rows, so
+// one category can be cut to its cap while the total stays far below it.
+const GATED_ANY_SQL = `
+  SELECT s.slot_id, s.plan_id, s.day, s.start_at, s.end_at, s.activity, s.reality,
+         s.target_ref, s.locked, s.status
+    FROM p2_plan_slots s
+    JOIN p2_plans p ON p.plan_id = s.plan_id AND p.scope = s.scope
+   WHERE s.scope = ? AND s.status IN ('planned','started') AND s.kind = 'activity'
+     AND s.activity = 'bilibili'
+     AND p.status = 'committed'
+     AND NOT EXISTS (SELECT 1 FROM p2_activities a WHERE a.scope = s.scope AND a.plan_slot_id = s.slot_id)
+   ORDER BY s.start_at ASC, s.slot_id ASC
+   LIMIT ?`;
+
+// P2-6b (round-4 N1): a gated capability slot whose window has ALREADY closed.
+//
+// The pump does not file these as `missed` — `startDueActivities()` retires them under
+// `detail:'capability-unavailable'` — so the watch must not promise "the pump files it as
+// missed" either. They get the same `blocked-capability` state with a detail that names the real
+// retirement, which is why this is a second predicate instead of widening `GATED_SQL` (widening
+// it would also make `slots_capability_blocked`, a *due-now* number, count history).
+const GATED_CLOSED_SQL = `
+  SELECT s.slot_id, s.plan_id, s.day, s.start_at, s.end_at, s.activity, s.reality,
+         s.target_ref, s.locked, s.status
+    FROM p2_plan_slots s
+    JOIN p2_plans p ON p.plan_id = s.plan_id AND p.scope = s.scope
+   WHERE s.scope = ? AND s.status IN ('planned','started') AND s.kind = 'activity'
+     AND s.activity = 'bilibili'
+     AND s.end_at <= ?
+     AND p.status = 'committed'
+     AND NOT EXISTS (SELECT 1 FROM p2_activities a WHERE a.scope = s.scope AND a.plan_slot_id = s.slot_id)
+   ORDER BY s.end_at ASC LIMIT ?`;
+
 const DUE_SQL = `
   SELECT s.slot_id, s.plan_id, s.day, s.start_at, s.end_at, s.activity, s.reality,
          s.target_ref, s.locked, s.status
@@ -99,6 +185,7 @@ const DUE_SQL = `
    WHERE s.scope = ? AND s.status = 'planned' AND s.kind = 'activity'
      AND s.start_at <= ? AND s.end_at > ?
      AND p.status = 'committed'
+     AND ${CAPABILITY_GATE}
      AND NOT EXISTS (SELECT 1 FROM p2_activities a WHERE a.scope = s.scope AND a.plan_slot_id = s.slot_id)
    ORDER BY s.start_at ASC, s.slot_id ASC
    LIMIT ?`;
@@ -106,6 +193,11 @@ const DUE_SQL = `
 // A slot the heartbeat already claimed (`planned → started`) that the pump has not turned into an
 // activity yet. This is the only window in which a `claim` exists without an execution, which is
 // exactly what `claim_age_ms` is about.
+//
+// round-4 N2: the capability gate is applied here too. A slot claimed while the provider was ready
+// and left behind when it went away is **not** "waiting for the pump" any more — the pump will
+// never start it. Counting it as `claimed_awaiting_start` while listing it as `blocked-capability`
+// produced two contradictory numbers in one payload (the reviewer's N2).
 const CLAIMED_SQL = `
   SELECT s.slot_id, s.plan_id, s.day, s.start_at, s.end_at, s.activity, s.reality,
          s.target_ref, s.locked, s.status
@@ -113,12 +205,20 @@ const CLAIMED_SQL = `
     JOIN p2_plans p ON p.plan_id = s.plan_id AND p.scope = s.scope
    WHERE s.scope = ? AND s.status = 'started' AND s.kind = 'activity'
      AND p.status = 'committed'
+     AND ${CAPABILITY_GATE}
      AND NOT EXISTS (SELECT 1 FROM p2_activities a WHERE a.scope = s.scope AND a.plan_slot_id = s.slot_id)
    ORDER BY s.start_at ASC, s.slot_id ASC
    LIMIT ?`;
 
 // Slots whose window already closed while still `planned`: the pump files them as `missed` on its
 // next pass, so the watch must show them as "will miss", never as "claimable".
+//
+// round-8 N11: the capability gate belongs **in the predicate**, not as a post-filter. Round-4's
+// N1 fix dropped gated rows after this query returned them, which fixed over-reporting but
+// created under-reporting: gated slots still consumed the `LIMIT` window and were then thrown
+// away, so real `missed` slots behind them never entered it — measured `willMiss 0` for a
+// backlog the pump wrote 30 `missed` facts for. With the gate inside the predicate, a not-ready
+// capability never occupies this window at all, and `counts.willMiss` means what it says.
 const WILL_MISS_SQL = `
   SELECT s.slot_id, s.plan_id, s.day, s.start_at, s.end_at, s.activity, s.reality,
          s.target_ref, s.locked, s.status
@@ -127,6 +227,7 @@ const WILL_MISS_SQL = `
    WHERE s.scope = ? AND s.status IN ('planned','started') AND s.kind = 'activity'
      AND s.end_at <= ?
      AND p.status = 'committed'
+     AND ${CAPABILITY_GATE}
      AND NOT EXISTS (SELECT 1 FROM p2_activities a WHERE a.scope = s.scope AND a.plan_slot_id = s.slot_id)
    ORDER BY s.end_at ASC LIMIT ?`;
 
@@ -140,6 +241,7 @@ const DUE_COUNT_SQL = `
    WHERE s.scope = ? AND s.status = 'planned' AND s.kind = 'activity'
      AND s.start_at <= ? AND s.end_at > ?
      AND p.status = 'committed'
+     AND ${CAPABILITY_GATE}
      AND NOT EXISTS (SELECT 1 FROM p2_activities a WHERE a.scope = s.scope AND a.plan_slot_id = s.slot_id)`;
 
 const CLAIMED_COUNT_SQL = `
@@ -148,16 +250,70 @@ const CLAIMED_COUNT_SQL = `
     JOIN p2_plans p ON p.plan_id = s.plan_id AND p.scope = s.scope
    WHERE s.scope = ? AND s.status = 'started' AND s.kind = 'activity'
      AND p.status = 'committed'
+     AND ${CAPABILITY_GATE}
      AND NOT EXISTS (SELECT 1 FROM p2_activities a WHERE a.scope = s.scope AND a.plan_slot_id = s.slot_id)`;
 
-/** Slots that are due right now, by the heartbeat's own predicate. */
-export function dueSlotRows(db, { scopeKey, now = Date.now(), limit = 20 } = {}) {
+/** Slots that are due right now, by the heartbeat's own predicate (capability gate included). */
+export function dueSlotRows(db, { scopeKey, now = Date.now(), limit = 20, bilibiliReady } = {}) {
   const scope = String(scopeKey ?? '').trim();
   if (!scope) return { ok: false, code: 'no-scope', rows: [] };
   const cap = Math.max(1, Math.min(200, Math.trunc(Number(limit) || 20)));
   const at = Number(now) || 0;
-  const result = tryAll(db, DUE_SQL, scope, at, at, cap);
+  const result = tryAll(db, DUE_SQL, scope, at, at, gateParam(bilibiliReady), cap);
   if (!result.ok) return { ok: false, code: 'due-query-failed', rows: [] };
+  return { ok: true, rows: result.rows.map(normalizeSlot).filter(slot => slot.slotId !== '') };
+}
+
+/**
+ * The due slots the **capability gate** excluded — reported, never dropped silently.
+ *
+ * A Bilibili slot whose provider is not ready is not "claimable"; it is also not a miss, because
+ * it never had a chance to run. It gets its own state (`blocked-capability`) so an operator
+ * reading the watch sees "the plan wants this, the capability is missing" instead of either an
+ * empty plan or a promise the beat will not keep.
+ */
+export function capabilityGatedSlotRows(db, { scopeKey, now = Date.now(), limit = 20 } = {}) {
+  const scope = String(scopeKey ?? '').trim();
+  if (!scope) return { ok: false, code: 'no-scope', rows: [] };
+  const cap = Math.max(1, Math.min(200, Math.trunc(Number(limit) || 20)));
+  const at = Number(now) || 0;
+  const result = tryAll(db, GATED_SQL, scope, at, at, cap);
+  if (!result.ok) return { ok: false, code: 'gated-query-failed', rows: [] };
+  return { ok: true, rows: result.rows.map(normalizeSlot).filter(slot => slot.slotId !== '') };
+}
+
+/**
+ * Capability-gated slots whose window has **already closed**.
+ *
+ * Same rows as `capabilityGatedSlotRows` but for the closed window: the pump retires these as
+ * `detail:'capability-unavailable'` (no `missed` receipt, no `onMissed`), so the watch must not
+ * report them as `will-miss`. Kept separate from the due-now set on purpose — mixing them would
+ * make `slots_capability_blocked`, a *due-now* number, silently include history.
+ */
+export function capabilityGatedClosedSlotRows(db, { scopeKey, now = Date.now(), limit = 20 } = {}) {
+  const scope = String(scopeKey ?? '').trim();
+  if (!scope) return { ok: false, code: 'no-scope', rows: [] };
+  const cap = Math.max(1, Math.min(200, Math.trunc(Number(limit) || 20)));
+  const at = Number(now) || 0;
+  const result = tryAll(db, GATED_CLOSED_SQL, scope, at, cap);
+  if (!result.ok) return { ok: false, code: 'gated-closed-query-failed', rows: [] };
+  return { ok: true, rows: result.rows.map(normalizeSlot).filter(slot => slot.slotId !== '') };
+}
+
+/**
+ * Capability-gated open slots, **any** window position (open / not-yet-opened / closed).
+ *
+ * Used by `dispatchWatch()` for its `rows[]` list, where the only requirement is coverage: every
+ * open slot must appear exactly once. The due-now variant (`capabilityGatedSlotRows`) and the
+ * closed variant (`capabilityGatedClosedSlotRows`) stay as they are for the numbers that need a
+ * window predicate.
+ */
+export function capabilityGatedAnySlotRows(db, { scopeKey, now = Date.now(), limit = 20 } = {}) {
+  const scope = String(scopeKey ?? '').trim();
+  if (!scope) return { ok: false, code: 'no-scope', rows: [] };
+  const cap = Math.max(1, Math.min(200, Math.trunc(Number(limit) || 20)));
+  const result = tryAll(db, GATED_ANY_SQL, scope, cap);
+  if (!result.ok) return { ok: false, code: 'gated-any-query-failed', rows: [] };
   return { ok: true, rows: result.rows.map(normalizeSlot).filter(slot => slot.slotId !== '') };
 }
 
@@ -219,12 +375,12 @@ function claimOfSlot(db, { scopeKey, slotId } = {}) {
 }
 
 /** Slots already claimed by the heartbeat but not yet materialised by the pump. */
-export function claimedAwaitingStart(db, { scopeKey, now = Date.now(), limit = 20 } = {}) {
+export function claimedAwaitingStart(db, { scopeKey, now = Date.now(), limit = 20, bilibiliReady } = {}) {
   const scope = String(scopeKey ?? '').trim();
   if (!scope) return { ok: false, code: 'no-scope', rows: [] };
   const cap = Math.max(1, Math.min(200, Math.trunc(Number(limit) || 20)));
   const at = Number(now) || 0;
-  const result = tryAll(db, CLAIMED_SQL, scope, cap);
+  const result = tryAll(db, CLAIMED_SQL, scope, gateParam(bilibiliReady), cap);
   if (!result.ok) return { ok: false, code: 'claimed-query-failed', rows: [] };
   const rows = [];
   for (const slot of result.rows.map(normalizeSlot).filter(entry => entry.slotId !== '')) {
@@ -243,7 +399,7 @@ export function claimedAwaitingStart(db, { scopeKey, now = Date.now(), limit = 2
  * The aggregate. `available:false` (with every measurement `null`) when the scope is unknown or a
  * query failed — never a partly-zero "healthy" object.
  */
-export function dispatchMetrics(db, { scopeKey, now = Date.now(), effectLimit = 200 } = {}) {
+export function dispatchMetrics(db, { scopeKey, now = Date.now(), effectLimit = 200, bilibiliReady } = {}) {
   const scope = String(scopeKey ?? '').trim();
   const at = Number(now) || 0;
   const blank = {
@@ -254,6 +410,8 @@ export function dispatchMetrics(db, { scopeKey, now = Date.now(), effectLimit = 
     slots_due: null,
     slots_claimable: null,
     slots_effect_blocked: null,
+    slots_capability_blocked: null,
+    capabilityGate: 'not-reported',
     slots_open: null,
     claimed_awaiting_start: null,
     dispatch_lag_ms: null,
@@ -272,9 +430,9 @@ export function dispatchMetrics(db, { scopeKey, now = Date.now(), effectLimit = 
   };
   if (!scope) return { ...blank, code: 'no-scope' };
 
-  const due = dueSlotRows(db, { scopeKey: scope, now: at, limit: 200 });
+  const due = dueSlotRows(db, { scopeKey: scope, now: at, limit: 200, bilibiliReady });
   if (!due.ok) return { ...blank, code: due.code };
-  const dueCount = tryGet(db, DUE_COUNT_SQL, scope, at, at);
+  const dueCount = tryGet(db, DUE_COUNT_SQL, scope, at, at, gateParam(bilibiliReady));
   if (!dueCount.ok) return { ...blank, code: 'due-count-failed' };
 
   const open = tryGet(db, "SELECT COUNT(*) AS n FROM p2_plan_slots WHERE scope = ? AND status IN ('planned','started')", scope);
@@ -286,9 +444,9 @@ export function dispatchMetrics(db, { scopeKey, now = Date.now(), effectLimit = 
     scopeKey: scope, startAt: slot.startAt, endAt: slot.endAt, kind: slot.activity,
   })));
 
-  const claimed = claimedAwaitingStart(db, { scopeKey: scope, now: at, limit: 200 });
+  const claimed = claimedAwaitingStart(db, { scopeKey: scope, now: at, limit: 200, bilibiliReady });
   if (!claimed.ok) return { ...blank, code: claimed.code };
-  const claimedCount = tryGet(db, CLAIMED_COUNT_SQL, scope);
+  const claimedCount = tryGet(db, CLAIMED_COUNT_SQL, scope, gateParam(bilibiliReady));
   if (!claimedCount.ok) return { ...blank, code: 'claimed-count-failed' };
 
   // `claim_age_ms`: the age of the OLDEST claim that never became an activity — the number that
@@ -323,6 +481,15 @@ export function dispatchMetrics(db, { scopeKey, now = Date.now(), effectLimit = 
   // into a dispatch loop that then refuses every slot.
   const effectKnown = effects.ok === true;
   const derivedKnown = effectKnown && !truncated;
+  // Slots the capability gate removed from `slots_due`. Reported as its own number: `slots_due`
+  // must keep meaning "a beat could claim it right now", and "the capability behind it is missing"
+  // is a different fact from "the plan is empty".
+  const capabilityBlocked = bilibiliReady === false
+    ? (() => {
+      const gated = tryGet(db, GATED_COUNT_SQL, scope, at, at);
+      return gated.ok ? asCount(gated.row?.n) : null;
+    })()
+    : 0;
   return {
     available: true,
     at,
@@ -331,6 +498,8 @@ export function dispatchMetrics(db, { scopeKey, now = Date.now(), effectLimit = 
     slots_due: asCount(dueCount.row?.n),
     slots_claimable: derivedKnown ? claimableCount : null,
     slots_effect_blocked: derivedKnown ? blockedDue.length : null,
+    slots_capability_blocked: capabilityBlocked,
+    capabilityGate: bilibiliReady === false ? 'bilibili-not-ready' : bilibiliReady === true ? 'ready' : 'not-reported',
     slots_open: asCount(open.row?.n),
     claimed_awaiting_start: asCount(claimedCount.row?.n),
     // How late the oldest still-due slot already is, for the caller's `now`. `null` when nothing is
@@ -361,7 +530,7 @@ export function dispatchMetrics(db, { scopeKey, now = Date.now(), effectLimit = 
  * the N-th claimable slot is only guaranteed to be reachable on beat `floor(N / maxPerBeat) + 1`.
  */
 export function dispatchWatch(db, {
-  scopeKey, now = Date.now(), maxPerBeat = 1, intervalMs = 60000, jitterMs = 2500, limit = 20,
+  scopeKey, now = Date.now(), maxPerBeat = 1, intervalMs = 60000, jitterMs = 2500, limit = 20, bilibiliReady,
 } = {}) {
   const scope = String(scopeKey ?? '').trim();
   const at = Number(now) || 0;
@@ -369,12 +538,57 @@ export function dispatchWatch(db, {
   const base = { readOnly: true, at, scopeKey: scope || null, rows: [], counts: null, nextBeatWithinMs: null };
   if (!scope) return { ...base, ok: false, code: 'no-scope' };
 
-  const due = dueSlotRows(db, { scopeKey: scope, now: at, limit });
+  const due = dueSlotRows(db, { scopeKey: scope, now: at, limit, bilibiliReady });
   if (!due.ok) return { ...base, ok: false, code: due.code };
-  const claimed = claimedAwaitingStart(db, { scopeKey: scope, now: at, limit });
+  // `claimedAwaitingStart` keeps the gate (round-4 N2) because `claim_age_ms` is about "waiting for
+  // the pump", and a not-ready capability never waits for the pump. Its missing rows are restored
+  // below by `GATED_ANY_SQL`, which has no window predicate at all (round-5 N4): a `started` slot
+  // whose window has not opened yet is neither due, nor will-miss, nor awaiting-start, and used to
+  // fall through all three — vanishing from `rows[]` while still counted in `slots_open`.
+  const claimed = claimedAwaitingStart(db, { scopeKey: scope, now: at, limit, bilibiliReady });
   if (!claimed.ok) return { ...base, ok: false, code: claimed.code };
   const effects = effectBlocksByJob(db, { scopeKey: scope, now: at });
-  const missResult = tryAll(db, WILL_MISS_SQL, scope, at, Math.max(1, Math.min(50, Math.trunc(Number(limit) || 20))));
+  // round-4 N1: when the capability is not ready, a closed window is **not** a miss — the pump
+  // retires it under `detail:'capability-unavailable'`. Dropping those rows here and reporting them
+  // as `blocked-capability` instead is what keeps `counts.willMiss` equal to the number of `missed`
+  // facts the pump will actually write.
+  //
+  // round-7 N10: "will actually write" is a statement about the **whole backlog**, not about the
+  // next beat — the pump's own missed sweep has `LIMIT 8`, so 20 closed read slots give
+  // `willMiss 20` while the next pass writes 8. Per-beat the honest number is
+  // **at most** `min(willMiss, 8)`: the pump's sweep shares that budget with gated slots it retires
+  // without writing a receipt (round-8 N12), so it can write fewer. See CONTRACT §15.3.
+  //
+  // round-8 N11: the gate is inside `WILL_MISS_SQL` now, so the `gatedClosedIds` skip below is a
+  // belt-and-braces no-op for a positive "not ready" report — gated rows never come back from this
+  // query in the first place. It stays because a caller that cannot report the provider gets the
+  // un-gated set, and that set must still not be mistaken for `missed` facts.
+  const missResult = tryAll(db, WILL_MISS_SQL, scope, at, gateParam(bilibiliReady), Math.max(1, Math.min(50, Math.trunc(Number(limit) || 20))));
+  // A slot is capability-blocked when this build positively reports the provider as not ready and
+  // the slot is one of that provider's kinds. `undefined` (not reported) never blocks: the watch
+  // must not invent a refusal it cannot observe.
+  const gatedRows = capabilityGatedSlotRows(db, { scopeKey: scope, now: at, limit });
+  // The row-coverage query: any window position, capability-gated only. It closes the window gap
+  // left by the three predicate-bounded queries above — capped like every other row query, so it
+  // samples at most `limit` gated slots rather than enumerating the scope.
+  const gatedAny = bilibiliReady === false
+    ? capabilityGatedAnySlotRows(db, {
+      scopeKey: scope, now: at, limit: Math.max(1, Math.min(200, Math.trunc(Number(limit) || 20))),
+    })
+    : { ok: true, rows: [] };
+  // Only queried when the caller positively reports "not ready": with a ready provider this set
+  // must be empty, or the `will-miss` rows it removes would never be re-added by the
+  // `blocked-capability` branch (which runs only under `bilibiliReady === false`).
+  const gatedClosed = bilibiliReady === false
+    ? capabilityGatedClosedSlotRows(db, {
+      scopeKey: scope, now: at, limit: Math.max(1, Math.min(50, Math.trunc(Number(limit) || 20))),
+    })
+    : { ok: true, rows: [] };
+  const capabilityBlocked = slot => bilibiliReady === false && String(slot?.activity ?? '') === 'bilibili';
+  /** A closed-window row that the pump will retire as `capability-unavailable`, not as `missed`. */
+  const gatedClosedIds = new Set(
+    gatedClosed.ok ? gatedClosed.rows.map(row => String(row?.slotId ?? '')).filter(Boolean) : [],
+  );
 
   // One row per slot, keyed by slotId: a claimed slot whose window has since closed is *both*
   // "awaiting the pump" and "about to be filed as missed", and reporting it twice would inflate
@@ -430,12 +644,77 @@ export function dispatchWatch(db, {
   }
   if (missResult.ok) {
     for (const slot of missResult.rows.map(normalizeSlot)) {
+      // round-4 N1: a closed window whose capability is not ready is retired by the pump under
+      // `detail:'capability-unavailable'` — no `missed` receipt, no `onMissed`. Reporting it here as
+      // `will-miss` would promise a fact the pump will not write, so it is handed to the
+      // `blocked-capability` branch below instead.
+      if (gatedClosedIds.has(slot.slotId)) continue;
       put({
         ...slot,
         state: 'will-miss',
         blockReason: 'window-closed',
         blockDetail: 'the slot window closed without an activity; the pump files it as missed',
         dueSinceMs: null,
+        expectedBeat: null,
+        claimedAtMs: null,
+        claimAgeMs: null,
+        claimAgeSource: 'none',
+      });
+    }
+  }
+  // CONTRACT §15.3 vocabulary extension (round-3 P2-6, round-4 N1, round-5 N4): a slot whose
+  // **capability** is not ready is not claimable — the beat's own predicate excludes it — and it is
+  // not `will-miss` either. `blocked-capability` is that third answer, and it must cover **every
+  // window position**:
+  //
+  //   * row list  → `GATED_ANY_SQL` (no window predicate), so a slot can never fall through the
+  //                 three window-bounded queries and vanish from `rows[]` (round-5 N4);
+  //   * `blockDetail` distinguishes the three cases, so an operator is never told "the pump files
+  //                 it as missed" about a slot whose pump retirement is `capability-unavailable`.
+  //
+  // The three window-specific queries (`gatedRow*`, `gatedClosed*`, `willMiss`) are merged here so
+  // the *state* a row gets is decided once, by window position, instead of by which query found it.
+  const gatedState = row => {
+    if (!capabilityBlocked(row)) return null;
+    if (row.endAt <= at) {
+      return {
+        blockDetail: 'the window closed while the Bilibili provider was not ready; the pump retires it as capability-unavailable, not as missed',
+        dueSinceMs: null,
+      };
+    }
+    if (row.startAt > at) {
+      return {
+        blockDetail: 'the Bilibili provider is not ready in this build; this slot is claimed but its window has not opened yet, and the pump will never start it',
+        dueSinceMs: null,
+      };
+    }
+    return {
+      blockDetail: 'the Bilibili provider is not ready in this build, so this slot is never claimed or started',
+      dueSinceMs: Math.max(0, at - row.startAt),
+    };
+  };
+  // The union of the due-now set, the closed set and the any-window set: the first two carry the
+  // rows their predicates selected, the last closes the window gap between them. Every query here
+  // carries its own `LIMIT` (round-7 N7), so `rows[]` is a bounded sample, not the scope — and
+  // because `GATED_ANY_SQL` sorts by `start_at ASC`, an overflow is filled by the earliest slots,
+  // which is why "no row of a category" can also mean "pushed out by older ones". `put()`
+  // de-duplicates by slotId, so a slot found by more than one query still yields exactly one row
+  // and the `counts` below are never inflated by overlap.
+  const gatedAll = [
+    ...(gatedRows.ok ? gatedRows.rows : []),
+    ...(gatedClosed.ok ? gatedClosed.rows : []),
+    ...(gatedAny.ok ? gatedAny.rows : []),
+  ];
+  if (bilibiliReady === false) {
+    for (const row of gatedAll) {
+      const verdict = gatedState(row);
+      if (!verdict) continue;
+      put({
+        ...row,
+        state: 'blocked-capability',
+        blockReason: 'bilibili-provider-not-ready',
+        blockDetail: verdict.blockDetail,
+        dueSinceMs: verdict.dueSinceMs,
         expectedBeat: null,
         claimedAtMs: null,
         claimAgeMs: null,
@@ -456,6 +735,13 @@ export function dispatchWatch(db, {
       due: due.rows.length,
       claimable: claimable.length,
       effectBlocked: rows.filter(row => row.state === 'blocked-effect').length,
+      // N5 (round-5): `counts.capabilityBlocked` counts **rows by state** — every window position,
+      // but only for the sampled rows in `rows[]` (round-6 N6 / round-7 N7: bounded by six
+      // per-query LIMITs, not exhaustive).
+      // `dispatchMetrics().slots_capability_blocked` is a **due-now**, exact count. They are
+      // different questions with a similar name, so the field comment here (and CONTRACT §15.3)
+      // says which is which instead of leaving the reader to guess.
+      capabilityBlocked: rows.filter(row => row.state === 'blocked-capability').length,
       awaitingStart: rows.filter(row => row.state === 'awaiting-start').length,
       willMiss: rows.filter(row => row.state === 'will-miss').length,
       beatsToDrain: claimable.length === 0 ? 0 : Math.ceil(claimable.length / perBeat),

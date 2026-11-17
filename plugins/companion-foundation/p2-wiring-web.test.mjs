@@ -328,6 +328,24 @@ test('a blocked provider reports search-unavailable and points at the seed-page 
   assert.equal(web.describe().search.available, false);
 });
 
+// P3-4 (round-3 review): a *network-level* failure is aggregated as `search-unavailable` with the
+// real cause inside `failures[]`. The live smoke used to test only the top-level `code`, so on a
+// machine with no network it failed instead of skipping — "not verified" read as "broken".
+//
+// The offline suite pins that exact shape here, deterministically, so the live test's skip
+// condition is itself covered by evidence rather than only by whichever machine happens to run it.
+test('a network-level failure aggregates as search-unavailable with source-fetch-failed inside failures', async () => {
+  const fetchImpl = fakeFetch(() => { throw new TypeError('fetch failed'); });
+  const web = createWebPort({ allowedSources: ['en.wikipedia.org', 'zh.wikipedia.org'], searchProvider: 'wikipedia', fetchImpl });
+  const found = await web.search({ query: 'bridge', limit: 3 });
+  assert.equal(found.ok, false);
+  assert.equal(found.code, 'search-unavailable', 'the aggregate code, not the per-host cause');
+  assert.ok(Array.isArray(found.failures) && found.failures.length >= 1, JSON.stringify(found));
+  assert.equal(found.failures[0].code, 'source-fetch-failed', 'the cause is preserved for the caller to classify');
+  assert.equal(found.reason, 'fetch failed', 'and its message is carried through unchanged');
+  assert.deepEqual(found.results, []);
+});
+
 test('a provider answering with unparseable JSON is search-unavailable, not an exception', async () => {
   const web = createWebPort({ allowedSources: ['en.wikipedia.org'], fetchImpl: fakeFetch(() => response({ contentType: 'application/json', body: '{not json' })) });
   const found = await web.search({ query: 'bridge' });

@@ -32,13 +32,18 @@ export const WEB_URL_PATTERN = /dsh web:\s*(https?:\/\/[^\s?]+\?token=[^\s]+)/;
 
 /**
  * Resolve the CLI entry point under a module root.
- * @param {string} moduleRoot `<install>/resources/app/dsh/node_modules`
+ *
+ * A module root that was selected by the in-Electron probe may live inside `app.asar`, which
+ * plain Node cannot read — so "exists" is only answered here when a host record already answered
+ * it. Callers pass `knownExists` when `resolveHost()` verified the path inside the desktop binary.
+ * @param {string} moduleRoot `<install>/resources/app.asar/dsh/node_modules`
+ * @param {boolean|undefined} [knownExists] probe verdict; omitted means "check with fs"
  * @returns {{path: string, exists: boolean}}
  */
-export function hostCliPath(moduleRoot) {
+export function hostCliPath(moduleRoot, knownExists) {
   if (!moduleRoot) return { path: '', exists: false };
   const cliPath = path.join(moduleRoot, HOST_CLI_PACKAGE, 'lib', 'cli.js');
-  return { path: cliPath, exists: fs.existsSync(cliPath) };
+  return { path: cliPath, exists: knownExists === true ? true : (knownExists === false ? false : fs.existsSync(cliPath)) };
 }
 
 /**
@@ -54,7 +59,7 @@ export function hostCliPath(moduleRoot) {
  * @returns {{ready: boolean, command: string, cliPath: string, launcher: string, reason: string}}
  */
 export function describeLauncher(host = {}, opts = {}) {
-  const { path: cliPath, exists } = hostCliPath(host.moduleRoot);
+  const { path: cliPath, exists } = hostCliPath(host.moduleRoot, host.cliExists);
   const executable = host.executable || '';
   const hasExe = Boolean(executable) && fs.existsSync(executable);
 
@@ -77,8 +82,7 @@ export function describeLauncher(host = {}, opts = {}) {
       launcher: 'desktop-exe',
       reason: `宿主目录里找不到 CLI 入口：${cliPath}`,
     };
-  }
-  if (hasExe) {
+  }  if (hasExe) {
     return { ready: true, command: executable, cliPath, launcher: 'desktop-exe', reason: '' };
   }
   const node = opts.nodeExecutable || process.execPath;

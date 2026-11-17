@@ -941,9 +941,18 @@ export function createMemoryEngine({ root, identity, env = process.env, llm = nu
           query,
           config: { ...config.retrieval, budgetChars: config.injection.budgetChars, rerank: config.rerank },
           now: now(),
+          // 自动注入：克制模式。受限行只给提示/占位，不把正文塞进提示词。
+          sessionId,
+          purpose: 'auto',
         });
         state.recalls += 1;
-        const text = render.renderContext({ entries: result.entries, budget: config.injection.budgetChars });
+        const text = render.renderContext({
+          entries: result.entries,
+          budget: config.injection.budgetChars,
+          purpose: 'auto',
+          viewer,
+          now: now(),
+        });
         appendJsonl(recallLogPath, {
           at: new Date(now()).toISOString(),
           sessionId,
@@ -975,9 +984,14 @@ export function createMemoryEngine({ root, identity, env = process.env, llm = nu
           query,
           config: { ...config.retrieval, topK: limit, rerank: config.rerank },
           now: now(),
+          // 显式查询：用户开口问了，tone_only 之类的行可以展开正文。
+          sessionId,
+          purpose: 'explicit',
         });
-        const rendered = render.renderRecallResult({ entries: result.entries, limit });
-        return { ...rendered, explain: result.explain };
+        const rendered = render.renderRecallResult({
+          entries: result.entries, limit, purpose: 'explicit', viewer, now: now(),
+        });
+        return { ...rendered, explain: result.explain, queryPlan: result.queryPlan, gates: result.gates };
       });
     },
 

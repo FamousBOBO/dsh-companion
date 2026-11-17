@@ -29,6 +29,8 @@
 | 症状 | 判断 | 处理 |
 |---|---|---|
 | `doctor`：`未检测到 DSH 宿主` | 装的是非标准路径，或没装 | 在 `config/suite.json` 写 `dsh.executable` + `dsh.moduleRoot`（`docs/01` §5.2）。`doctor` 会打印它试过的路径 |
+| `doctor`：`宿主 CLI 入口 — 宿主目录里找不到 CLI 入口` | 桌面版把 CLI 放在 `resources/app.asar/dsh/node_modules` 里，plain Node 看不到 `app.asar` | 先看下一行「宿主版本来源」：显示 `桌面二进制内探测` 说明探测已生效，这条不该再出现；仍出现时用 `dsh.moduleRoot` 显式指向一个真实目录（例如本机解出来的 `data/host-runtime/node_modules`） |
+| `doctor`：`宿主版本 — 未检测到 DSH 宿主版本` | 二进制探测失败（Electron 起不来 / 元数据缺失） | 不猜版本：确认 `dsh.executable` 指向的桌面程序能被 `ELECTRON_RUN_AS_NODE=1 <exe> -e "…"` 启动；读不到就保持 `unknown`，不要手填一个版本号让它变绿 |
 | `doctor`：`宿主 X 低于最低支持版本 0.2.0` | 宿主太旧 | 升级 DSH 桌面版 |
 | `doctor`：`宿主 X 高于已验证版本…未实测` | 不阻断 | 可以继续，但把它记录下来；出问题优先怀疑版本差异 |
 | `npm run start` 起不来，日志里 `EADDRINUSE` | 端口被占（旧进程没退） | `npm run stop`；确认没有同 profile 的进程残留 |

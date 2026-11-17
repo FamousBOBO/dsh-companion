@@ -34,8 +34,14 @@ test('LIVE-NETWORK (skipped, never silently passed, when the network is unavaila
   const found = await web.search({ query: 'suspension bridge', limit: 3 });
   const searchMs = Date.now() - searchStarted;
   if (!found.ok) {
-    if (found.code === 'source-fetch-failed') {
-      t.skip(`network unavailable: search returned ${found.code}/${found.reason} after ${searchMs} ms`);
+    // `search()` aggregates every provider host: when *all* of them failed at the network level the
+    // port answers the aggregate code `search-unavailable` and puts the per-host causes in
+    // `failures[]`. Checking only the top-level code therefore missed the real offline case and
+    // turned "this machine has no network" into a **failure** — a red suite that says nothing
+    // about the port. Both shapes are recognised here; the per-host code is what decides.
+    const causeCode = found.failures?.[0]?.code ?? found.code;
+    if (found.code === 'source-fetch-failed' || (found.code === 'search-unavailable' && causeCode === 'source-fetch-failed')) {
+      t.skip(`network unavailable: search returned ${found.code}/${causeCode}/${found.reason ?? found.failures?.[0]?.reason ?? ''} after ${searchMs} ms`);
       return;
     }
     // Any other refusal is a port defect, not a network problem: it must fail, not skip.

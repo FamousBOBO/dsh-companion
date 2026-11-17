@@ -210,16 +210,16 @@ QQ 发送**。下面每一行都写着"改了什么 + 用什么命令证明的"�
 | 「无 `message_id` 不记为已发送」（P2 第 10 条） | `offline-test` | `src/delivery.mjs` 的 `statusOf()` 原先把 `{ok:true}` 但无回执记成 `sent`；现在记 `unknown`（显式 `status=failed/unknown` 照它自己的话）。`test/expression-chain-p2.test.mjs` **6 项**把 docs/11 P2 第 7–10 条钉在一起：无候选不随机挑图 / `reply` 只认候选 `assetId` / 同轮最多一张 / 无回执不算发过且不重投 |
 | 出站配图与入站理解分离（P1） | `offline-test` | 入站那条（用户发表情）不再触碰出站逻辑；出站那条（Bot 自己配图）仍走 `presence-afterspeak.ts` 的 `stickerStep`，受 `presence.stickers`、每群 10 分钟冷却与每小时额度约束。`test/presence-stickers.test.ts` **10 项**钉住：`stickers=false` 时一次图库都不问；额度允许时先问候选再用候选 `assetId` 发、且 `mode=text_then_sticker`；冷却/额度按群记且不同群互不影响；**没发成功（`no-candidate` / 无回执）时账本不前进**（一次失败不锁死 10 分钟）；图库抛错与没有服务都只记一行、不冒泡。出站实现本身**未改**（`git diff e2bde2c..HEAD` 对该文件为空） |
 | 整体离线验证 | `offline-test` | 开发 worktree：`npm test --workspace=@dsh-companion/channel-qq` → **1793 tests / 1792 pass / 0 fail / 1 skip**（该 skip 是既有的「真实会话文件逐帧解码」用例）；`plugins/companion-expression` `node --test "test/*.test.mjs"` → **227/227 通过**；`npm run verify` → `unit` 9 模块通过 0 失败、`static` 32 通过 0 失败、`compose` **SKIPPED**（本机 `doctor` 探测不到宿主 CLI 入口，见下一行）；channel-qq 的 `check:size` / `check:layers` / `check:syntax` / `check:admin` 全通过 |
-| 宿主装载（`host-load`） | **未验证** | 开发 worktree 的 `doctor` 报 `[失败] 宿主 CLI 入口 — 宿主目录里找不到 CLI 入口`：本机装的是 `0.2.2-rc.1`，CLI 在 `app.asar` 内而不是 `resources/app/dsh`，`tools/lib/host.mjs` 的推导路径对不上。**这是环境差异，不是本次改动引入的**（基线 `verify` 的 `compose` 同样 SKIPPED）。因此 `expression_*` 工具在真宿主上是否注册、是否有会话可见、发送器是否可见，**本轮没有实测证据**——诊断代码已经就位，但「诊断能跑」不等于「链路在真宿主上通了」 |
+| 宿主装载（`host-load`） | **未验证** | ~~开发 worktree 的 `doctor` 报 `[失败] 宿主 CLI 入口 — 宿主目录里找不到 CLI 入口`~~ **2026-11-16 已修**（见 §2.10）：`resources/app.asar/dsh/node_modules` 现在由桌面二进制内部探测，本机 `doctor` 该项转 `[通过]`，版本报 `0.2.2-rc.1`（来源 `probe`）。**但这一条仍然未验证**：探测通过只说明能定位 CLI，不等于插件在运行实例里装载成功。要看装载证据仍得启动日志里那两行 |
 | 真实 QQ 发送（`real-send`） | **未验证，且本轮不允许** | 独立 worktree 的 `config/suite.json` 全部沿用模板：`modules.expression=false`、`delivery.enabled=false`、`safety.*` 全关。真实发送必须由操作者在**生产环境**显式触发，并按 §2.6 的口径记录 `provider_message_id` 与回读 `sub_type` |
 
 > 结论措辞只能用：「表情包链路的工具名、服务发现、入站语义、可见性诊断与发送纪律在**离线测试**层面
 > 通过（channel-qq 1792 项 + expression 227 项，0 失败）；**宿主装载与真实发送本轮未验证**」。
 >
 > 三个容易读错的点：
-> 1. **`offline-test` 全绿 ≠ 宿主装载通过**：本机宿主版本 `0.2.2-rc.1` 与 `tools/lib/host.mjs`
->    推导的 CLI 路径不一致，`compose` 一直是 SKIPPED（基线如此）。要升级这条证据，得先在能探测到
->    CLI 的机器上跑 `npm run doctor` 到「核心检查通过」，再看启动日志里有没有
+> 1. **`offline-test` 全绿 ≠ 宿主装载通过**：本轮之前 `tools/lib/host.mjs` 推导的 CLI 路径与本机
+>    `0.2.2-rc.1` 的 `app.asar` 布局对不上，`compose` 一直是 SKIPPED；2026-11-16 已修（§2.10），
+>    现在探测与合成都能跑通，但**装载**仍未验证。要升级这条证据，得看启动日志里有没有
 >    `已注册 5 个工具` 与 `宿主接线：发送器=有/采集http=有/入库=有/主人判定=有` 那两行。
 > 2. **「表情包不发了」现在可以一句话查清**：后台状态快照的 `expressionVisibility` 与
 >    `expression` 两格，加上 `node plugins/companion-expression/scripts/diagnose.mjs --dm … --group …`，
@@ -234,6 +234,171 @@ QQ 发送**。下面每一行都写着"改了什么 + 用什么命令证明的"�
 >    它里面有跨进程/`Atomics.wait` 的用例，并行跑时对机器负载敏感。按 §4.1 的口径，这类红
 >    要先用「单模块复跑」证明不是代码坏了，再往下走。
 
+
+### 2.10 非 UI 修复轮（2026-11-16）：宿主布局探测 / 静态扫描 / 外部模块指纹
+
+> 这一轮**没有**启动陪伴宿主、没有调真实模型或平台 API、没有改本机 `config/suite.json` 或 `data/`。
+> 下面每一行的证据都停在 `offline-test`，只有 `compose` 那一条标了它用的是哪个宿主。
+
+| 项目 | 等级 | 结果与边界 |
+|---|---|---|
+| 宿主布局探测（`tools/lib/host.mjs`） | **`offline-test`** | `node --test tools/lib/host.test.mjs` → **15/15 通过**（`exists`/`readJson`/`probe` 全部注入，不读本机安装）。矩阵覆盖：`resources/app/dsh`、`resources/app.asar.unpacked/dsh`、`app.asar` 内部、显式 `moduleRoot` 优先、headless 只配 `moduleRoot`、可执行文件在但入口缺失、元数据损坏/缺失、版本低于最低要求 |
+| 宿主版本读取 | **`offline-test` + 本机只读实测** | 本机 `resolveHost({})` → `version=0.2.2-rc.1`、`versionSource=probe`、`moduleRoot=…\resources\app.asar\dsh\node_modules`、`cliExists=true`。版本来自桌面二进制**内部**（`app.asar/dsh/package.json` 或 `runtime/primary-runtime/runtime.json`）。plain `node` 读不到 `app.asar`，所以这条路径只能由二进制自己回答；读不到时仍报 `unknown`，不猜 |
+| `compose`（隔离实例） | **`host-load`（隔离合成）** | 在本机临时 `DSH_HOME` 里用真实桌面宿主合成：**198 个 loader 行 / exit 0 / 234 ms**，`preset-companion`、`companion-workspace-context`、`companion-foundation` 都在结果里，补丁的 2 个 `file://` 入口全部存在。**这是 `--dump-config` 合成，不是装载**——不代表插件在运行实例里被挂上 |
+| `compose`（干净检出） | **`SKIPPED`** | 没有 `config/suite.json` 就没有 profile 可合成。`verify` 现在把这条原因写清楚；旧文案一律说"未检测到宿主"，会把"缺配置"误诊成"缺宿主" |
+| 静态发布扫描 | **`offline-test`** | `node scripts/verify.mjs --only=static` → **39 通过 / 0 失败**（基线 38/1：`tools/lib/host-temp.test.mjs:5` 命中 `author-path`）。修法是把测试夹具路径改成运行时拼装，**没有**给该文件加扫描豁免，也没有放松 `author-path` 规则 |
+| `tools/` 纳入发布闸门 | **`offline-test`** | `verify` 的 `unit` 段新增一行 `tools（宿主探测 / 外部模块指纹 / 迁移）`：`node --test tools/**/*.test.mjs` 一并跑。之前这些测试只能手动跑，`verify` 全绿并不覆盖它们——上面两条缺陷就是这么漏出来的 |
+| 外部 B 站模块指纹 | **`offline-test` + 本机只读指纹** | `node tools/verify-external-modules.mjs`：生产 profile → `code=hash-mismatch`（`bytes=211655`，pin `127D04BE…`）；`data/backups/pnpm-store-repair-20261113` 的副本 → `code=ok`（`bytes=213810`）。两者 `package.json` 的 `version` 都是 `2.4.0` ⇒ 版本号不能当判据 |
+| B 站 provider 注册生命周期 | **`offline-test`** | `tools/bilibili-provider-integration.test.mjs` → **5/5 通过**：指纹通过的合成副本 import 后真的把 provider 写进 `Symbol.for('dsh.companion.bilibili.providers.v1')` 注册表；`ready()` 转身 → 端口立刻 `available()===false`；删条目（卸载）→ 不可用；重新挂载 → 恢复；未就绪时 `run` 返回 `failed` 且 0 条证据 |
+| B 站派发闸门 | **`offline-test`** | `plugins/companion-runtime/test/{bilibili-provider,bilibili-rounds,p2-bilibili-provider-gate,p2-bilibili-dispatch-order,p2-bilibili-claim-gate,p2-bilibili-watch-gate}.test.mjs` → **14/14 通过**（三轮后：未就绪只丢那一个槽、残留 slot 不 start、**心跳 due/claim 两条路径也被同一闸门挡住**、窗口关闭按 `capability-unavailable` 退役而不写 `missed`、dry watch 报 `blocked-capability` 而非 `claimable`、就绪时 claim 与 start 都照常）。⚠️ 注意别和上一行的 `tools/bilibili-provider-integration.test.mjs 5/5` 混为一谈：那是**两个不同的文件集合**，5/5 是 `tools/` 下的注册生命周期，**14/14** 是 `plugins/companion-runtime/test/` 下的派发闸门（二轮时是 9/9，三轮新增两个文件 5 个用例） |
+| 真实 B 站观看/评论/发送 | **未验证** | 本轮**没有**登录、没有触发真实观看或发送。`provider-not-ready` 与派发 fail-closed 保持原样，没有用文案把它写成可用 |
+| 模块离线测试 | **`offline-test`** | `npm ci` → `npm run build` → `node scripts/verify.mjs` → `unit` **10 模块通过 / 0 失败 / 1 无测试**（`paste-search` 如实记 `no-tests`）；`static` 39/0；`compose` SKIPPED（干净检出）。`tools/` 那一段如实报 **72 个测试通过**；匹配到 0 个测试文件时它**判失败**而不是记 ok（详见 §2.11） |
+
+**这几条明确不算证据**：Windows 上 `memory-studio` 与 `channel-qq` 在**未构建**状态会红（构建产物缺失），`npm run build` 后转绿——既不是缺陷，也不能说成"模块本来就好"；「合成 198 行」不等于「运行实例里 198 个都活着」；指纹通过只说明字节对，不说明 B 站账号能用。
+
+### 2.11 PR #4 二轮审查的修复（2026-11-17）：两个 P1 + 五个 P2 + 三个 P3
+
+> 本轮是**只读审查**的后续修复。仍然**没有**启动陪伴宿主、没有调真实模型 / B 站 / QQ、
+> 没有改本机 `config/suite.json` 或 `data/`。下面每条都只到 `offline-test`。
+
+审查结论是「不建议按现状合并」：P0 = 0，P1 = 2（+1 表述性），P2 = 5，P3 = 3。
+`648e1d8` 那一轮的 CI 确定性修复本身是干净的，但它没有碰任何一个 P1。
+
+| 编号 | 缺陷（一句话） | 修法 | 证据 |
+|---|---|---|---|
+| **P1-1** | 分享决策永远读不到历史：钩子工厂不传 `scopeKey` → runtime 答 `unbound` → 就算作用域对了，`status:'all'` 也被当成一个状态值塞进 `WHERE status = ?`，匹配零行。于是 `duplicate` 永不触发、`maxSharesPerDay` 永远数到 0 | ① `resolveHistory()` 把 `scopeKey` 拆回 bound 一起传下去；② `listShareCandidates()` 认得 `'all'` 是"不筛状态"；③ 钩子链上每一段都真的把 scope 送到 | `plugins/companion-foundation/share-history-scope.test.mjs` **4/4**：`'all'` 读到已离开 `pending` 的行；**同一活动第二次完成命中 `duplicate` 且行数不变**；窗口内第 3 条按 `budget-exhausted` 拒绝；scope 真缺失时 `scope-required` + 零写入 |
+| **P1-2** | B 站闸门放错位置：`ORDER BY start_at ASC LIMIT 2` 先取两行、再在循环里跳过，两行都是 duty 时**这一拍一条都不 start**，read/explore/write 被饿死；`bilibiliSkipped` 计数器是死变量 | 判据前移，duty 未就绪就在**同一句 SQL** 里排除（`AND (s.activity <> 'bilibili' OR ? = 1)`）；`LIMIT` 数的是真能派的槽位；跳过另查一次并**每拍一条** `noteError`（不再每槽一条）；删掉死变量 | `plugins/companion-runtime/test/p2-bilibili-dispatch-order.test.mjs` **2/2**（真 P2 + 真 reducer + 临时 SQLite）：2 个到点 duty + 1 个 read ⇒ **read 照常 start**，duty 仍是 `planned`（跳过不是认领），且跳过理由只记一条；同一组槽位在 provider 就绪时 duty 重新拿到先手 |
+| **P1-3** | planner 把"一个能力不可用"升级成"整份计划作废"：模型只要顺手排了一次刷 B 站，read/explore/write 一起失效，重试两次仍一样，这一天没有计划；与派发侧"只跳过自己"的语义矛盾。`bilibiliProviderReady` 字段写进 `dispatchWatch` 后无人读 | 改为**只丢那一个槽**：`normalizeSlot()` 返回 `{dropped}`，`parseDayPlan()` 汇总进 `plan.dropped`，planner 逐个 `report()`；`dispatchWatch` 的 `bilibiliProviderReady` 由 `p2DispatchWatch()` 投影到 `result.p2.bilibiliProviderReady`（活的消费者） | `p2-bilibili-provider-gate.test.mjs` **4/4**（新增"同一份计划里的 read 槽照常入册，丢的不是整天"）：reason 码 `slot-dropped:bilibili-provider-unavailable`，`plan.dropped` 恰一条，read 照常 `committed` |
+| **P2-1** | `verify` 的 `tools` 段匹配到 **0 个**测试文件时 `# tests 0` / exit 0 ⇒ 记为 ok（假绿） | 先数 `tests`，为 0 直接判失败并写明"这一段什么都没检查"；计数同时认 `ℹ tests N`（spec）与 `# tests N`（TAP）两种尾巴 | `node scripts/verify.mjs` → `tools（宿主探测 / 外部模块指纹 / 迁移） — 72 个测试通过`；临时改名目录后该行变 ✗ |
+| **P2-2** | group-mirror e2e 占死端口 31492/31493：同机任何进程占着它都会把整组打红，而它已经被并进发布闸门 | 假 SSE 源 `listen(0)` 由系统分配并回读端口；`fakeOneBotPort` 允许 `0` 表示"系统分配"，`FakeOneBotServer.listen()` 把真实端口写回并新增 `address()`；重连用例改成"只断已建立的连接、源仍在原端口监听" | `tools/group-mirror/test/e2e.test.mjs` **6/6** |
+| **P2-3** | `purpose:'explicit'` 只影响渲染，`minScore`/`coverageFloor`/语义门限一处都没读它 —— 参数看着像旋钮，实际没有消费者 | 显式查询把**词法覆盖率**门槛下调一次（固定 0.5 倍、硬下限 0.06），自动注入不变；每次下调在 `explain.filteredReasons` 留 `explicit-floor-relief` | `plugins/companion-memory/test/explicit-floor-relief.test.mjs` **4/4**：显式 floor = 0.075 vs 自动 0.15；无关查询在两条路径下都仍被拒（下调有界）；`coverageFloor:0.1` 时被硬下限抬回 0.06 |
+| **P2-4** | `historyFallbackEnabled` 从 `config.mjs` 一路传到 `buildQueryPlan()` 写进 `plan.historyFallback`，然后**没有任何消费者**：关掉开关行为不变 | 无话题时的兜底分支先读它：关掉 ⇒ 空结果 + `history-fallback-disabled`；打开（默认）⇒ 与改动前逐字相同 | `plugins/companion-memory/test/history-fallback-switch.test.mjs` **3/3** |
+| **P2-5** | 指纹比较一边 `digest('hex')` 小写、一边 pin 原样比：pin 写成大写（文档里就是 `127D04BE…`）会把**正确**的字节判成 mismatch，运维"修"的时候就会把模块换成磁盘上那份，把闸门反过来 | `sameSha256()` 两侧先 `trim().toLowerCase()` 再比 | `tools/verify-external-modules.test.mjs` **9/9**：新增大写 pin 通过、以及"大小写不敏感不放宽字节判据"（换字节仍 `hash-mismatch`） |
+| **P3-1** | 文档里两个 "N/N" 指的不是同一批文件，容易被混读 | `docs/07` 的 B 站派发闸门一行改成 **9/9**（`plugins/companion-runtime/test/` 四个文件），并显式标注"别和上一行 `tools/` 的 5/5 混为一谈" | 见本表前一节 |
+| **P3-2** | `settleCount` 没有墙钟上限，"恰好 2 条"实际是"前 300ms 内恰好 2 条" | 加 `maxMs=3000`：到顶仍没有静默窗口就**抛错**，而不是返回一个从没稳定过的计数 | `plugins/dsh-channel-qq` 全量 **1907/1906 pass / 0 fail** |
+| **P3-3** | `reminders-dispatch-timing.test.ts` 一处 `} finally {` 与上一条断言挤在同一行 | 换行 | 同上 |
+
+总账（本机实测）：`node scripts/verify.mjs` → `unit` 10 通过 / 0 失败 / 1 无测试，`static` 39/0，
+`compose` SKIPPED（干净检出）；`plugins/companion-runtime` **717/717**；`plugins/companion-memory`
+**308 tests / 301 pass / 0 fail / 7 skip**；`plugins/companion-foundation` **480/480**；
+`tools/**` **72/72**；`@dsh-companion/channel-qq` **1907 tests / 1906 pass / 0 fail / 1 skip**，
+`check:layers` 与 `check:size` 均通过。
+
+**这些仍然不算证据**：本轮没有真宿主装载、没有真模型、没有真 B 站账号、没有真 QQ 发送；
+`purpose:'explicit'` 的门槛下调只在词法覆盖率上生效（向量通道的门限没动，也没测）；
+「B 站只丢一个槽」证明的是**计划与派发语义**，不是"账号能用"。
+
+### 2.12 PR #4 三轮审查的修复（2026-11-17）：一个 P1 + 一个 P2 + 一个 P3
+
+> 二轮修复合入后仍然**只有 `offline-test`**：没有启动陪伴宿主、没有调真实模型 / B 站 / QQ、
+> 没有改本机 `config/suite.json` 或 `data/`。本节把二轮**没有覆盖到的**三个洞补上。
+
+三轮复核确认二轮的 2 个 P1 与 5 个 P2 都已真的落地（逐条用探针复跑过），并新发现三条：
+
+| 编号 | 缺陷（一句话） | 修法 | 证据 |
+|---|---|---|---|
+| **P1-4** | 能力闸门只装在**泵**上，没装在**claim**上。provider 未就绪时 `dueSlotsForHeartbeat()` 仍把 B 站槽交给心跳、`claimSlotForHeartbeat()` 仍答 `ok:true` → 槽 `planned→started`、泵（正确地）不 start、窗口关闭后 missed 扫描把它记成 `{operation:'missed', code:'window-closed'}` 并调 `onMissed(reason:'window-closed')`。**一个从未被允许执行的能力被记成"计划了却没做到"**，明天的 planner 会当成失败喂进 `recentOutcomes` | 判据抽成**唯一实现** `capabilities.mjs bilibiliProviderReady()`，五条路径共用：① capability 目录 ② heartbeat due 查询（`CAPABILITY_GATE_SQL`）③ `claimSlotForHeartbeat()` 直接返回 `{ok:false, code:'capability-unavailable'}` ④ pump due 查询（同一句片段）⑤ wrong watch/metrics。missed 扫描对未就绪能力改记 `detail:'capability-unavailable'` 并**退役但不写 `missed` 收据、不调 `onMissed`**；真 miss（read/explore 等）语义不变。`capability-unavailable` **不** `bumpRejection`（provider 缺失不该消耗 `maxAttempts`） | `plugins/companion-runtime/test/p2-bilibili-claim-gate.test.mjs` **3/3**：① 同一拍里 read 照常 start、B 站槽留在 `planned`、零 `plan-slot` 事件；② 窗口关闭的 B 站槽 `expired` + `detail:'capability-unavailable'`、**0** 条 `missed` 收据、**0** 条 `onMissed`，而同一轮里的 read 槽照旧 `detail:'missed'` + 1 条收据 + 1 条事实；③ provider 就绪时 claim 成功、泵照常建 activity |
+| **P2-6** | dry watch 用的是**没有**能力闸门的 due 判据副本，于是永远跑不了的 B 站槽被报成 `state:'claimable'` 并给出 `expectedBeat` 拍号 —— 一个没人能兑现的承诺；打开开关前看到的正是反的 | `DUE_SQL`/`DUE_COUNT_SQL` 接同一闸门参数，另加 `GATED_SQL` 把被排除的槽报成**新增状态** `blocked-capability`（`blockReason:'bilibili-provider-not-ready'`，`expectedBeat:null`）；`counts.capabilityBlocked`、`metrics.slots_capability_blocked`/`capabilityGate` 一并新增；新状态写进 `CONTRACT.md` §15.3/§15.6，不是悄悄扩词表 | `plugins/companion-runtime/test/p2-bilibili-watch-gate.test.mjs` **2/2**：未就绪时 `claimable` 1 / `capabilityBlocked` 1、`slots_due` 1 且 `slots_open` 2、被报 `blocked-capability` 的槽**没有** `expectedBeat`，随后的真心跳只 claim 了那个 read 槽；就绪时两个槽都回到 `claimable`、`capabilityGate:'ready'`、心跳真的 claim 两条 |
+| **P3-4** | `p2-wiring-web-live.test.mjs` 只在顶层 `code === 'source-fetch-failed'` 时 `skip`，但 `search()` 会把**所有** provider host 的失败聚合成 `search-unavailable`、把真因放进 `failures[]`。于是"这台机器没网"被判成**失败**，"未验证"读成了"坏了" | `skip` 判据同时认 `failures[0]?.code === 'source-fetch-failed'`；并在离线可复现的 `p2-wiring-web.test.mjs` 里固定这个聚合形状（`fetchImpl` 抛 `TypeError('fetch failed')` → `code:'search-unavailable'` + `failures[0].code:'source-fetch-failed'`），让 live 用例的跳过条件本身有证据，而不是靠哪台机器恰好跑它 | `plugins/companion-foundation/p2-wiring-web.test.mjs` **36/36**（含新增的聚合形状用例）；`p2-wiring-web-live.test.mjs` 在有网的本机 **2/2 pass**（本轮**没有**在无网机器上复现那条 skip，属于未验证） |
+
+顺带一处**必须说明的形状变化**：`dueSlotsForHeartbeat()` 的返回值多了 `skipped`（被能力闸门排除的
+到期槽数）。这是一次**只增不改**的字段添加，`p2-heartbeat-dispatch.test.mjs` 的整形状断言同步更新为
+`{slots:[], deferred:'dispatch-disabled', skipped:0}`（整拍拒绝时闸门根本没跑，所以是实测 `0`，不是 `null`）。
+
+总账（本轮本机实测）：`node scripts/verify.mjs` → `unit` 10 通过 / 0 失败 / 1 无测试，`static` 39/0，
+`compose` SKIPPED，exit 0；`plugins/companion-runtime` **722/722**；`plugins/companion-memory`
+**308 tests / 301 pass / 0 fail / 7 skip**；`plugins/companion-foundation` **543 tests / 534 pass /
+0 fail / 9 skip**；`tools/**` 72/72；`@dsh-companion/channel-qq` **1907 tests / 1906 pass / 0 fail / 1 skip**。
+
+**这些仍然不算证据**：没有真宿主装载、没有真模型、没有真 B 站账号、没有真 QQ 发送；
+`blocked-capability` 只是把一个**假事实**（"claimable 但永远不 claim"）换成一个**真事实**
+（"能力未就绪"），**不是**把 B 站跑通；`slots_capability_blocked` 也只在 provider 未就绪时有值
+（`capabilityGate:'not-reported'` 时不做排除，也不假装排除过）。
+
+### 2.13 PR #4 四轮审查的收口（2026-11-17）：观测层两条（N1 / N2）
+
+> 四轮复核的结论是**可以合并**，并确认三轮三条全部落地。四轮同时指出：闸门修完之后，
+> 还有两处**只读观测**仍在说反话。本节只处理这两条，不动任何写路径、不新增状态名。
+
+| 编号 | 缺陷（一句话） | 修法 | 证据 |
+|---|---|---|---|
+| **N1（P2）** | `WILL_MISS_SQL` 没有接能力闸门。两个窗口都已关闭时，watch 把能力未就绪的 B 站槽报成 `will-miss`，`blockDetail` 写着"the pump files it as missed"，而泵对它是按 `capability-unavailable` 退役、**不写收据**。于是 `counts.willMiss` 大于泵真的会写的 `missed` 条数——承诺了一条不会发生的事实 | 新增 `GATED_CLOSED_SQL` + `capabilityGatedClosedSlotRows()`，把"窗口已关闭 + 能力未就绪"的槽从 `will-miss` 收进 `blocked-capability`，`blockDetail` 明写"按 capability-unavailable 退役、不记 missed"。只在 `bilibiliReady === false` 时查询，避免就绪时把行吞掉 | `plugins/companion-runtime/test/p2-bilibili-watch-capability.test.mjs` **4/4** 的前两条：未就绪时 `willMiss 1 / capabilityBlocked 1`（真 miss 仍走 `will-miss`，B 站槽 `blocked-capability` 且 detail 不含"files it as missed"）；随后泵真的只写 **1** 条 `missed` 收据，B 站槽 `detail='capability-unavailable'`；就绪时两条都回到 `will-miss` |
+| **N2（P3）** | `CLAIMED_SQL` / `CLAIMED_COUNT_SQL` 也没有闸门。就绪时被 claim、随后 provider 消失的 `started` 槽，同时被 `rows[]` 标成 `blocked-capability`、又被 `metrics.claimed_awaiting_start` 数成"等泵"——**一个 payload 里两个数字互相矛盾**。可达性正是修复落地那一瞬间的生产库 | 两个查询都接同一闸门参数；这类槽不再计入 `claimed_awaiting_start`／`claim_age_ms`（它不属于"等泵"，泵永远不会开始它），但仍计入 `slots_open`。`CONTRACT.md` §15.1 那一行同步改了口径 | 同上文件后两条：provider 变未就绪后 `counts.awaitingStart=0` 与 `metrics.claimed_awaiting_start=0` **一致**、`claim_age_ms=null`／`claim_age_source:'none'`、`slots_capability_blocked=1`，而 `slots_open` 仍是 1（认领本身是真的）；就绪时 `awaitingStart=1`、`claim_age_ms=5 分钟`、`claim_age_source:'recorded_at'`——闸门没有把认领吞掉 |
+
+总账（本轮本机实测）：`node scripts/verify.mjs` → `unit` 10 通过 / 0 失败 / 1 无测试，`static` 39/0，
+`compose` SKIPPED，exit 0；`plugins/companion-runtime` **726/726**（三轮时 722，本轮 +4）；
+`plugins/companion-runtime/test/*bilibili*` 全部 **18/18**（三轮时为 14/14）。
+
+**这些仍然不算证据**：同 §2.12——没有真宿主装载、没有真模型、没有真 B 站账号、没有真 QQ 发送。
+N1/N2 都只改**只读观测**：没有写路径变化，没有新状态名（`blocked-capability` 是三轮时进
+CONTRACT §15.3 的那个），也没有让 watch 从"零写入"变成会写。
+
+### 2.14 PR #4 五轮审查的收口（2026-11-17）：N4 行覆盖 + N5 口径
+
+> 五轮复核确认 N1/N2 已修（并用独立探针拿到"预测值 == 泵真正写出的事实"的比对证据），
+> 同时指出 N2 的修法带出一个**行覆盖**漏洞。本节只补这两条，仍不动写路径。
+
+| 编号 | 缺陷（一句话） | 修法 | 证据 |
+|---|---|---|---|
+| **N4（P3）** | N2 把闸门接进 `CLAIMED_SQL` 后，`started` + **窗口尚未开启**的 B 站槽从 `rows[]` **整条消失**：它不是 `due`（`start_at > now`）、不是 `will-miss`（`end_at > now`）、也不再是 `awaiting-start`。三条窗口有界的查询各差一个时间条件，中间正好漏掉这一段 —— `slots_open` 说 3，`rows[]` 只剩 2 | 再加一条**没有任何窗口判据**的 `GATED_ANY_SQL` / `capabilityGatedAnySlotRows()`，只按能力过滤，补上三条查询之间的窗口缺口；行级状态统一由 `gatedState(row)` 按窗口位置判定（已关 / 未开 / 开着），`blockDetail` 分三句写各自的退役方式；`GATED_SQL`/`GATED_COUNT_SQL` 保持 due-now 语义 | `plugins/companion-runtime/test/p2-bilibili-watch-capability.test.mjs` 新增两条：三个 `started` 槽（已关 / 开着 / 未开）⇒ `rows[]` 恰三条且 id 集合 `['b-closed','b-future','b-open']`、全部 `blocked-capability`、`expectedBeat:null`、detail 不含 "files it as missed"；同时 `metrics.slots_capability_blocked` 仍是 **1**（due-now 只数到期的那个）；就绪回归：同样三条全部出现，`b-closed` 回 `will-miss`、另两条 `awaiting-start` |
+| **N5（P3）** | `counts.capabilityBlocked`（按 state 数行，覆盖所有窗口位置）与 `metrics.slots_capability_blocked`（due-now）名字相近、数值可能不同（3 vs 1），容易被读成"又打架" | 不改名（观测字段已冻结），在字段旁与 `CONTRACT.md` §15.3/§15.6 各写一句口径；测试里直接用 3 vs 1 把这个差异钉成**有意的** | 同上：N4 主用例断言 `counts.capabilityBlocked === 3 && metrics.slots_capability_blocked === 1`，并在注释里写明这是两个不同的问题 |
+
+总账（本轮本机实测）：`node scripts/verify.mjs` → `unit` 10 通过 / 0 失败 / 1 无测试，`static` 39/0，
+`compose` SKIPPED，exit 0；`plugins/companion-runtime` **728/728**（四轮时 726，本轮 +2）；
+`plugins/companion-runtime/test/*bilibili*` 全部 **20/20**（四轮时为 18/18）；
+`plugins/companion-runtime/test/p2.5-dispatch-observability.test.mjs` **12/12**（watch 仍零写入）。
+
+**这些仍然不算证据**：仍无真宿主装载、无真模型、无真 B 站账号、无真 QQ 发送。
+N4 的**可达性不夸大**：心跳只交窗口覆盖 `now` 的槽，自己不会产生"`started` + 未来窗口"；
+`claimSlotForHeartbeat()` 没有窗口校验，宿主直接调它才会造出这个状态——所以判 P3，
+而不是写成"生产必然发生"。本节两条同样只改只读观测，没有新增状态名。
+
+### 2.15 PR #4 六轮审查的收口（2026-11-17）：N6 措辞（`rows[]` 是取样，不是全量）
+
+> 六轮复核确认 N4/N5 都对，并指出我上一版**把 `rows[]` 说成了全量**。这一条只改措辞，代码零改动。
+
+| 编号 | 缺陷（一句话） | 修法 | 证据 |
+|---|---|---|---|
+| **N6（P3，措辞）** | N4 的注释与用例标题写"`rows[]` 覆盖每一个未结槽"，是**说过头了**。`rows[]` 由六条各带 `LIMIT` 的查询拼接（`due`/`claimed`/`gated`/`gated-any` 各 `min(200, limit)`，`will-miss`/`gated-closed` 各 `min(50, limit)`）；`dispatchWatch` **没有** `truncated` 标志（`dispatchMetrics` 有）。实测 25 read + 25 bilibili、`limit=20` ⇒ `slots_open 50` 而 `rows[] 40`。**既有行为**（`GATED_ANY_SQL` 之前也一样），不是 N4 引入 | 只改措辞：`CONTRACT.md` §15.3 新增"`rows[]` 是取样，不是全量"一行；`dispatch-observability.mjs` 四处注释与 `p2-bilibili-watch-capability.test.mjs` 两条用例标题同步改口；代码与断言零改动 | 六轮复核的探针输出（上表数字）+ 本轮 `p2-bilibili-watch-capability` **6/6**、runtime **728/728** 不变；改的是措辞，所以测试计数必然不变——这本身就是"只改注释"的证据 |
+| **N7 / N8 / N9（P3，同一段文档的数字）** | 我自己新写的「取样」段有四个错：**N7** 上界写成「三条查询 / `3 × limit`」，实际**六条**、上界 `4·min(200,limit)+2·min(50,limit)`（`limit=20` ⇒ 120）；**N8** 给的截断判据「`rows.length >= 3 × limit`」**会漏报**——每条查询只出 `limit` 条，单条永远够不到总和门槛，于是一类被截到上限、总数却远低于门槛；**N9** 写「`limit` 由 `p2DispatchWatch({ limit })` 决定」是错的，`index.mjs` 公共入口只转 `scopeKey`/`now`，`limit` 固定 20 | 仍然只改文档与注释：§15.3 的取样段改成六条查询的真实上界、删掉会漏报的判据（改成「拿精确计数与 `rows[]` 条数比」）、写明 `limit` 在公共入口固定 20；顺带记下后果——`GATED_ANY_SQL` 是 `ORDER BY start_at ASC LIMIT`，更早的槽先占名额，所以 N4 那一类在超上限时会被挤出取样窗（不是整条消失） | **我自己重跑了三家夹具**（真 controller + 临时 SQLite，`limit=20`）：100 个到点 read 槽 ⇒ `slots_due 100` 而 `rows[]` **20**（复现 N8）；30 已关闭 + 30 未来窗口的 B 站槽 ⇒ `open 60`、`rows[]` **27**、未来窗口 **0** 条（复现挤出）；六类各 20（`open 120`）⇒ `rows[]` **90**；400 混合 ⇒ **100**。另：七轮复核的 `107 / 254` 用不同形状夹具量到，同样 ≤ 上界，不需对齐 |
+| **N10（P3，时间口径）** | `counts.willMiss` 的旧说法「= 泵真的会写多少条」只在**累计**成立。泵的 missed 扫描有 `LIMIT 8`：20 个已关闭 read 槽 ⇒ `willMiss 20`、下一拍只写 8；连跑 5 拍才 `8 → 16 → 20` | §15.3 补一句：按「这一拍会写几条」读是 `min(willMiss, 8)`；按累计读才等于 `willMiss`。lib 的 `missResult` 注释同步 | `p2.mjs:544` 的 `ORDER BY s.end_at ASC LIMIT 8` 是既有代码，本 PR 未改；本机探针复现了 `willMiss 20` 与 `LIMIT 8` 的差 |
+
+**没有做的事**：没给 `dispatchWatch` 补 `truncated` 标志。那是**新增字段**（会改观测契约），不是措辞问题；六轮与七轮报告都把它列在"合并后单开一条"里。要加就该连 `counts` 的语义一起定，不该混进这条只改措辞的收口。
+
+**证据边界（N7–N10 一并说明）**：`rows[]` 的那些条数来自**探针**（七轮复核一份、我本机另跑四组形状），本仓库**没有**对应的回归用例——现有两条 N4 用例的 scope 只有三个槽，覆盖不到超上限行为。所以本节说的是「文档现在与探针实测一致」，不是「有回归用例守着」。另：`truncated` 仍未加（新字段，单开），所以操作者判断截断目前只能靠「精确计数 vs `rows[]` 条数」。
+
+
+### 2.16 PR #4 八轮审查的收口（2026-11-17）：N11 少报（P2）+ N12 口径（P3）
+
+> 八轮复核确认 N7–N10 都已修对（并用机检证明「只改注释」是真的），同时发现 N1 的修法引入了一个
+> **镜像缺陷**：闸门行先占满 `willMiss` 的取样窗、再被事后丢弃，于是真 miss 槽排不进去。
+
+| 编号 | 缺陷（一句话） | 修法 | 证据 |
+|---|---|---|---|
+| **N11（P2）** | `WILL_MISS_SQL` 的取样窗（`min(50, limit)`）**本身不带能力闸门**；round-4 的修法在查询返回后才 `continue` 掉闸门行。能力槽先占满窗口再被丢弃 ⇒ 排在后面的真 miss 槽根本没进窗。本机实测 19 个已关闭 B 站槽 + 5 个已关闭 read 槽 ⇒ `willMiss` **0**，而泵真写 **5** 条。**N1 修的是多报，这条是它的镜像（少报）** | 把 `CAPABILITY_GATE` 放进 `WILL_MISS_SQL` 的**谓词**，闸门槽从此不占这个窗口；原来的 `continue` 保留，用于「调用方没报就绪」那条分支（那时不能把未闸门的集合当成 `missed`） | `plugins/companion-runtime/test/p2-bilibili-watch-capability.test.mjs` 新增 **N11 主用例 + N11 回归**：19 B 站 + 5 read ⇒ `counts.willMiss === 5`、`capabilityBlocked >= 19`；连跑 12 拍后 `missed` 收据**恰 5 条**、5 个 read 槽 detail 为 `missed`、19 个 B 站槽 detail 为 `capability-unavailable`。**A/B 已做**：临时去掉谓词，N1 + N11 两条 + N12 一条全红（`willMiss 0`）；加回后 9/9 全绿 |
+| **N12（P3）** | round-7 把「这一拍会写几条」写成 `min(willMiss, 8)` 这个**等号**。它其实是**上界**：`LIMIT 8` 的名额闸门槽也占（它们退役但不写收据） | §15.3 与 lib 注释改成「**至多** `min(willMiss, 8)`」；新增 N12 用例把「这一拍写不满 8 条」钉成断言 | N12 用例：10 已关闭 B 站 + 20 已关闭 read ⇒ `counts.willMiss === 20`，一拍后 `missed` 收据 `<= 8` 且 **`< 8`**（实测 0）。这个不等式就是「上界不是等号」 |
+
+总账（本轮本机实测）：`node --test "plugins/companion-runtime/test/*.test.mjs"` → **731/731**（八轮前 728，本轮 +3）；
+`*bilibili*` **23/23**（八轮前 20）；`p2.5-dispatch-observability` **12/12**（watch 仍零写入）；
+`node scripts/verify.mjs` → `unit` 10/0/1、`static` 39/0、`compose` SKIPPED，exit 0。
+
+**这些仍然不算证据**：没有真宿主装载、没有真模型、没有真 B 站账号、没有真 QQ 发送。N11 是这一轮唯一的
+**代码**改动（一个 SQL 谓词 + 三条用例）；它让 `willMiss` 在「provider 长期未就绪 + 窗口逐个关闭」这个
+**正是本 PR 要解决的场景**下不再报 0——但那只是把观测报准，不是把 B 站跑通。
+
+### 2.17 PR #4 九轮审查的收口（2026-11-17）：N13 口径（P3，base 已有的取样上限）
+
+| 编号 | 缺陷（一句话） | 修法 | 证据 |
+|---|---|---|---|
+| **N13（P3）** | `counts.willMiss` 仍受 `min(50, limit)`＝20 的**取样窗**限制，而 CONTRACT 写着「= 泵真的会写多少条」。40 个已关闭 read 槽、**没有任何闸门槽**时 `willMiss 20` 而真值 40。**是 base 就有的**（九轮用同一探针在 head-v4 之前的提交上跑出**逐字相同**的输出），N11 只是把它从「被闸门槽挤掉」降级回「纯粹的取样上限」，触发面小得多 | 只改口径，不加字段：把「= 泵真的会写多少条」降级成「**至多**」，并写明三个叠加原因（不透支能力槽／取样窗 20／累计口径）；新增「要精确的积压量，读 `metrics.slots_open`」一句 | 九轮复核的探针：40 已关闭 read、无闸门槽 ⇒ `counts.willMiss 20` / `metrics.slots_open 40`；A/B：同一夹具在 head-v4 之前逐字相同 ⇒ 既有 |
+
+**没有做的事（与九轮建议一致）**：没有加 `WILL_MISS_COUNT_SQL`、没有给 `dispatchWatch` 补 `truncated`、没有透传 `limit`。这三件事是同一个问题——「`rows[]` 与 `counts` 是取样，`metrics` 是精确值，边界只能靠人读文档」——九轮把它们合并成一条「合并后单开」的建议。本轮只做那句措辞，避免把这条补丁继续扩成观测契约改造。
+
+总账（本轮本机实测）：`node --test "plugins/companion-runtime/test/*.test.mjs"` **731/731**、`*bilibili*` **23/23**、
+`p2.5-dispatch-observability` **12/12**（watch 仍零写入）、`node scripts/verify.mjs` exit 0；数字与 §2.16 相同——
+本轮只改文档，代码与断言零改动。
+
+**这些仍然不算证据**：没有真宿主装载、没有真模型、没有真 B 站账号、没有真 QQ 发送。
 
 ### 2.9 群聊社交运行时 P5–P8（2026-11-08）：仍只有 `offline-test`，真实发送未开始
 

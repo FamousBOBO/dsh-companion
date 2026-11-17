@@ -11,6 +11,24 @@ export const KINDS = [
 
 export const MENTION_POLICIES = ['direct', 'soft_echo', 'tone_only', 'avoid_unless_asked'];
 
+/**
+ * Purpose of a read (plan §5 A.4). They are two different questions and they must
+ * stay two different answers:
+ *
+ *   'auto'     the automatic injection on every turn: nothing arrives unless it is
+ *              relevant to what the user just said, and sensitive rows arrive as a
+ *              hint/placeholder instead of body text.
+ *   'explicit' the `companion_recall` tool: the user asked a question, so a record
+ *              that the automatic path could only hint at may be shown in full.
+ *
+ * Both still pass the same visibility policy (scope/status/validity); the purpose
+ * only decides what may *reach* the read and how it may be *presented*.
+ */
+export const RETRIEVAL_PURPOSES = ['auto', 'explicit'];
+
+/** How one row may be rendered (gate 2 result). */
+export const INJECTION_RENDERS = ['full', 'soft', 'hint', 'placeholder', 'skip'];
+
 export const STATUSES = ['confirmed', 'pending', 'superseded', 'retracted', 'archived'];
 
 export const REALITY_LEVELS = [
