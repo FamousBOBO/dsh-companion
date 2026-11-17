@@ -1,0 +1,383 @@
+{
+  "generatedAt": "2026-11-13T21:20:05.103Z",
+  "suiteRoot": "dsh-55f1cc85-7db6",
+  "moduleRootSource": "fixtures",
+  "syntheticRootUsed": true,
+  "honesty": {
+    "note": "所有正文一律不采集；只保留长度。Section 文本为函数时按当前调用返回长度，runtime/cognitive 未挂载时为 0，属\"未启用\"而非\"没有这段\"。"
+  },
+  "systemPrompt": {
+    "sectionCount": 8,
+    "totalChars": 2067,
+    "sections": [
+      {
+        "name": "companion:persona",
+        "order": 50,
+        "kind": "string",
+        "chars": 1197
+      },
+      {
+        "name": "companion:continuity",
+        "order": 60,
+        "kind": "string",
+        "chars": 309
+      },
+      {
+        "name": "companion:agenda",
+        "order": 61,
+        "kind": "string",
+        "chars": 239
+      },
+      {
+        "name": "companion:life",
+        "order": 62,
+        "kind": "string",
+        "chars": 138
+      },
+      {
+        "name": "companion:wardrobe",
+        "order": 63,
+        "kind": "string",
+        "chars": 91
+      },
+      {
+        "name": "companion:pulse",
+        "order": 64,
+        "kind": "string",
+        "chars": 93
+      },
+      {
+        "name": "companion:prompt-contract",
+        "order": 65,
+        "kind": "function",
+        "chars": 0
+      },
+      {
+        "name": "companion:qq-policy",
+        "order": 65,
+        "kind": "threw",
+        "chars": 0
+      }
+    ],
+    "displaced": "none"
+  },
+  "tools": {
+    "count": 42,
+    "totalChars": 17835,
+    "totalSchemaChars": 4955,
+    "totalDescriptionChars": 12880,
+    "heaviest": [
+      {
+        "name": "companion_pulse",
+        "descriptionChars": 1215,
+        "schemaChars": 306,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_schedule_update",
+        "descriptionChars": 383,
+        "schemaChars": 628,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_health_sleep",
+        "descriptionChars": 592,
+        "schemaChars": 355,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_schedule_create",
+        "descriptionChars": 343,
+        "schemaChars": 577,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_wardrobe_detail",
+        "descriptionChars": 600,
+        "schemaChars": 224,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_health_trend",
+        "descriptionChars": 447,
+        "schemaChars": 334,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_outfit_set",
+        "descriptionChars": 531,
+        "schemaChars": 230,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_health_today",
+        "descriptionChars": 610,
+        "schemaChars": 100,
+        "schemaKeys": 0
+      }
+    ],
+    "items": [
+      {
+        "name": "companion_belief_assert",
+        "descriptionChars": 231,
+        "schemaChars": 131,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_belief_correct",
+        "descriptionChars": 228,
+        "schemaChars": 198,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_belief_list",
+        "descriptionChars": 197,
+        "schemaChars": 2,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_commitment_add",
+        "descriptionChars": 201,
+        "schemaChars": 69,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_goal_list",
+        "descriptionChars": 177,
+        "schemaChars": 63,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_goal_propose",
+        "descriptionChars": 279,
+        "schemaChars": 310,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_goal_resume",
+        "descriptionChars": 169,
+        "schemaChars": 82,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_goal_switch",
+        "descriptionChars": 231,
+        "schemaChars": 98,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_goal_transition",
+        "descriptionChars": 233,
+        "schemaChars": 305,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_health_sleep",
+        "descriptionChars": 592,
+        "schemaChars": 355,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_health_sources",
+        "descriptionChars": 454,
+        "schemaChars": 2,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_health_status",
+        "descriptionChars": 598,
+        "schemaChars": 2,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_health_today",
+        "descriptionChars": 610,
+        "schemaChars": 100,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_health_trend",
+        "descriptionChars": 447,
+        "schemaChars": 334,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_heartbeat_pause",
+        "descriptionChars": 232,
+        "schemaChars": 28,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_heartbeat_resume",
+        "descriptionChars": 139,
+        "schemaChars": 2,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_heartbeat_status",
+        "descriptionChars": 283,
+        "schemaChars": 2,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_identity",
+        "descriptionChars": 190,
+        "schemaChars": 2,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_life_status",
+        "descriptionChars": 597,
+        "schemaChars": 2,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_memory_extract",
+        "descriptionChars": 145,
+        "schemaChars": 2,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_memory_forget",
+        "descriptionChars": 121,
+        "schemaChars": 67,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_memory_pending",
+        "descriptionChars": 112,
+        "schemaChars": 28,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_memory_rebuild",
+        "descriptionChars": 114,
+        "schemaChars": 2,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_outfit_set",
+        "descriptionChars": 531,
+        "schemaChars": 230,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_plan_today",
+        "descriptionChars": 317,
+        "schemaChars": 55,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_pulse",
+        "descriptionChars": 1215,
+        "schemaChars": 306,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_recall",
+        "descriptionChars": 261,
+        "schemaChars": 54,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_recent_events",
+        "descriptionChars": 51,
+        "schemaChars": 28,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_record_event",
+        "descriptionChars": 107,
+        "schemaChars": 129,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_remember",
+        "descriptionChars": 306,
+        "schemaChars": 114,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_runtime_status",
+        "descriptionChars": 405,
+        "schemaChars": 2,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_schedule_cancel",
+        "descriptionChars": 200,
+        "schemaChars": 125,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_schedule_create",
+        "descriptionChars": 343,
+        "schemaChars": 577,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_schedule_list",
+        "descriptionChars": 230,
+        "schemaChars": 105,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_schedule_today",
+        "descriptionChars": 282,
+        "schemaChars": 26,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_schedule_update",
+        "descriptionChars": 383,
+        "schemaChars": 628,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_share_activity",
+        "descriptionChars": 351,
+        "schemaChars": 115,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_status",
+        "descriptionChars": 105,
+        "schemaChars": 2,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_visual_state",
+        "descriptionChars": 327,
+        "schemaChars": 2,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_wardrobe_detail",
+        "descriptionChars": 600,
+        "schemaChars": 224,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_wiki_get",
+        "descriptionChars": 122,
+        "schemaChars": 45,
+        "schemaKeys": 0
+      },
+      {
+        "name": "companion_wiki_index",
+        "descriptionChars": 164,
+        "schemaChars": 2,
+        "schemaKeys": 0
+      }
+    ]
+  },
+  "memory": {
+    "injectionBudgetChars": 0,
+    "candidatesInjected": 0,
+    "reason": "合成根把 injection.budgetChars 设为 0：本统计只测\"结构与体积\"，不测召回质量"
+  },
+  "unavailable": [
+    "provider usage",
+    "TTFT"
+  ]
+}

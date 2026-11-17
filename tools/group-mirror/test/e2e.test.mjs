@@ -20,9 +20,14 @@ const GROUP = 145326153
 const OTHER = 900000001
 const SOURCE_TOKEN = 'source-token-for-tests'
 const FAKE_TOKEN = 'fake-ws-token-for-tests'
-const SSE_PORT = 31_492
 
-/** 极简假 SSE 源：连上就把 frames 按顺序推出去，然后保持连接。 */
+/**
+ * 极简假 SSE 源：连上就把 frames 按顺序推出去，然后保持连接。
+ *
+ * **端口由系统分配**（`listen(0)`），不是写死的 31492。写死端口意味着这一组 e2e 会被同机任何
+ * 一个占着 31492/31493 的进程整组打红——`verify` 把 tools 的测试并进发布闸门之后，一个巧合的
+ * 端口冲突就会变成"发布不通过"。回环地址 + 随机端口是同样真实的本地链路，但没有这个脆弱点。
+ */
 function fakeSseServer() {
   const clients = new Set()
   const server = http.createServer((req, res) => {
@@ -38,11 +43,31 @@ function fakeSseServer() {
   })
   return {
     server,
-    listen: () => new Promise((resolve) => server.listen(SSE_PORT, '127.0.0.1', resolve)),
+    port: 0,
+    listen() {
+      return new Promise((resolve) => {
+        server.listen(0, '127.0.0.1', () => {
+          this.port = server.address().port
+          resolve(this.port)
+        })
+      })
+    },
     close: () => {
       for (const res of clients) { try { res.end() } catch { /* 已断 */ } }
       clients.clear()
       return new Promise((resolve) => server.close(resolve))
+    },
+    /**
+     * 只断开**已建立的连接**，服务端继续监听同一个端口。
+     *
+     * 重连用例需要的是"上游链路断了"，不是"上游换了地址"：把监听也关掉会让镜像对着一个
+     * 已经不存在的端口重连，而那测的就不是重连了。
+     */
+    drop: () => {
+      const dropped = clients.size
+      for (const res of clients) { try { res.destroy() } catch { /* 已断 */ } }
+      clients.clear()
+      return dropped
     },
     push: (event) => {
       for (const res of clients) res.write('data: ' + JSON.stringify(event) + '\n\n')
@@ -78,10 +103,11 @@ before(async () => {
   const config = normalizeMirrorConfig(
     {
       enabled: true,
-      sourceUrl: 'http://127.0.0.1:' + SSE_PORT + '/_events',
+      sourceUrl: 'http://127.0.0.1:' + sse.port + '/_events',
       sourceTokenEnv: 'S',
       allowedGroups: [GROUP],
-      fakeOneBotPort: 31_493,
+      // 0 = 系统分配（见 config.mjs 的说明）；真实端口在 start() 之后再读回来。
+      fakeOneBotPort: 0,
       fakeOneBotTokenEnv: 'F',
       maxQueueEntries: 5,
       reconnectBaseMs: 50,
@@ -98,8 +124,10 @@ before(async () => {
   }
   assert.equal(mirror.source.stats.connects, 1, '镜像应该已经连上假 SSE 源')
 
-  // 假测试客户端（模拟测试 DSH 的 OneBotClient）
-  client = new WebSocket('ws://127.0.0.1:31493/', { headers: { Authorization: 'Bearer ' + FAKE_TOKEN } })
+  // 假测试客户端（模拟测试 DSH 的 OneBotClient）；端口是刚绑定到的那个，不是常量。
+  const wsPort = mirror.ws.address()?.port ?? mirror.ws.port
+  assert.equal(Number.isInteger(wsPort) && wsPort > 0, true, '假 WS 必须报出真实端口')
+  client = new WebSocket('ws://127.0.0.1:' + wsPort + '/', { headers: { Authorization: 'Bearer ' + FAKE_TOKEN } })
   client.on('message', (data) => { try { received.push(JSON.parse(String(data))) } catch { /* 坏帧 */ } })
   await new Promise((resolve, reject) => { client.once('open', resolve); client.once('error', reject) })
 })
@@ -171,12 +199,10 @@ test('端到端：测试客户端发 send_group_msg 被拒，且计为越权尝�
 
 test('端到端：SSE 断开后自行重连，旧消息不会补发', async () => {
   const connectsBefore = mirror.source.stats.connects
-  // 踢掉所有 SSE 客户端，模拟上游断链
-  await sse.close()
-  await new Promise((r) => setTimeout(r, 400))
-  // 重新起同一个端口的源
-  sse = fakeSseServer()
-  await sse.listen()
+  // 踢掉已建立的 SSE 连接，模拟上游断链；**源仍在同一端口监听**（端口是系统分配的，
+  // 关掉监听再换一个新端口就不是"重连"了）。
+  const dropped = sse.drop()
+  assert.equal(dropped >= 1, true, '这一拍必须真的断开了一条已建立的连接')
   for (let i = 0; i < 200 && mirror.source.stats.connects <= connectsBefore; i += 1) {
     await new Promise((r) => setTimeout(r, 20))
   }

@@ -116,6 +116,7 @@ export function status(db, {
   injection = { state: 'idle', chars: 0 }, memory = { available: false }, writable = false,
   stopped = false, dbFile = '', schemaVersion = 0, shadow = null, errors = [],
   agenda = null, heartbeat = null, observability = null, agendaPublication = null,
+  bilibiliReady,
 } = {}) {
   return {
     version: '0.1.0',
@@ -147,6 +148,9 @@ export function status(db, {
       // Whatever the mount recorded about publishing the agenda service ("published but unreadable"
       // must be visible, not only logged).
       agendaPublication: agendaPublication ?? null,
+      // Same readiness predicate the dispatch paths use; `undefined` ⇒ the projection reports the
+      // capability gate as `not-reported` rather than pretending every slot is claimable.
+      bilibiliReady,
     }),
     config: {
       enabled: config.enabled === true,

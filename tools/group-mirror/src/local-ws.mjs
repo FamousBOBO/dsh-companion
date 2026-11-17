@@ -70,12 +70,24 @@ export class FakeOneBotServer {
     return new Promise((resolve, reject) => {
       this.server = new WebSocketServer({ host: this.host, port: this.port });
       this.server.once('listening', () => {
+        // `port: 0` asks the kernel for a free port; the *effective* port is only known here.
+        // It is written back (and exposed as `address()`), so a test never has to guess a
+        // fixed number that another process on the same machine may already hold.
+        const bound = this.server.address();
+        if (bound && typeof bound === 'object' && Number.isInteger(bound.port)) this.port = bound.port;
         this.log('[mirror] 假 OneBot WS 已监听 ' + this.host + ':' + this.port);
         resolve(this);
       });
       this.server.once('error', reject);
       this.server.on('connection', (socket, request) => this.onConnection(socket, request));
     });
+  }
+
+  /** The port actually bound (`{port, host}`), or null before `listen()`. */
+  address() {
+    const bound = this.server?.address?.();
+    if (!bound || typeof bound !== 'object') return null;
+    return { host: bound.address ?? this.host, port: bound.port };
   }
 
   /** 停服并断开所有客户端。 */

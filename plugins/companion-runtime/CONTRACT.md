@@ -894,15 +894,17 @@ memory 早就有 `status='superseded'` 取值、`valid_to` 列与 `recordRevisio
 | 字段 | 口径 | 数据来源 | 真假值 |
 |---|---|---|---|
 | `available` | 这一组数是否成立。`false` ⇒ 下面所有数值字段都是 `null` | — | — |
-| `slots_due` | **现在**会被 claim 的槽数。判据与 `dueSlotsForHeartbeat` 逐条相同：`status='planned'`＋`kind='activity'`＋`start_at<=now<end_at`＋plan `committed`＋该槽还没有 activity 行。**精确 COUNT**（不受下方 200 条取样上限影响） | `p2_plan_slots ⋈ p2_plans ⨝ p2_activities` | `measured` |
+| `slots_due` | **现在**会被 claim 的槽数。判据与 `dueSlotsForHeartbeat` 逐条相同：`status='planned'`＋`kind='activity'`＋`start_at<=now<end_at`＋plan `committed`＋**能力闸门**（见 §15.6）＋该槽还没有 activity 行。**精确 COUNT**（不受下方 200 条取样上限影响） | `p2_plan_slots ⋈ p2_plans ⨝ p2_activities` | `measured` |
 | `slots_claimable` | `slots_due` 减去**被未收敛效应挡住的**槽（`blockedJobKeys` 的同一判据） | ＋`p2_activity_receipts (code='lc-effect')` | `measured` |
 | `slots_effect_blocked` | 到期但 job 有未收敛效应的槽数（`effect-in-flight` 或 `effect-unknown`，两者都阻断） | 同上 | `estimated`（`effectIndex` 有界取样） |
+| `slots_capability_blocked` | 到点但**能力闸门**把它排除的槽数（`slots_due` 之外的那一半）。`slots_due` 与它**相加才是"到点总数"**，两个数不重叠 | `p2_plan_slots ⋈ p2_plans ⨝ p2_activities` | `measured` |
+| `capabilityGate` | `'ready'`（provider 就绪）｜`'bilibili-not-ready'`（provider 未就绪，闸门生效）｜`'not-reported'`（调用方没观测端口，闸门**不做排除**且如实标注） | 端口 `runBilibili.available()`（唯一判据 `capabilities.mjs bilibiliProviderReady`） | — |
 | `slots_open` | `status IN ('planned','started')` 的**全部**未结槽（旧 `slots_due` 的真身）。时段/plan 状态一概不看 | `p2_plan_slots` | `measured` |
 | `dispatch_lag_ms` | `now - min(start_at)` over `slots_due`：**最老的一个到期槽已经晚了多久**。`slots_due=0` ⇒ `null`（空闲没有延迟，`0` 会被读成"分毫不差"） | 由上一行派生 | `measured` |
 | `claim_age_ms` | `now - 最老一条 still-waiting claim 的 `recorded_at``，即"心跳认领了、泵还没把它变成 activity"已经等了多久。没有等待中的 claim ⇒ `null` | `domain_events` (`autonomy/plan-slot`, `payload.to='started'`) | `measured` |
 | `claim_age_source` | `'recorded_at'`（有真实墙钟）｜`'not-recorded'`（**这批 claim 写在 §15.4 之前**，两个时间戳相同，无法算，故 `claim_age_ms=null`）｜`'none'`（没有等待中的 claim）｜`'unavailable'`（查询失败） | — | — |
 | `claim_oldest_recorded_at` | 上面那个 `recorded_at` 的绝对值（epoch ms），便于对账 | 同上 | `measured` |
-| `claimed_awaiting_start` | `status='started'` 且**没有** activity 行的槽数＝"认领了但还没开始"的窗口大小（精确 COUNT） | `p2_plan_slots ⨝ p2_activities` | `measured` |
+| `claimed_awaiting_start` | `status='started'` 且**没有** activity 行、**且通过能力闸门**的槽数＝"认领了、泵这一拍真的会开始它"的窗口大小（精确 COUNT）。§15.6 的 `capability-unavailable` 类是"认领了但永远不会开始"，因此**不计入**（它们仍计入 `slots_open`） | `p2_plan_slots ⨝ p2_activities` | `measured` |
 | `truncated` | `true` ⇒ 某一组取样超过 200 条，此时**逐槽派生**的 `slots_claimable`/`slots_effect_blocked` 给 `null` 而不是下限；`slots_due`/`claimed_awaiting_start` 仍然是精确值 | — | — |
 | `activities_pending` / `activities_running` | `p2_activities.status` 的两个计数 | `p2_activities` | `measured` |
 | `effects_unknown` / `effects_prepared` / `effectIndexAvailable` | 无收敛效应的 job 数（latest-per-job 的 phase），以及**效应账本是否读得出来** | `p2_activity_receipts` | `estimated`；账本读不出 ⇒ 两个计数 `null` 且 `effectIndexAvailable:false` |
@@ -930,9 +932,19 @@ memory 早就有 `status='superseded'` 取值、`valid_to` 列与 `recordRevisio
 `runtime.p2DispatchWatch({ sessionId | scopeKey, now? })` → 只读。回答"下一拍会 claim 哪些槽、会在第几拍、如果不能 claim 是为什么"。
 
 - **槽级** `rows[]`：`{slotId, planId, day, activity, reality, targetRef, status, locked, startAt, endAt, state, blockReason, blockDetail, dueSinceMs, expectedBeat, claimedAtMs, claimAgeMs, claimAgeSource}`
-  - `state`：`claimable`（槽的判据允许 claim）｜`blocked-effect`（job 有未收敛效应，`blockReason`=`effect-in-flight`/`effect-unknown`）｜`awaiting-start`（已认领、泵还没建 activity）｜`will-miss`（窗口已过且没开始，泵下一拍会记 `missed`）
-  - `expectedBeat`：按 `heartbeat.maxDispatchPerCycle` 推算"第几拍能轮到它"（`floor(第N个/每拍上限)+1`）。**是推算，不是承诺**：前提是这段时间没有聊天抢占、没有暂停、没有新计划。
+  - **`rows[]` 是取样，不是全量**（round-6 N6；round-7 N7/N8/N9 修正数字）：喂 `rows[]` 的是**六条**各自带 `LIMIT` 的查询，不是三条。有效上限是 **`4 · min(200, limit) + 2 · min(50, limit)`**——`due` / `claimed` / `gated`（due-now）/ `gated-any` 各 `min(200, limit)`，`will-miss` / `gated-closed` 各 `min(50, limit)`（后两条的 50 是**调用处**就收紧的，不是它们自己的 `cap`）。`limit` 默认 20，且**当前公共入口 `p2DispatchWatch()` 不转发 `limit`**（`index.mjs` 只传 `scopeKey`/`now`），所以实际恒为 20 ⇒ 上界 **120**。
+    - **「一共有多少」读 `metrics`（`slots_open`/`slots_due` 是精确 COUNT），「是哪些」读 `rows[]`（到各自上限为止）。** `dispatchWatch` 目前**没有** `truncated` 标志（`dispatchMetrics` 有）。
+    - **不要用 `rows.length >= 上界` 判断是否截断**（round-7 N8）：每条查询各自只出 `limit` 条，单条永远够不到总和门槛。本机实测：100 个到点的 read 槽、`limit=20` ⇒ `rows[]` **20** 条而 `slots_due` **100**——截了 80 条，判据却说不截。要判断「是不是取样」，只能拿精确计数与 `rows[]` 条数比，或者等 `truncated` 字段落地。
+    - **超上限时先到 `start_at` 早的占用名额**（`ORDER BY start_at ASC LIMIT`）：30 个已关闭 + 30 个未来窗口的 B 站槽、`limit=20`，本机实测 `open 60` / `rows[]` **27** / 未来窗口在 `rows[]` 里 **0** 条。所以「某类槽在 `rows[]` 里一条都没有」既可能是真的没有，也可能是被更早的槽挤掉了——下结论请看 `metrics`。**这条同时说明 N4 修的那一类在超上限时会再次不可见**，只是不再是「整条消失」，而是「被更早的槽挤出取样窗」。
+    - 本机另两组实测供对照：六类各 20（`open 120`）⇒ `rows[]` **90**；400 个混合槽 ⇒ `rows[]` **100**。都 ≤ 120，与上界一致。七轮复核用**不同形状**的夹具量到 `107`（`limit=20`）与 `254`（`limit=50`），同样 ≤ 各自上界——数字不同是因为夹具不同，不必对齐，但都说明「这是取样」。
+  - `state`：`claimable`（槽的判据允许 claim）｜`blocked-effect`（job 有未收敛效应，`blockReason`=`effect-in-flight`/`effect-unknown`）｜**`blocked-capability`**（能力闸门排除它，`blockReason`=`bilibili-provider-not-ready`；见 §15.6。**窗口开着和已经关闭的都属于这一类**，`blockDetail` 会分别说明"永远不会被 claim"与"窗口关闭时被按 `capability-unavailable` 退役、不会记 `missed`"）｜`awaiting-start`（已认领、泵还没建 activity）｜`will-miss`（窗口已过且没开始，泵下一拍会记 `missed`；**不含** `blocked-capability` 的槽）
+  - `expectedBeat`：按 `heartbeat.maxDispatchPerCycle` 推算"第几拍能轮到它"（`floor(第N个/每拍上限)+1`）。**是推算，不是承诺**：前提是这段时间没有聊天抢占、没有暂停、没有新计划。`blocked-capability` 行**不给** `expectedBeat`（`null`）——承诺一个永远不会到来的拍号就是把闸门藏起来。
   - `locked` **不阻断** claim（`dueSlotsForHeartbeat` 的 SQL 里没有 locked 判据）——锁是 H5 的"不要挪动时间"，不是"不要执行"。这里把它原样暴露，不自己发明规则。
+  - `counts.capabilityBlocked`：上面这类行的条数。它与 `counts.claimable` **不重叠**，所以"这一拍为什么会动/为什么不动"不会两边都数一遍。
+  - **`counts.willMiss` = 泵会写多少条 `missed` 事实的「至多」**（round-4 N1；round-7 N10；round-8 N11/N12；round-9 N13）：「泵真的会写多少条」这个等号**不成立**，三个原因叠加——① 不透支能力槽（能力未就绪的已关闭槽被 `blocked-capability` 收走，不在 `willMiss` 里承诺一个泵不会兑现的 `missed`）；② 取样窗只有 `min(50, limit)`＝20，**已关闭的 read 槽超过 20 个时它只报 20**，而此时 `metrics.slots_open` 是精确的；③ 时间上是累计口径，不是"下一拍"。
+    - **要精确的「全部未结积压」，读 `metrics.slots_open`**（精确 COUNT）——注意它**包含窗口尚未开启的槽**，所以不等于「将记成 `missed` 的条数」：40 已关闭 + 40 未来窗口时 `slots_open` 是 80，而 `missed` 积压只有 40（round-10 N14 实测）。**要知道「有多少条将被记成 `missed`」，目前没有精确字段**：`dispatchMetrics()` 的全部字段里没有一个对应 `WILL_MISS_SQL` 谓词。可用的近似只有两条——看 `p2_activity_receipts` 的 `missed` 累计（事后事实），或等 `WILL_MISS_COUNT_SQL` 落地（单开项）。`willMiss` 本身只回答「这一批取样里我看到多少条将要被记成 `missed`」。
+    - **按「这一拍」读还要再收紧一次**：至多 `min(willMiss, 8)`，且实际可能更少——泵的 missed 扫描 `LIMIT 8` 与闸门槽共用名额，那些槽退役但不写收据（round-8 N12 实测：10 个已关闭 B 站槽排在 20 个 read 槽前面时，一拍写 **0** 条）。
+    - **按「累计」读成立，按「下一拍」读不成立**：20 个已关闭的 read 槽给出 `willMiss 20`，而泵下一拍只写 8 条；连跑到 **5 拍** 才是 `8 → 16 → 20`。所以「累计」才是 `willMiss` 的真正含义，「这一拍」永远只是它的（更小的）上界。
 - **拍级** `blockedBy[]`：按 `heartbeat.cycle()` 自己的拒绝顺序给出**具名**原因：`heartbeat-unmounted` / `heartbeat-disabled` / `agenda-disabled` / `heartbeat-paused` / `dispatch-cap-zero` / `runtime-<mode>` / `p2-unmounted`，再加上 P2 侧的 `dispatch-disabled` / `activities-paused` / `chat-priority` / `foreground-signal-unavailable` / `invalid-scope`。
 - **`claimableNow`**：`blockedBy` 为空 **且** 有可 claim 的槽。**注意分工**：`rows[].state` 说的是"槽的判据"，`claimableNow` 说的是"这一拍真的会动"。开关关着时正确的结果是 **`state:'claimable'` + `blockedBy:['dispatch-disabled']` + `claimableNow:false`** —— 这正是"打开前先观察一轮"要看到的形状（否则看不到任何东西就没得观察）。
 - **时刻**不许编：给 `nextBeatWithinMs = pollIntervalMs + jitterMs` 与 `nextBeatNoLaterThan = 上一拍 + 上面这个和`，**不给**"它会在 T 秒后被 claim"。
@@ -956,5 +968,48 @@ memory 早就有 `status='superseded'` 取值、`valid_to` 列与 `recordRevisio
 - **【未验证】真实 60 秒 timer 节奏**：本节所有证据都用可注入时钟 + 显式 `runHeartbeatCycle()`。真实定时器下的抖动、`maxTimeBudgetMs` 截断（`skipped:'cycle-time-budget'`）、多 scope 争用**未跑过**。
 - **【未验证】生产库读数**：`slots_due`/`dispatch_lag_ms` 在**生产库**上的实际数值未采集（本节的数全部来自隔离临时目录）。生产打开开关前应先跑一次 `p2DispatchWatch()` 并记录。
 - **【未验证】跨进程**：`lastClaim`/`lastStart`/`activityDispatchLastCycle` 是**进程内**事实，多实例时只反映"当前进程"。跨进程互斥仍由 `test/lease-crossprocess.test.mjs` 覆盖（本节未复跑单列证据）。
+
+### 15.6 【已实施】能力闸门：一路判据，五条路径（round-3 P1-4 / P2-6）
+
+**判据只有一份**：`lib/capabilities.mjs` 的 `bilibiliProviderReady(ports)`（端口缺失／`available()` 抛异常／`available()` 明确返回 `false` 一律视为未就绪）。它不再是 SSOT 的**唯一**位置，而是 SSOT 的**唯一实现**：下列五条路径全部调它，不允许再写第二份。
+
+| 路径 | 闸门作用 | 未就绪时的行为 |
+|---|---|---|
+| `capabilities.mjs` 目录 | 能力清单 `bilibili.available` | `false` + `reason:'provider-not-ready'`（planner 据此不排 B 站，§16） |
+| `p2.mjs dueSlotsForHeartbeat()` | SQL 里 `(s.activity <> 'bilibili' OR ? = 1)` | 该槽**不进候选集**，另报 `skipped:<被排除条数>`（`LIMIT` 数的是真的能派的槽） |
+| `p2.mjs claimSlotForHeartbeat()` | claim 前读一次槽的 `activity` | 返回 `{ok:false, code:'capability-unavailable'}`，**不落 `planned→started`** 事件 |
+| `p2.mjs startDueActivities()` | 同一句 SQL 片段（`CAPABILITY_GATE_SQL`） | 该槽不 start；每拍一条具名 `p2-activity-start-bilibili-provider-not-ready` |
+| `dispatch-observability.mjs`（watch/metrics） | 同一判据，`bilibiliReady` 显式入参 | 行标 `blocked-capability`，`slots_due` 不含它，另报 `slots_capability_blocked` |
+
+**round-4 补的两个收口（N1 / N2，都只在观测层）**：
+- **N1**：`WILL_MISS_SQL` 原来看 "窗口已关闭且没开始" 就一律 `will-miss`，于是能力未就绪的 B 站槽被承诺"泵会记 `missed`"——而泵对它是按 `capability-unavailable` 退役、不写收据的。`counts.willMiss` 因此大于泵真的会写的 `missed` 条数。现在 `GATED_CLOSED_SQL`（`dispatch-observability.mjs`）把这类槽也收进 `blocked-capability`，`blockDetail` 明写"按 capability-unavailable 退役、不记 missed"。
+- **N2**：`CLAIMED_SQL`/`CLAIMED_COUNT_SQL` 也接同一闸门。就绪时被 claim、随后 provider 消失的 `started` 槽，不再计入 `claimed_awaiting_start`／`claim_age_ms`（它不属于"等泵"，泵永远不会开始它），但仍计入 `slots_open`。这正是修复落地那一瞬间的生产库状态——一个 payload 里两个数字互相矛盾的那种。
+
+两条都由 `test/p2-bilibili-watch-capability.test.mjs` 的前四条钉住，每条各带一条"就绪时回归"用例，证明闸门不是把认领吞掉。
+
+**round-5 补的两条（N4 / N5，同样只在观测层）**：
+
+- **N4（P3，窗口缺口）**：N2 把闸门接进 `CLAIMED_SQL` 后，`started` + **窗口尚未开启**的 B 站槽从 `rows[]` **整条消失**——它不是 `due`（`start_at > now`）、不是 `will-miss`（`end_at > now`）、也不再是 `awaiting-start`。三条窗口有界的查询各差一个时间条件，中间正好漏掉这一段：`slots_open` 说 3、`rows[]` 只剩 2。修法是**再加一条没有任何窗口判据**的 `GATED_ANY_SQL`/`capabilityGatedAnySlotRows()`，只按能力过滤，把三条查询之间的窗口缺口补上（**不是**"全量覆盖"——每条查询都带 `LIMIT`，见下面 N6）。行级状态由 `gatedState(row)` 按窗口位置一次性判定（已关 / 未开 / 开着），`blockDetail` 分三句说清各自的退役方式；`GATED_SQL`/`GATED_COUNT_SQL` 保持 due-now 语义不变（那是 `slots_capability_blocked` 的口径）。
+  - 可达性不夸大：心跳只交窗口覆盖 `now` 的槽，自己不会产生这个状态；`claimSlotForHeartbeat()` 没有窗口校验，宿主直接调它才会。所以这条判 P3。
+- **N5（P3，命名）**：`counts.capabilityBlocked` 是**按 state 数行**（覆盖所有窗口位置，但只数取样到的行），而 `metrics.slots_capability_blocked` 是 **due-now** 的精确计数——两个名字相近的数在同一个 payload 里可能不同（例如 3 vs 1）。不是缺陷，但会被读成"又打架"，所以在字段旁与本节都写明口径，不改名（改名会破坏已经冻结的观测字段）。
+- **N6（P3，措辞，round-6；数字在 round-7 修正）**：N4 的注释与用例标题原本写"`rows[]` 覆盖每一个未结槽"，那是**说过头了**。`rows[]` 由**六条**各带 `LIMIT` 的查询拼接，上界 `4 · min(200, limit) + 2 · min(50, limit)`（`limit` 固定 20 ⇒ 120）；`dispatchWatch` 也**没有** `truncated` 标志（`dispatchMetrics` 有）。实测 25 read + 25 bilibili、`limit=20` ⇒ `slots_open 50` 而 `rows[] 40`。这是**既有行为**（`GATED_ANY_SQL` 之前也一样），N4 只是把它暴露在更强的措辞下。修法**只改措辞**：§15.3 新增"`rows[]` 是取样，不是全量"一行，lib 注释与两处用例标题同步改口，代码零改动。
+- **N7 / N8 / N9（P3，同一段文档里的数字与说法，round-7）**：
+  - **N7 上界算错**：写成"三条查询 / `3 × limit`"，实际是**六条**（`due`/`claimed`/`gated`/`gated-any` 用 `min(200, limit)`，`will-miss`/`gated-closed` 用 `min(50, limit)`）。实测 `limit=20`、180 个未结槽 ⇒ `rows[] 107`（旧文档说 60）；`limit=50`、360 个 ⇒ `254`（旧文档说 150）。
+  - **N8 截断判据会漏报**（这条最要紧，因为它是操作者打开 `dispatchEnabled` **之前**会照着做的一步）：旧文档说"用 `rows.length >= 3 × limit` 判断是否到上限"。100 个到点的 read 槽、`limit=20` 时 `rows.length` 恰好 20，永远够不到门槛，而 `slots_due` 是 100——**实际截了 80 条，判据说没截**。正确做法：拿精确计数与 `rows[]` 条数比，或者等 `truncated` 字段落地。
+  - **N9 `limit` 不由公共 API 决定**：`index.mjs` 的 `p2DispatchWatch()` 只转 `scopeKey`/`now`，**不转发 `input.limit`**；`limit` 只存在于控制器层。旧文档说"由 `p2DispatchWatch({ limit })` 决定"是错的，实际固定 20。
+  - 顺带一条**后果证据**（不是新缺陷）：30 个已关闭 + 30 个未来窗口、`limit=20` ⇒ `rows[] 27`、未来窗口占 **0** 条。`GATED_ANY_SQL` 是 `ORDER BY start_at ASC LIMIT`，更早的槽先占满名额——N4 修的那一类在超上限时又一次不可见。这条已写进 §15.3，不单独修。
+- **N10（P3，时间口径，round-7）**：`counts.willMiss` 的旧说法「= 泵真的会写多少条」只在**累计**意义上成立。泵的 missed 扫描有 `LIMIT 8`，所以 20 个已关闭 read 槽 ⇒ `willMiss 20` 而下一拍只写 8；连跑 5 拍才收敛到 20。§15.3 已补：**按「这一拍会写几条」读是至多 `min(willMiss, 8)`**。
+- **N11（P2，少报，round-8）**：`WILL_MISS_SQL` 的取样窗（`min(50, limit)`）**本身不带能力闸门**，而 round-4 的修法在查询返回后才把闸门行 `continue` 掉。于是能力槽**先占满窗口、再被丢弃**，排在后面的真 miss 槽根本没进窗——本机实测 19 个已关闭 B 站槽 + 5 个已关闭 read 槽 ⇒ `willMiss` **0**，而泵真的写了 **5** 条 `missed`。这是 N1 修法引入的**镜像缺陷**（N1 修的是多报，这是少报）。修法：把 `CAPABILITY_GATE` 放进 `WILL_MISS_SQL` 的谓词，闸门槽从此不占这个窗口；原来的 `continue` 保留，用于「调用方没报就绪」那条分支。`test/p2-bilibili-watch-capability.test.mjs` 新增 N11 两条用例，**并做过 A/B**：临时去掉谓词后这几条全红（`willMiss 0`），加回后全绿。
+- **N12（P3，口径，round-8）**：round-7 把「这一拍会写几条」写成了 `min(willMiss, 8)` 这个**等号**。它其实是**上界**：`LIMIT 8` 的名额中闸门槽也占（它们退役但不写收据）。本机实测 10 个已关闭 B 站槽排在 20 个 read 槽前面 ⇒ 一拍写 **0** 条。已改成「至多 `min(willMiss, 8)`」，并有 `N12` 用例钉住这个不等式。
+
+N7–N10 的修法同样**只改文档与注释**，代码与断言零改动；`p2-bilibili-watch-capability` 6/6、runtime 728/728 因此必然不变。
+
+这三条由 `test/p2-bilibili-watch-capability.test.mjs` 的后两条钉住：三个 `started` 槽（已关 / 开着 / 未开）⇒ `rows[]` 恰三条（该 scope 里只有这三个槽，所以三条都在）、全部 `blocked-capability`，而 `metrics.slots_capability_blocked` 仍是 1；就绪时同样三条全部出现（`b-closed` 回 `will-miss`，另两条 `awaiting-start`）。**"恰三条"证明的是"窗口缺口不吞行"，不是"全量覆盖"** —— 后者由 `metrics` 的精确计数负责。**注意**：这两条用例的 scope 都很小，所以它们**不覆盖** N7/N8/N9 说的超上限行为；那条只有探针实测（`rows[] 107 / 254`、未来窗口 0 条），本仓库没有对应的回归用例。
+
+**窗口关掉之后**（`startDueActivities` 的 missed 扫描）：B 站槽仍被**退役**（`status:'planned'|'started'` → `'expired'`，否则未结槽会无限增长），但 `detail` 是 **`'capability-unavailable'`**，且**不写** `missed` 收据、**不调** `onMissed`。理由：`missed`/`window-closed` 会被明天的 planner 当作"计划了却没做到"喂进 `recentOutcomes`；而"这一份构建根本跑不了这个能力"是**跳过一个能力**，不是**失败了一件事**（§13 的"不可用的能力只跳过自己"）。真 miss（read/explore 等窗口关闭）语义**不变**，仍在同一轮扫描里照旧记 `missed`——`test/p2-bilibili-claim-gate.test.mjs` 的第二个用例把两类放在一次扫描里对比断言。
+
+**为什么不把拒绝码塞进 `GATE_CODES`**：`capability-unavailable` 说的是**构建/端口**，不是"这个 worker 不许提交"。`heartbeat.mjs` 因此把它当作普通 refusal 上报（`lastError = slot-claim:capability-unavailable`、`dispatchDecision.refused[]` 最多 5 条），但**不** `bumpRejection`：拿 provider 缺失去消耗 `maxAttempts` 预算，槽位迟早会被标成"已隔离"，读起来像"这条路走不到"，而事实是"这个功能没装"。
+
+**仍然是"未验证"的部分**：本节证据全部来自可注入时钟 + 临时 SQLite + 桩端口。真实宿主装载、真 provider、真 B 站账号**都没跑过**；`blocked-capability` 只是把已有的假事实换成一个真事实，不是把 B 站跑通。
 
 

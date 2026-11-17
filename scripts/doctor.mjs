@@ -25,6 +25,7 @@ import { fileURLToPath } from 'node:url';
 import { SUITE_ROOT, SUITE_PATHS, dataPaths } from '../tools/lib/paths.mjs';
 import { loadConfig, enabledModules, SAFE_DEFAULTS } from '../tools/lib/config.mjs';
 import { resolveHost, checkCompatibility, compareVersions, COMPATIBILITY } from '../tools/lib/host.mjs';
+import { verifyModule, PINS } from '../tools/verify-external-modules.mjs';
 import {
   describeLauncher,
   profileDir,
@@ -230,6 +231,17 @@ export function runDoctor(argv = process.argv.slice(2)) {
       id: 'host-version', title: '宿主版本', status: compatibility.ok ? (compatibility.level === 'newer' ? 'warn' : 'ok') : 'warn',
       detail: compatibility.message,
     });
+    // Where the version came from matters: a desktop `app.asar` package is only readable from
+    // inside the binary, so "probe" and "metadata" are different evidence levels.
+    const sourceLabel = {
+      probe: '桌面二进制内探测（Electron 内读 app.asar / runtime.json）',
+      metadata: 'plain fs 读取安装目录元数据',
+      none: '读不到（不做任何猜测）',
+    }[host.versionSource || 'none'];
+    add({
+      id: 'host-version-source', title: '宿主版本来源', status: 'info',
+      detail: `${sourceLabel}${host.moduleRoot ? `；moduleRoot=${host.moduleRoot}` : '；未定位 moduleRoot'}`,
+    });
     add({ id: 'host-baseline', title: '已验证基线', status: 'info', detail: `${COMPATIBILITY.verifiedAgainst}（最低 ${COMPATIBILITY.minimum}）` });
   }
   const launcher = describeLauncher(host);
@@ -339,11 +351,31 @@ export function runDoctor(argv = process.argv.slice(2)) {
 
     if (spec.kind === 'external') {
       const installed = Object.keys(installedDeps).some((name) => name === spec.packageName || name.includes('bili-scroll'));
+      if (!installed) {
+        add({
+          id: `module:${key}`, title: spec.title, status: 'warn',
+          detail: '外部模块，当前未安装：按 docs/03 用 dsh plugin add <固定 tarball URL> 自行安装；不影响本套件启动',
+        });
+        continue;
+      }
+      // Installed is not the same as usable. The version number cannot prove it is the audited
+      // tarball (measured 2026-11-14: two different 2.4.0 builds, 211655 vs 213810 bytes), so the
+      // fingerprint decides — and "not ready" is reported as such instead of dressed up as OK.
+      const moduleRoot = path.join(dshHome, 'profiles', profileName, 'node_modules');
+      const verdict = verifyModule({ moduleRoot, name: spec.packageName });
+      const detail = verdict.ok
+        ? `已安装且指纹匹配（bytes=${verdict.bytes} sha256=${String(verdict.sha256).slice(0, 16)}…）：provider 注册代码在位`
+        : `已安装但不可用（code=${verdict.code}）：${verdict.note || ''}${verdict.bytes ? ` bytes=${verdict.bytes} sha256=${String(verdict.sha256).slice(0, 12)}…` : ''}`;
       add({
-        id: `module:${key}`, title: spec.title, status: installed ? 'ok' : 'warn',
-        detail: installed
-          ? '已安装（外部模块，本仓库不含它的代码）'
-          : '外部模块，当前未安装：按 docs/03 用 dsh plugin add <固定 tarball URL> 自行安装；不影响本套件启动',
+        id: `module:${key}`, title: spec.title, status: verdict.ok ? 'ok' : 'warn',
+        detail,
+      });
+      add({
+        id: `module:${key}:pins`, title: `${spec.packageName} 固定指纹`,
+        status: PINS[spec.packageName] ? 'info' : 'warn',
+        detail: PINS[spec.packageName]
+          ? `version=${PINS[spec.packageName].version} indexSha256=${String(PINS[spec.packageName].indexSha256).slice(0, 16)}…（同版本号不同字节必须判不通过）`
+          : '没有固定指纹：无法校验是不是验收过的那一份',
       });
       continue;
     }

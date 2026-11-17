@@ -667,7 +667,12 @@ export function createHeartbeat(options = {}) {
             // quarantined by count instead of being retried forever.
             if (GATE_CODES.has(code)) throw new RuntimeError(code, String(claimed?.error ?? 'the writer may not claim a P2 slot'));
             totals.rejected += 1;
-            bumpRejection(rejections, rejectionKey);
+            // `capability-unavailable` is a refusal about the **build**, not about this slot: the
+            // provider is absent, so retrying it on the next beat cannot change the answer. It is
+            // reported by name and deliberately NOT bumped towards quarantine — burning the
+            // attempt budget on a missing capability would eventually hide the slot as "already
+            // quarantined", which reads like an unreachable plan instead of a disabled feature.
+            if (code !== 'capability-unavailable') bumpRejection(rejections, rejectionKey);
             lastError = `slot-claim:${code}`.slice(0, 120);
             dispatchDecision.code = String(lastError);
             dispatchDecision.refused.push({ slotId, code: String(code).slice(0, 40) });

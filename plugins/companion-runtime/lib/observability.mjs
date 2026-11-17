@@ -100,7 +100,7 @@ function measurable(value, source, honest = 'measured') {
  * can say `disabled` instead of pretending to be idle.
  */
 export function p2Observability(db, {
-  scopeKey = '', now = Date.now(), switches = {}, hasDb = true, agendaPublication = null,
+  scopeKey = '', now = Date.now(), switches = {}, hasDb = true, agendaPublication = null, bilibiliReady,
 } = {}) {
   const groups = {};
   const scope = String(scopeKey ?? '');
@@ -121,7 +121,7 @@ export function p2Observability(db, {
   // all-time open backlog, under a name that promises "due **now**". Both numbers are useful and
   // they are not the same one, so both are reported: `slots_due` is the heartbeat's own predicate
   // (planned + window covers now + committed plan + no activity row), `slots_open` is the backlog.
-  const dispatch = dispatchMetrics(db, { scopeKey: scope, now: Number(now) || 0 });
+  const dispatch = dispatchMetrics(db, { scopeKey: scope, now: Number(now) || 0, bilibiliReady });
   const dispatchMetric = (value, source, honest = 'measured') => (
     dispatch.available !== true
       ? metric(null, source, 'unavailable')
@@ -140,8 +140,12 @@ export function p2Observability(db, {
   groups.slots = {
     state: activitiesOn ? 'active' : 'disabled',
     metrics: {
-      slots_due: dispatchMetric(dispatch.slots_due, `${METRIC_SOURCES.slots} (status='planned' AND window covers now AND plan committed AND no activity row)`),
+      slots_due: dispatchMetric(dispatch.slots_due, `${METRIC_SOURCES.slots} (status='planned' AND window covers now AND plan committed AND capability ready AND no activity row)`),
       slots_claimable: dispatchMetric(dispatch.slots_claimable, `${METRIC_SOURCES.slots} + ${METRIC_SOURCES.receipts} (due minus unresolved-effect jobs)`),
+      // The other half of "due": slots whose window covers now but whose capability this build
+      // cannot run. Reported separately so `slots_due` keeps meaning "a beat could claim it now"
+      // and a missing capability stays visible instead of looking like an empty plan.
+      slots_capability_blocked: dispatchMetric(dispatch.slots_capability_blocked, `${METRIC_SOURCES.slots} (due minus the capability gate)`, 'measured'),
       slots_effect_blocked: dispatchMetric(dispatch.slots_effect_blocked, `${METRIC_SOURCES.receipts} (lc-effect latest-per-job blocks)`, 'estimated'),
       // The old (mis-named) number, kept so nothing silently disappears from an operator view.
       slots_open: dispatchMetric(dispatch.slots_open, `${METRIC_SOURCES.slots} (status IN ('planned','started'), all time)`),

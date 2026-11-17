@@ -28,6 +28,20 @@ export const DEFAULT_CONFIG = Object.freeze({
     // 0.15 kept long-question recall while still returning zero for unrelated
     // queries whose best garbage coverage was 0.0985.
     coverageFloor: 0.15,
+    // --- 查询构造与两道门（计划 §5 A）。全部是标量，缺省即旧行为。---------
+    // 短句主题 + 承接上下文；关掉即回到「整句切二元组」的旧路径。
+    queryPlanEnabled: true,
+    // 代词句（「他太顽固」）是否允许用上一个会话轮次的用户原话补上下文。
+    continuationEnabled: true,
+    // 元记忆问句（「上次我说过什么」）是否允许兜底到最近重要记忆。
+    historyFallbackEnabled: true,
+    // 身份稳定资料单独配额：弱意图（问候/附和）与空主题时，只给稳定身份资料这几个槽位。
+    identityTopK: 3,
+    // 话题召回之外为身份资料额外保留的槽位数（0 = 关闭，旧行为）。
+    identityReserve: 0,
+    // 承接锚点的最大时差（默认 6 小时）与最多锚点数。
+    anchorWindowMs: 21600000,
+    anchorLimit: 3,
   },
   extraction: {
     // Off by default: the base companion never spends model calls on its own.
@@ -241,6 +255,17 @@ export function normalizeConfig(raw = {}) {
   config.retrieval.rrfK = clampInt(config.retrieval.rrfK, 1, 200, 60);
   config.retrieval.mmrLambda = clampNumber(config.retrieval.mmrLambda, 0, 1, 0.72);
   config.retrieval.coverageFloor = clampNumber(config.retrieval.coverageFloor, 0.1, 0.9, 0.15);
+  // 查询构造开关：必须是真的布尔值。
+  for (const key of ['queryPlanEnabled', 'continuationEnabled', 'historyFallbackEnabled']) {
+    if (typeof config.retrieval[key] !== 'boolean') {
+      notes.push(`retrieval.${key} must be a boolean; using default`);
+      config.retrieval[key] = DEFAULT_CONFIG.retrieval[key];
+    }
+  }
+  config.retrieval.identityTopK = clampInt(config.retrieval.identityTopK, 0, 20, 3);
+  config.retrieval.identityReserve = clampInt(config.retrieval.identityReserve, 0, 20, 0);
+  config.retrieval.anchorWindowMs = clampInt(config.retrieval.anchorWindowMs, 0, 30 * 24 * 60 * 60 * 1000, 21600000);
+  config.retrieval.anchorLimit = clampInt(config.retrieval.anchorLimit, 1, 10, 3);
   config.extraction.minMessages = clampInt(config.extraction.minMessages, 2, 200, 6);
   config.extraction.maxMessages = clampInt(config.extraction.maxMessages, config.extraction.minMessages, 400, 40);
   config.extraction.maxOutputTokens = clampInt(config.extraction.maxOutputTokens, 200, 8000, 2000);
