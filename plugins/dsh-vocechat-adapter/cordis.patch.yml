@@ -80,6 +80,19 @@
           maxReceiveBytes: 12582912
           downloadTimeoutMs: 120000
 
+          # ── 缩略图升级。
+          # 桌面端（exe / 网页）显示的是服务端那张缩略图，不是原图。服务端把长边压到
+          # 480px，再撑进 480 CSS px 的盒子、高 DPI 屏乘 DPR —— 于是"不放大看就是糊的"。
+          # 这里在发送前用 ffmpeg 重做一张长边 1080 的覆盖掉它。
+          # uploadRoot 指向**宿主机上** VoceChat 的 upload 目录（容器的挂载点）。
+          # ffmpeg 不可用时退回"用原图覆盖"：重一些，但至少是清楚的。
+          thumbnail:
+            enabled: true
+            uploadRoot: 'D:/DSH/vocechat/vocechat-data/upload'
+            longEdge: 1080
+            ffmpegPath: 'ffmpeg'
+            timeoutMs: 30000
+
         # 分段发送：一条长回复拆成几条"像人连着说"的消息。
         segmentation:
           enabled: true

@@ -40,6 +40,7 @@ import { createSentLog } from './sent-log.mjs';
 import { attachToWorkspace, listStoredSessions } from './workspace.mjs';
 import { createInboundBuffer, resolveBatching } from './buffer.mjs';
 import { mimeOf, withinRoots, readForSend, inboxTarget, writeInbox } from './media.mjs';
+import { upgradeThumbnail } from './thumbnail.mjs';
 import { segmentText } from './segment.mjs';
 
 export const name = 'vocechat-adapter';
@@ -120,12 +121,23 @@ export function resolveMedia(raw, { cwd = '' } = {}) {
   // `cwd` 是会话工作目录，永远是第一个合法的发送源：生图与 TTS 的产物都落在这里。
   const workDir = String(cwd ?? '').trim();
   const all = workDir ? [workDir, ...roots.filter(root => root !== workDir)] : roots;
+  const thumb = input.thumbnail && typeof input.thumbnail === 'object' ? input.thumbnail : {};
   return {
     enabled: input.enabled !== false,
     roots: all,
     maxSendBytes: posInt(input.maxSendBytes, 20 * 1024 * 1024),
     maxReceiveBytes: posInt(input.maxReceiveBytes, 12 * 1024 * 1024),
     downloadTimeoutMs: posInt(input.downloadTimeoutMs, 120000),
+    // 缩略图升级：桌面端显示的是服务端那张 480px 缩略图，不换就是糊的（见 media.mjs 注释）。
+    // `uploadRoot` 必须指向 VoceChat 容器的 upload 目录（宿主机上的挂载点）。
+    thumbnail: {
+      enabled: thumb.enabled !== false,
+      uploadRoot: str(thumb.uploadRoot, 'D:/DSH/vocechat/vocechat-data/upload'),
+      // 1080 覆盖 "480 CSS px × DPR 2" 这个最坏情况；再大只是白传字节。
+      longEdge: posInt(thumb.longEdge, 1080),
+      ffmpegPath: str(thumb.ffmpegPath, 'ffmpeg'),
+      timeoutMs: posInt(thumb.timeoutMs, 30000),
+    },
   };
 }
 
@@ -600,9 +612,36 @@ export function registerMediaTool({ agentCtx, room, config, getPort, sentLog, st
           throw new Error(`上传失败：${message}`);
         }
 
+        // 图片：把服务端那份缩略图换成够清晰的。
+        //
+        // 桌面端（exe / 网页）**显示的是缩略图，不是原图**，而服务端把缩略图长边固定压到
+        // 480px，却被塞进 480 CSS px 的盒子里、高 DPI 屏再乘 DPR —— 于是"不放大看就是糊的"。
+        // 必须在 send **之前**换：消息一发出去，客户端就可能立刻去取缩略图了。
+        // 换失败不算错误（`upgradeThumbnail` 自己吞掉），所以这里不判 ok。
+        if (config.media.thumbnail.enabled && typed.kind === 'image') {
+          const upgraded = await upgradeThumbnail({
+            uploadRoot: config.media.thumbnail.uploadRoot,
+            platformPath: uploaded.path,
+            originalPath: boundary.real,
+            width: uploaded.width ?? 0,
+            height: uploaded.height ?? 0,
+            longEdge: config.media.thumbnail.longEdge,
+            ffmpegPath: config.media.thumbnail.ffmpegPath,
+            timeoutMs: config.media.thumbnail.timeoutMs,
+            log: note,
+          });
+          if (upgraded.ok) {
+            state.thumbnailUpgrades += 1;
+            uploaded.thumbnail = { mode: upgraded.mode, bytes: upgraded.bytes, size: upgraded.size };
+          } else if (upgraded.reason !== 'no-thumbnail') {
+            state.thumbnailFailures += 1;
+            note(`缩略图升级未生效（${room}，${upgraded.reason}）：这张图在桌面端可能仍偏糊`);
+          }
+        }
+
         let sent;
         try {
-          sent = await port.sendFile(target, uploaded.path);
+          sent = await port.sendFile(target, uploaded.path, { kind: typed.kind, mime: typed.mime });
         } catch (error) {
           const message = String(error?.message ?? error).slice(0, 160);
           sentLog.sent({ room, target, mid: null, text: fileArg, ok: false, error: `send:${message}` });
@@ -722,6 +761,10 @@ export function apply(ctx, rawConfig) {
     // room → whether `vc_send_file` registered. 与文本工具分开记：一个房间可以有文本没媒体
     // （例如传输端口是老版本），这时候要能说出"文字能发、图发不了"，而不是一个笼统的"工具缺失"。
     mediaToolByRoom: new Map(),
+    // 缩略图升级的成败计数。分开记：`upgrades` 停了但发送正常，说明 ffmpeg 掉了
+    // （桌面端会开始变糊，但不报错）；`failures` 增长则要去看具体 reason。
+    thumbnailUpgrades: 0,
+    thumbnailFailures: 0,
   };
 
   const agents = ctx.agents;
@@ -1101,6 +1144,14 @@ export function apply(ctx, rawConfig) {
             maxSendBytes: config.media.maxSendBytes,
             maxReceiveBytes: config.media.maxReceiveBytes,
             toolByRoom: Object.fromEntries(state.mediaToolByRoom),
+            // 桌面端显示的是服务端缩略图；这两个数说明"换清晰缩略图"到底有没有在跑。
+            thumbnail: {
+              enabled: config.media.thumbnail.enabled,
+              uploadRoot: config.media.thumbnail.uploadRoot,
+              longEdge: config.media.thumbnail.longEdge,
+              upgrades: state.thumbnailUpgrades,
+              failures: state.thumbnailFailures,
+            },
           },
           sentLog: sentLog.file,
           logWritable: sentLog.writable(),

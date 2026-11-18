@@ -346,6 +346,63 @@ export function createMediaService({
     return cap;
   }
 
+  /**
+   * 提示词里到底有没有写出角色是谁 —— 以及没写时该锚一句什么。
+   *
+   * 2026-11-18 实测的漏洞：`subject=companion` 的 gate 只检查"身份数据可读"，于是模型
+   * 读完 `companion_media_visual` 之后，可以写出「A young woman with shoulder-length pink
+   * hair and blue-to-pink gradient eyes…」这样一整段外观描述，**却一次都不提 March 7th**
+   * （实测那条 prompt 长 1153 字符，名字出现 0 次）。画出来就是"一个粉发女孩"，
+   * 而链路上每一步都返回成功。
+   *
+   * 为什么名字必须真的在正文里：外观词是泛化的，"粉色短发 + 渐变眼睛 + 小相机"可以指向
+   * 很多人；名字是唯一把这段描述钉到某个具体角色的锚。少了它，模型画谁都有可能。
+   *
+   * 为什么是"补一句名字"而不是"把身份串整个追加"：TOOL_GUIDE 与 gate 都写明
+   * 「身份是参考事实，不是固定后缀」，整串追加会和模型自己写的构图打架。
+   * 而名字 + 出处（`March 7th from Honkai: Star Rail`）只是主体指代，不含任何
+   * 姿势、视角、衣物指令，因此不可能与构图冲突。
+   *
+   * @param {object} visual resolveCompanionVisualState() 的结果
+   * @returns {{anchor: string, candidates: string[], reason: string}}
+   */
+  function characterAnchor(visual) {
+    const nameEn = String(visual?.identity?.nameEn ?? '').trim();
+    const nameZh = String(visual?.identity?.name ?? '').trim();
+    const sourceEn = String(visual?.identity?.sourceEn ?? '').trim();
+    // **只用英文名做锚。** 正文必须全英文（`requireEnglish` 会逐字符检查），把中文名拼进去
+    // 会让一次本来完全正确的调用因为"系统补了个中文"而失败 —— 那种失败比缺名字更难查。
+    // 没有英文名时不补，改为在响应里明确说"缺英文名"。
+    if (!nameEn) {
+      return { anchor: '', candidates: [], reason: nameZh ? 'name-en-missing' : 'name-missing' };
+    }
+    const anchor = sourceEn ? `${nameEn} from ${sourceEn}` : nameEn;
+    return {
+      anchor,
+      // 认得出模型用了哪个写法就算写了：英文名、中文名、persona id 都算。
+      // persona id 也算，是因为模型有时会写 `march7` 这种内部键 —— 那同样把画面锚住了。
+      candidates: [nameEn, nameZh, visual?.personaId ?? ''].map(x => String(x ?? '').trim()).filter(Boolean),
+      reason: 'ok',
+    };
+  }
+
+  /**
+   * 这段 prompt 里出现角色名字了吗？
+   *
+   * 比较方式：小写 + 去掉所有非字母数字，于是 `March 7th` / `march7th` / `March7` 都算数。
+   * 严格相等会把"模型写了 march7th"判成没写，那种误判比漏判更烦人。
+   * 名字短于 3 个字符时不做子串匹配：`ai` 这种在任意英文句子里都会出现，等于没检查。
+   */
+  function promptMentions(prompt, candidates) {
+    const normalize = value => String(value ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+    const haystack = normalize(prompt);
+    if (!haystack) return false;
+    return candidates.some(candidate => {
+      const needle = normalize(candidate);
+      return needle.length >= 3 && haystack.includes(needle);
+    });
+  }
+
   // Validate reference data without rewriting the composed prompt.
   function companionPictureGate(visual, { personaId = '', sessionId = null, outfit = '' } = {}) {
     const explicitOutfit = typeof outfit === 'string' ? outfit.trim() : '';
@@ -478,8 +535,8 @@ export function createMediaService({
     const guide = promptGuidePath();
     const groupInstruction = '这是群聊：私人衣柜不在这里读，角色外观按上面的 identityClause 用，着装必须在 companion_media_draw 里用 outfit 显式给一句英文衣物短语（例如 "a cream knit sweater and dark jeans"），再照常把完整画面写成英文 prompt。';
     const baseInstruction = guide
-      ? `读取身份与当前衣物后，先读提示词写法指南 ${guide}，再按指南把外观、衣物、动作、表情、构图、环境和光线写成完整英文 prompt；参考串不是固定后缀，习惯性配饰按场景取舍。身体部位、裸露与遮挡、位置与视角、反向提示词自检都按指南对应章节执行。画面正文为配置画师串 + prompt，所选官方质量预设单独生效。`
-      : `提示词写法指南缺失（预期位置 ${PROMPT_GUIDE_RELATIVE}）。读取身份与当前衣物后，仍把可见外观、衣物、动作、表情、构图、环境和光线写成完整英文 prompt；身体部位用解剖名词直写（nipples/areola/pussy/labia/clitoris/vagina/anus/ass/groin/pubic hair），裸露与遮挡状态、部位在画面内位置与朝向都要写明。画面正文为配置画师串 + prompt，所选官方质量预设单独生效。`;
+      ? `读取身份与当前衣物后，先读提示词写法指南 ${guide}，再按指南把外观、衣物、动作、表情、构图、环境和光线写成完整英文 prompt；参考串不是固定后缀，习惯性配饰按场景取舍。身体部位、裸露与遮挡、位置与视角、反向提示词自检都按指南对应章节执行。画面正文为配置画师串 + prompt，所选官方质量预设单独生效。**画面正文必须写出角色名字**（例如 "March 7th from Honkai: Star Rail"）：只写"a young woman with pink hair"画出来的是另一个人，而且这种情况会被 companion_media_draw 直接拒掉。`
+      : `提示词写法指南缺失（预期位置 ${PROMPT_GUIDE_RELATIVE}）。读取身份与当前衣物后，仍把可见外观、衣物、动作、表情、构图、环境和光线写成完整英文 prompt；**正文必须写出角色名字**（只写外观会被 draw 拒掉）；身体部位用解剖名词直写（nipples/areola/pussy/labia/clitoris/vagina/anus/ass/groin/pubic hair），裸露与遮挡状态、部位在画面内位置与朝向都要写明。画面正文为配置画师串 + prompt，所选官方质量预设单独生效。`;
     return { ok, visual: gate.report, ...(group ? {} : (gate.refusal ? { error: gate.refusal } : {})),
       ...(group ? { outfitRequired: true, error: identityUsable ? undefined : gate.refusal } : {}),
       promptGuide: guide ?? 'missing',
@@ -514,6 +571,10 @@ export function createMediaService({
     if (subject && subject !== 'companion') return badInput('subject 只支持 companion，也可留空');
     // Identity and clothing are references, never prompt suffixes.
     let visual = null;
+    // 补进正文的角色锚（没有补就是空字符串）。放在响应里，让调用方看得见自己漏了什么。
+    let injectedName = '';
+    // 补不上时的原因（缺英文名/缺名字）。有值就要让调用方看到，否则这次会安静地画成陌生人。
+    let anchorWarning = '';
     if (subject === 'companion') {
       // Group sessions are refused by the resolver itself (a group must not read the private
       // wardrobe); the media layer then reports that instead of drawing with a guess.
@@ -546,6 +607,25 @@ export function createMediaService({
       }
       // The model composes the entire scene after reading these references.
       // Never append identity or clothing: doing so can contradict its composition.
+      //
+      // **除了一件事：名字。** 实测（2026-11-18）模型可以写满 1153 字符的外观描述却一次
+      // 不提 March 7th —— 画出来是"一个粉发女孩"，而链路上每一步都成功。外观词是泛化的，
+      // 名字是唯一把描述锚到具体角色的东西，所以它不能省。
+      //
+      // 这里**补**而不是**拒**：拒掉会让每次生图多烧一轮模型往返，而名字只是主体指代
+      //（`March 7th from Honkai: Star Rail`），不含姿势/视角/衣物，不可能与构图冲突。
+      // 补过就照原样写进响应，让调用方看得见自己漏了什么。
+      const anchor = characterAnchor(visual);
+      if (anchor.anchor && !promptMentions(prompt, anchor.candidates)) {
+        prompt = `${anchor.anchor.replace(/[.,]$/, '')}, ${prompt}`;
+        injectedName = anchor.anchor;
+      } else if (!anchor.anchor) {
+        // 没有英文名就不补，但必须说出来：否则这一轮会安静地画成"一个陌生人"。
+        anchorWarning = anchor.reason === 'name-en-missing'
+          ? '视觉身份有中文名但没有英文名（home/companion/visual-identity.json 的 name.en）：正文必须全英文，所以这次没法自动补上角色名。补一个英文名，否则画出来只是"一个像她的人"。'
+          : '视觉身份没有名字（home/companion/visual-identity.json 的 name），这次没法把角色锚进正文。';
+        note({ event: 'image-name-anchor-missing', reason: anchor.reason, personaId: visual.personaId ?? '' });
+      }
     }
     if (requireEnglish && (!/[a-z]/i.test(prompt ?? '') || [prompt, negative].some(value => /[^\x20-\x7e\r\n\t]/u.test(value ?? '')))) {
       return badInput('请直接使用英文填写 prompt 和 negative，并使用英文标点');
@@ -556,6 +636,8 @@ export function createMediaService({
       const dry = { ok: true, dryRun: true, provider: id, prompt, wouldSend: '不发起任何网络请求',
         promptGuide: guide ?? 'missing' };
       if (visual) dry.visual = companionVisualReport(visual, { outfit });
+      if (injectedName) dry.injectedName = injectedName;
+      if (anchorWarning) dry.nameWarning = anchorWarning;
       if (id === 'nai') {
         const preset = resolveNaiPrompt(section,{prompt,negative});
         dry.preset = { family: preset.family, applied: preset.applyDefaults, positive: preset.positive, negative: preset.negative, warnings: preset.warnings };
@@ -624,6 +706,10 @@ export function createMediaService({
           mustSend: handoffFor('image', sessionId).mustSend.replace('<绝对路径>', artifact.absolutePath),
         },
         meta: result.meta ?? {},
+        // 补进去的角色锚（没有补就不出现）。放在顶层，调用方能判断"这次是不是靠系统补的"。
+        ...(injectedName ? { injectedName } : {}),
+        // 补不上时的原因（缺英文名等）。必须让调用方看见：否则这次会安静地画成陌生人。
+        ...(anchorWarning ? { nameWarning: anchorWarning } : {}),
         // Reference provenance only; this does not prove prompt or image consistency.
         visual: visual ? {
           personaId: visual.personaId,

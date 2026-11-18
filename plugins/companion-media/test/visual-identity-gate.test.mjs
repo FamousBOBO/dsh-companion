@@ -223,7 +223,10 @@ test('P0-A：身份有效 → 通过校验，保留完整提示词并正常发�
     assert.equal(result.ok, true, JSON.stringify(result.error));
     assert.equal(calls.length, 1, '有效身份只发一次生成请求');
     const input = JSON.parse(calls[0].body).input;
-    assert.equal(input, 'She reads by a window.');
+    // 「保留完整提示词」= 原来的画面描述一字不改；名字是额外补的主体锚，不是改写。
+    assert.equal(input, 'Testa from Synthetic Testwork, She reads by a window.');
+    assert.ok(input.includes('She reads by a window.'), '画面正文必须原样保留');
+    assert.equal(result.injectedName, 'Testa from Synthetic Testwork');
     assert.equal(result.visual.identity, 'configured');
     assert.equal(result.visual.identityName, '测试角色');
   } finally {

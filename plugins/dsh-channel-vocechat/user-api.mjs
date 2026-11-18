@@ -227,7 +227,15 @@ export function createUserApi({ baseUrl, auth, timeoutMs = 15000, fetchImpl = nu
     // 而不是图片 —— 实测对比过（同一个 png，`prepare {}` → octet-stream，
     // `prepare {content_type:"image/png"}` → image/png + 宽高）。传 Blob 的 type 不够，
     // 平台只看 prepare 里这一句。
-    const prepared = await request('POST', '/api/resource/file/prepare', { json: { content_type: mime } });
+    //
+    // `filename` 同样必须在这里给，而且这是**桌面端/网页端看不到图片的真正原因**
+    // （2026-11-18 实测）：文件消息的 `properties` 里没有 `name` 时，web 客户端那个
+    // 文件气泡组件走的是 `if (!content || !name) return null` —— 整条消息渲染成
+    // **空气泡**（只有头像和时间，正文一个字都没有）。手机端不校验 name，所以一直正常。
+    // 传 `{}` 或 `{name:…}` 都不会写进 `properties.name`，只有 `filename` 会。
+    const prepared = await request('POST', '/api/resource/file/prepare', {
+      json: { content_type: mime, filename: String(filename || 'file') },
+    });
     const fileId = String(prepared.body ?? '').trim().replace(/^"|"$/g, '');
     if (fileId === '') throw new VoceChatApiError('bad-response', 'prepare 没有返回 file_id');
 
@@ -267,20 +275,27 @@ export function createUserApi({ baseUrl, auth, timeoutMs = 15000, fetchImpl = nu
    * @param {{channel?: number, user?: number}} target
    * @param {string} filePath `uploadFile()` 返回的 path
    */
-  async function sendFile(target, filePath) {
+  async function sendFile(target, filePath, { kind = 'file', mime = '' } = {}) {
     const t = targetOf(target);
     if (!t) throw new VoceChatApiError('bad-target', '目标必须是 {channel:n} 或 {user:n}（id ≥ 1）');
     const path = String(filePath ?? '').trim();
     if (path === '') throw new VoceChatApiError('empty-path', '缺少已上传文件的 path');
     const url = t.kind === 'channel' ? `/api/group/${t.id}/send` : `/api/user/${t.id}/send`;
+    // 语音用 `vocechat/audio`，其余用 `vocechat/file`。
+    //
+    // 两个类型在服务端都 200，落库的 `properties.content_type` 也一样，但**渲染完全不同**：
+    // `vocechat/file` + `audio/wav` 在网页端是一个带波形条的文件卡片（不是语音条），
+    // 只有 `vocechat/audio` 才走客户端那条 `case Py.audio: <Y file_path=…>` 分支，
+    // 渲染成和手机端一样的语音气泡。实测对比过两条消息（mid=743 与 mid=744）。
+    const contentType = kind === 'audio' ? 'vocechat/audio' : FILE_CONTENT_TYPE;
     const { body } = await request('POST', url, {
       text: JSON.stringify({ path }),
-      contentType: FILE_CONTENT_TYPE,
+      contentType,
     });
     const trimmed = String(body ?? '').trim();
     if (trimmed === '') return { mid: null };
     const asNumber = Number(trimmed.replace(/^"|"$/g, ''));
-    return { mid: Number.isFinite(asNumber) ? asNumber : null };
+    return { mid: Number.isFinite(asNumber) ? asNumber : null, contentType, mime: mime || null };
   }
 
   /**

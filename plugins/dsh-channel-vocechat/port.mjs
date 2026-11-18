@@ -84,12 +84,16 @@ export function createPort({ api, store, sse, auth, config, health = null, log =
     /**
      * 把已上传的文件作为媒体消息发出。
      *
+     * `kind` 决定**消息类型**，不是装饰：语音必须用 `audio`，服务端才会把它记成
+     * `vocechat/audio`，网页端才会渲染成语音条而不是"带波形条的文件卡片"（实测对比过）。
+     *
      * @param {{channel:number}|{user:number}} target
      * @param {string} filePath `uploadFile()` 返回的 path
-     * @returns {Promise<{mid: number|null}>}
+     * @param {{kind?: 'image'|'audio'|'video'|'file', mime?: string}} [options]
+     * @returns {Promise<{mid: number|null, contentType: string}>}
      */
-    sendFile(target, filePath) {
-      return api.sendFile(target, filePath);
+    sendFile(target, filePath, options) {
+      return api.sendFile(target, filePath, options);
     },
 
     /**

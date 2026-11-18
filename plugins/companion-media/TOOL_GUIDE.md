@@ -45,6 +45,11 @@
 - 最终正向提示词画面正文为 **画师串 + 主提示词**。程序不追加身份、衣物或旧手填正向预设；所选官方质量预设（如 Light）仍生效；已保存的正向预设保留为参考，反向预设仍按配置合并。
 - 用户要求换装时先调用 companion_outfit_set 更新衣柜，再重新读取。旧 outfit 参数只作换装参考，不会自动进入提示词；衣物必须写在完整 prompt 中。
 - **视觉身份是强制条件。** 身份不存在、读不出来、结构无效、与当前 persona 不匹配，或者只有中文外观时，真跑**直接拒绝**（`MEDIA_VISUAL_IDENTITY_REQUIRED`，`details.missing` 里写 `identity` 或 `identity-english`），**不会**发任何网络请求。`outfit` 只能替换衣物，**不能**绕过身份——一张只有衣服没有脸的图不是这个角色。先在 `home/companion/visual-identity.json` 里为该 persona 配好英文外观。
+- **画面正文里必须写出角色名字。** 身份串是参考事实，不是固定后缀——但名字不是可选项：外观词（"粉色短发 + 渐变眼睛 + 小相机"）可以指向很多人，名字是唯一把这段描述锚到某个具体角色的东西。实测过一条 1153 字符的 prompt，外观写得一丝不差、名字出现 0 次，画出来是"一个粉发女孩"，而 visual → draw → send 每一步都返回成功。
+  - 只会补**主体指代**（`<nameEn> from <sourceEn>`），补在原 prompt 最前面，原画面描述一个字都不改；不含姿势/视角/衣物，因此不会与你的构图冲突。
+  - 补过就在响应顶层回 `injectedName`；`dryRun` 也会回，所以「这次会不会靠系统补」可以先查。
+  - 自己写了名字（`March 7th` / `march7th` / `March7` / 中文名 / persona id 都算）就不会被改。
+  - 身份里**只有中文名、没有 `name.en`** 时不补（正文必须全英文，塞中文会让一次本来正确的调用失败），改为在响应里回 `nameWarning` 说明缺什么。看到它就去补 `name.en`。
 - 衣柜里没有可用的英文描述时，真跑同样拒绝（`MEDIA_BAD_INPUT`，`details.missing` 含 `wardrobe`），不会凭空编一套衣服。
 - `dryRun` 与真跑用**同一个**判定：被拒绝时 `dryRun` 返回 `{ok:true, dryRun:true, visualRequired:true, visual, refusal}`，`refusal` 与真跑返回的 `error` 同源，所以可以先 dry-run 确认「这次会不会被拒绝」。
 - `negative` 只在需要临时压制某些内容时用；固定反向提示词应放在配置里（`image.nai.negativePrompt` 或按族的预设）。反向词的取舍与冲突清单见指南第 8 节。

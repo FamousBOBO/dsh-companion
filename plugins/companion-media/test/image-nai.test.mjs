@@ -191,11 +191,17 @@ test('companion 身份与服装按当前 persona 提供参考，不追加到 pro
     assert.equal(preview.visual.context, 'sleep');
     assert.match(preview.visual.clothingClause, /pajama/);
     assert.deepEqual(preview.visual.missing, []);
+    // 原 prompt 没提角色名 → dryRun 必须说出来，且把补好的完整 prompt 一并给出
+    assert.equal(preview.injectedName, 'Testa from Synthetic Testwork');
+    assert.equal(preview.prompt, 'Testa from Synthetic Testwork, A girl reads by a lamp.');
 
     const result = await service.generateImage({ subject: 'companion', prompt: 'A girl reads by a lamp.' });
     assert.equal(result.ok, true, JSON.stringify(result.error));
     const input = JSON.parse(calls[0].body).input;
-    assert.equal(input, 'A girl reads by a lamp.');
+    // 名字被补在最前面（主体指代），原画面描述一个字都没改 —— 这正是"不追加身份串"的含义：
+    // 外观与衣物仍由模型自己写，系统只补那个不能省的锚。
+    assert.equal(input, 'Testa from Synthetic Testwork, A girl reads by a lamp.');
+    assert.equal(result.injectedName, 'Testa from Synthetic Testwork');
     const reference = service.readVisual();
     assert.equal(reference.ok, true);
     assert.match(reference.visual.identityClause, /short silver-grey hair/);
