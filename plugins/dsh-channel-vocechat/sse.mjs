@@ -297,6 +297,9 @@ export function createSseClient({
       } catch (error) {
         counters.errors += 1;
         counters.lastError = String(error?.message ?? error).slice(0, 200);
+        // 把原因写出来：`threw` 单独一行时，401/网络/续期失败在日志里长得一模一样，
+        // 2026-11-18 那次"能收不能发"就是被这四个字母盖住的。
+        say(`[vocechat-sse] 连接抛错：${counters.lastError}`);
         outcome = { connected: false, reason: 'threw' };
       }
       if (stopped) break;

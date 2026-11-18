@@ -37,13 +37,16 @@ import { createSessions } from './sessions.mjs';
 import { createTurnObserver } from './turns.mjs';
 import { createQueue } from './queue.mjs';
 import { createSentLog } from './sent-log.mjs';
+import { attachToWorkspace, listStoredSessions } from './workspace.mjs';
 import { segmentText } from './segment.mjs';
 
 export const name = 'vocechat-adapter';
 // `agentDefaultModel` must be declared here: cordis refuses to read a property for a service that
 // is not injected (measured: `cannot get property "agentDefaultModel" without inject`), and
 // without it there is no route at all when the config leaves provider/model empty.
-export const inject = ['agents', 'agentPresets', 'agentDefaultModel'];
+// `sessionTitle` / `workspaceRegistry` 只影响侧栏显示（会话名字与分组），与路由无关；
+// 声明它们同样是因为 cordis 拒绝读未声明的服务。
+export const inject = ['agents', 'agentPresets', 'agentDefaultModel', 'sessionTitle', 'workspaceRegistry'];
 
 const SETUP_MARK = Symbol.for('companion.vocechat-setup.v1');
 const OBSERVER_MARK = Symbol.for('companion.vocechat-observer.v1');
@@ -155,6 +158,21 @@ export function defaultCorrection(room) {
   const target = targetOfRoom(room);
   const where = target?.channel !== undefined ? `频道 ${target.channel}` : `与 uid=${target?.user} 的私聊`;
   return `这一轮你的文字只留在本地，VoceChat 的${where}里看不到。现在调用 vc_message(action=send, phase=final) 把最终答复发出去；不要重复已经发出的内容，也不要再加一版新的回复。`;
+}
+
+/**
+ * 房间 → 侧栏里显示的名字。
+ *
+ * QQ 通道给会话起的是 `QQ 私聊1429709395`（`registry.ts`），这里对齐成同一种读法：
+ * `VoceChat 私聊3` / `VoceChat 频道1`。存在的唯一理由是"一眼能认出这是谁"——
+ * 侧栏里堆着 `vc-dm-1`、`vc-chan-1` 这种内部键时，人和模型都看不出它们是两个不同的对话。
+ *
+ * 名字里不出现自己的 uid、也不出现消息内容：这条字符串会进会话日志。
+ */
+export function sessionTitleOf(room) {
+  const info = describeRoom(room);
+  if (!info) return '';
+  return info.kind === 'chan' ? `VoceChat 频道${info.id}` : `VoceChat 私聊${info.id}`;
 }
 
 /**
@@ -492,6 +510,15 @@ export function apply(ctx, rawConfig) {
     // 没有显式路由时用宿主当前的默认选择 —— 空 provider/model 会让回合以不明原因失败。
     agentDefaultModel: ctx.agentDefaultModel ?? null,
     setupPerAgent,
+    // 会话标题与工作区归属只是显示层：这两样服务缺席时传 null，一切照常跑。
+    titles: ctx.sessionTitle ?? null,
+    titleOf: sessionTitleOf,
+    attachTo: sessionId => attachToWorkspace({
+      registry: ctx.workspaceRegistry ?? null,
+      cwd: config.cwd,
+      sessionId,
+      log: note,
+    }),
     log: note,
   });
 
@@ -632,6 +659,31 @@ export function apply(ctx, rawConfig) {
   const described = gate.describe();
   note(`gate fail-closed=${described.failClosed} allowUsers=${JSON.stringify(described.allowUsers)} allowGroups=${JSON.stringify(described.allowGroups)}`);
   void warmUp();
+
+  /**
+   * 启动时把已落盘的 vc 会话挂回工作区（对齐 QQ 的 `reattachAll`）。
+   *
+   * 为什么必须有这一步：会话的「属于哪个工作区」是持久化记录，只有**创建那一刻**才写。历史会话
+   * （2026-11-18 之前建的 `vc-dm-1` / `vc-chan-1`）从未登记过，于是永远落在侧栏「未分组」——
+   * 而新消息只在 ensure 里补登记，没人发消息的旧会话就一直是孤儿。启动时扫一遍是唯一可靠的修法。
+   *
+   * 静默、不阻塞挂载：`void` 掉，失败只写日志。
+   */
+  void (async () => {
+    const ids = listStoredSessions({ homeDir: path.join(dataRoot, 'home'), namespace: config.namespace });
+    if (ids.length === 0) return;
+    let attached = 0;
+    for (const id of ids) {
+      const result = await attachToWorkspace({
+        registry: ctx.workspaceRegistry ?? null,
+        cwd: config.cwd,
+        sessionId: id,
+        log: note,
+      });
+      if (result.attached) attached += 1;
+    }
+    note(`工作区归属：${attached}/${ids.length} 个 vc 会话已登记`);
+  })();
 }
 
 export { describeRoom, dmPeerOf, targetOfRoom, isVoceChatPort };

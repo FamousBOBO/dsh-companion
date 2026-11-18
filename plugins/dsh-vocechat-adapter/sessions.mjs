@@ -33,9 +33,15 @@ const RESUME_BACKOFF_MS = 1500;
  * @param {object} [input.agentDefaultModel] `ctx.agentDefaultModel` — used when no explicit route
  * @param {(agentCtx: object, agent: object, sessionId: string) => Promise<void>|void} input.setupPerAgent
  *        called inside the harness `setup` callback, for every create and every resume.
+ * @param {object|null} [input.titles]   `ctx.sessionTitle`（可缺席）。有它才给会话起中文名。
+ * @param {(sessionId: string) => string} [input.titleOf] 房间 → 会话标题。
+ * @param {(sessionId: string) => Promise<void>|void} [input.attachTo] 把会话挂进工作区（可缺席）。
  * @param {(line: string) => void} [input.log]
  */
-export function createSessions({ agents, agentPresets, agentDefaultModel = null, setupPerAgent, log = null } = {}) {
+export function createSessions({
+  agents, agentPresets, agentDefaultModel = null, setupPerAgent,
+  titles = null, titleOf = null, attachTo = null, log = null,
+} = {}) {
   const say = line => {
     if (typeof log !== 'function') return;
     try { log(line); } catch { /* */ }
@@ -124,6 +130,58 @@ export function createSessions({ agents, agentPresets, agentDefaultModel = null,
   }
 
   /**
+   * Give the session a readable name, once — and **never overwrite one it already has**.
+   *
+   * 为什么要做（2026-11-18）：VoceChat 的房间键是 `vc-dm-1` / `vc-chan-1`，不写标题时侧栏里就只剩
+   * 这两个字符串 —— 而 QQ 那条通道在建会话时就写了 `QQ 私聊1429709395`，两边看起来像两个产品。
+   *
+   * 为什么只在"没有标题"时写：`session/title` 事件有两种来源，人工改名是 `kind: 'user'`，
+   * 而 `vc-chan-1` 上那个「VoceChat 生产入站验证」正是人工起的。用"与目标不同就改名"的写法会
+   * 把人的命名覆盖掉，且每来一条消息都可能重写。所以判据是 `get(session) === undefined`：
+   * 只补空缺，不动已有的。标题只是显示层，因此这里**永不抛**。
+   */
+  function nameIt(agent) {
+    if (!titles || typeof titles.rename !== 'function' || typeof titleOf !== 'function') return;
+    if (typeof titles.get !== 'function') return;
+    const session = agent?.session;
+    if (!session?.id) return;
+    let current;
+    try { current = titles.get(session); } catch { return; }
+    if (current !== undefined) return; // 已有标题（人工或自动）：本层不碰
+    let want = '';
+    try { want = String(titleOf(session.id) ?? '').trim(); } catch { return; }
+    if (!want) return;
+    try {
+      titles.rename(session, want);
+      say(`titled ${session.id} → ${want}`);
+    } catch (error) {
+      say(`起名失败 ${session.id}：${errorChain(error).slice(0, 120)}`);
+    }
+  }
+
+  /**
+   * 把会话挂进工作区。
+   *
+   * 与 `nameIt` 一样属于显示层，因此同样**永不抛**：挂不上只影响侧栏分组，消息照发。
+   * 每条会话每进程只挂一次（成功才记），失败下次再试 —— 于是"进程崩在登记中间"留下的
+   * 孤儿会话会在下一条消息时自己修好。
+   */
+  const attached = new Set();
+  async function attach(sessionId) {
+    if (typeof attachTo !== 'function') return;
+    const id = String(sessionId);
+    if (attached.has(id)) return;
+    try {
+      const result = await attachTo(id);
+      // `attachTo` 返回 `{attached, reason}`；没返回值时按成功处理（调用方自己的实现）。
+      if (result === undefined || result === null || result.attached === true) attached.add(id);
+      else say(`挂工作区未完成 ${id}：${String(result.reason ?? '').slice(0, 120)}`);
+    } catch (error) {
+      say(`挂工作区失败 ${id}：${errorChain(error).slice(0, 120)}`);
+    }
+  }
+
+  /**
    * Ensure a live agent for `sessionId`.
    *
    * @returns {Promise<{agent: object, resumed: boolean, created: boolean, route: object}>}
@@ -143,6 +201,8 @@ export function createSessions({ agents, agentPresets, agentDefaultModel = null,
     const cached = liveFromCache(sessionId);
     if (cached) {
       recordSelection(cached, effectiveRoute(route, cwd, guard));
+      nameIt(cached);
+      await attach(String(sessionId));
       return { agent: cached, resumed: true, created: false, route, cached: true };
     }
 
@@ -158,6 +218,8 @@ export function createSessions({ agents, agentPresets, agentDefaultModel = null,
       }
       recordSelection(live, effectiveRoute(route, cwd, guard));
       proven.set(sessionId, live);
+      nameIt(live);
+      await attach(String(sessionId));
       return { agent: live, resumed: true, created: false, route };
     }
 
@@ -172,6 +234,8 @@ export function createSessions({ agents, agentPresets, agentDefaultModel = null,
       const handle = await agents.create({ ...createOptions, sessionId });
       recordSelection(handle.agent, effectiveRoute(route, cwd, guard));
       proven.set(String(sessionId), handle.agent);
+      nameIt(handle.agent);
+      await attach(String(sessionId));
       return { agent: handle.agent, resumed: false, created: true, route };
     } catch (createError) {
       const text = errorChain(createError);
@@ -200,6 +264,8 @@ export function createSessions({ agents, agentPresets, agentDefaultModel = null,
         say(`resumed ${sessionId} (retry ${attempt + 1}, live registry)`);
         recordSelection(again, effectiveRoute(route, cwd, guard));
         proven.set(String(sessionId), again);
+        nameIt(again);
+        await attach(String(sessionId));
         return { agent: again, resumed: true, created: false, route };
       }
       try {
@@ -207,6 +273,7 @@ export function createSessions({ agents, agentPresets, agentDefaultModel = null,
         say(`resumed ${sessionId} (retry ${attempt + 1}, persisted)`);
         recordSelection(handle.agent, effectiveRoute(route, cwd, guard));
         proven.set(String(sessionId), handle.agent);
+        nameIt(handle.agent);
         return { agent: handle.agent, resumed: true, created: false, route };
       } catch (resumeError) {
         lastError = resumeError;

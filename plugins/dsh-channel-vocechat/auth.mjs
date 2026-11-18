@@ -107,7 +107,7 @@ export function createAuth({
   /** In-flight renewal, so concurrent callers share one request (see design note 2). */
   let renewal = null;
 
-  const stats = { renewals: 0, failures: 0, readFromDb: 0, readFromFile: 0 };
+  const stats = { renewals: 0, failures: 0, readFromDb: 0, readFromFile: 0, sourceReloads: 0 };
 
   /** Load a refresh token: credential file first (explicit), then the VoceChat database. */
   async function loadRefreshToken() {
@@ -139,13 +139,18 @@ export function createAuth({
     return '';
   }
 
-  /** One renewal. Never runs concurrently with itself. */
-  async function renewOnce() {
+  /**
+   * One renewal attempt. Never runs concurrently with itself.
+   *
+   * `fromSource` 只是日志用：`true` 表示这一次是在「缓存被拒、已重新读源」之后的第二次尝试。
+   */
+  async function renewAttempt(fromSource) {
     const source = await loadRefreshToken();
     if (!source) {
       throw new AuthError('no-refresh-token', '没有可用的 refresh_token（数据库与 credentialFile 都没读到）');
     }
     if (!origin) throw new AuthError('not-configured', 'baseUrl 未配置');
+    if (fromSource) say('[vocechat-auth] 用刚读到的 refresh_token 重试续期');
 
     let response;
     try {
@@ -197,6 +202,38 @@ export function createAuth({
     stats.renewals += 1;
     say(`[vocechat-auth] renewed (expired_in=${lifetime}s, valid until ${new Date(expiresAt).toISOString()})`);
     return accessToken;
+  }
+
+  /**
+   * One renewal, with one **source reload** on a rejected cached token.
+   *
+   * 为什么需要第二次尝试（2026-11-18 实测）：
+   *   - `refreshToken` 是进程内缓存，只有第一次读源时才从数据库/credentialFile 取。
+   *   - VoceChat 的 refresh_token 是**单链**的：同一 (uid, device) 只会最后一代有效，再往前一代立即
+   *     401。任何第三方（验证脚本、`/api/token/login` 重新登录、手工 renew）把这条链往前推一代，
+   *     本进程缓存的那份就成了"两代以前"，之后每次 renew 都是 401 —— 症状是能收不能发。
+   *   - 解决它不需要人工重登：数据库里那一行是权威，重新读一次就拿到当前有效的一代。
+   *     实测 `dsh-companion` 这一行被推到两代以前之后，重新读库并 renew 立刻 200。
+   *
+   * 只在 `refresh-token-rejected` 时重试，且只重试一次：网络错误/服务器 5xx 重读源没有意义，
+   * 无限重试则会把一次明确的失败变成一把锁。
+   */
+  async function renewOnce() {
+    try {
+      return await renewAttempt(false);
+    } catch (error) {
+      const reloadable = error instanceof AuthError
+        && error.code === 'refresh-token-rejected'
+        && (String(dbFile ?? '').trim() !== '' || String(credentialFile ?? '').trim() !== '');
+      if (!reloadable) throw error;
+      // Drop the cached value so `loadRefreshToken()` actually re-reads the source.
+      refreshToken = '';
+      accessToken = '';
+      expiresAt = 0;
+      stats.sourceReloads = (stats.sourceReloads ?? 0) + 1;
+      say('[vocechat-auth] 缓存的 refresh_token 被拒（401）→ 重新读源后再试一次');
+      return await renewAttempt(true);
+    }
   }
 
   /**
