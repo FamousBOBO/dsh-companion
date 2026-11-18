@@ -75,7 +75,9 @@ NovelAI 相关：
   - **GPT-SoVITS**：`ref_audio_path` 是**服务端的路径**，不是本机文件；`media_type=raw` 不受支持（没有可靠采样率），用 `wav`。
   - **Fish Audio / Drama3**：计费；`format=pcm` 不受支持（同上），用 `wav`；Drama3 的多说话人在配置里用逗号分隔多个 `reference_id`，正文用 `<|speaker:0|>` 标签切人。
   - **Index-TTS**：尚未接入（没有官方 HTTP 协议），会返回 `MEDIA_PROVIDER_NOT_IMPLEMENTED`。不要反复试。
-- 成功返回 `handoff.file`，交给 `qq_voice action=send_file`。
+- 成功返回 `handoff.file`，交给 `handoff.tool`（**按通道决定**：QQ 是 `qq_voice`，
+  VoceChat 是 `vc_send_file`）。`handoff.tool` 为 null 时说明这个会话不属于已知通道：
+  不要调用任何发送工具，把路径原样回报。
 
 ---
 
@@ -98,10 +100,16 @@ NovelAI 相关：
                                     → 校验参数（尤其 NAI 尺寸与预设族）
 4. companion_media_draw {prompt, subject:"companion"}
                                     → 拿到 artifact.absolutePath / handoff.file
-5. qq_sticker action=send_image {file}    → 只有这一步成功，才算"发出去了"
+5. handoff.tool {file}              → 只有这一步成功，才算"发出去了"
+                                      （QQ 会话是 qq_sticker action=send_image；
+                                       VoceChat 会话是 vc_send_file {file}）
 ```
 
-语音同理：`companion_media_speak {text}` → `qq_voice action=send_file {file}`。
+语音同理：`companion_media_speak {text}` → `handoff.tool {file}`。
+
+**发送工具不能自己猜。** `handoff.tool` 按会话通道给出：`qq-*` 会话是 QQ 的那两个工具，
+`vc-*` 会话是 `vc_send_file`，认不出的通道给 `null`。认不出时不要退回去调 `qq_sticker` ——
+那会把 VoceChat 里的图发到主人的 QQ 私聊（2026-11-18 实测过，而且整条链路看起来是成功的）。
 
 ---
 

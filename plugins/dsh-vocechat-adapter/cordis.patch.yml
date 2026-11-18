@@ -68,6 +68,18 @@
           maxMessages: 8
           maxChars: 4000
 
+        # ── 媒体投递（对齐 companion-media 的 channelBoundary）。
+        # `roots` 只列额外目录；会话 cwd（工作区）永远在允许列表第一位。
+        # 不默认放行整个 data/：那里有凭据、会话日志、别人的附件 —— 把它们发给对话对象
+        # 是不可撤销的泄漏，而"多发一个目录"只需要改一行。
+        media:
+          enabled: true
+          roots: []
+          # 与 VoceChat 服务端的 send_image_limit（20 MB）对齐。
+          maxSendBytes: 20971520
+          maxReceiveBytes: 12582912
+          downloadTimeoutMs: 120000
+
         # 分段发送：一条长回复拆成几条"像人连着说"的消息。
         segmentation:
           enabled: true

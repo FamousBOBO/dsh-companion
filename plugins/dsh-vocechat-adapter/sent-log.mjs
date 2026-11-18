@@ -65,12 +65,15 @@ export function createSentLog({ dataRoot, rotateBytes = ROTATE_BYTES } = {}) {
 
   return {
     /** A send that reached the platform (or failed trying). */
-    sent({ room, target, mid = null, text = '', phase = 'final', ok = true, error = null, segment = 0, of = 0 }) {
+    sent({ room, target, mid = null, text = '', phase = 'final', ok = true, error = null, segment = 0, of = 0, media = null }) {
       return append({
         at: Date.now(), kind: 'sent', room, target, mid, phase,
         ok, chars: String(text ?? '').length, preview: preview(text),
         // 分段上下文：这是第几段、一共几段。没有它，"这条为什么只发了一半"查不出来。
         ...(segment ? { segment, of } : {}),
+        // 媒体：文本账本里只有路径（`text` 是文件路径，preview 会显示它），
+        // 真正有用的是类型/大小/平台 path —— "这张图为什么变成了附件"要靠这几个字段查。
+        ...(media ? { media } : {}),
         ...(error ? { error: String(error).slice(0, 160) } : {}),
       });
     },

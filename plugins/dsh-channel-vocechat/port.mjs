@@ -6,7 +6,7 @@
 // 五条设计约束，每条都有实测或事故作为依据：
 //
 //   1. **`send` 吃判别式目标**，不是 isGroup 布尔。`{channel:n}` / `{user:n}`，
-//      让「把频道号发进私聊」这类错误在类型上不可表达。
+//      让「把频道号发进私聊」这类错误在类型上不可表达。媒体同理走 `{channel}|{user}`。
 //   2. **`subscribe` 是回调，不是事件总线。** 插件不决定谁处理、不重试、不排队；
 //      那些是回合调度的事，属于适配层。SSE 已经是"至少一次"，重试在上面做才有意义。
 //   3. **没有 getMessage / deleteMessage。** 用户身份确实能读历史（`history()` 有了），
@@ -14,6 +14,9 @@
 //   4. **`info()` 只报事实，不含凭据。** 没有 token、没有 refresh_token、没有 api-key。
 //   5. **`subscribe` 串行派发并隔离失败。** 一个 handler 抛错不能吞掉别人的事件 ——
 //      V1 的 port 测试就是这么定的，V2 沿用。
+//   6. **媒体是 upload → send 两步，不是 `sendMedia(bytes)`。** 上传失败（太大/读不到）与
+//      发送失败（房间不对/权限）是两种完全不同的故障，合成一个动词后调用方只能看到
+//      一个笼统的失败；拆开也让"先传后发"成为调用方自然可控的切点。
 
 import { describeEvent } from './normalize.mjs';
 
@@ -62,6 +65,42 @@ export function createPort({ api, store, sse, auth, config, health = null, log =
      */
     send(target, text, contentType = 'text/plain') {
       return api.send(target, text, contentType);
+    },
+
+    /**
+     * 上传一个本地文件，拿回平台侧的 `path`。
+     *
+     * 拆成 upload/send 两步而不是一个 `sendMedia(target, bytes)`：这两步失败的含义完全不同
+     * （上传失败 = 文件太大/读不到；发送失败 = 房间不对/权限），合成一个动词后，
+     * 调用方只能看到一个笼统的失败。另外"先传后发"也是调用方决定要不要发的自然切点。
+     *
+     * @param {Uint8Array|Buffer|string} bytes
+     * @param {{filename?: string, mime?: string, timeoutMs?: number}} [options]
+     */
+    uploadFile(bytes, options) {
+      return api.uploadFile(bytes, options);
+    },
+
+    /**
+     * 把已上传的文件作为媒体消息发出。
+     *
+     * @param {{channel:number}|{user:number}} target
+     * @param {string} filePath `uploadFile()` 返回的 path
+     * @returns {Promise<{mid: number|null}>}
+     */
+    sendFile(target, filePath) {
+      return api.sendFile(target, filePath);
+    },
+
+    /**
+     * 取回平台上的一个文件（入站媒体用它落本地）。
+     *
+     * @param {string} filePath 消息 `content` 字段里的相对路径
+     * @param {{timeoutMs?: number, maxBytes?: number}} [options]
+     * @returns {Promise<{bytes: Buffer, mime: string, size: number}>}
+     */
+    downloadFile(filePath, options) {
+      return api.downloadFile(filePath, options);
     },
 
     // ── inbound：订阅，不是总线 ─────────────────────────────────────────

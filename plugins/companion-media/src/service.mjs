@@ -21,6 +21,47 @@ import { redactText } from './secrets.mjs';
 import { resolveCompanionVisualState } from '../../companion-foundation/visual-identity.mjs';
 
 /**
+ * 产物该交给哪个发送工具 —— **按通道决定，不是写死 QQ**。
+ *
+ * 2026-11-18 的检查发现了这里最危险的一处（`docs/35-media-capability-audit-20261118.md`）：
+ * handoff 原来无条件写 `qq_sticker` / `qq_voice`，而 VoceChat 会话里那 28 个 `qq_*` 工具
+ * 是可见的。于是"在 VoceChat 里画一张图"的真实结果是**图发到了主人的 QQ**，VoceChat 这边
+ * 什么都没有 —— 静默成功，比失败难查得多。
+ *
+ * 按会话 id 的形状判定，与 `isMultiPartySession()` 同一套前缀：
+ *
+ *   qq-*         → QQ 的那两个工具（行为与此前逐字一致，不改动既有链路）
+ *   vc-*         → VoceChat 自己的 `vc_send_file`（目标由房间反解，模型不指定房间）
+ *   其他/未知    → 不给工具名，只给文件与通道；**不猜**。猜错的代价是发到别人的窗口里。
+ *
+ * @param {'image'|'speech'} kind
+ * @param {string|null} sessionId
+ * @returns {{channel: 'qq'|'vocechat'|'unknown', tool: string|null, action: string|null, mustSend: string}}
+ */
+export function handoffFor(kind, sessionId) {
+  const id = String(sessionId ?? '');
+  if (id.startsWith('vc-')) {
+    return {
+      channel: 'vocechat',
+      tool: 'vc_send_file',
+      action: 'send',
+      mustSend: '调用 vc_send_file 并传 file=<绝对路径>（目标由房间决定，不要指定房间号）',
+    };
+  }
+  if (id.startsWith('qq-')) {
+    return kind === 'image'
+      ? { channel: 'qq', tool: 'qq_sticker', action: 'send_image', mustSend: '调用 qq_sticker action=send_image 并传 file=<绝对路径>' }
+      : { channel: 'qq', tool: 'qq_voice', action: 'send_file', mustSend: '调用 qq_voice action=send_file 并传 file=<绝对路径>' };
+  }
+  return {
+    channel: 'unknown',
+    tool: null,
+    action: null,
+    mustSend: '这个会话不属于任何已知通道：不要调用任何发送工具，把文件路径原样回报给调用方',
+  };
+}
+
+/**
  * The media service — the single business facade.
  *
  * Everything the tools, the HTTP API and the page call goes through here, so
@@ -359,19 +400,24 @@ export function createMediaService({
   }
 
   /**
-   * Is this a QQ group session?
+   * 这条会话是**多人在场**的吗（群里、频道里）。
    *
-   * The wardrobe resolver refuses group sessions by design (`wardrobe-unavailable-in-group`):
-   * a group must not learn what the character is wearing in private. That refusal is right
-   * and stays. What was missing is the *other* half — inside a group the identity half of a
-   * companion picture is still legitimate (the appearance comes from
-   * `home/companion/visual-identity.json`, not from the private wardrobe), so a group can
-   * draw her **if the caller supplies the clothing explicitly** as an English `outfit`
-   * phrase. Without that, every `subject=companion` call from a group ended in
-   * `missing:["wardrobe"]` and the feature looked broken rather than gated.
+   * 原来的判据只有 `qq-group-`，配上 wardrobe resolver 的 `wardrobe-unavailable-in-group` ——
+   * 群聊不该知道她私下穿什么。同一个道理对 VoceChat 频道（`vc-chan-*`）一样成立，
+   * 但它当初不在判据里，于是 VoceChat 频道里 can read 私聊衣柜。这是同一个漏法的两处，
+   * 一起补上，而不是只补新的那处。
+   *
+   * 判据只看会话 id 的形状，不看通道是否启用：一个已在磁盘上的 `vc-chan-1` 会话
+   * 即使传输插件暂时掉线，它的历史仍然是"多人在场"的语境。
    */
+  function isMultiPartySession(sessionId) {
+    const id = String(sessionId ?? '');
+    return id.startsWith('qq-group-') || id.startsWith('vc-chan-');
+  }
+
+  /** 兼容旧名：`group` 这个变量在下面几十行里都用它表示"多人在场"。 */
   function isGroupSession(sessionId) {
-    return String(sessionId ?? '').startsWith('qq-group-');
+    return isMultiPartySession(sessionId);
   }
 
   /** The structured `visual` block reported by `dryRun`, a refusal, and a success alike. */
@@ -564,9 +610,10 @@ export function createMediaService({
         provider: id,
         artifact: meta,
         // Producing a file is not delivering it; the channel still has to send.
+        // 通道由会话决定，不是常量：见 `handoffFor()` 的注释（qq_* 在 vc 会话里可见，
+        // 原来写死的 qq_sticker 会把 VoceChat 的图发到主人的 QQ）。
         handoff: {
-          tool: 'qq_sticker',
-          action: 'send_image',
+          ...handoffFor('image', sessionId),
           file: artifact.absolutePath,
           mime: result.mime,
           bytes: artifact.bytes,
@@ -574,7 +621,7 @@ export function createMediaService({
           model: result.meta?.model ?? section.model ?? '',
           ready: true,
           delivered: false,
-          mustSend: `调用 qq_sticker action=send_image 并传 file=${artifact.absolutePath}`,
+          mustSend: handoffFor('image', sessionId).mustSend.replace('<绝对路径>', artifact.absolutePath),
         },
         meta: result.meta ?? {},
         // Reference provenance only; this does not prove prompt or image consistency.
@@ -653,8 +700,7 @@ export function createMediaService({
         provider: id,
         artifact: meta,
         handoff: {
-          tool: 'qq_voice',
-          action: 'send_file',
+          ...handoffFor('speech', sessionId),
           file: artifact.absolutePath,
           mime: result.mime,
           bytes: artifact.bytes,
@@ -664,7 +710,7 @@ export function createMediaService({
           voice: result.meta?.voice ?? result.meta?.referenceId ?? '',
           ready: true,
           delivered: false,
-          mustSend: `调用 qq_voice action=send_file 并传 file=${artifact.absolutePath}`,
+          mustSend: handoffFor('speech', sessionId).mustSend.replace('<绝对路径>', artifact.absolutePath),
         },
       };
     } catch (error) {
