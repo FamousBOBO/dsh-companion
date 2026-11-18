@@ -1,0 +1,56 @@
+# vocechat-adapter bundle patch: the VoceChat → DSH turn adapter.
+#
+# 这个行是**适配层**，住在 host 平面（它要 `agents` / `agentPresets`，那是宿主服务，
+# preset 平面看不到）。它与 `channel-vocechat`（传输行）是兄弟行，中间靠
+# `companionVoceChat` 端口相连。
+#
+# 分工（不可混）：
+#   传输行  事件归一化、落盘、幂等、after_mid 游标、出站 HTTP、SSE 重连与续期
+#   本适配行 房间键、门控、会话供给、回合驱动、队列、发送账本、兜底纠正、vc_message
+#
+# 部署相关值写在 profile 的 user 层（会整段替换本行的 `config`）。
+- insert:
+    - id: vocechat-adapter
+      name: '@dsh-companion/vocechat-adapter'
+      config:
+        # false = 挂载但不订阅、不驱动（传输行照常收事件并落盘）。
+        enabled: true
+
+        # 传输端口的名字。`companion-foundation/service-bridge.mjs` 的白名单里必须有同一个名字。
+        name: 'companionVoceChat'
+
+        # G5 多实例时用；空 = 单个实例。插入位置固定在 `vc-` 之后，改它等于丢历史。
+        namespace: ''
+
+        # 本插件用哪个 VoceChat 用户身份说话（必须和传输行的 uid 一致），用于丢弃自己发的回声。
+        selfUid: 0
+
+        # 会话用哪个 preset 供给。`companion` 是人格与记忆都挂在的那个。
+        presetId: 'companion'
+
+        # 会话的工作目录（绝对路径）。为空则适配层不驱动任何回合，并在日志里明说。
+        cwd: ''
+
+        # 可选的模型覆盖。留空 = 用宿主当前默认路由。
+        provider: ''
+        model: ''
+
+        # ── 门控。**fail-closed**：allowUsers 为空数组时一条都不驱动。
+        # 现有部署里说话的人只有 uid=1（凡博），所以这里默认只放他。
+        allowUsers: [1]
+        allowGroups: [1]
+
+        # 同房间串行；全局并发默认 1（一个人同时说三件事时，串行比三路并发更像人）。
+        concurrency: 1
+
+        # 队列上限：超限即拒绝并记 sent-log，不无限增长。
+        maxPending: 200
+
+        # 单回合上限。到点中止并记 undelivered，不发半成品。
+        turnTimeoutMs: 180000
+
+        # 单条文本硬上限（字符）。超出在这个值附近按自然边界切分。
+        sendMaxChars: 4000
+
+        # 兜底纠正的文本（一轮一次，不重放工具）。留空用内置文案（带房间目标）。
+        correctionText: ''

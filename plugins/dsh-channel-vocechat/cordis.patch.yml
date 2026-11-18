@@ -1,0 +1,62 @@
+# channel-vocechat bundle patch: the VoceChat transport (V2: 用户身份 + SSE).
+# Applied as one layer above the profile's bundle stack; rows here only declare defaults.
+# Deployment-specific values belong in the profile's own cordis.patch.yml user layer,
+# which replaces a row's whole `config`.
+#
+# 这个插件**只做传输**：用户端点客户端、SSE 入站、事件归一化、落盘与幂等、一个发布端口。
+# 它不认识会话、不认识 agent、不认识房间键、不写提示词、不注册模型工具。
+# 房间映射、门控、会话创建/恢复、回合驱动、发送决策、人格与工具面，全部在陪伴插件侧。
+#
+# V2 相比 V1 的架构变化（全部有实测支撑，见 docs/vocechat-user-identity-pivot-20261117.md）：
+#   V1  Bot（uid=2）+ 平台 POST 到本机 3011 端口
+#   V2  普通用户（uid=4）+ 插件主动连 GET /api/user/events
+#
+#   - 不用开端口、不用管理员配 webhook_url
+#   - `after_mid` 补播：断线期间的事件能补回来（Bot 侧是永久丢）
+#   - 能读频道历史/成员/联系人（Bot 全 401）
+#
+# 加载路径：`@dsh-companion/channel-vocechat` 解析到本包的 `main`（= `index.mjs`，纯 .mjs 无构建）。
+- insert:
+    - id: channel-vocechat
+      name: '@dsh-companion/channel-vocechat'
+      config:
+        # ── 总开关。false = 插件挂载但不连接、不续期、不写盘。
+        enabled: false
+
+        # ── VoceChat 地址。经 Docker Desktop 发布的回环口，不是容器的 3000 端口。
+        baseUrl: ''
+
+        # ── 这个插件用哪个用户身份说话。必须是一个**普通用户**（is_bot=false），
+        #    且已被加入要参与的频道（否则频道操作 403）。
+        uid: 0
+
+        # ── refresh_token 的唯一键之一（`refresh_token` 表是 `(uid, device)`）。
+        #    同一身份用不同 device 名登录会互相覆盖 —— G5 多实例必须每个实例一个名字。
+        deviceName: 'dsh-companion'
+
+        # ── refresh_token 来源，二选一（都填则文件优先）：
+        #    credentialFile: 只含 {"refreshToken": "..."} 的 JSON，适合服务器不在本机时
+        #    dbFile:         直接读 VoceChat 的 SQLite（本机默认走这条，数据库是权威）
+        credentialFile: ''
+        dbFile: ''
+
+        auth:
+          # 续期请求超时。renew 是轻量调用，15 秒很宽。
+          timeoutMs: 15000
+
+        sse:
+          # 断线重连退避：从 1 秒起，指数翻倍到 30 秒封顶。
+          reconnectBaseMs: 1000
+          reconnectMaxMs: 30000
+          # 多久没收到任何字节就认为连接死了。平台会发 heartbeat 帧，
+          # 所以 120 秒的静默是真实的异常，不是"消息少"。
+          idleTimeoutMs: 120000
+
+        outbound:
+          timeoutMs: 15000
+          # 单条文本硬上限（字节）。适配层切分时用这个值。
+          maxChars: 4000
+
+        queue:
+          # 适配层回合队列上限（插件本身不再有入站队列）。
+          maxPending: 200
