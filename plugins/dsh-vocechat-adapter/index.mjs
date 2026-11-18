@@ -38,6 +38,7 @@ import { createTurnObserver } from './turns.mjs';
 import { createQueue } from './queue.mjs';
 import { createSentLog } from './sent-log.mjs';
 import { attachToWorkspace, listStoredSessions } from './workspace.mjs';
+import { createInboundBuffer, resolveBatching } from './buffer.mjs';
 import { segmentText } from './segment.mjs';
 
 export const name = 'vocechat-adapter';
@@ -92,6 +93,8 @@ function resolveConfig(raw) {
     maxPending: posInt(input.maxPending, 200),
     turnTimeoutMs: posInt(input.turnTimeoutMs, 180000),
     sendMaxChars: posInt(input.sendMaxChars, 4000),
+    // 入站攒批：一段话分几条说完时当成一件事回应（对齐 QQ 的 DmBuffer）。
+    batching: resolveBatching(input.batching),
     // 分段发送：一条长回复拆成几条像人连着说的消息。默认开启。
     segmentation: resolveSegmentation(input.segmentation),
     correctionText: str(input.correctionText, ''),
@@ -110,14 +113,45 @@ function resolveConfig(raw) {
 export function resolveSegmentation(raw) {
   const input = raw && typeof raw === 'object' ? raw : {};
   const style = input.style === 'natural' || input.style === 'conservative' ? input.style : 'active';
+  const delayPerCharMs = Math.max(0, Number(input.delayPerCharMs ?? 60) || 0);
+  const delayMinMs = Math.max(0, Number(input.delayMinMs ?? 200) || 0);
+  const delayMaxMs = Math.max(delayMinMs, Number(input.delayMaxMs ?? 3000) || 0);
   return {
     enabled: input.enabled !== false,
     style,
     minLength: Number.isInteger(input.minLength) && input.minLength >= 0 ? input.minLength : 8,
     maxSegments: posInt(input.maxSegments, 6),
     removeTrailingPeriod: input.removeTrailingPeriod === true,
+    // 分段之间的停顿（对齐 QQ 的 COMPANION-QQ-PATCH-5）：按**刚发出去那句**的字数计时。
+    // 默认 60ms/字 —— 一句 10 字停 600ms，长句最多停 3 秒。
+    // 0 = 不额外等待，退回"同一瞬间刷出三条"。
+    delayPerCharMs,
+    delayMinMs,
+    delayMaxMs,
   };
 }
+
+/**
+ * 两条分段之间该停多久（毫秒）。
+ *
+ * 为什么按**已发出那一句**的字数算：人打完一句长话要花更久，下一句自然来得晚；
+ * 一句「嗯」之后几乎立刻会是下一句。固定间隔要么显得机械，要么把小短句拖成 PPT。
+ *
+ * 上限必须有：一句 200 字的段落按 60ms/字要停 12 秒，回合会被看门狗掐掉，
+ * 用户看到的是"发到一半不说了"——比不等更糟。
+ *
+ * @param {string} piece 刚发出去的那一段
+ * @param {{delayPerCharMs: number, delayMinMs: number, delayMaxMs: number}} segmentation
+ */
+export function pauseFor(piece, segmentation) {
+  const perChar = Number(segmentation?.delayPerCharMs) || 0;
+  if (perChar <= 0) return 0;
+  const chars = [...String(piece ?? '')].length;
+  const min = Math.max(0, Number(segmentation?.delayMinMs) || 0);
+  const max = Math.max(min, Number(segmentation?.delayMaxMs) || 0);
+  return Math.min(max, Math.max(min, Math.round(chars * perChar)));
+}
+
 
 /** Split at natural boundaries, never inside a chunk beyond `limit`. */
 export function splitText(text, limit) {
@@ -152,6 +186,42 @@ export function inboundLine(event) {
     '',
     String(event.content ?? ''),
   ].join('\n');
+}
+
+/**
+ * 攒批之后交给模型的**一段话**。
+ *
+ * 只有一条时与 `inboundLine` 逐字节相同 —— 单条消息的提示词不该因为加了缓冲而变化，
+ * 否则以前调好的表达会被悄悄改动。
+ *
+ * 多条时逐行列出、各自带 mid，并在末尾说明"这几条是一口气说完的"：
+ * 模型必须知道它们是**同一件事的几句**，否则它会当成多个独立问题、一条一条答，
+ * 那正是加缓冲要避免的结果。`…` 是省略号，不是截断标记 —— 正文始终完整。
+ */
+export function inboundBatch(events) {
+  const list = Array.isArray(events) ? events.filter(Boolean) : [];
+  if (list.length === 0) return '';
+  if (list.length === 1) return inboundLine(list[0]);
+
+  const first = list[0];
+  const target = first.target && typeof first.target === 'object' ? first.target : {};
+  const where = target.channel !== undefined ? `频道 gid=${target.channel}` : `私聊（对方 uid=${first.fromUid}）`;
+  const lines = [
+    `【VoceChat 入站】${where}`,
+    `对方连着发了 ${list.length} 条（mid ${list[0].mid}…${list[list.length - 1].mid}），以下是完整内容：`,
+    '',
+  ];
+  for (const event of list) {
+    const text = String(event.content ?? '').trim();
+    if (text === '') continue;
+    // 一条一行，前面标 mid：正文里本来就有换行时用缩进保持可读，而不是把两句粘在一起。
+    lines.push(`[${event.mid}] ${text.replace(/\n/g, '\n    ')}`);
+  }
+  lines.push(
+    '',
+    '这几条是同一段话的几句，合起来才是一个意思：按整体回应一次，不要逐条各答一遍。',
+  );
+  return lines.join('\n');
 }
 
 export function defaultCorrection(room) {
@@ -268,7 +338,16 @@ export function registerSendTool({ agentCtx, room, config, getPort, sentLog, sta
         const pieces = segmentText(text, config.segmentation);
         const mids = [];
         let sentCount = 0;
+        // 上一段发出**之后**才停：停顿属于"两句之间"，不是第一条之前的延迟（那只会让回复变慢）。
+        let previous = '';
+        const total = pieces.length;
         for (const piece of pieces) {
+          if (previous !== '') {
+            // 分段间隔：按刚发出去那句的字数计时，像人打完一句再接下一句。
+            // 放在 try 外：等待本身不会失败，也不需要记进发送账本。
+            const pause = pauseFor(previous, config.segmentation);
+            if (pause > 0) await new Promise(resolve => setTimeout(resolve, pause));
+          }
           for (const chunk of splitText(piece, config.sendMaxChars)) {
             try {
               const { mid } = await port.send(target, chunk, 'text/plain');
@@ -283,9 +362,12 @@ export function registerSendTool({ agentCtx, room, config, getPort, sentLog, sta
               throw new Error(`发送失败：${message}`);
             }
           }
+          // 这一段的**最后一块**才是"刚说完的那句话"；硬切出来的中间块不作为计时依据，
+          // 否则一条被切成 3 块的长文本会按 3 次短停顿排下来，节奏反而更碎。
+          previous = piece;
         }
         state.deliveries += 1;
-        state.lastDelivery = { at: Date.now(), room, mids, phase, segments: pieces.length };
+        state.lastDelivery = { at: Date.now(), room, mids, phase, segments: total };
         if (phase === 'progress') {
           return {
             ok: true, phase: 'progress', mids, segments: pieces.length,
@@ -363,6 +445,21 @@ export function apply(ctx, rawConfig) {
     selfUid: config.selfUid,
   });
   const queue = createQueue({ concurrency: config.concurrency, maxPending: config.maxPending, log: note });
+
+  /**
+   * 入站缓冲：先在这里攒一小会儿，再一起交给模型。
+   *
+   * 放在 `queue` **之前**是有意的，两层管的事不同：
+   *   缓冲  决定「这一批消息什么时候算说完」（按安静窗口合并同一段话）
+   *   队列  决定「什么时候真的能跑」（同房间串行、全局并发、上限）
+   * 反过来的话，队列会先把每条消息排成一串任务，缓冲再合并也只是把已排的任务并起来 ——
+   * 而真正该合并的是"还没决定要开始"的那些。
+   */
+  const inbound = createInboundBuffer({
+    batching: config.batching,
+    flush: (room, events) => runBatch(room, events),
+    log: note,
+  });
 
   /** room → resolve fn of the current idle waiter (bounded by turnTimeoutMs). */
   const idleWaiters = new Map();
@@ -539,7 +636,18 @@ export function apply(ctx, rawConfig) {
     });
   }
 
-  /** Drive one inbound event through the whole path. Never rejects. */
+  /**
+   * Gate one inbound event, then hand it to the room's buffer — **not** straight to the model.
+   *
+   * 为什么要过缓冲（2026-11-18，对齐 QQ 的 `DmBuffer`）：人打字是一条一条发出来的
+   * （「在吗」→「问你个事」→「昨天那个文件放哪了」）。逐条驱动模型的话，第一条单独触发一轮
+   * 「在的」，第三条才真问到事情 —— 从手机上看就是「她一条条答得很碎、答不到点上」。
+   *
+   * 门控在这里做，不是进缓冲之后：被拒的事件不该占用窗口，也不该让一个陌生人的消息
+   * 把主人这一批的计时推后。缓冲只在「已经确定要驱动」的事件上工作。
+   *
+   * Never rejects.
+   */
   async function drive(event) {
     const room = roomKeyOf({ target: event?.target, fromUid: event?.fromUid, namespace: config.namespace });
     const decision = gate.decide(event);
@@ -559,6 +667,21 @@ export function apply(ctx, rawConfig) {
       sentLog.skipped({ room, mid: event.mid, reason: 'cwd-missing' });
       return { ok: false, reason: 'cwd-missing' };
     }
+    // 缓冲关着时退化成"每条立刻驱动"，与加缓冲之前逐字节一致。
+    if (!config.batching.enabled) return runBatch(room, [event]);
+    const result = inbound.push(room, event);
+    if (!result.accepted) {
+      sentLog.skipped({ room, mid: event.mid, reason: result.reason ?? 'buffer-rejected' });
+      return { ok: false, reason: result.reason ?? 'buffer-rejected' };
+    }
+    return { ok: true, room, mid: event.mid, buffered: true, pending: result.pending, armedFor: result.armedFor };
+  }
+
+  /** Drive one **batch** of inbound events through the whole path. Never rejects. */
+  async function runBatch(room, events) {
+    const list = events ?? [];
+    const last = list[list.length - 1] ?? {};
+    const mids = list.map(item => item.mid).filter(mid => Number.isInteger(mid));
 
     return queue.run(room, async () => {
       const { agent, resumed, created, route } = await sessions.ensure({
@@ -569,22 +692,27 @@ export function apply(ctx, rawConfig) {
         model: config.model,
         dataRoot,
       });
-      sentLog.turnStarted({ room, mid: event.mid, resumed, created, route: `${route.provider}/${route.model}` });
+      sentLog.turnStarted({
+        room, mid: last.mid ?? 0, resumed, created,
+        route: `${route.provider}/${route.model}`,
+        // 一批几条：`mid` 只是最后一条，"这轮为什么答了整段话"要能查到前面那几条。
+        ...(list.length > 1 ? { mids, batched: list.length } : {}),
+      });
       state.turns += 1;
 
-      const how = deliverTo(agent, buildMessage(inboundLine(event)));
+      const how = deliverTo(agent, buildMessage(inboundBatch(list)));
       if (!how) {
-        sentLog.undelivered({ room, mid: event.mid, reason: 'agent-has-no-inject-or-followup' });
+        sentLog.undelivered({ room, mid: last.mid ?? 0, reason: 'agent-has-no-inject-or-followup' });
         return { ok: false, reason: 'no-delivery-channel' };
       }
 
       const outcome = await waitIdle(room, config.turnTimeoutMs);
       if (outcome === 'timeout') {
-        sentLog.undelivered({ room, mid: event.mid, reason: `turn-timeout-${config.turnTimeoutMs}ms` });
+        sentLog.undelivered({ room, mid: last.mid ?? 0, reason: `turn-timeout-${config.turnTimeoutMs}ms` });
         abortTurn(agent);
         return { ok: false, reason: 'turn-timeout' };
       }
-      return { ok: true, room, mid: event.mid };
+      return { ok: true, room, mid: last.mid ?? 0, batched: list.length };
     });
   }
 
@@ -619,6 +747,8 @@ export function apply(ctx, rawConfig) {
     try { if (typeof offSubscribe === 'function') offSubscribe(); } catch { /* */ }
     offSubscribe = null;
     port = null;
+    // 缓冲里的定时器必须一起收掉：留着它们只会在宿主已经拆完之后再触发一次交付。
+    try { inbound.dispose(); } catch { /* */ }
     for (const [, resolve] of idleWaiters) resolve();
     idleWaiters.clear();
     note('disposed');
@@ -637,6 +767,9 @@ export function apply(ctx, rawConfig) {
           cwd: config.cwd || null,
           gate: gate.describe(),
           queue: queue.info(),
+          // 攒批状态：`pending` 是"收到了但还没到点交付"的条数。运维问"她为什么不回"时，
+          // 这一个数字就能区分"消息还在窗口里等"和"消息根本没收到"。
+          batching: inbound.info(),
           turns: state.turns,
           corrections: state.corrections,
           deliveries: state.deliveries,
@@ -656,6 +789,12 @@ export function apply(ctx, rawConfig) {
   }
 
   note(`mounted: preset=${config.presetId} cwd=${config.cwd || '(missing!)'} dataRoot=${dataRoot} (${rootSource})`);
+  // 攒批的实际参数打一行：默认值不等于部署值（profile 会整段替换 config），
+  // 而"为什么她等 6 秒才回"必须先能查到到底是哪一组数字在起作用。
+  const b = config.batching;
+  note(`batching: ${b.enabled ? 'on' : 'off'} 短句${b.shortMs}ms/长句${b.longMs}ms(${b.longChars}字) 总上限${b.maxWaitMs}ms 满${b.maxMessages}条或${b.maxChars}字`);
+  const g = config.segmentation;
+  note(`分段: ${g.enabled ? 'on' : 'off'} style=${g.style} 最多${g.maxSegments}条 间隔${g.delayPerCharMs}ms/字(下限${g.delayMinMs}上限${g.delayMaxMs})`);
   const described = gate.describe();
   note(`gate fail-closed=${described.failClosed} allowUsers=${JSON.stringify(described.allowUsers)} allowGroups=${JSON.stringify(described.allowGroups)}`);
   void warmUp();

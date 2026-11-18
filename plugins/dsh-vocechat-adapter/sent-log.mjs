@@ -81,8 +81,13 @@ export function createSentLog({ dataRoot, rotateBytes = ROTATE_BYTES } = {}) {
     },
 
     /** A turn that started for `mid`, so a later "no reply" is auditable. */
-    turnStarted({ room, mid, resumed, created }) {
-      return append({ at: Date.now(), kind: 'turn-start', room, mid, resumed, created });
+    turnStarted({ room, mid, resumed, created, mids = null, batched = 0 }) {
+      return append({
+        at: Date.now(), kind: 'turn-start', room, mid, resumed, created,
+        // 攒批：`mid` 是这一批的最后一条，`mids` 是这一批的全部。
+        // 有它才能回答"这轮为什么答了一整段话"—— 因为那是三四条消息合起来的意思。
+        ...(mids && mids.length > 1 ? { mids, batched } : {}),
+      });
     },
 
     /** A turn that produced no delivery — the case this log exists for. */
