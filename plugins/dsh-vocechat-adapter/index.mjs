@@ -11,28 +11,42 @@
 // 一条事件的完整路径：
 //
 //   SSE 帧 → 插件 normalize → store 落盘 + claim → port.dispatch
-//        → 本层 gate.decide（fail-closed）
+//        → 本层 gate.decide / gate.decideChannel（私聊白名单 / 频道成员 + 概率）
 //        → roomKeyOf（vc-chan-<gid> / vc-dm-<peer>）
+//        → inbound 攒批（安静窗口）
 //        → queue.run（同房间串行、全局并发 1、上限明确）
+//        → 频道：port.history 取「自上次发言以来」，渲染成上下文段
 //        → sessions.ensure（get → create → resume 重试）
 //        → agent.inject / followup（用户消息）
-//        → 模型调用 vc_message(action=send) → port.send → 平台
-//        → 若模型答在本地：turn-stopping 注入一次纠正
+//        → 模型调用 vc_message(action=send) → port.send → 平台 → 推进房间水位
+//        → 若模型答在本地：私聊注入一次纠正；频道记 model-silence（沉默合法）
 //
 // 三条不能松的纪律：
 //
 //   1. **目标不来自模型。** `vc_message` 的参数里没有 target；它由会话 id 反解。
 //      模型手里没有目标号，就发不出跨房间的消息。
 //   2. **不代发。** 回合结束后适配层不取文本自己发（`onIdle` 直接发那条路永远做不到
-//      "先说一句我查一下，再发结果"）。模型没调用就纠正一次，再不调用就记 `undelivered`。
-//   3. **失败可见。** 门控拒绝、队列满、回合超时、未送达，全部落 `sent-log.jsonl`。
+//      "先说一句我查一下，再发结果"）。私聊里模型没调用就纠正一次，再不调用就记 `undelivered`；
+//      频道里没调用是合法的沉默，只记 `model-silence`。
+//   3. **失败可见。** 门控拒绝、队列满、回合超时、未送达、历史取不到，全部落 `sent-log.jsonl`。
 //      "没反应"必须是能查的，不能是沉默。
+//
+// ── 2026-11-18：频道（群聊）这条链路的三处分档 ────────────────────────────
+//
+//   | 维度 | 私聊 vc-dm-* | 频道 vc-chan-* |
+//   |---|---|---|
+//   | 上下文 | 只有触发的那几条 | + 自上次发言以来的频道历史（带 uid 标签） |
+//   | 门控 | allowUsers 白名单 | 频道成员 + talkProbability（成员表不可用则退回白名单）|
+//   | 表达 | 6 段 / 4000 字 | 3 段 / 单段 120 字 |
+//   | 沉默 | 不合法（纠正一次） | 合法（记 model-silence） |
+//
+// 三处分档都从 `config.group` 读，只有一个配置入口。
 
 import path from 'node:path';
 
 import { watchVoceChatPort, isVoceChatPort } from './subscribe.mjs';
 import { roomKeyOf, describeRoom, targetOfRoom, isVoceChatRoom, dmPeerOf } from './room.mjs';
-import { createGate, idList } from './gate.mjs';
+import { createGate, idList, resolveGroup } from './gate.mjs';
 import { createSessions } from './sessions.mjs';
 import { createTurnObserver } from './turns.mjs';
 import { createQueue } from './queue.mjs';
@@ -42,6 +56,8 @@ import { createInboundBuffer, resolveBatching } from './buffer.mjs';
 import { mimeOf, withinRoots, readForSend, inboxTarget, writeInbox } from './media.mjs';
 import { upgradeThumbnail } from './thumbnail.mjs';
 import { segmentText } from './segment.mjs';
+import { fetchContext, contextBlock } from './history.mjs';
+import { createRoomState } from './room-state.mjs';
 
 export const name = 'vocechat-adapter';
 // `agentDefaultModel` must be declared here: cordis refuses to read a property for a service that
@@ -101,6 +117,8 @@ function resolveConfig(raw) {
     media: resolveMedia(input.media, { cwd: str(input.cwd, '') }),
     // 分段发送：一条长回复拆成几条像人连着说的消息。默认开启。
     segmentation: resolveSegmentation(input.segmentation),
+    // 频道（群聊）那一档：门控、上下文、分段、沉默四条都从这里读，只有一个入口。
+    group: resolveGroup(input.group),
     correctionText: str(input.correctionText, ''),
   };
 }
@@ -150,12 +168,42 @@ export function resolveMedia(raw, { cwd = '' } = {}) {
  * sentence and ships as a single message with embedded newlines, which is exactly what
  * "分段没有" looks like from the phone.
  */
+/**
+ * 分段之间的停顿（毫秒/字）的默认值 —— **照抄 QQ 实际跑的那一组**。
+ *
+ * QQ 的源码默认是 60/200/3000，但它线上 profile 写的是 140/700/5000；
+ * 用户真正体验到"字越多、间隔越长"的，是后者。所以这里默认给后者：
+ * 新部署一装上就是 QQ 的节奏，而不是"QQ 的三分之一"。
+ *
+ *   2 字 →  700ms（下限兜住，不然像机器连发）
+ *  15 字 → 2100ms
+ *  33 字 → 4620ms
+ *  50 字 → 5000ms（上限兜住）
+ *
+ * QQ 那份实测（`data/home/channel-qq/sent-dm-*.json`）的间隔是 1453–3070ms，
+ * 正好落在同一条 140ms/字 的线上 —— 这不是巧合，是同一套算法。
+ */
+const PACE_PER_CHAR_MS = 140;
+const PACE_MIN_MS = 700;
+const PACE_MAX_MS = 5_000;
+/**
+ * 一次发送里**所有**停顿的总额上限。
+ *
+ * QQ 没有这一条，因为它的尾段是后台发的（`scheduleTailSends`），停顿不占回合。
+ * 这边是同步发：一次 6 段的答复按上限算能停 25 秒，虽然还在 180 秒的回合预算内，
+ * 但两三个工具连着用就可能撞上看门狗，用户看到的是"发到一半不说了"。
+ *
+ * 所以给总额封顶：超了就**按剩下的额度发完**，而不是不发、也不是超时。
+ * 节奏是体验，把答复发完是功能，功能优先。
+ */
+const PACE_TOTAL_MS = 20_000;
+
 export function resolveSegmentation(raw) {
   const input = raw && typeof raw === 'object' ? raw : {};
   const style = input.style === 'natural' || input.style === 'conservative' ? input.style : 'active';
-  const delayPerCharMs = Math.max(0, Number(input.delayPerCharMs ?? 60) || 0);
-  const delayMinMs = Math.max(0, Number(input.delayMinMs ?? 200) || 0);
-  const delayMaxMs = Math.max(delayMinMs, Number(input.delayMaxMs ?? 3000) || 0);
+  const delayPerCharMs = Math.max(0, Number(input.delayPerCharMs ?? PACE_PER_CHAR_MS) || 0);
+  const delayMinMs = Math.max(0, Number(input.delayMinMs ?? PACE_MIN_MS) || 0);
+  const delayMaxMs = Math.max(delayMinMs, Number(input.delayMaxMs ?? PACE_MAX_MS) || 0);
   return {
     enabled: input.enabled !== false,
     style,
@@ -163,11 +211,40 @@ export function resolveSegmentation(raw) {
     maxSegments: posInt(input.maxSegments, 6),
     removeTrailingPeriod: input.removeTrailingPeriod === true,
     // 分段之间的停顿（对齐 QQ 的 COMPANION-QQ-PATCH-5）：按**刚发出去那句**的字数计时。
-    // 默认 60ms/字 —— 一句 10 字停 600ms，长句最多停 3 秒。
+    // 默认 140ms/字 —— 一句 15 字停 2.1 秒，长句最多停 5 秒。
     // 0 = 不额外等待，退回"同一瞬间刷出三条"。
     delayPerCharMs,
     delayMinMs,
     delayMaxMs,
+    // 一次发送的停顿总额上限（见 `PACE_TOTAL_MS`）。0 = 不封顶。
+    delayTotalMaxMs: Math.max(0, Number(input.delayTotalMaxMs ?? PACE_TOTAL_MS) || 0),
+  };
+}
+
+/**
+ * 某个房间**生效**的分段档。
+ *
+ * 频道（群聊）与私聊共用一个 `style`（那是人设的写法，与房间无关），但条数与单段长度必须分开：
+ *
+ *   私聊    6 段 / 4000 字 —— 一对一，长一点是正常的，把长答复截断反而糟。
+ *   频道    3 段 / 120 字  —— 群里长段像贴公告；QQ 群的 `groupMaxChars` 是 120，口径对齐。
+ *
+ * 优先级写清：**不丢字 > 不超过条数 > 不超过字数**。3 段是目标，120 字是硬上限；
+ * 一段 300 字会被硬切成 3 条，此时允许超过 3 段 —— 悄悄吞掉后半句比多发一条糟得多
+ * （与 `segment.mjs` 的 `capSegments`「并尾不丢字」同源）。
+ *
+ * @param {object} config resolved config
+ * @param {string} room
+ */
+export function segmentationFor(config, room) {
+  const base = config?.segmentation ?? resolveSegmentation({});
+  const info = describeRoom(room);
+  const group = config?.group ?? resolveGroup({});
+  if (!info || info.kind !== 'chan' || group.enabled === false) return base;
+  return {
+    ...base,
+    maxSegments: group.segmentation.maxSegments,
+    maxChars: group.segmentation.maxChars,
   };
 }
 
@@ -176,8 +253,10 @@ export function resolveSegmentation(raw) {
  *
  * 为什么按**已发出那一句**的字数算：人打完一句长话要花更久，下一句自然来得晚；
  * 一句「嗯」之后几乎立刻会是下一句。固定间隔要么显得机械，要么把小短句拖成 PPT。
+ * 这条算法与 QQ 的 `pauseBetweenSegments()` 逐行同源，默认值也照抄它线上那一组
+ * （140ms/字、700ms 下限、5000ms 上限），所以两边聊起来的节奏是一样的。
  *
- * 上限必须有：一句 200 字的段落按 60ms/字要停 12 秒，回合会被看门狗掐掉，
+ * 上限必须有：一句 200 字的段落按 140ms/字要停 28 秒，回合会被看门狗掐掉，
  * 用户看到的是"发到一半不说了"——比不等更糟。
  *
  * @param {string} piece 刚发出去的那一段
@@ -190,6 +269,48 @@ export function pauseFor(piece, segmentation) {
   const min = Math.max(0, Number(segmentation?.delayMinMs) || 0);
   const max = Math.max(min, Number(segmentation?.delayMaxMs) || 0);
   return Math.min(max, Math.max(min, Math.round(chars * perChar)));
+}
+
+/**
+ * 算这一轮的分段节奏表：每段之后停多久。
+ *
+ * **为什么要有这张表，而不是边发边算。**
+ *
+ * 单段上限不够用。6 段 × 5 秒 = 30 秒，全都花在等上；而这是**同步**发送，
+ * 工具调用要陪着一等等完（QQ 那边是后台发尾段，所以它不需要这条）。
+ * 两三个工具连着用就可能撞上 180 秒的回合预算，用户看到的是"说到一半不说了"。
+ *
+ * 所以这里先按 `pauseFor()` 算出理想节奏，再按 `delayTotalMaxMs` **等比例压缩**：
+ * 压缩而不是"发到哪算哪"，是为了保住节奏的形状 —— 长句仍然比短句停得久，
+ * 只是整体快进，而不是前几句等够了、后几句突然连发。
+ *
+ * 返回的长度是 `pieces.length - 1`：最后一段后面没有"下一句"，不需要等。
+ *
+ * @param {readonly string[]} pieces 已分好的段
+ * @param {object} segmentation
+ * @returns {number[]} 每段之后应停的毫秒数
+ */
+export function pausePlan(pieces, segmentation) {
+  const list = Array.isArray(pieces) ? pieces : [];
+  if (list.length < 2) return [];
+  const ideal = list.slice(0, -1).map(piece => pauseFor(piece, segmentation));
+  const budget = Number(segmentation?.delayTotalMaxMs) || 0;
+  const total = ideal.reduce((sum, ms) => sum + ms, 0);
+  if (budget <= 0 || total <= budget) return ideal;
+  // 等比例压缩。逐项取整后**余数补给最长的那些**，避免压缩把长句的优势抹平成一样长。
+  const ratio = budget / total;
+  const scaled = ideal.map(ms => Math.floor(ms * ratio));
+  let remainder = budget - scaled.reduce((sum, ms) => sum + ms, 0);
+  const order = ideal
+    .map((ms, index) => ({ ms, index }))
+    .sort((a, b) => b.ms - a.ms);
+  for (let i = 0; remainder > 0; i = (i + 1) % order.length) {
+    const target = order[i];
+    if (!target) break;
+    scaled[target.index] += 1;
+    remainder -= 1;
+  }
+  return scaled;
 }
 
 
@@ -216,6 +337,20 @@ export function splitText(text, limit) {
   return chunks.filter(chunk => chunk !== '');
 }
 
+/**
+ * 正文行前面的发言人标签。
+ *
+ * **只有频道加。** 私聊里发言人是恒定的那一个，加 `uid:1：` 只是噪声，而且会把已经调好的
+ * 私聊提示词改写掉（`inbound-batch.test.mjs` 里有逐字节断言守着）。频道里有多个成员，
+ * 不加标签模型分不清是谁在说话 —— 平台也不给昵称（`GET /api/user/{uid}` 实测 403），
+ * 只有 uid 这一个事实可用。
+ */
+export function speakerPrefix(event) {
+  const target = event?.target && typeof event.target === 'object' ? event.target : {};
+  if (target.channel === undefined) return '';
+  return `uid:${event.fromUid}：`;
+}
+
 /** One line for the model: who said what, in which room. */
 export function inboundLine(event) {
   const target = event.target && typeof event.target === 'object' ? event.target : {};
@@ -224,7 +359,7 @@ export function inboundLine(event) {
     `【VoceChat 入站】${where}`,
     `mid=${event.mid} from_uid=${event.fromUid} type=${event.contentType ?? 'text/plain'}`,
     '',
-    String(event.content ?? ''),
+    `${speakerPrefix(event)}${String(event.content ?? '')}`,
   ];
   // 媒体：把「平台上的相对路径」翻译成「本机可以打开的文件」。
   // 没有这一段的话，模型只能自己翻文件系统 —— 实测那一轮花了 6 次 pwsh + 1 次 grep 才找到
@@ -240,31 +375,52 @@ export function inboundLine(event) {
 /**
  * 攒批之后交给模型的**一段话**。
  *
- * 只有一条时与 `inboundLine` 逐字节相同 —— 单条消息的提示词不该因为加了缓冲而变化，
- * 否则以前调好的表达会被悄悄改动。
+ * 只有一条时与 `inboundLine` 逐字节相同（含发言人标签规则）—— 单条消息的提示词不该因为
+ * 加了缓冲而变化，否则以前调好的表达会被悄悄改动。
  *
  * 多条时逐行列出、各自带 mid，并在末尾说明"这几条是一口气说完的"：
  * 模型必须知道它们是**同一件事的几句**，否则它会当成多个独立问题、一条一条答，
  * 那正是加缓冲要避免的结果。`…` 是省略号，不是截断标记 —— 正文始终完整。
+ *
+ * `context`（可选）：频道历史那一段（`history.mjs` 的 `contextBlock` 产物）。
+ * 只有频道会传；私聊传空数组时输出与原来逐字节相同。
+ *
+ * @param {object[]} events
+ * @param {string[]} [context]
  */
-export function inboundBatch(events) {
+export function inboundBatch(events, context = []) {
   const list = Array.isArray(events) ? events.filter(Boolean) : [];
   if (list.length === 0) return '';
-  if (list.length === 1) return inboundLine(list[0]);
+  const preamble = Array.isArray(context) && context.length > 0 ? context : [];
+
+  if (list.length === 1) {
+    if (preamble.length === 0) return inboundLine(list[0]);
+    // 有上下文时把上下文段接在「地点 + mid 行」之后、正文之前：先讲这是哪、这是第几条，
+    // 再讲"刚才还说过什么"，最后才是这一轮要回的那句。顺序反过来会让模型把历史当成
+    // 这次要回答的内容，而历史是**资料**，不是问题。
+    const base = inboundLine(list[0]).split('\n');
+    // base = [地点, mid行, '', 正文, ...媒体行] —— 那个空行是给正文留的呼吸位，
+    // 上下文段插进来之后它要跟着正文走，不能留在中间。
+    const head = base.slice(0, 2);
+    const rest = base.slice(3);
+    return [...head, ...preamble, '', ...rest].join('\n');
+  }
 
   const first = list[0];
   const target = first.target && typeof first.target === 'object' ? first.target : {};
   const where = target.channel !== undefined ? `频道 gid=${target.channel}` : `私聊（对方 uid=${first.fromUid}）`;
   const lines = [
     `【VoceChat 入站】${where}`,
+    ...preamble,
     `对方连着发了 ${list.length} 条（mid ${list[0].mid}…${list[list.length - 1].mid}），以下是完整内容：`,
     '',
   ];
   for (const event of list) {
     const text = String(event.content ?? '').trim();
     if (text === '') continue;
-    // 一条一行，前面标 mid：正文里本来就有换行时用缩进保持可读，而不是把两句粘在一起。
-    lines.push(`[${event.mid}] ${text.replace(/\n/g, '\n    ')}`);
+    // 一条一行，前面标 mid（频道再标发言人）：正文里本来就有换行时用缩进保持可读，
+    // 而不是把两句粘在一起。
+    lines.push(`[${event.mid}] ${speakerPrefix(event)}${text.replace(/\n/g, '\n    ')}`);
     // 媒体逐条附上本地路径：一批里可能既有文字又有图，路径必须跟着它自己那条 mid。
     if (event.localFile) {
       lines.push(`      本地文件：${event.localFile.absolute}（${event.localFile.kind}，${event.localFile.bytes} 字节）`);
@@ -306,13 +462,25 @@ export function sessionTitleOf(room) {
  * Text-only and explicit, in the same shape as the QQ channel's policy block. It states the
  * three things a fresh session cannot otherwise know: where the user is, that delivery is a
  * tool call rather than plain output, and that one call per turn is the norm.
+ *
+ * 频道（群聊）与私聊出**两套文案**，不是一套加两句：
+ *
+ *   私聊只有这样一条。改成"房间里可能有好几个人"会让私聊的模型开始猜"别人"是谁。
+ *   频道有别人。它必须知道三件私聊里不存在的事：这里有多个 uid、发言要短、沉默是合法的。
+ *   三件事写在同一段里，是因为它们互相印证：「别人也在说话」→「不必每句都接」→「短一点」。
  */
 export function channelPolicy(room, config = {}) {
+  const info = describeRoom(room);
+  const isChannel = info?.kind === 'chan';
   const target = targetOfRoom(room);
   const where = target?.channel !== undefined ? `VoceChat 频道 gid=${target.channel}` : `VoceChat 私聊（对方 uid=${target?.user}）`;
   const limit = Number(config.sendMaxChars) > 0 ? Number(config.sendMaxChars) : 4000;
   const seg = config.segmentation ?? {};
   const segmented = seg.enabled !== false;
+  const group = config.group ?? {};
+  const groupSeg = group.segmentation ?? {};
+  const maxSegments = isChannel && groupSeg.maxSegments ? groupSeg.maxSegments : seg.maxSegments;
+  const maxChars = isChannel && groupSeg.maxChars ? groupSeg.maxChars : null;
 
   const deliveryRule = segmented
     ? (seg.style === 'active'
@@ -320,10 +488,20 @@ export function channelPolicy(room, config = {}) {
       : '要发送就调用 vc_message，一次调用写完整一条答复；用句末标点把话断开，系统会按标点把它拆成几条连着发出去。不要为了分段而多次调用工具。')
     : `要发送就调用 vc_message，一次调用发一条；单条超过 ${limit} 字会被自动切开。`;
 
+  // 群聊专属的三句。刻意放在 `deliveryRule` 之后：先讲"怎么发"，再讲"发多少"。
+  const groupLines = isChannel ? [
+    `这里是多人频道，入站消息前的 uid 是不同的群成员（不是同一个人换了名字）。你不知道他们的昵称，也查不到，不要编造。`,
+    maxSegments || maxChars
+      ? `群聊里说话要短：最多 ${maxSegments ?? 3} 条，每条尽量不超过 ${maxChars ?? 120} 字。像群友插一句，不像发公告。`
+      : '群聊里说话要短：像群友插一句，不像发公告。',
+    '被触发不等于必须发言。判断这一刻不必插话，就直接结束这一轮，不发消息，也不需要解释。',
+  ] : [];
+
   return [
     `【VoceChat 通道发言约定】当前房间：${where}。目标由房间决定，不要尝试指定或切换。`,
     '你在这里说的话，只有调用 vc_message(action=send) 才会真正发出去；只写在回复正文里，使用者看不到。',
     deliveryRule,
+    ...groupLines,
     '慢任务需要先告知时，用 vc_message(action=send, phase=progress) 发一次简短等待提示；那不是最终答复，发出后必须继续执行实际工具。',
     '最终答复用 phase=final（默认）；发送成功后本轮就结束，不要复述已发内容，也不要再补一版。',
     // 媒体：生成与投递是两个步骤，而且 vc 会话里看得见的 qq_* 工具在这里**不适用**。
@@ -394,25 +572,35 @@ export function registerSendTool({ agentCtx, room, config, getPort, sentLog, sta
         //   1. `segmentText` 按句末标点/换行拆成"像人连着说的几条"（可关）
         //   2. 每条如果仍超过平台/配置上限，再 `splitText` 硬切
         // 反过来的话，长文本会先被 4000 字硬切在句子中间，分段就失去意义。
-        const pieces = segmentText(text, config.segmentation);
+        //
+        // 档位按房间取：频道 3 段 / 单段 120 字，私聊 6 段 / 4000 字（见 `segmentationFor`）。
+        const seg = segmentationFor(config, room);
+        const pieces = segmentText(text, seg);
+        const perPieceLimit = Number(seg.maxChars) > 0 ? Number(seg.maxChars) : config.sendMaxChars;
         const mids = [];
         let sentCount = 0;
-        // 上一段发出**之后**才停：停顿属于"两句之间"，不是第一条之前的延迟（那只会让回复变慢）。
-        let previous = '';
+        // 节奏表先算好：每段之后停多久（最后一段不停）。见 `pausePlan()` 的注释 ——
+        // 一次发送的停顿总额封顶，超了就等比例压缩，保住"长句停得久"的形状。
+        const plan = pausePlan(pieces, seg);
         const total = pieces.length;
+        let pausedMs = 0;
+        let index = 0;
         for (const piece of pieces) {
-          if (previous !== '') {
-            // 分段间隔：按刚发出去那句的字数计时，像人打完一句再接下一句。
-            // 放在 try 外：等待本身不会失败，也不需要记进发送账本。
-            const pause = pauseFor(previous, config.segmentation);
+          // 第 0 段之前不停：停顿属于"两句之间"，不是第一条之前的延迟（那只会让回复变慢）。
+          if (index > 0) {
+            const pause = plan[index - 1] ?? 0;
             if (pause > 0) await new Promise(resolve => setTimeout(resolve, pause));
+            pausedMs += pause;
           }
-          for (const chunk of splitText(piece, config.sendMaxChars)) {
+          for (const chunk of splitText(piece, perPieceLimit)) {
             try {
               const { mid } = await port.send(target, chunk, 'text/plain');
               mids.push(mid);
               sentCount += 1;
               sentLog.sent({ room, target, mid, text: chunk, phase, segment: sentCount, of: pieces.length });
+              // 水位：频道上下文要回答"自你上次发言之后"，界必须跨重启。
+              // 失败（mid 为 null）不推进 —— 那会让下一轮把自己没发出去的话当成说过了。
+              state.roomState?.noteSent?.(room, mid);
             } catch (error) {
               const message = String(error?.message ?? error).slice(0, 160);
               sentLog.sent({ room, target, mid: null, text: chunk, phase, ok: false, error: message });
@@ -423,10 +611,11 @@ export function registerSendTool({ agentCtx, room, config, getPort, sentLog, sta
           }
           // 这一段的**最后一块**才是"刚说完的那句话"；硬切出来的中间块不作为计时依据，
           // 否则一条被切成 3 块的长文本会按 3 次短停顿排下来，节奏反而更碎。
-          previous = piece;
+          index += 1;
         }
         state.deliveries += 1;
-        state.lastDelivery = { at: Date.now(), room, mids, phase, segments: total };
+        state.lastDelivery = { at: Date.now(), room, mids, phase, segments: total, pausedMs };
+        state.lastPausePlan = { plan, pausedMs, segments: total };
         if (phase === 'progress') {
           return {
             ok: true, phase: 'progress', mids, segments: pieces.length,
@@ -467,7 +656,7 @@ const ISOLATIONS = new Map();
 /**
  * 把**别的通道的发送工具**从这个房间里挡掉。
  *
- * 2026-11-18 的实测（`docs/35-media-capability-audit-20261118.md`）：vc 会话的
+ * 2026-11-18 的实测（`docs/media/capability-audit.md`）：vc 会话的
  * `request/header` 里有 131 个工具，其中 28 个是 `qq_*`。`companion_media_draw` 的 handoff
  * 当时写死 `qq_sticker`，而 `qq_sticker` 的私聊目标被 `assertTargetAllowed` 限定为
  * `admins[0]` —— 于是「在 VoceChat 里画一张图」的真实结果是：图发到了主人的 QQ，
@@ -718,6 +907,58 @@ function abortTurn(agent) {
   try { if (typeof agent?.abort === 'function') agent.abort({ keepInbox: false }); } catch { /* */ }
 }
 
+/**
+ * 进程级单例闸：同一个 dataRoot 只允许一份适配层在跑。
+ *
+ * **为什么必须有**（2026-11-19 03:30 实测）：宿主会**把同一个插件行挂载两次**。日志里能
+ * 直接数出来 —— 一个 boot 内 `vocechat-adapter mounted:` 出现 2 次、`已订阅 companionVoceChat`
+ * 2 次、而 `companionVoceChat published` 只有 1 次。两次挂载各自订阅了同一个端口，
+ * 于是每条入站事件被**驱动两次**：
+ *
+ *   mid 1246 → turn-start / undelivered(agent-has-no-inject-or-followup) / turn-start
+ *   mid 1248/1249/1250 → 每条的 `sent` 与 `skipped` 也都成对出现
+ *
+ * 表面症状是"她偶尔回两遍"，实际是两个回合在抢同一个 agent：第一个拿到 agent 时它还在
+ * create/resume（`deliverTo` 找不到接缝，记 undelivered），第二个才真的交付。这既浪费模型
+ * 调用，又让「一轮一次」的所有保证（纠正、沉默记账、水位推进）都变成"两次里取一次"。
+ *
+ * 用 `process[Symbol.for(...)]` 而不是模块级变量：cordis 的两次挂载可能来自同一模块实例，
+ * 也可能来自两个不同的模块注册表条目 —— 只有 process 级标记两种情况都拦得住
+ * （`subscribe.mjs` 的端口注册表用同一个符号体系，理由相同）。
+ *
+ * 拿不到锁的那一份**立即返回**，不订阅、不驱动、不写账本：两条路都在收同一批事件，
+ * 让它安静退出比让它跑第二份更安全。
+ */
+const SINGLETON = Symbol.for('companion.vocechat-adapter.instance.v1');
+
+/**
+ * 抢单例锁。拿到返回 `release()`，拿不到返回 `null`。
+ *
+ * 抽成独立函数是为了**可测**：真正的 `apply()` 需要一整套 cordis 服务（agents、
+ * agentPresets…），而这段判据只依赖一个 Map。测它比测 `apply()` 便宜，而且判据本身
+ * 才是要守住的东西。
+ *
+ * @param {string} dataRoot
+ * @param {string} namespace
+ * @param {{registry?: Map}} [options] 测试可注入
+ * @returns {(() => void)|null}
+ */
+export function claimInstance(dataRoot, namespace, { registry } = {}) {
+  const map = registry instanceof Map
+    ? registry
+    : (() => {
+      if (!(process[SINGLETON] instanceof Map)) process[SINGLETON] = new Map();
+      return process[SINGLETON];
+    })();
+  const key = `${dataRoot}\u0000${namespace ?? ''}`;
+  if (map.has(key)) return null;
+  map.set(key, { at: Date.now(), pid: process.pid });
+  return () => {
+    // 只删自己写的那一条：万一别的实例已经接管（理论上不会），不要把它一起清掉。
+    map.delete(key);
+  };
+}
+
 export function apply(ctx, rawConfig) {
   const config = resolveConfig(rawConfig);
   const { dataRoot, source: rootSource } = resolveDataRoot({ env: process.env });
@@ -727,11 +968,22 @@ export function apply(ctx, rawConfig) {
     return;
   }
 
+  // 单例闸。`dataRoot + namespace` 是身份：G5 多实例是两个**进程**，各有自己的 dataRoot，
+  // 不会互相挡；被挡住的只有"同一进程里同一个房间键挂了两份"这一种情况。
+  const releaseInstance = claimInstance(dataRoot, config.namespace);
+  if (!releaseInstance) {
+    note(`重复挂载已跳过（${dataRoot} / ns=${config.namespace || '(空)'}）：本进程已有一份适配层在跑，`
+      + '这一份不订阅、不驱动 —— 否则每条入站会被驱动两次（2026-11-19 实测）');
+    return;
+  }
+
   const sentLog = createSentLog({ dataRoot });
   const gate = createGate({
     allowUsers: config.allowUsers,
     allowGroups: config.allowGroups,
     selfUid: config.selfUid,
+    // 频道那一档：成员表 + 概率。私聊路径完全不受它影响（`decide` 里没有 group 的分支）。
+    group: config.group,
   });
   const queue = createQueue({ concurrency: config.concurrency, maxPending: config.maxPending, log: note });
 
@@ -752,9 +1004,14 @@ export function apply(ctx, rawConfig) {
 
   /** room → resolve fn of the current idle waiter (bounded by turnTimeoutMs). */
   const idleWaiters = new Map();
+  // 房间水位：`vc_message` 每次成功发送后推进，频道上下文拿它当"自上次发言以来"的界。
+  const roomState = createRoomState({ dataRoot, log: note });
   const state = {
     turns: 0, corrections: 0, deliveries: 0, toolRegistrations: 0,
     deliveryToolMissing: 0, lastSendError: null, lastDelivery: null, sendErrorCount: 0,
+    // 最近一次发送的分段节奏（每段之间实际停了多少、合计多少）。诊断"节奏对不对"
+    // 只有 `lastDelivery` 的时间戳是不够的：那只能看出总时长，看不出压缩有没有生效。
+    lastPausePlan: null,
     // room → whether `vc_message` actually registered in that scope. This is the guard's gate,
     // so it needs to be a recorded fact rather than a lookup performed at an inconvenient moment.
     toolVisibleByRoom: new Map(),
@@ -765,6 +1022,23 @@ export function apply(ctx, rawConfig) {
     // （桌面端会开始变糊，但不报错）；`failures` 增长则要去看具体 reason。
     thumbnailUpgrades: 0,
     thumbnailFailures: 0,
+    // ── 频道链路（2026-11-18）的四组计数。全部是"运维要能一眼分开"的量：
+    roomState,
+    // 历史取数的成败。`historyMisses` 增长而 `historyRows` 不动 = 接口在报错；
+    // 两个都停在 0 = 频道里根本没走过这条路（配置没生效）。
+    historyFetches: 0,
+    historyRows: 0,
+    historyMisses: 0,
+    lastHistoryReason: null,
+    // 概率跳过的条数。与 `historyMisses` 分开放：一个是被门控拦下（设计如此），
+    // 一个是取不到上下文（有问题）。
+    chanceSkips: 0,
+    // 群里"本可以说但决定不说"的轮数。它必须与 `corrections` 分开，
+    // 否则"她怎么不说话"永远分不清是设计的还是坏的。
+    silences: 0,
+    // 成员表缓存命中/未命中，用来判断 60 秒缓存是否真的在生效。
+    memberCacheHits: 0,
+    memberCacheMisses: 0,
   };
 
   const agents = ctx.agents;
@@ -854,9 +1128,21 @@ export function apply(ctx, rawConfig) {
       }
     }
 
+    const roomInfo = describeRoom(room);
+    const isChannelRoom = roomInfo?.kind === 'chan';
+
     const observer = createTurnObserver({
       isToolVisible: () => state.toolVisibleByRoom.get(room) === true,
       correctionText: () => config.correctionText || defaultCorrection(room),
+      // 群里沉默合法：`vc-chan-*` 不注入纠正，改记 `model-silence`。
+      // 私聊语义一字未改（默认就是允许纠正）。
+      allowCorrection: () => !(isChannelRoom && config.group.allowCorrection === false),
+      onSilence: ({ turn, textTail }) => {
+        state.silences += 1;
+        // `turn` 是宿主给的回合号（不是 mid）；账本里 `mid` 字段留给它，只为能和会话日志对上。
+        // 真正定位那一轮靠 `at` 与 `preview`。
+        sentLog.silence({ room, mid: Number(turn) || 0, tail: textTail });
+      },
       onCorrection: (text, agentFromEvent) => {
         // Prefer the agent carried by the event: during create/resume `live` is null because
         // setup runs before publication, and the seam must be called on the real agent.
@@ -941,6 +1227,49 @@ export function apply(ctx, rawConfig) {
   }
 
   /**
+   * 成员表缓存：gid → {members:Set<number>, at:number}。
+   *
+   * 为什么缓存必须存在：一条消息进来要判"发送者是不是这个频道的成员"，而 `GET /api/group/{gid}`
+   * 是一次真实 HTTP。群里正常聊天时每条都查一次，等于给本机 VoceChat 加一份与消息量同阶的负载，
+   * 而且每条消息都多一次往返延迟（进缓冲之前就发生，直接影响响应变慢）。
+   *
+   * 为什么不缓存更久：新入群的人如果不在缓存里，会被判成 `not-a-member` 而永远不触发。
+   * 60 秒是在这两个失败模式之间的取值 —— 最坏情况让新成员等一分钟，而不是让每个成员每条都等一次。
+   */
+  const memberCache = new Map();
+
+  /**
+   * 这个 uid 是不是该频道的成员。**返回三态**：`true` / `false` / `null`（表取不到）。
+   *
+   * `null` 与 `false` 必须分开：`false` 是"查到了，他不在"，`null` 是"我没查到"。
+   * 前者应该拒，后者要 fail-closed 退回白名单 —— 把两者混成 `false`，运维就会去查
+   * "为什么这个人不在群里"，而真相是 403 或断网。
+   */
+  async function isMemberOf(gid, uid) {
+    const port2 = getPort();
+    if (!port2 || typeof port2.channel !== 'function') return null;
+    const now = Date.now();
+    const cached = memberCache.get(gid);
+    if (cached && now - cached.at < config.group.memberCacheMs) {
+      state.memberCacheHits += 1;
+      return cached.members.has(uid);
+    }
+    state.memberCacheMisses += 1;
+    try {
+      const detail = await port2.channel(gid);
+      const members = Array.isArray(detail?.members)
+        ? new Set(detail.members.map(item => Number(item)).filter(id => Number.isInteger(id) && id >= 1))
+        : null;
+      if (!members || members.size === 0) return null;
+      memberCache.set(gid, { members, at: now });
+      return members.has(uid);
+    } catch (error) {
+      note(`成员表取不到（gid=${gid}）：${String(error?.message ?? error).slice(0, 160)}`);
+      return null;
+    }
+  }
+
+  /**
    * Gate one inbound event, then hand it to the room's buffer — **not** straight to the model.
    *
    * 为什么要过缓冲（2026-11-18，对齐 QQ 的 `DmBuffer`）：人打字是一条一条发出来的
@@ -950,13 +1279,29 @@ export function apply(ctx, rawConfig) {
    * 门控在这里做，不是进缓冲之后：被拒的事件不该占用窗口，也不该让一个陌生人的消息
    * 把主人这一批的计时推后。缓冲只在「已经确定要驱动」的事件上工作。
    *
+   * 频道与私聊走**两条**判定（见 `gate.mjs` 的头注释）：私聊是白名单，频道是成员 + 概率。
+   * 分流判据是"这条事件的目标形状"，不是配置 —— 一条消息不可能既是频道又是私聊。
+   *
    * Never rejects.
    */
   async function drive(event) {
     const room = roomKeyOf({ target: event?.target, fromUid: event?.fromUid, namespace: config.namespace });
-    const decision = gate.decide(event);
+    const gid = Number(event?.target?.channel);
+    const isChannelEvent = Number.isInteger(gid) && gid >= 1;
+
+    const decision = isChannelEvent
+      ? gate.decideChannel(event, {
+        // `isMember` 在 `gate.mjs` 里是**同步**的，而查成员表要 await —— 所以先在这里把
+        // 三态结果取出来，再交给一个纯返回值的函数。反过来（传一个返回 Promise 的闭包）
+        // 会让 `member !== true` 恒成立，把整个频道误判成"成员表不可用"。
+        isMember: await isMemberOf(gid, Number(event?.fromUid)),
+      })
+      : gate.decide(event);
+
     if (!decision.allow) {
       sentLog.skipped({ room: room ?? '', mid: event?.mid ?? 0, reason: decision.reason, fromUid: event?.fromUid ?? 0 });
+      // 概率跳过单独计数：它不是"被门控拒了"，是"这一句不接"。运维看这两个数会做不同的判断。
+      if (String(decision.reason).startsWith('chance-skip')) state.chanceSkips += 1;
       return { ok: false, reason: decision.reason };
     }
     if (!room) {
@@ -985,7 +1330,7 @@ export function apply(ctx, rawConfig) {
    * 把这一批里的媒体事件落成本机文件，并把路径挂回事件上。
    *
    * 为什么在交付之前做：模型能读的是**本机文件**，不是平台的 `2026/11/18/<uuid>` 这种
-   * 相对键。实测（`docs/35-media-capability-audit-20261118.md`）：不落盘时模型会自己
+   * 相对键。实测（`docs/media/capability-audit.md`）：不落盘时模型会自己
    * 去翻文件系统，那一轮花了 6 次 pwsh + 1 次 grep，而且结论依赖它有没有猜对目录。
    *
    * 每条独立成败：一张图取不到不该让整批文字也发不出去。失败只记在事件上（
@@ -1029,6 +1374,45 @@ export function apply(ctx, rawConfig) {
     }
   }
 
+  /**
+   * 频道上下文：取「自上次发言以来」的历史，渲染成一段。
+   *
+   * 只对频道做（私聊一对一，上下文天然连续，多取一次是纯粹的延迟与 token 成本）。
+   *
+   * 取数失败时**整段不注入**，而不是注入"历史不可用"：后者会进提示词、被模型当成事实
+   * 复述出来（"我看不到之前的消息"），比没有上下文更糟。失败只落账本与计数。
+   *
+   * 永不抛。
+   */
+  async function contextFor(room, list) {
+    const info = describeRoom(room);
+    if (!info || info.kind !== 'chan' || config.group.enabled === false) return [];
+    const target = targetOfRoom(room);
+    if (!target) return [];
+    const watermark = roomState.watermarkOf(room);
+    const batchMids = list.map(item => item.mid).filter(mid => Number.isInteger(mid));
+    const result = await fetchContext({
+      port: getPort(),
+      target,
+      batchMids,
+      watermark,
+      limit: config.group.historyLimit,
+      selfUid: config.selfUid,
+    });
+    state.historyFetches += 1;
+    state.lastHistoryReason = result.reason;
+    if (result.reason === 'ok') {
+      state.historyRows += result.rows;
+      return contextBlock(result.lines, watermark);
+    }
+    // `no-history` 是正常情况（频道刚建、我们刚说过话），不记 miss。
+    if (result.reason !== 'no-history' && result.reason !== 'no-port') {
+      state.historyMisses += 1;
+      sentLog.historyMiss({ room, reason: result.reason });
+    }
+    return [];
+  }
+
   /** Drive one **batch** of inbound events through the whole path. Never rejects. */
   async function runBatch(room, events) {
     const list = events ?? [];
@@ -1037,6 +1421,9 @@ export function apply(ctx, rawConfig) {
 
     // 媒体先落本地，再交给模型。顺序不能反：模型拿到的是路径，文件不在那儿它就只能瞎猜。
     await materializeMedia(list);
+    // 上下文在**队列外**取：那是两三次本机 HTTP，占着串行队列会让另一个房间白等。
+    // 取回来的只是文本，晚一步进队列不影响正确性（水位在一轮开始时就定下了）。
+    const context = await contextFor(room, list);
 
     return queue.run(room, async () => {
       const { agent, resumed, created, route } = await sessions.ensure({
@@ -1054,12 +1441,17 @@ export function apply(ctx, rawConfig) {
         ...(list.length > 1 ? { mids, batched: list.length } : {}),
       });
       state.turns += 1;
+      roomState.noteTurn(room);
 
-      const how = deliverTo(agent, buildMessage(inboundBatch(list)));
+      const how = deliverTo(agent, buildMessage(inboundBatch(list, context)));
       if (!how) {
         sentLog.undelivered({ room, mid: last.mid ?? 0, reason: 'agent-has-no-inject-or-followup' });
         return { ok: false, reason: 'no-delivery-channel' };
       }
+      // **看过就算数**：这一批已经交给模型了，下界的界推进到它的最后一条。
+      // 放在交付成功之后、等 idle 之前 —— 无论模型最后说不说话、发没发出去，这些内容它都看过了。
+      // 只在"发出去"时推进会让沉默的那一轮在下一轮被重放（群里沉默是常态，等于每轮重看）。
+      roomState.noteHandled(room, last.mid ?? 0);
 
       const outcome = await waitIdle(room, config.turnTimeoutMs);
       if (outcome === 'timeout') {
@@ -1111,6 +1503,9 @@ export function apply(ctx, rawConfig) {
     }
     for (const [, resolve] of idleWaiters) resolve();
     idleWaiters.clear();
+    // 释放单例锁：否则"拆掉再挂回来"（cordis reload）会被上一份的残留标记挡住，
+    // 表现是"改了配置重启插件没生效"——那比重复挂载更难查。
+    try { releaseInstance(); } catch { /* */ }
     note('disposed');
   };
   try { if (typeof ctx?.on === 'function') ctx.on('dispose', dispose); } catch { /* */ }
@@ -1137,7 +1532,22 @@ export function apply(ctx, rawConfig) {
           deliveryToolMissing: state.deliveryToolMissing,
           lastSendError: state.lastSendError,
           lastDelivery: state.lastDelivery,
+          lastPausePlan: state.lastPausePlan,
           sendErrorCount: state.sendErrorCount,
+          // 分段节奏这一档到底配了什么。放出来是因为"间隔太长/太短"是唯一只能靠
+          // 运维盯着的感受：日志里看不到停顿，只看到几条消息的时间戳。
+          pacing: {
+            delayPerCharMs: config.segmentation.delayPerCharMs,
+            delayMinMs: config.segmentation.delayMinMs,
+            delayMaxMs: config.segmentation.delayMaxMs,
+            delayTotalMaxMs: config.segmentation.delayTotalMaxMs,
+            // 一张现算的表：这段话如果按当前配置发，每段之后各停多久、合计多少。
+            // 一眼能看出"6 段是不是会被压缩"。
+            sample: {
+              pieces: 4,
+              plan: pausePlan(['x'.repeat(8), 'x'.repeat(20), 'x'.repeat(35), 'x'.repeat(12)], config.segmentation),
+            },
+          },
           media: {
             enabled: config.media.enabled,
             roots: config.media.roots,
@@ -1155,6 +1565,27 @@ export function apply(ctx, rawConfig) {
           },
           sentLog: sentLog.file,
           logWritable: sentLog.writable(),
+          // ── 频道（群聊）这条链路的状态。四组数各回答一个问题，混在一起就查不出原因：
+          //   gate.group    门控这一档到底配了什么
+          //   history*      上下文有没有真的取到（`historyMisses` 增长 = 接口在报错）
+          //   chanceSkips   有多少句是被概率挡下的（设计如此，不是故障）
+          //   silences      有多少轮是"她决定不说"（合法），与 `corrections` 分开看
+          //   rooms         每个房间的水位，判断"自上次发言以来"是否在推进
+          group: {
+            ...gate.describe().group,
+            historyFetches: state.historyFetches,
+            historyRows: state.historyRows,
+            historyMisses: state.historyMisses,
+            lastHistoryReason: state.lastHistoryReason,
+            chanceSkips: state.chanceSkips,
+            silences: state.silences,
+            memberCache: {
+              rooms: memberCache.size,
+              hits: state.memberCacheHits,
+              misses: state.memberCacheMisses,
+            },
+            rooms: roomState.info(),
+          },
         }),
         drive,
       });
@@ -1169,9 +1600,14 @@ export function apply(ctx, rawConfig) {
   const b = config.batching;
   note(`batching: ${b.enabled ? 'on' : 'off'} 短句${b.shortMs}ms/长句${b.longMs}ms(${b.longChars}字) 总上限${b.maxWaitMs}ms 满${b.maxMessages}条或${b.maxChars}字`);
   const g = config.segmentation;
-  note(`分段: ${g.enabled ? 'on' : 'off'} style=${g.style} 最多${g.maxSegments}条 间隔${g.delayPerCharMs}ms/字(下限${g.delayMinMs}上限${g.delayMaxMs})`);
+  note(`分段: ${g.enabled ? 'on' : 'off'} style=${g.style} 私聊最多${g.maxSegments}条/频道最多${config.group.segmentation.maxSegments}条 单段频道上限${config.group.segmentation.maxChars}字 间隔${g.delayPerCharMs}ms/字(下限${g.delayMinMs}上限${g.delayMaxMs})`);
   const described = gate.describe();
   note(`gate fail-closed=${described.failClosed} allowUsers=${JSON.stringify(described.allowUsers)} allowGroups=${JSON.stringify(described.allowGroups)}`);
+  // 频道这一档的参数单独打一行：默认值不等于部署值，而"她为什么在群里不接话"
+  // 必须先能查到是概率、成员表、还是上下文在起作用。
+  note(`频道: ${config.group.enabled ? 'on' : 'off'} 概率=${config.group.talkProbability} 上下文${config.group.historyLimit}条 成员缓存${config.group.memberCacheMs}ms 纠正在群里=${config.group.allowCorrection ? 'on' : 'off(沉默合法)'}`);
+  const rs = roomState.info();
+  note(`房间水位: ${rs.rooms} 个房间，文件=${rs.file}${rs.writable ? '' : '（不可写，水位不会跨重启保留）'}`);
   void warmUp();
 
   /**

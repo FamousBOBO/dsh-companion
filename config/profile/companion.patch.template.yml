@@ -171,8 +171,12 @@
 
 # ── 5. QQ 通道（OneBot v11 / NapCat）───────────────────────────────────────
 #@@begin:qq
-# 目标 id `channel-qq` 由插件自带的 bundle 补丁提供；这里只覆盖部署相关的字段，
-# 并且**整份 config 会被替换**，所以结构字段要写全。
+# 这里**自带 name**，不从插件 bundle 补丁取那一行。
+# 原因：bundle 层解析包目录是「宿主安装目录优先、profile 其次」。同机装两套实例时，
+# 同一个包名会被解析到另一套实例的 plugins，那边 cordis.patch.yml 成了这边的真相来源。
+# 所以 setup.mjs 里 qq 也是 bundleRegistration:false，这一行由模板显式插入。
+#
+# `config` 是整块替换，所以结构字段要写全。
 #
 # 地址来自 config/suite.json 的 services.onebot。url 为空 = 未配置：
 # 插件照常挂载，但不拨号、不重连、不监听端口。
@@ -182,83 +186,85 @@
 #     把回合挂住，所以群里只能给只读预设；私聊给 workspace-write。
 #   * 主动外发、自动评论、后台模型任务由 config/suite.json 的 safety 段控制，
 #     默认全关；这里不覆盖，保持关闭。
-- id: channel-qq
-  config:
-    connection:
-      mode: forward
-      url: '${ONEBOT_URL}'
-    accessToken: '${ONEBOT_ACCESS_TOKEN}'
-    selfId: ${ONEBOT_SELF_ID}
-    admins: []
-    primaryGroup: null
-    requireMention: true
-    workspacePath: '${WORKSPACE_DIR}'
-    agentPreset: companion
-    groupEnabled: true
-    groupAgentPreset: companion-group
-    groupPermissionPreset: companion-group-readonly
-    groupWorkspacePath: '${GROUP_WORKSPACE_DIR}'
-    permissionPreset: workspace-write
-    # 插件自带的记忆/知识库/主动行为全部交给 companion-foundation 与
-    # companion-runtime 承担，通道只负责收发。
-    memory:
-      v2: false
-      vectorEnabled: false
-      captureEnabled: false
-      profiles: false
-    kb:
-      enabled: false
-    people:
-      enabled: false
-    proactive:
-      v2: true
-      book:
-        version: 1
-        events: []
-    morningReport:
-      enabled: false
-    dailyReport:
-      enabled: false
-    eventMonitor:
-      enabled: false
-    planner:
-      enabled: false
-    presence:
-      enabled: false
-      groups: []
-    learn:
-      enabled: false
-    flood:
-      enabled: false
-    rss:
-      enabled: false
-    tts:
-      enabled: false
-    meme:
-      enabled: false
-    quotes:
-      enabled: false
-    linkResolve:
-      enabled: false
-    imageGen:
-      enabled: false
-    skills:
-      enabled: false
-    chatlog:
-      enabled: false
-    stt:
-      enabled: false
-    poke:
-      enabled: false
-    metrics:
-      enabled: false
-    # 提醒：通道侧的提醒功能先关；本套件的提醒由 companion-runtime 承担。
-    reminders:
-      enabled: false
-      dryRun: true
-    # 主人 QQ 号 / 群号属于部署数据，模板里不预置：配好通道后自行在这一行补
-    #   admins: [ <你的QQ号> ]
-    # 以及 access（详见 docs/02-configuration.md）
+- insert:
+    - id: channel-qq
+      name: '@dsh-companion/channel-qq'
+      config:
+        connection:
+          mode: forward
+          url: '${ONEBOT_URL}'
+        accessToken: '${ONEBOT_ACCESS_TOKEN}'
+        selfId: ${ONEBOT_SELF_ID}
+        admins: []
+        primaryGroup: null
+        requireMention: true
+        workspacePath: '${WORKSPACE_DIR}'
+        agentPreset: companion
+        groupEnabled: true
+        groupAgentPreset: companion-group
+        groupPermissionPreset: companion-group-readonly
+        groupWorkspacePath: '${GROUP_WORKSPACE_DIR}'
+        permissionPreset: workspace-write
+        # 插件自带的记忆/知识库/主动行为全部交给 companion-foundation 与
+        # companion-runtime 承担，通道只负责收发。
+        memory:
+          v2: false
+          vectorEnabled: false
+          captureEnabled: false
+          profiles: false
+        kb:
+          enabled: false
+        people:
+          enabled: false
+        proactive:
+          v2: true
+          book:
+            version: 1
+            events: []
+        morningReport:
+          enabled: false
+        dailyReport:
+          enabled: false
+        eventMonitor:
+          enabled: false
+        planner:
+          enabled: false
+        presence:
+          enabled: false
+          groups: []
+        learn:
+          enabled: false
+        flood:
+          enabled: false
+        rss:
+          enabled: false
+        tts:
+          enabled: false
+        meme:
+          enabled: false
+        quotes:
+          enabled: false
+        linkResolve:
+          enabled: false
+        imageGen:
+          enabled: false
+        skills:
+          enabled: false
+        chatlog:
+          enabled: false
+        stt:
+          enabled: false
+        poke:
+          enabled: false
+        metrics:
+          enabled: false
+        # 提醒：通道侧的提醒功能先关；本套件的提醒由 companion-runtime 承担。
+        reminders:
+          enabled: false
+          dryRun: true
+      # 主人 QQ 号 / 群号属于部署数据，模板里不预置：配好通道后自行在这一行补
+      #   admins: [ <你的QQ号> ]
+      # 以及 access（详见 docs/02-configuration.md）
 #@@end:qq
 
 
@@ -327,6 +333,50 @@
     - id: companion-expression-http
       name: 'file://${SUITE_ROOT}/plugins/companion-expression/http.mjs'
 #@@end:expression
+
+
+# ── 10. 媒体管理 API（顶层）──────────────────────────────────────────────────
+#@@begin:media-http
+# 和上面同一个理由：设置在预设的 isolate realm 里注册不到 web server，必须挂顶层。
+#
+# 为什么这里写绝对路径、而不靠 companion-media 自带的 bundle 补丁：
+#   那个补丁里是 `name: './http.mjs'`。相对路径由**加载器所在的宿主安装**解析，
+#   而两套实例共用同一份 host-runtime。从那里向上回溯会命中另一套实例的
+#   plugins\companion-media\http.mjs，于是这边改配置改的是那边的文件。
+#   实测（2026-11-18）：本套件实例的 /api/companion-media/status 报
+#   dataDir=<另一套实例的 dataDir>、persona=<另一套实例的 persona id>。
+#
+#   而且 bundle 层连**补丁文件本身**也从宿主安装那一侧读（installAnchor 优先于
+#   profileDir），所以改本套件的那份 plugins\companion-media\cordis.patch.yml 无效。
+#
+#   结论：这个模块不登记到 dsh.profile.bundles（见 setup.mjs 的 bundleRegistration），
+#   http 行由这里显式插入。
+- insert:
+    - id: companion-media-http
+      name: 'file://${SUITE_ROOT}/plugins/companion-media/http.mjs'
+#@@end:media-http
+
+# ── 11. 陪伴空间 Web UI（顶层）───────────────────────────────────────────────
+#@@begin:memory-studio
+# 同理：这个模块也不登记到 dsh.profile.bundles，否则它的 patch 会从宿主安装那一侧读。
+# 包名仍然用 '@dsh-companion/memory-studio'——包名解析走 profileDir 的 node_modules，
+# 那是指向本套件的符号链接，方向是对的。客户端那一半（侧栏「记忆档案」）也仍然
+# 靠这个包名被发现，只是不再经过 bundle 补丁层。
+- insert:
+    - id: companion-memory-studio
+      name: '@dsh-companion/memory-studio'
+#@@end:memory-studio
+
+# ── 12. 搜图入口（顶层）─────────────────────────────────────────────────────
+#@@begin:paste-search
+# 同样不登记 bundle。补充一个理由：它的 cordis.patch.yml 里原本写的
+# `@local/dsh-paste-search` 与实际包名（'@dsh-companion/paste-search'）不一致，
+# 登记进 bundle 层只会把那行坏引用带进合成结果。这里按真实包名插入。
+# 客户端那一半（左侧栏「搜图」）由 package.json 的 dsh.client 声明驱动。
+- insert:
+    - id: dsh-paste-search
+      name: '@dsh-companion/paste-search'
+#@@end:paste-search
 
 
 # =============================================================================

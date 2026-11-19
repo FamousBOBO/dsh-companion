@@ -19,17 +19,37 @@
 //   - `toolVisible` 判定改成"本会话作用域里 vc_message 是否可见"。不可见就不纠正——
 //     否则会要求模型调用一个不存在的工具，那比不纠正更糟。
 //   - 纠正文本里**带房间目标**是从会话 id 反解出来的，不来自模型；模型手里仍然没有目标号。
+//
+// ── 2026-11-18 增补：群里沉默合法（`allowCorrection`）──────────────────────
+//
+// 上面第 16–18 行原来说"频道与私聊都用守卫"。群聊这条链路做完之后这句话不成立了：
+//
+//   私聊    一对一，对方发消息就是找你说话。答在本地不发送 = 事故，必须纠正一次。
+//   频道    多人在场，被触发只是"这一刻可以说话"，说完不说都正常。群里每一轮都逼它
+//           必须发言，结果是"每句都接"，那正是群聊里最像机器人的行为。
+//
+// 所以 `allowCorrection` 成了一个**按房间**的参数：`vc-chan-*` 传 false。
+// 不纠正不等于不记账：`onSilence` 让"模型决定不说"在 sent-log 里留一行 `model-silence`，
+// 与"纠正失败/未送达"分开可查。没有这一行，"她没说话"永远查不出是设计的还是坏的。
 
 const CORRECTIONS = Symbol.for('companion.vocechat-corrections.v1');
 
 /** Per-agent-turn observation state. Mirrors the fields QQ's guard tracks. */
-export function createTurnObserver({ onCorrection, isToolVisible, correctionText } = {}) {
+export function createTurnObserver({
+  onCorrection, isToolVisible, correctionText,
+  // 默认 true：老调用方（以及私聊）语义不变。只有群聊显式关掉。
+  allowCorrection = () => true,
+  // 群聊里"本可以说但决定不说"的落点。可选：没有它时只记 state，不写账本。
+  onSilence = null,
+} = {}) {
   let turn = -1;
   let sawText = false;
   let calledTool = false;
   let corrected = false;
   let committed = false;
   let textTail = '';
+  /** 本轮是否已经为「沉默」记过账，保证一轮最多一行。 */
+  let silenceNoted = false;
 
   return {
     observe(frame) {
@@ -41,6 +61,7 @@ export function createTurnObserver({ onCorrection, isToolVisible, correctionText
           calledTool = false;
           corrected = false;
           textTail = '';
+          silenceNoted = false;
         }
         committed = false;
       }
@@ -71,10 +92,24 @@ export function createTurnObserver({ onCorrection, isToolVisible, correctionText
     maybeCorrect(agent = null) {
       if (typeof onCorrection !== 'function') return false;
       if (corrected) return false;
+      // 「有正文、没调工具、已提交」是两条路共同的前提：群聊里它意味着"她想说但没说出去"，
+      // 私聊里意味着"她要说的没发出去"。判据不变，处理方式分档。
       if (!committed || !sawText || calledTool) return false;
       let visible = false;
       try { visible = isToolVisible() === true; } catch { visible = false; }
       if (!visible) return false;
+
+      let permitted = true;
+      try { permitted = allowCorrection() !== false; } catch { permitted = true; }
+      if (!permitted) {
+        // 群里：沉默合法。记一行便于运维区分「设计的沉默」与「坏掉的发送」。
+        if (!silenceNoted && typeof onSilence === 'function') {
+          silenceNoted = true;
+          try { onSilence({ agent, turn, textTail }); } catch { /* 记账不能反过来打断回合 */ }
+        }
+        return false;
+      }
+
       corrected = true;
       const text = typeof correctionText === 'function' ? String(correctionText() ?? '') : String(correctionText ?? '');
       if (text.trim() === '') return false;
@@ -84,7 +119,7 @@ export function createTurnObserver({ onCorrection, isToolVisible, correctionText
 
     /** For diagnostics: what the observer believes right now. */
     state() {
-      return { turn, sawText, calledTool, corrected, committed, textTail };
+      return { turn, sawText, calledTool, corrected, committed, textTail, silenceNoted };
     },
 
     reset() {
@@ -94,6 +129,7 @@ export function createTurnObserver({ onCorrection, isToolVisible, correctionText
       corrected = false;
       committed = false;
       textTail = '';
+      silenceNoted = false;
     },
   };
 }

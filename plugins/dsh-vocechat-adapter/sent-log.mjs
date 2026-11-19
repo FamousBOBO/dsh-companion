@@ -98,6 +98,33 @@ export function createSentLog({ dataRoot, rotateBytes = ROTATE_BYTES } = {}) {
       return append({ at: Date.now(), kind: 'undelivered', room, mid, reason: String(reason).slice(0, 120) });
     },
 
+    /**
+     * 频道上下文取不到（2026-11-18）。
+     *
+     * 为什么要单独一行：取不到历史的表现是"她答得牛头不对马嘴"，而那一轮本身是**成功**的
+     * （回合跑完、消息发出、账本里只有 sent 行）。没有这一行，这种故障在日志里完全不存在。
+     *
+     * `reason` 是 `history.mjs` 的原因码（`error:bad-response` / `error:forbidden` / …），
+     * 故意不写正文：历史内容不属于运维信息，也不该被抄进账本。
+     */
+    historyMiss({ room, reason }) {
+      return append({ at: Date.now(), kind: 'history-miss', room, reason: String(reason).slice(0, 80) });
+    },
+
+    /**
+     * 群里模型有正文、没发出去、也没纠正（2026-11-18）。
+     *
+     * 群里沉默是**合法**的（见 `turns.mjs` 的 `allowCorrection`）。但"合法的沉默"与
+     * "纠正逻辑坏了"在会话日志里长得一模一样，所以这里留一行。只带 tail（最近 120 字），
+     * 不带全文：它的用途是回答"她当时想了什么"，不是重建内容。
+     */
+    silence({ room, mid, tail = '' }) {
+      return append({
+        at: Date.now(), kind: 'model-silence', room, mid,
+        preview: preview(tail),
+      });
+    },
+
     file,
     writable: () => writable,
   };
