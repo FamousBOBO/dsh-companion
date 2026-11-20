@@ -42,6 +42,7 @@
 //
 // 三处分档都从 `config.group` 读，只有一个配置入口。
 
+import fs from 'node:fs';
 import path from 'node:path';
 
 import { watchVoceChatPort, isVoceChatPort } from './subscribe.mjs';
@@ -58,6 +59,9 @@ import { upgradeThumbnail } from './thumbnail.mjs';
 import { segmentText } from './segment.mjs';
 import { fetchContext, contextBlock } from './history.mjs';
 import { createRoomState } from './room-state.mjs';
+import { resolveAutonomy, autonomyActive } from './autonomy-config.mjs';
+import { createAutonomy } from './autonomy.mjs';
+import { watchJudgePort } from './judge-link.mjs';
 
 export const name = 'vocechat-adapter';
 // `agentDefaultModel` must be declared here: cordis refuses to read a property for a service that
@@ -120,6 +124,9 @@ function resolveConfig(raw) {
     // 频道（群聊）那一档：门控、上下文、分段、沉默四条都从这里读，只有一个入口。
     group: resolveGroup(input.group),
     correctionText: str(input.correctionText, ''),
+    // 频道自主链路（旁听 → 九门判断 → 发言闸门）。与 `proactive` 是两件事：
+    // proactive 是「想起主人」，autonomy 是「在群里自己接一句」。
+    autonomy: resolveAutonomy(input.autonomy, { selfUid: Number(input.selfUid) || 0 }),
   };
 }
 
@@ -1289,6 +1296,11 @@ export function apply(ctx, rawConfig) {
     const gid = Number(event?.target?.channel);
     const isChannelEvent = Number.isInteger(gid) && gid >= 1;
 
+    // **旁听在门控之前**：自主链路要看见「群里在聊什么」，而不是「掷骰子赢了的那几句」。
+    // 放在门控之后会得到一份被骰子筛过的上下文——那正是要修的那个毛病。
+    // 注意这里**只存不判**：判断由 `autonomy.start()` 的定时器发起（见文件头第 1 条）。
+    if (isChannelEvent && autonomy !== null) autonomy.observe(event, gid);
+
     const decision = isChannelEvent
       ? gate.decideChannel(event, {
         // `isMember` 在 `gate.mjs` 里是**同步**的，而查成员表要 await —— 所以先在这里把
@@ -1454,6 +1466,8 @@ export function apply(ctx, rawConfig) {
       roomState.noteHandled(room, last.mid ?? 0);
 
       const outcome = await waitIdle(room, config.turnTimeoutMs);
+      // 回合结束时刻（自主链路用它"让路"：刚回完一句就别马上再补一句）。
+      if (autonomy !== null) autonomy.noteTurnEnd(Date.now());
       if (outcome === 'timeout') {
         sentLog.undelivered({ room, mid: last.mid ?? 0, reason: `turn-timeout-${config.turnTimeoutMs}ms` });
         abortTurn(agent);
@@ -1461,6 +1475,113 @@ export function apply(ctx, rawConfig) {
       }
       return { ok: true, room, mid: last.mid ?? 0, batched: list.length };
     });
+  }
+
+  /**
+   * 直发一段**已经定稿**的文字（自主链路用）。
+   *
+   * 为什么不走回合：自主链路的文字是**判断层给的那一句短语**，不需要模型再组织一遍。
+   * 注入回合会让模型把这句短语当成"主人刚说的话"去回应（QQ 那边的 `sendMode: direct`
+   * 就是为此），结果是群里多出一段没人要求的长回答。
+   *
+   * 分段与硬切分照抄 `vc_message` 的规则（同一个 `segmentationFor(room)`），否则同一个房间
+   * 会出现两种"发一句话的形状"。**不写 `sent-log.turnStarted`**：这里没有回合。
+   *
+   * 返回值只回答"发没发出去"——`false` 才记失败（判断对了但发不出去是真故障，
+   * 而"没判断"与"判断了但不说"都不该记在这里）。
+   */
+  async function sendDirect(room, text) {
+    const sendPort = getPort();
+    if (!sendPort) return { ok: false, reason: 'port-absent' };
+    const target = targetOfRoom(room);
+    if (!target) return { ok: false, reason: 'not-a-room' };
+    const seg = segmentationFor(config, room);
+    const pieces = segmentText(text, seg);
+    const perPieceLimit = Number(seg.maxChars) > 0 ? Number(seg.maxChars) : config.sendMaxChars;
+    const plan = pausePlan(pieces, seg);
+    let sentCount = 0;
+    for (let index = 0; index < pieces.length; index += 1) {
+      if (index > 0) {
+        const pause = plan[index - 1] ?? 0;
+        if (pause > 0) await new Promise(resolve => setTimeout(resolve, pause));
+      }
+      for (const chunk of splitText(pieces[index], perPieceLimit)) {
+        try {
+          const { mid } = await sendPort.send(target, chunk, 'text/plain');
+          sentCount += 1;
+          sentLog.sent({ room, target, mid, text: chunk, phase: 'final', segment: sentCount, of: pieces.length });
+          roomState.noteSent(room, mid);
+        } catch (error) {
+          const message = String(error?.message ?? error).slice(0, 160);
+          sentLog.sent({ room, target, mid: null, text: chunk, phase: 'final', ok: false, error: message });
+          return { ok: false, reason: `send-failed:${message}` };
+        }
+      }
+    }
+    return { ok: true, room, segments: pieces.length };
+  }
+
+  /**
+   * 频道自主链路（旁听 → 九门判断 → 发言闸门 → 发送）。
+   *
+   * 与频道门控（`gate.mjs` 的 `talkProbability`）是两个问题，不该合并：
+   *   门控    回答「这一句接不接」（掷骰子 + 成员表）
+   *   自主链路 回答「这一句**该不该**接」（九门判断，看的是这个群在聊什么）
+   * 两者并存：`@` 与会话内回合仍由门控管，自主链路只在**没人点名**时补一句。
+   *
+   * 判断端口由 QQ 插件发布（`companionJudge`）。它可能比本行更晚挂载，所以用
+   * `watchJudgePort` 每 8 秒重试：**取不到就不起定时器**（判断不了就不要说话）。
+   */
+  let autonomy = null;
+  let stopJudgeWatch = null;
+  /** 判断端口（由 `watchJudgePort` 填）。 */
+  let judgePort = null;
+
+  const startAutonomy = () => {
+    if (autonomy !== null) return;
+    if (!autonomyActive(config.autonomy)) {
+      note(`自主链路未启用（enabled=${config.autonomy.enabled} mode=${config.autonomy.mode}）`);
+      return;
+    }
+    const gids = [...config.allowGroups];
+    if (gids.length === 0) {
+      note('自主链路：allowGroups 为空，没有频道可判（不启动定时器）');
+      return;
+    }
+    autonomy = createAutonomy({
+      config: config.autonomy,
+      clock: { now: () => Date.now() },
+      getJudge: () => judgePort,
+      send: async ({ room, text }) => (await sendDirect(room, text)).ok === true,
+      append: row => appendShadow(row),
+      note,
+    });
+    autonomy.start(gids);
+    note(`自主链路 on（mode=${config.autonomy.mode} 频道=${gids.join(',')}）`);
+  };
+
+  stopJudgeWatch = watchJudgePort({
+    root: dataRoot,
+    context: () => ctx,
+    onFound: found => {
+      judgePort = found;
+      // 端口到位之后才起定时器：先有判断能力，再谈什么时候判。
+      startAutonomy();
+    },
+    log: note,
+  }).stop;
+
+  /** 影子/实发账本：与 QQ 的 `presence-shadow.jsonl` 同格式，方便两个通道一起盲评。 */
+  function appendShadow(row) {
+    try {
+      fs.mkdirSync(path.join(dataRoot, 'logs'), { recursive: true });
+      fs.appendFileSync(
+        path.join(dataRoot, 'logs', 'presence-shadow.jsonl'),
+        `${JSON.stringify({ source: 'vocechat', ...row })}\n`,
+      );
+    } catch (error) {
+      note(`影子日志写入失败：${String(error?.message ?? error).slice(0, 160)}`);
+    }
   }
 
   /** Attach the port once it exists. */
@@ -1491,6 +1612,13 @@ export function apply(ctx, rawConfig) {
 
   const dispose = () => {
     try { watcher.stop?.(); } catch { /* */ }
+    // 自主链路的定时器与判断端口 watcher 必须一起收：留着它们会在宿主拆完之后
+    // 再发起一次判断（那会真的花一次云端请求的钱，而且没人接收结论）。
+    try { autonomy?.stop(); } catch { /* */ }
+    autonomy = null;
+    try { stopJudgeWatch?.(); } catch { /* */ }
+    stopJudgeWatch = null;
+    judgePort = null;
     try { if (typeof offSubscribe === 'function') offSubscribe(); } catch { /* */ }
     offSubscribe = null;
     port = null;
@@ -1521,6 +1649,14 @@ export function apply(ctx, rawConfig) {
           presetId: config.presetId,
           cwd: config.cwd || null,
           gate: gate.describe(),
+          // 自主链路：判断了几轮、说了几句、为什么没说（最后一条 reason）。
+          // 「她为什么没接话」的答案就在这一个对象里。
+          autonomy: autonomy === null ? null : {
+            ...autonomy.state,
+            gate: autonomy.gate.describe(),
+            ambient: autonomy.ambient.size(),
+            mode: config.autonomy.mode,
+          },
           queue: queue.info(),
           // 攒批状态：`pending` 是"收到了但还没到点交付"的条数。运维问"她为什么不回"时，
           // 这一个数字就能区分"消息还在窗口里等"和"消息根本没收到"。
