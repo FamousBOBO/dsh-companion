@@ -149,7 +149,7 @@ async function loadRefreshToken() {
 ```text
 [vocechat-adapter] 工作区归属：2/2 个 vc 会话已登记
 
-工作区 三月七陪伴 → vc-dm-1, vc-chan-1, qq-dm-1429709395
+工作区 <PERSONA_WORKSPACE> → vc-dm-1, vc-chan-1, qq-dm-1429709395
 
 vc-dm-1.json    VoceChat 私聊1
 vc-chan-1.json  VoceChat 生产入站验证   ← 人工标题，未被覆盖

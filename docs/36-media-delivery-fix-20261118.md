@@ -15,7 +15,7 @@
 | 适配 `index.mjs` | vc 会话里 28 个 `qq_*` 工具可见 | `tools.restrict({deny})` 挡掉 10 个发送器 |
 | media `service.mjs` | handoff 写死 `qq_sticker` / `qq_voice` | `handoffFor(kind, sessionId)` 按通道决定 |
 | media `service.mjs` | 群聊判据只有 `qq-group-` | 加上 `vc-chan-`（同一条隐私规则的第二个漏洞） |
-| 配置 | `refAudioPath` 指向不存在的 `C:\Users\bobo\Documents\Bot\dsh-production\…` | 指向真实路径 `D:/DSH/dsh-production/data/media/references/march7_B.wav` |
+| 配置 | `refAudioPath` 指向不存在的 `<OLD_LAYOUT>\…` | 指向真实路径 `<DATA_DIR>/media/references/<PERSONA_ID>_B.wav` |
 
 ---
 
@@ -123,9 +123,9 @@ vc_*: vc_message,vc_send_file
 
 ## 四、顺带修的两处
 
-**TTS 参考音频路径失效。** 配置指向 `C:\Users\bobo\Documents\Bot\dsh-production\…`，
+**TTS 参考音频路径失效。** 配置指向 `<OLD_LAYOUT>\…`，
 那个目录**根本不存在**（是一台旧机器 / 旧布局的残留），而真实文件在
-`D:\DSH\dsh-production\data\media\references\march7_B.wav`（986 KB）。修之前每次
+`<DATA_DIR>\media\references\<PERSONA_ID>_B.wav`（986 KB）。修之前每次
 `companion_media_speak` 都是 `MEDIA_BAD_INPUT: 参考音频读不到 ENOENT`。
 
 **`vc-chan-*` 不在多人在场判据里。** `isGroupSession()` 只看 `qq-group-`，于是

@@ -12,7 +12,7 @@
 `companion_media_visual` 正确返回了身份：
 
 ```json
-{"identity":"configured","name":"三月七",
+{"identity":"configured","name":"<PERSONA_NAME_ZH>",
  "identityClause":"March 7th from Honkai: Star Rail (Astral Express), shoulder-length pink hair, blue-to-pink gradient eyes, fair skin, slender build, a small camera often hanging around her neck"}
 ```
 
@@ -53,13 +53,13 @@ March 7th from Honkai: Star Rail (Astral Express), A young woman with shoulder-l
 都算写过。严格相等会把"模型写了 march7th"误判成没写，那种误判比漏判更烦人。
 名字短于 3 字符时不做子串匹配（`ai` 这种在任意英文句子里都会出现，等价于没检查）。
 
-**只有中文名时不补。** `requireEnglish` 会逐字符检查正文，把 `三月七` 拼进去会让一次
+**只有中文名时不补。** `requireEnglish` 会逐字符检查正文，把中文名拼进去会让一次
 本来完全正确的调用因为"系统补了个中文"而失败 —— 那种失败比缺名字更难查。这种情况改为
 在响应里回 `nameWarning`，说明缺的是 `name.en`。
 
 ### 实测
 
-同一句「画一张你自己，坐在窗边看书」，修完之后模型仍然没写名字（`/Testa|三月七|march7/`
+同一句「画一张你自己，坐在窗边看书」，修完之后模型仍然没写名字（`/<测试名>|中文名|紧凑 id/`
 在 prompt 里不匹配），但落库的 `input` 是：
 
 ```text
