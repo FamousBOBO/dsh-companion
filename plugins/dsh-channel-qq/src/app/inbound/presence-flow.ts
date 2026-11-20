@@ -34,6 +34,7 @@ import { renderParticipantsSection, renderRiskSection } from './presence-ecology
 import { renderScene, runSocialGuard } from './presence-scene.js'
 import { EMPTY_RECALL, type GroupMemoryRecall } from './group-memory-contract.js'
 import { failed, silent, speak } from './presence-send.js'
+import type { JudgePort } from './judge-port.js'
 
 // 重新导出：这些是判断层的公开面（runtime / cycle / 测试都从这里取），
 // 真正的实现在 `presence-send.ts`（"做"的那一半）。
@@ -231,6 +232,24 @@ export interface CycleDeps {
    * 失败也是数据。缺省 = 不记（旧装配/单测）。
    */
   readonly noteSend?: (input: { groupId: number; latencyMs: number; ok: boolean }) => void
+  /**
+   * 本地 Jev 判断端口（`judge.backend === 'jev-local'` 时用）；缺省 = 没有这一路。
+   *
+   * 为什么和 `complete` 并列而不是替换它：两个后端**同时**留在装配里，
+   * 切换只改配置（`judge.backend`）而不改装配——热切成 `host` 时立刻回到旧行为，
+   * 不需要重启，也不需要第二份装配代码。
+   */
+  readonly judge?: JudgePort
+  /** 判断后端的**现取**值（`host` / `jev-local`）；缺省 `host`（今日行为）。 */
+  readonly judgeBackend?: () => string
+}
+
+/** 判断后端是不是本地 Jev（缺省一律按宿主模型）。 */
+function usesTypedJudge(deps: CycleDeps): boolean {
+  if (deps.judge === undefined) return false
+  // 两条 typed 后端（云端 `jev-opencode` / 本地 `jev-local`）在这里等价：
+  // 有端口且后端不是 `host` 就是 typed。具体是谁由端口自己知道。
+  return (deps.judgeBackend?.() ?? 'host') !== 'host'
 }
 
 /**

@@ -234,7 +234,7 @@ dsh-paste-search              独立（UI 入口）
 | `companion-memory-studio` | **115 通过 / 0 失败** | **✅**（UI 返回 HTTP 200） | 未验证 | — | — |
 | `companion-runtime` | **697 通过 / 0 失败** | **✅** | 未验证 | — | — |
 | `companion-group` | **10 通过 / 0 失败** | **✅** | — | 未验证 | — |
-| `dsh-channel-qq` | **1208 / 1207 通过 / 0 失败 / 1 跳过** | 未验证（验收未启用通道） | 未验证 | **未验证** | — |
+| `dsh-channel-qq` | **1974 / 1969 通过 / 0 失败 / 5 跳过** | **✅**（真宿主装载，`judge: jev-opencode 启用`） | **✅**（云端 `systemone` 真端点：962–1265 tok / $0.0000404–0.000053 / `billing: balance`） | **未验证** | 群聊自主判断换到云端；九门决策表未改 |
 | `companion-media` | 通过（计数未单独汇总） | 未验证（验收未启用该模块） | 未验证 | 未验证 | — |
 | `companion-health` | 通过（计数未单独汇总） | 未验证（验收未启用该模块） | 未验证 | — | 未验证 |
 | `companion-expression` | 见 `docs/07` §2.6（本轮离线测试计数） | **✅**（真宿主装载，两行都装上、无 `did not activate`） | 未验证 | **未验证** | — |

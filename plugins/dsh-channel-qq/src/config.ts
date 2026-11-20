@@ -329,6 +329,14 @@ export interface QQChannelConfig extends SwitchSections {
   turn: TurnConfig
   /** 群聊旁听与自主接话（默认关；关着时入站路径与旧行为逐字节一致）。 */
   readonly presence: PresenceConfig
+  /**
+   * 判断模型（默认 `host` = 今日行为）。
+   *
+   * 与 `presence` 分开而不是塞进它：`presence` 的键位顺序被 `presence-config.test.ts`
+   * 与 golden 快照逐条钉着，加字段会连带改快照；而这一段是**另一件事**
+   * （"谁来判"而不是"怎么判"），独立成段也更像它的实际作用。
+   */
+  readonly judge: import('./config/sections/judge.js').JudgeConfig
   /** 群成员身份注册表（P9-G4 §2.2，默认关；关着时所有人按"身份未确认"处理）。 */
   readonly participants: import('./config/sections/participants.js').ParticipantsConfig
   /** 点歌翻唱（B站 → RVC 音色 → 语音条）：外部程序路径、时间预算与两道外发闸（默认全关）。 */

@@ -18,17 +18,19 @@ import {
   DEFAULTS,
   limitsOf,
   positiveOr,
-  runPresenceCycle,
   type CompletePort,
   type CycleOutcome,
   type PresenceView,
 } from './presence-flow.js'
+import { runJudge } from './judge-dispatch.js'
+import type { JudgePort } from './judge-port.js'
 import type { GroupTimelineBook } from './presence-timeline.js'
 import type { GroupSchedulerBook } from './presence-scheduler.js'
 import type { JudgeEntry } from './presence-judge.js'
 import type { GroupPersonaSnapshot } from './group-persona.js'
 import { EMPTY_RECALL, type GroupMemoryRecall } from './group-memory-contract.js'
 import { extractCandidateFacts, type CandidateFact } from '../../core/group-memory-extract.js'
+import { nowLabelOf, recallFor, windowOf } from './presence-cycle-inputs.js'
 import type { RegistryFile } from '../../core/participant.js'
 
 /** 她最近说过的话留几条（防重复；提示词里最多渲染 6 条）。 */
@@ -48,6 +50,14 @@ export interface CycleContext {
   readonly log: (line: string) => void
   readonly platform: () => ChatPlatform
   readonly complete: CompletePort
+  /**
+   * 本地 Jev 判断端口（`judge.backend === 'jev-local'` 时用）；缺省 = 没有这一路。
+   *
+   * 与 `complete` 并列而不是替换它：切后端只改配置，装配不动（见 `judge-dispatch.ts`）。
+   */
+  readonly judge?: JudgePort
+  /** 判断后端的**现取**值（`host` / `jev-local`）；缺省 `host`。 */
+  readonly judgeBackend: () => string
   readonly recordSent: (groupId: number, messageId: number | null, text: string) => Promise<void>
   readonly ambient: AmbientStore
   readonly timelines: GroupTimelineBook
@@ -131,7 +141,7 @@ export async function runCycleFor(ctx: CycleContext, groupId: number): Promise<b
   const background = takeBatch(ctx, groupId, settings)
   if (background.length === 0) return false
   const modelStartedAt = ctx.clock.now()
-  const outcome = await runPresenceCycle(inputOf(ctx, groupId, settings, background), depsOf(ctx, groupId))
+  const outcome = await runJudge(inputOf(ctx, groupId, settings, background), depsOf(ctx, groupId))
   // 模型调用耗时（P7-C）：只有真的调了才算一次（没有旁听时流程根本不进模型）。
   const modelLatency = Math.max(0, ctx.clock.now() - modelStartedAt)
   ctx.scheduler.update(groupId, (current) => ({
@@ -181,8 +191,7 @@ function rememberFrom(ctx: CycleContext, groupId: number, background: readonly J
   }
 }
 
-/** 取这一批背景，并**无论如何**推进游标。 */
-function takeBatch(ctx: CycleContext, groupId: number, settings: PresenceView): JudgeEntry[] {
+/** 取这一批背景，并**无论如何**推进游标。 */function takeBatch(ctx: CycleContext, groupId: number, settings: PresenceView): JudgeEntry[] {
   const nowMs = ctx.clock.now()
   const ring = ctx.ambient.ring(groupId, ambientLimitsOf(settings))
   const after = ring.peekAfter(ctx.cursorOf(groupId, ring), nowMs)
@@ -210,7 +219,9 @@ function inputOf(ctx: CycleContext, groupId: number, settings: PresenceView, bac
     selfSaid: selfSaidOf(ctx, groupId),
     nowLabel: nowLabelOf(ctx.clock.date()),
     persona: ctx.persona(groupId),
-    memory: recallFor(ctx, groupId, memberIds, background),
+    memory: ctx.memory === undefined
+      ? EMPTY_RECALL
+      : recallFor(ctx.memory, ctx.log, groupId, memberIds, background, ctx.clock.now()),
   }
 }
 
@@ -236,6 +247,9 @@ function depsOf(ctx: CycleContext, groupId: number) {
     log: ctx.log,
     platform: ctx.platform,
     complete: ctx.complete,
+    // 本地判断那一路（可选）：装配漏接时由 `runJudge` 退回宿主模型并记一行日志。
+    ...(ctx.judge === undefined ? {} : { judge: ctx.judge }),
+    judgeBackend: () => ctx.judgeBackend(),
     recordSent: ctx.recordSent,
     // 最后一道闸门：**每次要发之前**现取模式（参考 `CycleDeps.sendGate` 的注释）。
     sendGate: () => ctx.modeOf(),
@@ -320,74 +334,6 @@ function echoSelf(
   } catch (error) {
     ctx.log(`presence: 群 ${String(groupId)} 回灌旁听失败（已忽略）：${describe(error)}`)
   }
-}
-
-/** 这一轮要注入的记忆（**绝不抛**：记忆坏了只是少一段，不是判断失败）。 */
-function recallFor(
-  ctx: CycleContext,
-  groupId: number,
-  memberIds: readonly number[],
-  background: readonly JudgeEntry[],
-): GroupMemoryRecall {
-  if (ctx.memory === undefined) return EMPTY_RECALL
-  try {
-    const topic = background
-      .filter((entry) => !entry.self)
-      .map((entry) => (typeof entry.body === 'string' ? entry.body : entry.text))
-      .slice(-1)[0] ?? ''
-    return ctx.memory({
-      groupId,
-      memberIds,
-      topic: topic.slice(0, 60),
-      background,
-      nowMs: ctx.clock.now(),
-    })
-  } catch (error) {
-    ctx.log(`presence: 群 ${String(groupId)} 记忆召回失败（已忽略）：${describe(error)}`)
-    return EMPTY_RECALL
-  }
-}
-
-/**
- * 按条数与字数取**最近**的一段背景（时间正序返回）。
- *
- * 与 `AmbientRing.take` 同一套口径（从最新往前收，至少留一条），但这里**不推进**缓冲的
- * 交付游标：判断只看不取，被 @ 时的交付仍由流水线负责。
- */
-function windowOf(entries: readonly AmbientEntry[], maxEntries: number, maxChars: number): JudgeEntry[] {
-  const entryCap = Math.max(1, Math.trunc(positiveOr(maxEntries, DEFAULTS.judgeMaxEntries)))
-  const charCap = Math.max(1, Math.trunc(positiveOr(maxChars, DEFAULTS.judgeMaxChars)))
-  const recent = entries.slice(-entryCap).reverse()
-  const picked: AmbientEntry[] = []
-  let total = 0
-  for (const entry of recent) {
-    const size = [...entry.text].length
-    if (picked.length > 0 && total + size > charCap) break
-    picked.push(entry)
-    total += size
-  }
-  return picked.reverse().map((entry) => ({
-    messageId: entry.messageId,
-    name: entry.name,
-    userId: entry.userId,
-    text: entry.text,
-    // 正文单独带一份：渲染层要显式输出一次发送者身份，整行里那段抬头就不能再出现。
-    // 环里没存 body（旧写入方 / 测试直接 `add`）时不填这个键：让判断层自己去剥抬头，
-    // 而不是在这里塞一整行当正文——那正好会渲染成"身份出现两次"。
-    ...(entry.body === undefined ? {} : { body: entry.body }),
-    self: entry.self,
-    atMs: entry.atMs,
-    // 平台结构原样带给判断层（P6-A）：场景摘要只认这些事实。
-    ...(entry.replyToMessageId === undefined ? {} : { replyToMessageId: entry.replyToMessageId }),
-    ...(entry.atIds === undefined ? {} : { atIds: entry.atIds }),
-  }))
-}
-
-/** 提示词里的"现在几点"（用注入时钟的 `date()`，不读全局时钟——R8）。 */
-function nowLabelOf(date: Date): string {
-  const two = (value: number): string => String(value).padStart(2, '0')
-  return `${String(date.getFullYear())}-${two(date.getMonth() + 1)}-${two(date.getDate())} `
-    + `${two(date.getHours())}:${two(date.getMinutes())}`
 }
 
 function describe(error: unknown): string {

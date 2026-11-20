@@ -229,6 +229,30 @@ profile 的 patch 里，见 §3.5。
 | 表情包 | `emoji.steal` / `emoji.stealPrivate` | `false` | 偷图会落盘到 `<dataDir>/home/channel-qq/emoji` |
 | 识图 | `imageRecognition.enabled` / `maxPerMessage` | `false` / `2` | 关着时入站图片只留 `[图片]` 占位 |
 | 调试 | `debug` | `false` | — |
+| 判断后端 | `judge.*` | 见下 | 群聊「该不该说话」由谁判；默认 `host`（宿主模型） |
+
+#### 3.5.1 `judge`（判断后端，群聊「该不该说话」由谁判）
+
+同一条 `- id: channel-qq` 段下的 `judge:` 子块。**三条后端共用同一张九门决策表**
+（`judge-gates.ts`），换后端不改判断口径，也不改发送闸门。
+
+| 字段 | 默认 | 说明 |
+|---|---|---|
+| `backend` | `host` | `host` = 宿主默认模型；`jev-opencode` = opencode 云端 `systemone`；`jev-local` = 本机 `jev-score` |
+| `remoteBaseUrl` | `https://opencode.ai/inference/systemone/v1/systemone` | **完整端点**（含路径）。拼法与 base+path 混用会 404 |
+| `remoteModel` | `jev-1.13` | 付费 id。`jev-1.13-free` 是同一模型，但每天约 58K input token，UTC 00:05 重置 |
+| `remoteApiKeyRef` | `OPENCODE_API_KEY` | 凭据库里的**引用名**，每次判断前现取；值不进配置/日志 |
+| `remoteTimeoutMs` | `8000` | 超时按"这一轮不判断"处理，不累积失败 |
+| `remoteUserAgent` | `dsh-companion/jev-opencode` | **留空会被 Cloudflare 挡成 403 `error code 1010`**（错误体无提示） |
+| `scorerPath` / `modelPath` / `tokenizerPath` | `''` | 只给 `jev-local` 用。空 = 未配置，后台显示"未配置"而不是静默 ENOENT |
+| `contextSize` / `ubatch` / `seqMax` / `outputsMax` | `2048` / `256` / `4` / `64` | 只给 `jev-local` 用；实测 32768→2048 省 786 MB 显存、判决不变 |
+| `nGpuLayers` / `threads` / `minFreeVramMb` | `99` / `6` / `512` | 只给 `jev-local` 用；显存不够时**不降级到 CPU** |
+| `timeoutMs` | `3000` | 只给 `jev-local` 用（云端的超时是 `remoteTimeoutMs`） |
+| `phraseMinProbability` | `0.3` | 短语选择的最低概率。**本地标定值**，云端 `max(probabilities)` 偏高，需重标 |
+| `gatesEnabled` | 九门全开 | 关掉一门等于让决策表看不见一条事实 |
+
+**回滚**：`backend: host`（回到宿主模型）或 `backend: jev-local`（回到本机，需三个路径）。
+细节与实测数字见 [opencode 云端 Jev 判断后端](groups/jev-opencode-backend.md)。
 
 ### 3.6 `companion-health` + sidecars
 
