@@ -69,7 +69,17 @@ function seed(dir, { nameEn = 'Testa', nameZh = '测试角色', sourceEn = 'Synt
     items: [
       { id: 'top', slot: 'whole', contexts: ['home', 'sleep', 'everyday', 'casual'], name: { zh: '上衣', en: 'a cream knit sweater' }, description: { zh: '上衣', en: 'a cream knit sweater' } },
     ],
-    outfits: [{ id: 'home-default', context: 'home', pieces: { whole: 'top' } }],
+    // 三个场景都配一套：这套测试钉的是「名字补丁」，不是「衣柜场景」。
+    //
+    // 只配 home 会让结果随 CI 跑在几点而变：`wardrobe-context.mjs` 默认 nightWindow
+    // 22:30–07:00、eveningFrom 19:00，所以 19:00–22:30 判 home（能过），07:00–19:00 判
+    // everyday（没有 everyday 组合 → no-outfits-for-context → 断言失败）。2026-11-20
+    // 实测：同一个提交在 21:47 全过、17:51 连挂 5 项。补成三套后与时辰无关。
+    outfits: [
+      { id: 'home-default', context: 'home', pieces: { whole: 'top' } },
+      { id: 'everyday-default', context: 'everyday', pieces: { whole: 'top' } },
+      { id: 'sleep-default', context: 'sleep', pieces: { whole: 'top' } },
+    ],
   }, null, 2));
   fs.writeFileSync(path.join(dir, 'home', 'companion', 'visual-identity.json'), JSON.stringify({
     schemaVersion: 1,

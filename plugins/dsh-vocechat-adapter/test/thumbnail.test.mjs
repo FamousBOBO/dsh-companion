@@ -43,6 +43,35 @@ function makeImage(file, size = '160x240', ffmpeg = 'ffmpeg') {
   }
 }
 
+/**
+ * 这台机器有没有 ffmpeg？没有就显式跳过这一条。
+ *
+ * 造测试图要靠 ffmpeg，但 `macos-latest` / `windows-latest` 的 GitHub runner 镜像里**没有**。
+ * 早先的写法是 `assert.equal(makeImage(...), true, '需要 ffmpeg 造测试图')` —— 于是 CI 上
+ * 必然连挂 5 项，而本地永远绿。那不是被测代码坏了，是测试环境缺工具。
+ *
+ * 现在改成缺工具就 `t.skip(原因)`：跳过在输出里可见（SKIP 计数），比假装通过诚实，
+ * 也比让整条流水线红更准确。要真跑这 5 项的机器需要装 ffmpeg。
+ */
+let ffmpegChecked = null;
+function hasFfmpeg() {
+  if (ffmpegChecked === null) {
+    try {
+      execFileSync('ffmpeg', ['-version'], { stdio: 'ignore', windowsHide: true });
+      ffmpegChecked = true;
+    } catch {
+      ffmpegChecked = false;
+    }
+  }
+  return ffmpegChecked;
+}
+
+/** 需要造图的用例开头调它；缺 ffmpeg 时跳过并说明原因。 */
+function requireFfmpeg(t) {
+  if (hasFfmpeg()) return;
+  t.skip('本机没有 ffmpeg，造不出测试图（macos/windows runner 镜像默认不带）');
+}
+
 test('缩放按长边等比例，不拉伸也不放大', () => {
   // 竖图：长边是高
   assert.deepEqual(scaledSize(832, 1216, 1080), { width: 739, height: 1080, upscale: false });
@@ -70,7 +99,8 @@ test('平台 path 映射到缩略图目录（镜像结构，不是同名同目�
   assert.equal(thumbnailPathFor('D:/VC/upload', ''), null);
 });
 
-test('缩略图不存在时不动手：那是"客户端本来就用原图"的情况', async () => {
+test('缩略图不存在时不动手：那是"客户端本来就用原图"的情况', async (t) => {
+  requireFfmpeg(t);
   const root = tmp();
   const original = path.join(root, 'original.png');
   assert.equal(makeImage(original), true, '需要 ffmpeg 造测试图');
@@ -105,7 +135,8 @@ test('原图缺失时也明确拒绝，而不是留下半个文件', async () =>
   assert.equal(fs.readFileSync(thumb, 'utf8'), 'stale');
 });
 
-test('升级成功后缩略图更大更清晰，且 .meta 的 MIME 跟着改', async () => {
+test('升级成功后缩略图更大更清晰，且 .meta 的 MIME 跟着改', async (t) => {
+  requireFfmpeg(t);
   const root = tmp();
   const original = path.join(root, 'original.png');
   assert.equal(makeImage(original, '800x1200'), true, '需要 ffmpeg 造测试图');
@@ -140,7 +171,8 @@ test('升级成功后缩略图更大更清晰，且 .meta 的 MIME 跟着改', a
   assert.ok(fs.statSync(thumb).size > before, '升级后的缩略图应当比原来大');
 });
 
-test('ffmpeg 不可用时退回用原图覆盖，并把 meta 改成原图的 MIME', async () => {
+test('ffmpeg 不可用时退回用原图覆盖，并把 meta 改成原图的 MIME', async (t) => {
+  requireFfmpeg(t);
   const root = tmp();
   const original = path.join(root, 'original.png');
   assert.equal(makeImage(original, '400x600'), true, '需要 ffmpeg 造测试图');
@@ -187,7 +219,8 @@ test('认不出 MIME 的格式不会让缩略图变成二进制垃圾', async ()
   assert.equal(fs.readFileSync(path.join(thumbDir, 'weird'), 'utf8'), 'old');
 });
 
-test('原图比现有缩略图还清晰度低时不换 —— 换完屏幕上反而更糊', async () => {
+test('原图比现有缩略图还清晰度低时不换 —— 换完屏幕上反而更糊', async (t) => {
+  requireFfmpeg(t);
   const root = tmp();
   const original = path.join(root, 'small.png');
   // 原图 64×64，服务端把它放大成了 480×480 的缩略图（这是服务端真实行为）
@@ -213,7 +246,8 @@ test('原图比现有缩略图还清晰度低时不换 —— 换完屏幕上反
   assert.equal(fs.statSync(thumb).size, beforeBytes, '文件必须一个字节都没动');
 });
 
-test('readPixelSize 能认 PNG 与 JPEG 两种', async () => {
+test('readPixelSize 能认 PNG 与 JPEG 两种', async (t) => {
+  requireFfmpeg(t);
   const root = tmp();
   const png = path.join(root, 'a.png');
   const jpg = path.join(root, 'b.jpg');
