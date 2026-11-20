@@ -380,7 +380,7 @@ export function createMediaService({
     return {
       anchor,
       // 认得出模型用了哪个写法就算写了：英文名、中文名、persona id 都算。
-      // persona id 也算，是因为模型有时会写 `march7` 这种内部键 —— 那同样把画面锚住了。
+      // persona id 也算，是因为模型有时会写内部键（不带空格的紧凑形式）—— 那同样把画面锚住了。
       candidates: [nameEn, nameZh, visual?.personaId ?? ''].map(x => String(x ?? '').trim()).filter(Boolean),
       reason: 'ok',
     };

@@ -36,12 +36,13 @@ vision status=reserved-disabled  locked=true
 ```
 
 后端依赖逐个落地：
+（路径按 `<占位>` 写：这是本机实测清单，原样含真实绝对路径，`verify.mjs` 的 leak 扫描会拦。）
 
 ```text
 C:/Python314/python.exe                                            存在
-C:/Users/bobo/Documents/Bot/astrbot/.../image_pipeline              存在
-C:/Users/bobo/Documents/Bot/runtime/gpu_model_gateway.py            存在
-C:/Users/bobo/Documents/Bot/breeze-tts2/march7-emotion-presets.json 存在
+<BOT_HOME>/astrbot/.../image_pipeline                              存在
+<BOT_HOME>/runtime/gpu_model_gateway.py                           存在
+<BOT_HOME>/breeze-tts2/<PERSONA_ID>-emotion-presets.json           存在
 ```
 
 作业账本（`data/home/media/state/ledger.json`）62 条、57 个产物：
