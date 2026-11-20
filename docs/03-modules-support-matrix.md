@@ -26,8 +26,10 @@
 | `sidecars/huawei-health-cn` | —（Python） | Win（实机）／其余未验证 | Python 3.9+；华为运动健康 CN 账号。上游为 **MIT 且随包分发**（`python/` 下 3 个派生文件 + 1 个本项目自写的服务端，见 §1.2.1）；`$HUAWEI_UPSTREAM_PKG` 只是**可选覆盖** | ❌ 否 |
 | `sidecars/ble-heart-rate` | —（Python） | Win（实机，真机跑通）／macOS·Linux 未验证 | Python 3.12 + `bleak`；支持心率广播的 BLE 设备（**原创代码，不受上游许可影响**） | ❌ 否 |
 | `dsh-paste-search` | `@dsh-companion/paste-search` | Win / Linux / macOS | 无 | ❌ 否 |
+| `dsh-channel-vocechat` | `@dsh-companion/channel-vocechat` | Win（实机）／Linux·macOS 未验证 | **VoceChat Server**（自建或公网实例）；Bot 账号与 API Key | ❌ 否 |
+| `dsh-vocechat-adapter` | `@dsh-companion/vocechat-adapter` | Win（实机）／其余未验证 | `dsh-channel-vocechat`；群聊另需一个能判「该不该说话」的通道（当前由 `dsh-channel-qq` 发布 `companionJudge`） | ❌ 否 |
 
-发布树规模：**10 个插件模块 + 2 个 sidecar**（另有 `qq-idle-compaction.mjs` 作为通道随附模块）。
+发布树规模：**12 个插件模块 + 2 个 sidecar**（另有 `qq-idle-compaction.mjs` 作为通道随附模块）。
 
 ### 1.1 外部可选模块（**不在本仓库**）
 
@@ -241,6 +243,8 @@ dsh-paste-search              独立（UI 入口）
 | `sidecars/huawei-health-cn` | 见负责人交接报告（含 `test_protocol_contract.py` / `test_redact.py`） | — | **未验证**（需要真实华为账号；代码路径与 MIT 许可已就位） | — | — |
 | `sidecars/ble-heart-rate` | 见负责人交接报告（`--fixture` 可无硬件跑） | — | — | — | 未验证 |
 | `dsh-paste-search` | **无测试** | 未验证（验收未启用该模块） | — | — | — |
+| `dsh-channel-vocechat` | 见 `docs/vocechat-v1-acceptance-20261117.md` | **✅**（真实 VoceChat 实例装载） | **✅**（真实 SSE 入站 + 用户侧 API） | **✅**（真实发帖有 `mid`） | — |
+| `dsh-vocechat-adapter` | **327 通过 / 0 失败**（其中自主链路 24 条见 `test/autonomy.test.mjs`） | **✅**（真宿主装载，日志有 `自主链路 on（mode=live）`） | **✅**（2026-11-20 生产实例：真实 `systemone` 判断 + 真实发帖，`sent-log` 有 `mid`、`presence-shadow.jsonl` 有对应行） | **✅**（真实发帖有 `mid`，`sent-log` 有对应行） | 频道门控从掷骰子升级为九门判断（复用 `companionJudge`） |
 | ~~`dsh-super-injector`~~ | **未收录**（原因见 §1.2），无证据也不应有 | — | — | — | — |
 | `tools/migrate`（迁移 CLI） | **10 项离线测试通过**（`node --test tools/migrate/test/migrate.test.mjs`）；并在**真实数据副本**上跑通 `export`（976 条记忆，VACUUM INTO 快照）/ `check` / `import --dry-run` | — | — | — | — |
 

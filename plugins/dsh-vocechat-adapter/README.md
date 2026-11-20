@@ -44,6 +44,9 @@ SSE 帧
 | `scripts/probe-history.mjs` | 探针：把 `GET /api/group/{gid}/history` 的真实字段形状固化下来 |
 | `scripts/verify-group-chain.mjs` | 只读核对：在真实频道数据上走一遍群聊链路的每一步（不发消息） |
 | `scripts/send-as-owner.mjs` | 以主人身份在频道说一句（独立 device，不抢别人的 refresh_token） |
+| `autonomy.mjs` | 频道自主链路：旁听环 → 定时判断 → 发言闸门 → 发送（纯逻辑，不读时钟不发送） |
+| `autonomy-config.mjs` | `autonomy.*` 的解析与夹紧（`mode` 认不出的一律 `off`） |
+| `judge-link.mjs` | 取 QQ 插件发布的 `companionJudge` 端口（缺席时每 8 秒重试） |
 
 ---
 
@@ -328,18 +331,60 @@ segmentation:
 一次性探针（`probe-history.mjs` / `measure-display.mjs` / `send-as-owner.mjs` /
 `verify-group-chain.mjs`）都只在手工排查时运行，不进运行期链路。
 
+## 频道自主链路（2026-11-20）
+
+见 `autonomy.mjs` / `autonomy-config.mjs` / `judge-link.mjs`；设计理由在
+`docs/groups/jev-opencode-backend.md` §6。
+
+**它替换的是「掷骰子」，不是「回合驱动」**：频道门控（`gate.mjs` 的 `talkProbability`）回答
+"这一句接不接"，而这条链路回答"这一句**该不该**接"——它看的是这个群在聊什么。
+两者并存：骰子那条路照旧（`@` 与会话内回合仍由它管），自主链路只在**没人点名**时补一句。
+
+```yaml
+autonomy:
+  enabled: false        # 出厂关；装上插件不该立刻在群里自己说话
+  mode: off             # live | shadow | off（认不出的一律 off，fail-closed）
+  judgeIntervalMs: 60000
+  ambientMaxEntries: 40
+  ambientMaxChars: 6000
+  ambientTtlMs: 600000
+  speakMinIntervalMs: 300000
+  speakMaxPerHour: 3
+  quietAfterTurnMs: 60000
+  replyMaxChars: 70
+  replayWindowMs: 600000
+  phraseRepeatWithinMs: 1800000
+```
+
+| 判据 | 谁给 | 说明 |
+|---|---|---|
+| 群里在聊什么 | `autonomy.observe`（每条频道事件） | **只存不判**；旁听环不驱动回合 |
+| 该不该说 | `companionJudge.decide`（QQ 插件发布） | 同一张九门决策表、同一份短语库；抬头写成 `uid N` |
+| 能不能说 | `createSpeakGate` | 最小间隔 / 每小时额度 / 字数 / `@` 拦截 / 短语重复冷却 |
+| 这一轮为什么没说 | `autonomy.state.lastReason` | `info().autonomy` 里能直接看到 |
+
+**四种失败模式都不会抛**（都只是"不说话"）：判断端口缺席（`judge-port-absent`）、
+`mode:off`、刚跑完回合（`quiet-after-turn`）、对端 `no-route`（`no-route:status:429` 之类）。
+只有 `invalid` 与 `send-failed` 记失败。
+
+**影子/实发记录**：`<dataDir>/logs/presence-shadow.jsonl`，一行一条，格式与 QQ 的同名文件一致
+（多一个 `source: 'vocechat'`）。`shadow` 模式下 `outcome` 写 `shadow:<reason>`，
+真发出去写 `spoke`——盲评看的就是这个区别。
+
 ## 测试
 
 ```bash
-node --test test/*.test.mjs        # 303 项
+node --test test/*.test.mjs        # 327 项
 node scripts/verify-group-chain.mjs 1   # 只读核对：真实频道数据上走一遍每一步（不发消息）
 ```
 
-离线 303 项覆盖：房间键的往返与命名空间；私聊五条门控规则与 fail-closed；**频道成员 + 概率
+离线 327 项覆盖：房间键的往返与命名空间；私聊五条门控规则与 fail-closed；**频道成员 + 概率
 三态判定（含"传进 Promise"这个真实踩过的坑）**；纠正判据（含 `reasoning-delta` 不算正文）；
 **群里沉默合法与私聊仍纠正**；队列的串行/并发/上限/失败隔离；会话缓存与 create→resume 重试；
 路由解析与守卫对齐；发送账本（含 `history-miss` / `model-silence` 两个新 kind）；
-端口解析；分段规则（受保护区域、封顶并尾巴、**群聊 3 段 120 字与私聊 6 段**）。
+端口解析；分段规则（受保护区域、封顶并尾巴、**群聊 3 段 120 字与私聊 6 段**）；
+**自主链路 24 项（旁听环上限与去重、四道发言闸各自单独生效、短语重复冷却、
+`mode:off` 与端口缺席的降级、影子行 `outcome` 的写法、`whyNot` 的理由优先级）**。
 
 只读核对脚本覆盖：频道详情与成员表、history 真实字段形状、渲染顺序与发言人标签、
 `rooms.json` 水位跨重启、四种门控原因码、两档分段、两套提示词、入站包结构。它**不驱动

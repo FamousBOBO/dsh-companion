@@ -137,3 +137,31 @@
 
         # 兜底纠正的文本（一轮一次，不重放工具）。留空用内置文案（带房间目标）。
         correctionText: ''
+
+        # ── 频道自主链路（2026-11-20）。出厂关；装上插件不该立刻在群里自己说话。
+        #
+        # 两件事，别混：
+        #   门控（上面 group.talkProbability）  回答「这一句接不接」
+        #   自主链路                            回答「这一句**该不该**接」
+        # 判断由 QQ 插件发布（companionJudge），复用同一张九门决策表。
+        # 取不到判断端口就不起定时器（判断不了就不说话），每 8 秒重试一次。
+        autonomy:
+          enabled: false
+          # live = 真的发；shadow = 判断跑、落盘、一句不发；off = 不跑。认不出的一律 off。
+          mode: 'off'
+          # 每群判一次的最小间隔。
+          judgeIntervalMs: 60000
+          # 旁听环的上限（长跑进程不许把它养成泄漏）。
+          ambientMaxEntries: 40
+          ambientMaxChars: 6000
+          ambientTtlMs: 600000
+          # 三道发言闸。silent **不占**每小时额度。
+          speakMinIntervalMs: 300000
+          speakMaxPerHour: 3
+          replyMaxChars: 70
+          # 刚跑完一轮回合的这段窗口内不判（避免"刚回完又补一句"）。
+          quietAfterTurnMs: 60000
+          replayWindowMs: 600000
+          # 同一句短语的重复冷却。短语库只有 13 条、判断又稳定，实测会连说三遍；
+          # 换说法等于临时生成，所以宁可不开口。0 = 关掉。
+          phraseRepeatWithinMs: 1800000

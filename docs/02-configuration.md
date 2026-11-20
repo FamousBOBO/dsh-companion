@@ -354,6 +354,30 @@ profile 的 patch 里，见 §3.5。
 > **未实现（写清楚，不含糊）**：GIF 关键帧理解、OCR、embedding 向量召回、QQ 内置 `face` 表情投递、
 > 真实平台发送验收。当前证据只到 `offline-test`，见 `docs/07`。
 
+### 3.10 `dsh-vocechat-adapter`（VoceChat 通道）
+
+同一条 `- id: vocechat-adapter` 段。频道（群聊）这一档是最近才补的，与私聊共用同一条事件路径，
+分档判据是"事件的目标形状"（一条消息不可能既是频道又是私聊）。
+
+| 段 | 关键字段 | 默认 | 说明 |
+|---|---|---|---|
+| 顶层 | `allowUsers` / `allowGroups` | `[]` / `[]` | 为空即 fail-closed（一条都不驱动） |
+| `group` | `enabled` / `talkProbability` | `true` / `0.3` | 频道档：成员表 + 概率。`allowUsers` 在频道上退化成兜底 |
+| `group` | `historyLimit` / `memberCacheMs` | `20` / `60000` | 上下文条数（平台封顶 100）与成员表缓存 |
+| `group` | `allowCorrection` | `false` | **群里沉默合法**：不注入"必须发言"的兜底纠正 |
+| `group.peerBots` | uid 列表 | — | 别的陪伴实例/平台机器人：话进上下文，但不驱动回合 |
+| `autonomy` | `enabled` / `mode` | `false` / `off` | 频道自主链路；`live` 真发，`shadow` 只落盘，认不出的一律 `off` |
+| `autonomy` | `judgeIntervalMs` | `60000` | 每群判一次的最小间隔 |
+| `autonomy` | `speakMinIntervalMs` / `speakMaxPerHour` / `replyMaxChars` | `300000` / `3` / `70` | 三道发言闸；`silent` **不占**每小时额度 |
+| `autonomy` | `quietAfterTurnMs` / `replayWindowMs` | `60000` / `600000` | 刚跑完回合的让路窗口、允许引用的时间窗 |
+| `autonomy` | `phraseRepeatWithinMs` | `1800000` | 同一句短语的重复冷却（`0` = 关掉） |
+
+**自主链路的判断来自 QQ 插件**（发布的 `companionJudge`），不是本模块自带模型：
+取不到端口就不起定时器（判断不了就不说话），每 8 秒重试一次。
+影子/实发记录落 `<dataDir>/logs/presence-shadow.jsonl`（带 `source: 'vocechat'`）。
+
+**回滚**：`group.enabled: false`（频道回到"不驱动"，私聊不受影响）或 `autonomy.mode: off`。
+
 ---
 
 ## 4. 配置的生命周期与热重载
