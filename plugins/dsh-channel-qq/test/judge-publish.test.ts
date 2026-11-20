@@ -9,15 +9,28 @@
  */
 
 import assert from 'node:assert/strict'
-import { dirname } from 'node:path'
-import { test } from 'node:test'
+import { mkdirSync, mkdtempSync, realpathSync, rmSync } from 'node:fs'
+import { tmpdir } from 'node:os'
+import { dirname, join } from 'node:path'
+import { after, test } from 'node:test'
 
 import { JUDGE_SERVICE, publishJudgeToPeers } from '../src/features/inbound/presence-wiring-judge-publish.js'
 import type { JudgePort } from '../src/app/inbound/judge-port.js'
 
-const DSH_HOME = 'D:\\DSH\\dsh-production\\data\\home'
-/** 发布键里的 root（= `dshHome` 的父目录；发布方用的是 `realpath` 之后的 dirname）。 */
-const ROOT = dirname(DSH_HOME)
+/** 一次性的真实 home。
+ *
+ * **必须是真实存在的目录**：发布方的 root 是 `dirname(realpathSync(dshHome))`，目录不在
+ * 就解析成 `null`，于是连一个键都不会写——在 Linux/macOS 上写死一个 Windows 路径正是
+ * 这样把六条断言全弄红的（本地 Windows 有那个目录，所以看不出来）。
+ */
+const TMP_ROOT = mkdtempSync(join(tmpdir(), 'judge-publish-'))
+const DSH_HOME = join(TMP_ROOT, 'data', 'home')
+mkdirSync(DSH_HOME, { recursive: true })
+/** 发布键里的 root（与发布方同一算法：`realpath` 之后再取父目录；macOS 的 `/var` 是软链）。 */
+const ROOT = dirname(realpathSync(DSH_HOME))
+after(() => {
+  try { rmSync(TMP_ROOT, { recursive: true, force: true }) } catch { /* 清理失败不影响结论 */ }
+})
 
 /** 一个假 `SubHost`（只带这段代码用到的面）。 */
 function host() {
