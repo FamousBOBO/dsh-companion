@@ -656,7 +656,7 @@ const ISOLATIONS = new Map();
 /**
  * 把**别的通道的发送工具**从这个房间里挡掉。
  *
- * 2026-11-18 的实测（`docs/media/capability-audit.md`）：vc 会话的
+ * 2026-11-18 的实测（`docs/35-media-capability-audit-20261118.md`）：vc 会话的
  * `request/header` 里有 131 个工具，其中 28 个是 `qq_*`。`companion_media_draw` 的 handoff
  * 当时写死 `qq_sticker`，而 `qq_sticker` 的私聊目标被 `assertTargetAllowed` 限定为
  * `admins[0]` —— 于是「在 VoceChat 里画一张图」的真实结果是：图发到了主人的 QQ，
@@ -1330,7 +1330,7 @@ export function apply(ctx, rawConfig) {
    * 把这一批里的媒体事件落成本机文件，并把路径挂回事件上。
    *
    * 为什么在交付之前做：模型能读的是**本机文件**，不是平台的 `2026/11/18/<uuid>` 这种
-   * 相对键。实测（`docs/media/capability-audit.md`）：不落盘时模型会自己
+   * 相对键。实测（`docs/35-media-capability-audit-20261118.md`）：不落盘时模型会自己
    * 去翻文件系统，那一轮花了 6 次 pwsh + 1 次 grep，而且结论依赖它有没有猜对目录。
    *
    * 每条独立成败：一张图取不到不该让整批文字也发不出去。失败只记在事件上（

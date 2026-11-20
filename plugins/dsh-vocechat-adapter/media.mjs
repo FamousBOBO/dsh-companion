@@ -1,6 +1,6 @@
 // 媒体投递：把本机文件发到 VoceChat，把收到的媒体落成本机文件。
 //
-// 为什么单独一个文件（2026-11-18，`docs/media/capability-audit.md`）：
+// 为什么单独一个文件（2026-11-18，`docs/35-media-capability-audit-20261118.md`）：
 //
 //   生图与 TTS 一直是好的，但生成物**发不出去**。`companion-media` 的 handoff 写死了
 //   `qq_sticker` / `qq_voice`（它不知道自己在哪个通道），而 vc 会话里那 28 个 `qq_*`

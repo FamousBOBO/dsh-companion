@@ -1,9 +1,9 @@
 // 防互相点火：两个陪伴实例同群时，同伴的话进上下文但**不许驱动回合**。
 //
-// 这一组的场景是真实的（2026-11-19 本机）：三月七 uid=4 与沈幺 uid=5 是同一个频道 gid=1
+// 这一组的场景是真实的（2026-11-19 本机）：实例甲 uid=4 与实例乙 uid=5 是同一个频道 gid=1
 // 的成员，各自的适配层都把"频道成员说话"当合法触发源。于是：
 //
-//   三月七发言 → 沈幺看到成员 4 → 掷 0.3 → 沈幺发言 → 三月七看到成员 5 → 掷 0.3 → …
+//   实例甲发言 → 实例乙看到成员 4 → 掷 0.3 → 实例乙发言 → 实例甲看到成员 5 → 掷 0.3 → …
 //
 // 概率只能让链变短，**不能保证它停**（尾部永远不是 0）。而每一环都是真实模型调用。
 // 判据必须是硬的：`peerBots` 里的 uid 一律 `peer-bot:<uid>`，不掷骰子、不进缓冲。
@@ -108,7 +108,7 @@ test('peerBots 里的人是"不驱动"，不是"不可见"：历史取数不受�
   // 上下文由 history.mjs 直接读平台，不经过门控 —— 这条断言把那个边界钉住。
   const { mapHistoryRows, selectRows } = await import('../history.mjs');
   const rows = mapHistoryRows([
-    { mid: 10, from_uid: 5, detail: { content: '沈幺说的', content_type: 'text/plain' } },
+    { mid: 10, from_uid: 5, detail: { content: '实例乙说的', content_type: 'text/plain' } },
     { mid: 11, from_uid: 1, detail: { content: '主人说的', content_type: 'text/plain' } },
   ]);
   assert.deepEqual(selectRows(rows, {}).map(row => row.mid), [10, 11]);
