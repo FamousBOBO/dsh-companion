@@ -166,6 +166,20 @@ segmentation:
 
 ---
 
+### 部署路径（哪些是默认值，哪些该覆盖）
+
+本机默认值写死在代码里，换机器只改 config 或环境变量，**不改源码**：
+
+| 项 | 默认值 | 覆盖方式 |
+|---|---|---|
+| `media.thumbnail.uploadRoot` | `D:/DSH/vocechat/vocechat-data/upload`（VoceChat 容器 upload 目录在宿主机上的挂载点） | config 的 `media.thumbnail.uploadRoot`；指错了只是缩略图不升级，原图仍会正常发 |
+| `scripts/probe-history.mjs` 的 DB / 证据目录 | `D:/DSH/vocechat/vocechat-data/db/db.sqlite`、`D:/DSH/vocechat/evidence` | `VOICECHAT_DB`、`VOICECHAT_EVIDENCE_DIR` |
+| `scripts/send-as-owner.mjs` 的 secrets | `D:/DSH/vocechat/secrets` | `VOICECHAT_SECRETS` |
+| `scripts/verify-group-chain.mjs` 的 DB | 同上 | `VOICECHAT_DB` |
+
+一次性探针（`probe-history.mjs` / `measure-display.mjs` / `send-as-owner.mjs` /
+`verify-group-chain.mjs`）都只在手工排查时运行，不进运行期链路。
+
 ## 测试
 
 ```bash
