@@ -45,6 +45,7 @@
     "catalog": "node scripts/update-model-catalog.mjs"
   },
   "dependencies": {
+    "@huggingface/tokenizers": "^0.2.0",
     "silk-wasm": "^3.7.1",
     "ws": "^8.18.0"
   },

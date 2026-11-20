@@ -143,6 +143,9 @@ export const ROOT_ENTRIES: ReadonlyArray<readonly [string, FieldSpec | SectionFi
   // "它必须是最后一个段"（那条不变式的意思是"新段追加在它之后会打乱它自己的键位记录"）。
   // 放在它前面，尾部仍然只有"多一段"这一处 diff，不重排既有键。
   ['song', section('点歌翻唱', 'song')],
+  // 判断模型（本地 Jev typed）：与 song 同理插在 `presence` 之前——尾部仍然只有
+  // "多一段"这一处 diff，不重排既有键。
+  ['judge', section('判断模型', 'judge')],
   // 群聊旁听与自主接话：**追加在末尾**——键顺序就是线上配置键顺序，往中间插一行
   // 会让 golden 快照的 diff 面从"尾部多一段"变成"整份重排"。
   ['presence', section('群聊旁听与接话', 'presence')],

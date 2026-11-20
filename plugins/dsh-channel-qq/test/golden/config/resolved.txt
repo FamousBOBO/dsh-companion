@@ -697,6 +697,27 @@
     "separatorDtype": "auto",
     "separatorDevice": "auto"
   },
+  "judge": {
+    "backend": "host",
+    "remoteBaseUrl": "https://opencode.ai/inference/systemone/v1/systemone",
+    "remoteModel": "jev-1.13",
+    "remoteApiKeyRef": "OPENCODE_API_KEY",
+    "remoteTimeoutMs": 8000,
+    "remoteUserAgent": "dsh-companion/jev-opencode",
+    "scorerPath": "",
+    "modelPath": "",
+    "tokenizerPath": "",
+    "contextSize": 2048,
+    "ubatch": 256,
+    "seqMax": 4,
+    "outputsMax": 64,
+    "nGpuLayers": 99,
+    "threads": 6,
+    "minFreeVramMb": 512,
+    "timeoutMs": 3000,
+    "phraseMinProbability": 0.3,
+    "gatesEnabled": "tech_issue,help_open,one_to_one,conflict,privacy,inject,closed,casual,share"
+  },
   "presence": {
     "mode": "",
     "enabled": false,

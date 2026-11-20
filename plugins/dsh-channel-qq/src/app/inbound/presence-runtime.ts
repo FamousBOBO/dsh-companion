@@ -19,6 +19,8 @@ import { DEFAULTS, limitsOf, positiveOr, type CompletePort, type PresenceView } 
 import { GroupTimelineBook, type GroupEventsScopedView, type GroupEventsView } from './presence-timeline.js'
 import { GroupSchedulerBook, type GroupSchedulerStats } from './presence-scheduler.js'
 import { runCycleFor, SENT_MEMORY, TIMELINE_SELF_LIMIT, type CycleContext } from './presence-cycle.js'
+import { guardModeNow, modeNow, selfIdNow } from './presence-cycle-inputs.js'
+import type { JudgePort } from './judge-port.js'
 import { quietWaitMs, starvationWarnMs } from './presence-cadence.js'
 import { personaSnapshotOf, sentLinesOf, starvationLine } from './presence-reads.js'
 import type { Clock, TimerHandle } from '../../ports/clock.js'
@@ -95,6 +97,14 @@ export interface PresenceDeps {
    * 唯一同时看得到配置与判断入口的地方。装配侧只把"怎么读"递进来一次。
    */
   readonly registry?: () => RegistryFile | null
+  /**
+   * 本地 Jev 判断端口（`judge.backend === 'jev-local'` 时用）；缺省 = 没装这一路。
+   *
+   * 与 `complete` 并列：切后端只改配置，装配不动（见 `judge-dispatch.ts`）。
+   */
+  readonly judge?: JudgePort
+  /** 判断后端的**现取**值（`host` / `jev-local`）；缺省 `host`。 */
+  readonly judgeBackend?: () => string
   readonly recordShadow?: (decision: {
     groupId: number
     action: 'reply' | 'join' | 'react'
@@ -253,6 +263,9 @@ export class GroupPresence {
       log: this.deps.log,
       platform: this.deps.platform,
       complete: this.deps.complete,
+      // 本地判断那一路（可选）：漏接时 `runJudge` 会退回宿主模型并记一行日志。
+      ...(this.deps.judge === undefined ? {} : { judge: this.deps.judge }),
+      judgeBackend: () => this.deps.judgeBackend?.() ?? 'host',
       recordSent: this.deps.recordSent,
       ambient: this.deps.ambient,
       timelines: this.timelines,
@@ -275,26 +288,12 @@ export class GroupPresence {
       ...(this.deps.memory === undefined ? {} : { memory: this.deps.memory }),
       ...(this.deps.remember === undefined ? {} : { remember: this.deps.remember }),
       // 最后一道发送闸门：每次现取（不能装配时读一次，否则在途的模型结果会照发）。
-      modeOf: () => {
-        try {
-          const mode = this.deps.mode?.()
-          return typeof mode === 'string' && mode !== '' ? mode : 'live'
-        } catch {
-          return 'off'
-        }
-      },
+      modeOf: () => modeNow(this.deps.mode),
       // 真实的平台发送尝试（P9-A3）：耗时只含平台调用本身，失败也计入。
       noteSend: (input: { groupId: number; latencyMs: number; ok: boolean }) => this.scheduler.noteSend(input),
       // 语义复核档位（P6-B）+ 她自己的号（P6-A）：两个都每次现取。
-      guardMode: () => this.deps.guardMode?.() ?? 'warn',
-      selfId: () => {
-        try {
-          const id = this.deps.platform().selfId
-          return typeof id === 'number' && Number.isSafeInteger(id) && id > 0 ? id : 0
-        } catch {
-          return 0
-        }
-      },
+      guardMode: () => guardModeNow(this.deps.guardMode),
+      selfId: () => selfIdNow(this.deps.platform),
       ...(this.deps.recordShadow === undefined ? {} : { recordShadow: this.deps.recordShadow }),
       ...(this.deps.afterSpeak === undefined ? {} : {
         // 话题**按群号**取（P9-G §1 的修复）：`view().topic()` 是「唯一活跃群」的旧降级，

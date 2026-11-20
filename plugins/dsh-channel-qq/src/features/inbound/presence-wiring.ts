@@ -8,30 +8,29 @@
  * 于是关掉开关就等于回到旧行为；这是本项目的通用做法，也是这次的应急回滚手段。
  *
  * 文件内的分层（`wirePresence` 只做编排，每段依赖各有自己的构造函数）：
- *   - {@link personaDeps}：群聊可见的人格快照（P0 §4.2）；
- *   - {@link memoryRecall}：群记忆召回（P1 §5.4）；
- *   - {@link publishEvents}：把时间线视图发给兄弟插件行（P3 §7.2）。
+ *   - `personaReader` / `memoryRecall` / `memoryWriter`：判断层的输入源（`presence-wiring-parts.ts`）；
+ *   - `judgeWiring`：本地 Jev 那一路（`presence-wiring-judge.ts`）；
+ *   - `publishEvents`：把时间线视图发给兄弟插件行（P3 §7.2，本文件）。
  */
 
 import { AmbientStore, presenceRuns } from '../../app/inbound/ambient-store.js'
 import { GroupPresence } from '../../app/inbound/presence-runtime.js'
 import { createHostComplete } from '../../adapters/dsh-host/completion.js'
-import { dataRootOfDshHome, readGroupPersona, type GroupPersonaDeps } from '../../adapters/dsh-host/group-persona.js'
+import { dataRootOfDshHome } from '../../adapters/dsh-host/group-persona.js'
 import { createParticipantRegistry } from '../../adapters/fs-store/participant-registry.js'
 import type { RegistryFile } from '../../core/participant.js'
-import { openGroupMemory, recallGroupMemory, rememberGroupFacts } from '../../adapters/dsh-host/group-memory.js'
 import { publishServiceToPeers } from '../../adapters/dsh-host/service-registry.js'
 import { afterSpeakHandler } from './presence-afterspeak.js'
+import { judgeWiring, type JudgeWiring } from './presence-wiring-judge.js'
+import { publishJudgeToPeers } from './presence-wiring-judge-publish.js'
+import { memoryRecall, memoryWriter, personaReader } from './presence-wiring-parts.js'
 import { socialResource } from './presence-resource.js'
-import { DEFAULTS, positiveOr } from '../../app/inbound/presence-flow.js'
 import { systemClock } from '../../ports/clock.js'
 import { JsonlLogStream } from '../../adapters/fs-store/log-stream.js'
 import { modeNoteOf, modeRuns, resolveMode, type GroupPresenceMode } from '../../core/presence-mode.js'
 import * as path from 'node:path'
 import type { LogStream } from '../../ports/store.js'
 import type { PresenceObserver } from '../../app/inbound/group-ambient.js'
-import type { GroupMemoryRecall } from '../../app/inbound/group-memory-contract.js'
-import type { CandidateFact } from '../../core/group-memory-extract.js'
 import type { SentLogHub } from '../../sent-log.js'
 import type { ChatPlatform } from '../../ports/platform.js'
 import type { SubHost } from '../plugin-kit.js'
@@ -48,68 +47,6 @@ export interface PresenceWiring {
    */
   readonly participants?: () => RegistryFile | null
   readonly dispose: () => void
-}
-
-/**
- * 人格快照的取用（**每轮现取**：快照自带版本号，人格文件改了要在下一轮生效）。
- *
- * 这条路径没有系统提示词、没有会话，所以人格只能从这条缝进提示词；适配层拿不到就
- * 返回 `null`，提示词里明说"这次拿不到完整人格"，而不是让它自由发挥。
- * 日志只在**来源变了**时打一行——每轮都打会把群里其它日志淹掉。
- */
-function personaReader(host: SubHost): () => ReturnType<typeof readGroupPersona>['snapshot'] {
-  const deps: GroupPersonaDeps = {
-    context: () => host.bridge.tagContext(),
-    // 桥是可选通道（新布局下 home 的父目录才是套件根，能不能解析到取决于部署形态）。
-    bridge: () => null,
-    dataRoot: () => dataRootOfDshHome(host.dshHome),
-    log: host.log,
-  }
-  let last = ''
-  return () => {
-    const read = readGroupPersona(deps)
-    const note = read.snapshot === null ? `none(${read.reason})` : `${read.via} v${read.snapshot.version}`
-    if (note !== last) {
-      last = note
-      host.log(`presence: 人格快照 ${note}`)
-    }
-    return read.snapshot
-  }
-}
-
-/**
- * 群记忆召回（P1 §5.4）。
- *
- * 打不开库不是错误：`recallGroupMemory` 返回空结果，群聊照常跑（§5.5 的要求）。
- * 日志同样只在**可用性变了**时打一行。
- */
-function memoryRecall(host: SubHost): (input: {
-  groupId: number
-  memberIds: readonly number[]
-  topic: string
-}) => GroupMemoryRecall {
-  let last = ''
-  return ({ groupId, memberIds, topic }) => {
-    const dataRoot = dataRootOfDshHome(host.dshHome)
-    const recall = recallGroupMemory({
-      dataRoot,
-      groupId,
-      memberIds,
-      topic,
-      budgetChars: positiveOr(
-        host.config.presence?.memoryBudgetChars ?? DEFAULTS.memoryBudgetChars,
-        DEFAULTS.memoryBudgetChars,
-      ),
-    })
-    const handle = openGroupMemory(dataRoot)
-    const note = `${handle.reason}/${String(recall.group.length)}g${String(recall.member.length)}m`
-    if (note !== last) {
-      last = note
-      const where = handle.file === '' ? '未配置路径' : handle.file
-      host.log(`presence: 群记忆 ${note}${handle.reason === 'ok' ? '' : `（${where}）`}`)
-    }
-    return recall
-  }
 }
 
 /**
@@ -300,25 +237,52 @@ function guardModeOf(host: SubHost): () => string {
 }
 
 /**
- * 记忆写入（P1 §5.3）：逐条落库，失败只记一行。
+ * 执行器的依赖（**纯装配**：每个字段都是"怎么取"而不是"取到什么"）。
  *
- * 为什么打日志要"只在真写了东西时"：顺利时每轮都会有一条候选，逐轮打会把群里
- * 其它日志淹掉；而"一条都没写"是常态（大多数话不是事实），不值得记。
+ * 为什么抽成一个函数：`wirePresence` 本身只该做三件事——造零件、接线、留拆卸钩子。
+ * 把这二十个字段摊在它里面会让那个函数超出行数上限，而"哪个依赖是可选的、
+ * 缺省时行为是什么"这条信息也会淹没在字段列表里。
  */
-function memoryWriter(host: SubHost): (input: {
-  groupId: number
-  facts: readonly CandidateFact[]
-  nowMs: number
-}) => void {
-  return (input) => {
-    try {
-      const { written, merged, rejected } = rememberGroupFacts({ dataRoot: dataRootOfDshHome(host.dshHome), ...input })
-      if (written + merged > 0) {
-        host.log(`presence: 群 ${String(input.groupId)} 记住 ${String(written)} 条（合并 ${String(merged)}，拒 ${String(rejected)}）`)
-      }
-    } catch (error) {
-      host.log(`presence: 群记忆写入失败（已忽略）：${error instanceof Error ? error.message : String(error)}`)
-    }
+function presenceDepsOf(
+  host: SubHost,
+  parts: {
+    ambient: AmbientStore
+    afterSpeak: ReturnType<typeof afterSpeakHandler>
+    modeNow: () => string
+    shadowLog: ReturnType<typeof shadowLogger>
+    registry: ReturnType<typeof participantRegistryOf>
+    judge: JudgeWiring
+    fallbackPlatform: ChatPlatform
+    sentLogHub: SentLogHub
+  },
+): ConstructorParameters<typeof GroupPresence>[0] {
+  return {
+    config: () => host.config,
+    clock: systemClock,
+    log: host.log,
+    platform: () => host.get('platform')?.platform ?? parts.fallbackPlatform,
+    persona: personaReader(host),
+    memory: memoryRecall(host),
+    afterSpeak: parts.afterSpeak,
+    // 每次现取：后台把 live 改成 shadow 时，在途的模型结果也必须被拦下。
+    // 同一个函数也决定"要不要跑"（off → 不记旁听），所以热切换不需要重建执行器。
+    mode: parts.modeNow,
+    // 语义复核档位（P6-B）：配错/取不到按 warn（只记不拦）。
+    guardMode: guardModeOf(host),
+    // 参与者身份（P9-G4 §2.2）：每次现取；没开注册表就是 null（全员"身份未确认"）。
+    ...(parts.registry === null ? {} : { registry: () => parts.registry?.fileSync() ?? null }),
+    recordShadow: parts.shadowLog,
+    remember: memoryWriter(host),
+    ambient: parts.ambient,
+    complete: createHostComplete({
+      context: () => host.bridge.tagContext(),
+      clock: systemClock,
+      log: host.log,
+    }),
+    recordSent: sentLogWriter(host, parts.sentLogHub),
+    // 本地判断那一路（可选；缺省 = 只走宿主模型）。
+    ...(parts.judge.port === undefined ? {} : { judge: parts.judge.port }),
+    judgeBackend: parts.judge.backend,
   }
 }
 
@@ -343,31 +307,16 @@ export function wirePresence(
   // 参与者注册表（P9-G4 §2.2）：装配一次，之后按 mtime 自己判断要不要重读。
   // 关着（`participants.enabled=false`）时**不造这个对象**——与"关掉就回到旧行为"同一条口径。
   const registry = participantRegistryOf(host)
-  const presence = new GroupPresence({
-    config: () => host.config,
-    clock: systemClock,
-    log: host.log,
-    platform: () => host.get('platform')?.platform ?? fallbackPlatform,
-    persona: personaReader(host),
-    memory: memoryRecall(host),
-    afterSpeak,
-    // 每次现取：后台把 live 改成 shadow 时，在途的模型结果也必须被拦下。
-    // 同一个函数也决定"要不要跑"（off → 不记旁听），所以热切换不需要重建执行器。
-    mode: modeNow,
-    // 语义复核档位（P6-B）：配错/取不到按 warn（只记不拦）。
-    guardMode: guardModeOf(host),
-    // 参与者身份（P9-G4 §2.2）：每次现取；没开注册表就是 null（全员"身份未确认"）。
-    ...(registry === null ? {} : { registry: () => registry.fileSync() }),
-    recordShadow: shadowLog,
-    remember: memoryWriter(host),
-    ambient,
-    complete: createHostComplete({
-      context: () => host.bridge.tagContext(),
-      clock: systemClock,
-      log: host.log,
-    }),
-    recordSent: sentLogWriter(host, sentLogHub),
+  // 判断后端（`judge.*`）：本地 Jev 那一路关着时这里返回的对象**不带端口**，
+  // 于是执行器只走宿主模型——与今日行为逐字节一致（见 `presence-wiring-judge.ts`）。
+  const judge = judgeWiring(host)
+  // 判断能力发布给兄弟行（VoceChat）：与 presence.enabled 无关，配了 typed 后端就发布。
+  const releaseJudge = publishJudgeToPeers(host, {
+    port: judge.port,
+    backend: judge.backend,
+    model: judge.model,
   })
+  const presence = new GroupPresence(presenceDepsOf(host, { ambient, afterSpeak, modeNow, shadowLog, registry, judge, fallbackPlatform, sentLogHub }))
   const releaseEvents = publishEvents(host, presence)
   // 后台「群社交」页（P8 §5.4）：只读诊断。它读的就是发送闸门真正在读的那个 mode 函数，
   // 所以页面上显示的模式与「到底会不会发」永远是同一个值。
@@ -380,7 +329,13 @@ export function wirePresence(
     ...(registry === null ? {} : { participants: () => registry.fileSync() }),
     dispose: () => {
       try { releaseEvents() } catch { /* 释放必须幂等且不抛 */ }
+      try { releaseJudge() } catch { /* 同上 */ }
       presence.dispose()
+      // 打分器进程是真实资源：一次判断都没跑过时这里就是空操作。
+      void judge.dispose().catch(() => { /* 回收失败不该影响卸载 */ })
     },
   }
 }
+
+
+
